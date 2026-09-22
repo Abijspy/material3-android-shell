@@ -37,7 +37,7 @@ sudo -v
 sudo pacman -Sy
 
 core=(
-  hyprland hypridle hyprlock xdg-desktop-portal-hyprland
+  hyprland hyprlock xdg-desktop-portal-hyprland
   quickshell matugen
   networkmanager bluez bluez-utils wireplumber pipewire pipewire-pulse
   brightnessctl playerctl wl-clipboard cliphist grim slurp swappy wf-recorder
