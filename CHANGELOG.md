@@ -1,0 +1,10 @@
+# Changelog
+
+## v0.0.1 — 2026-09-22
+
+Initial Aura Shell release for Arch Linux and Hyprland.
+
+- Material 3 Quickshell interface with Matugen palette generation and compositor blur.
+- Hyprland profile, IPC controls, launcher, control centre, clipboard, notifications, and power menu.
+- Service-backed network, Bluetooth, wallpaper, battery, screenshot, recording, and settings actions.
+- Interactive Arch-only installer with Thunar and LibreWolf as preferred applications.

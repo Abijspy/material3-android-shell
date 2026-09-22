@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Runtime service bridge for Aura on Arch Linux.
+set -euo pipefail
+notify() { notify-send -a Aura "$1" "${2:-}" 2>/dev/null || true; }
+runtime="${XDG_RUNTIME_DIR:-/tmp}/aura"; mkdir -p "$runtime"
+case "${1:-}" in
+  wifi) nmcli radio wifi "$2"; notify "Wi-Fi" "$2" ;;
+  wifi-connect) if [[ -n "${3:-}" ]]; then nmcli device wifi connect "$2" password "$3"; else nmcli device wifi connect "$2"; fi; notify "Wi-Fi connected" "$2" ;;
+  wifi-menu) foot -e nmtui-connect ;;
+  network-info) nmcli device show ;;
+  bluetooth) bluetoothctl power "$2"; notify "Bluetooth" "$2" ;;
+  bluetooth-menu) foot -e bluetoothctl ;;
+  vpn) nmcli connection up id "$2"; notify "VPN connected" "$2" ;;
+  brightness) brightnessctl set "${2}%"; notify "Brightness" "${2}%" ;;
+  volume) wpctl set-volume @DEFAULT_AUDIO_SINK@ "${2}%"; notify "Volume" "${2}%" ;;
+  balance) value=${2:-0}; if (( value < 0 )); then l=100; r=$((100 + value)); else l=$((100 - value)); r=100; fi; pactl set-sink-volume @DEFAULT_SINK@ "${l}%" "${r}%"; notify "Balance" "L ${l}% · R ${r}%" ;;
+  dnd) makoctl mode "$2"; notify "Notifications" "$2" ;;
+  screenshot) dir="$HOME/Pictures/Screenshots"; mkdir -p "$dir"; file="$dir/Screenshot-$(date +%F-%H%M%S).png"; grim -g "$(slurp)" "$file"; wl-copy < "$file"; notify "Screenshot saved" "$file" ;;
+  record) pid="$runtime/recording.pid"; if [[ -f "$pid" ]] && kill -0 "$(cat "$pid")" 2>/dev/null; then kill -INT "$(cat "$pid")"; rm -f "$pid"; notify "Screen recording" "Saved"; else mkdir -p "$HOME/Videos"; wf-recorder -g "$(slurp)" -f "$HOME/Videos/Recording-$(date +%F-%H%M%S).mp4" & echo $! > "$pid"; notify "Screen recording" "Run again to stop"; fi ;;
+  clipboard-list) cliphist list | head -n 40 ;;
+  clipboard-copy) printf '%s' "$2" | cliphist decode | wl-copy; notify "Clipboard" "Copied selection" ;;
+  clipboard-clear) cliphist wipe; notify "Clipboard" "History cleared" ;;
+  clipboard-watch) wl-paste --type text --watch cliphist store & wl-paste --type image --watch cliphist store & ;;
+  wallpaper) [[ -f "${2:-}" ]] || exit 2; mkdir -p "$HOME/.config/aura"; printf '%s\n' "$2" > "$HOME/.config/aura/wallpaper"; if ! pgrep -x swww-daemon >/dev/null; then swww-daemon & fi; swww img "$2" --transition-type grow; matugen image "$2"; quickshell -c aura ipc call aura reloadColours || true ;;
+  wallpaper-pick) foot -e sh -lc 'printf "Wallpaper path: "; read -r file; aura-system wallpaper "$file"; read -r _' ;;
+  display-reload) hyprctl reload ;;
+  lock) hyprlock ;;
+  location) mkdir -p "$HOME/.config/aura"; printf '%s\n' "$2" > "$HOME/.config/aura/location"; notify "Location" "$2" ;;
+  bar-toggle) mkdir -p "$HOME/.config/aura"; printf 'visible=%s\n' "$2" > "$HOME/.config/aura/bar.conf"; quickshell -c aura ipc call aura reload ;;
+  default-browser) xdg-settings set default-web-browser librewolf.desktop ;;
+  default-files) xdg-mime default thunar.desktop inode/directory ;;
+  power-profile) powerprofilesctl set "$2" ;;
+  accessibility) hyprctl keyword animations:enabled "$2" ;;
+  update) foot -e sh -lc 'sudo pacman -Syu; read -r _' ;;
+  users) foot -e sh -lc 'getent passwd | awk -F: "\$3 >= 1000 {print \$1, \$6}"; read -r _' ;;
+  battery) dev=$(upower -e | grep -m1 battery || true); [[ -n "$dev" ]] && upower -i "$dev" | awk -F: '/state:|percentage:|time to/ {gsub(/^[ \t]+/, "", $2); print $2}' || echo "No battery detected" ;;
+  about) . /etc/os-release; printf 'OS: %s %s\nKernel: %s\nHost: %s\nSession: Hyprland · Aura Shell\n' "$NAME" "$VERSION" "$(uname -r)" "$(hostnamectl --static 2>/dev/null || hostname)" ;;
+  *) echo 'Unknown Aura system action' >&2; exit 2 ;;
+esac

@@ -1,0 +1,6 @@
+[config]
+version = "3.0.0"
+
+[templates.quickshell]
+input_path = "~/.config/matugen/templates/GeneratedColors.qml"
+output_path = "~/.config/quickshell/aura/GeneratedColors.qml"
