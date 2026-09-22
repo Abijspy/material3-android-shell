@@ -1,8 +1,12 @@
 # Changelog
 
+## v0.0.2 — 2026-09-22
+
+- Rename Aura Shell to Material3UI Shell, including the Quickshell profile, IPC target, commands, installer, and documentation.
+
 ## v0.0.1 — 2026-09-22
 
-Initial Aura Shell release for Arch Linux and Hyprland.
+Initial Material3UI Shell release for Arch Linux and Hyprland.
 
 - Material 3 Quickshell interface with Matugen palette generation and compositor blur.
 - Hyprland profile, IPC controls, launcher, control centre, clipboard, notifications, and power menu.

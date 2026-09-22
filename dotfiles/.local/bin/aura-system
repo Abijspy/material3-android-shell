@@ -21,12 +21,12 @@ case "${1:-}" in
   clipboard-copy) printf '%s' "$2" | cliphist decode | wl-copy; notify "Clipboard" "Copied selection" ;;
   clipboard-clear) cliphist wipe; notify "Clipboard" "History cleared" ;;
   clipboard-watch) wl-paste --type text --watch cliphist store & wl-paste --type image --watch cliphist store & ;;
-  wallpaper) [[ -f "${2:-}" ]] || exit 2; mkdir -p "$HOME/.config/aura"; printf '%s\n' "$2" > "$HOME/.config/aura/wallpaper"; if ! pgrep -x swww-daemon >/dev/null; then swww-daemon & fi; swww img "$2" --transition-type grow; matugen image "$2"; quickshell -c aura ipc call aura reloadColours || true ;;
+  wallpaper) [[ -f "${2:-}" ]] || exit 2; mkdir -p "$HOME/.config/material3ui"; printf '%s\n' "$2" > "$HOME/.config/material3ui/wallpaper"; if ! pgrep -x swww-daemon >/dev/null; then swww-daemon & fi; swww img "$2" --transition-type grow; matugen image "$2"; quickshell -c material3ui ipc call material3ui reloadColours || true ;;
   wallpaper-pick) foot -e sh -lc 'printf "Wallpaper path: "; read -r file; aura-system wallpaper "$file"; read -r _' ;;
   display-reload) hyprctl reload ;;
   lock) hyprlock ;;
-  location) mkdir -p "$HOME/.config/aura"; printf '%s\n' "$2" > "$HOME/.config/aura/location"; notify "Location" "$2" ;;
-  bar-toggle) mkdir -p "$HOME/.config/aura"; printf 'visible=%s\n' "$2" > "$HOME/.config/aura/bar.conf"; quickshell -c aura ipc call aura reload ;;
+  location) mkdir -p "$HOME/.config/material3ui"; printf '%s\n' "$2" > "$HOME/.config/material3ui/location"; notify "Location" "$2" ;;
+  bar-toggle) mkdir -p "$HOME/.config/material3ui"; printf 'visible=%s\n' "$2" > "$HOME/.config/material3ui/bar.conf"; quickshell -c material3ui ipc call material3ui reload ;;
   default-browser) xdg-settings set default-web-browser librewolf.desktop ;;
   default-files) xdg-mime default thunar.desktop inode/directory ;;
   power-profile) powerprofilesctl set "$2" ;;

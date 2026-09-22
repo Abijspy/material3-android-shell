@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import Quickshell
 Rectangle {
     id: root; signal close(); signal settings(); radius: 28; color: shell.glass; border.color: shell.outline
-    property var apps: [["LibreWolf", "Browse the web", "librewolf", "◉"], ["Files", "Thunar file manager", "thunar", "▱"], ["Terminal", "foot", "foot", ">_"], ["Settings", "Aura preferences", "", "⚙"]]
+    property var apps: [["LibreWolf", "Browse the web", "librewolf", "◉"], ["Files", "Thunar file manager", "thunar", "▱"], ["Terminal", "foot", "foot", ">_"], ["Settings", "Material3UI preferences", "", "⚙"]]
     ColumnLayout { anchors.fill: parent; anchors.margins: 24; spacing: 16
         RowLayout { Layout.fillWidth: true; Label { text: "Apps"; font.pixelSize: 28; font.weight: Font.DemiBold; color: shell.text; Layout.fillWidth: true }; ToolButton { text: "×"; onClicked: root.close() } }
         TextField { id: query; Layout.fillWidth: true; placeholderText: "Search apps, files and actions"; font.pixelSize: 17; leftPadding: 16; background: Rectangle { radius: 18; color: shell.surfaceHigh } }

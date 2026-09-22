@@ -1,8 +1,8 @@
-# Aura Shell
+# Material3UI Shell
 
-**v0.0.1** · Arch Linux · Hyprland · Quickshell
+**v0.0.2** · Arch Linux · Hyprland · Quickshell
 
-Aura is a Material 3 shell for **Hyprland**, built with [Quickshell](https://quickshell.outfoxxed.me/) and coloured by [Matugen](https://github.com/InioX/matugen). It is a real dotfiles starter: the bar, launcher, control centre, notifications, clipboard, power menu, and Android-inspired settings UI live in QML, while Hyprland owns window management.
+Material3UI Shell is a Material 3 shell for **Hyprland**, built with [Quickshell](https://quickshell.outfoxxed.me/) and coloured by [Matugen](https://github.com/InioX/matugen). It is a real dotfiles starter: the bar, launcher, control centre, notifications, clipboard, power menu, and Android-inspired settings UI live in QML, while Hyprland owns window management.
 
 ## Included
 
@@ -15,13 +15,13 @@ Aura is a Material 3 shell for **Hyprland**, built with [Quickshell](https://qui
 
 ## Install (Arch Linux only)
 
-Aura is deliberately an Arch Linux configuration. Its single interactive installer uses `pacman`, lets you choose the preferred applications and font set, can enable NetworkManager/Bluetooth, and then installs the dotfiles:
+Material3UI Shell is deliberately an Arch Linux configuration. Its single interactive installer uses `pacman`, lets you choose the preferred applications and font set, can enable NetworkManager/Bluetooth, and then installs the dotfiles:
 
 ```sh
 ./install.sh
 ```
 
-Place wallpapers in `~/Pictures/Wallpapers` and run `matugen image /path/to/wallpaper`. This produces `~/.config/quickshell/aura/GeneratedColors.qml`; restart Quickshell to apply it.
+Place wallpapers in `~/Pictures/Wallpapers` and run `matugen image /path/to/wallpaper`. This produces `~/.config/quickshell/material3ui/GeneratedColors.qml`; restart Quickshell to apply it.
 
 ## Key bindings
 
@@ -29,19 +29,19 @@ Place wallpapers in `~/Pictures/Wallpapers` and run `matugen image /path/to/wall
 
 ## IPC
 
-All shell controls communicate through the `aura` Quickshell IPC target. Use `auractl controlCenter`, `auractl settings "Sound & vibration"`, `auractl wifi off`, or `auractl volume 40` from a terminal, key binding, or automation. This keeps external integrations independent of the QML layout.
+All shell controls communicate through the Material3UI Shell IPC target. Use `material3uictl controlCenter`, `material3uictl settings "Sound & vibration"`, `material3uictl wifi off`, or `material3uictl volume 40` from a terminal, key binding, or automation. This keeps external integrations independent of the QML layout.
 
 ## System integrations
 
-`aura-system` is the service layer used by the shell. It controls Wi-Fi, VPN profiles and Ethernet through NetworkManager (`nmcli`), Bluetooth through BlueZ, reads battery details through UPower, and uses `swww` + Matugen for wallpaper and dynamic colour generation.
+`material3ui-system` is the service layer used by the shell. It controls Wi-Fi, VPN profiles and Ethernet through NetworkManager (`nmcli`), Bluetooth through BlueZ, reads battery details through UPower, and uses `swww` + Matugen for wallpaper and dynamic colour generation.
 
 ```sh
-auractl wifi on
-aura-system wifi-connect "Network name" "password"
-aura-system vpn "My VPN"
-auractl wallpaper ~/Pictures/Wallpapers/forest.png
-auractl battery
-auractl about
+material3uictl wifi on
+material3ui-system wifi-connect "Network name" "password"
+material3ui-system vpn "My VPN"
+material3uictl wallpaper ~/Pictures/Wallpapers/forest.png
+material3uictl battery
+material3uictl about
 ```
 
 Clipboard history is captured at Hyprland startup by `wl-paste --watch` into cliphist. `SUPER+V` opens the live history; clicking an entry decodes and copies it. `SUPER+SHIFT+S` saves a selected screenshot to `~/Pictures/Screenshots`, copies it to the clipboard, and reports the saved location. `SUPER+SHIFT+V` starts/stops a selected-area recording in `~/Videos`.

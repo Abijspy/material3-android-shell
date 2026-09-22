@@ -39,18 +39,18 @@ ShellRoot {
 
     Component.onCompleted: refreshSystemInfo()
     Timer { interval: 60000; running: true; repeat: true; onTriggered: { shell.batteryInfo = ""; batteryQuery.running = true } }
-    Process { id: batteryQuery; command: ["sh", "-lc", "aura-system battery"]
+    Process { id: batteryQuery; command: ["sh", "-lc", "material3ui-system battery"]
         stdout: SplitParser { onRead: data => shell.batteryInfo += (shell.batteryInfo ? " · " : "") + data }
     }
-    Process { id: aboutQuery; command: ["sh", "-lc", "aura-system about"]
+    Process { id: aboutQuery; command: ["sh", "-lc", "material3ui-system about"]
         stdout: SplitParser { onRead: data => shell.aboutInfo += (shell.aboutInfo ? "\n" : "") + data }
     }
 
     // Public control plane. Examples:
-    // quickshell -c aura ipc call aura controlCenter
-    // quickshell -c aura ipc call aura settings "Sound & vibration"
+    // quickshell -c material3ui ipc call material3ui controlCenter
+    // quickshell -c material3ui ipc call material3ui settings "Sound & vibration"
     IpcHandler {
-        target: "aura"
+        target: "material3ui"
         function launcher() { shell.toggle("launcher") }
         function controlCenter() { shell.toggle("control") }
         function notifications() { shell.toggle("notifications") }
@@ -70,7 +70,7 @@ ShellRoot {
     }
 
     PanelWindow {
-        WlrLayershell.namespace: "aura"
+        WlrLayershell.namespace: "material3ui"
         anchors { top: true; left: true; right: true }
         implicitHeight: 46
         color: shell.surface
@@ -89,23 +89,23 @@ ShellRoot {
         }
     }
 
-    PopupWindow { WlrLayershell.namespace: "aura"; visible: shell.launcherOpen; anchor.window: null; anchor.rect.x: 18; anchor.rect.y: 56; implicitWidth: 520; implicitHeight: 560
+    PopupWindow { WlrLayershell.namespace: "material3ui"; visible: shell.launcherOpen; anchor.window: null; anchor.rect.x: 18; anchor.rect.y: 56; implicitWidth: 520; implicitHeight: 560
         color: "transparent"
         Launcher { anchors.fill: parent; onClose: shell.closeOverlays(); onSettings: { shell.closeOverlays(); shell.settingsOpen = true } }
     }
-    PopupWindow { WlrLayershell.namespace: "aura"; visible: shell.controlOpen; anchor.window: null; anchor.rect.x: 0; anchor.rect.y: 56; implicitWidth: 1; implicitHeight: 1
+    PopupWindow { WlrLayershell.namespace: "material3ui"; visible: shell.controlOpen; anchor.window: null; anchor.rect.x: 0; anchor.rect.y: 56; implicitWidth: 1; implicitHeight: 1
         ControlCenter { x: Screen.width - width - 16; width: 430; height: 670; onClose: shell.closeOverlays() }
     }
-    PopupWindow { WlrLayershell.namespace: "aura"; visible: shell.notificationsOpen; anchor.window: null; anchor.rect.x: 0; anchor.rect.y: 56; implicitWidth: 1; implicitHeight: 1
+    PopupWindow { WlrLayershell.namespace: "material3ui"; visible: shell.notificationsOpen; anchor.window: null; anchor.rect.x: 0; anchor.rect.y: 56; implicitWidth: 1; implicitHeight: 1
         NotificationPanel { x: Screen.width - width - 16; width: 390; height: 470; onClose: shell.closeOverlays() }
     }
-    PopupWindow { WlrLayershell.namespace: "aura"; visible: shell.clipboardOpen; anchor.window: null; anchor.rect.x: 0; anchor.rect.y: 56; implicitWidth: 1; implicitHeight: 1
+    PopupWindow { WlrLayershell.namespace: "material3ui"; visible: shell.clipboardOpen; anchor.window: null; anchor.rect.x: 0; anchor.rect.y: 56; implicitWidth: 1; implicitHeight: 1
         ClipboardPanel { x: Screen.width - width - 16; width: 390; height: 430; onClose: shell.closeOverlays() }
     }
-    PopupWindow { WlrLayershell.namespace: "aura"; visible: shell.powerOpen; anchor.window: null; anchor.rect.x: Screen.width / 2 - 210; anchor.rect.y: Screen.height / 2 - 145; implicitWidth: 420; implicitHeight: 290
+    PopupWindow { WlrLayershell.namespace: "material3ui"; visible: shell.powerOpen; anchor.window: null; anchor.rect.x: Screen.width / 2 - 210; anchor.rect.y: Screen.height / 2 - 145; implicitWidth: 420; implicitHeight: 290
         PowerPanel { anchors.fill: parent; onClose: shell.closeOverlays() }
     }
-    FloatingWindow { visible: shell.settingsOpen; title: "Aura Settings"; minimumWidth: 980; minimumHeight: 680; implicitWidth: 1120; implicitHeight: 760
+    FloatingWindow { visible: shell.settingsOpen; title: "Material3UI Settings"; minimumWidth: 980; minimumHeight: 680; implicitWidth: 1120; implicitHeight: 760
         Settings { anchors.fill: parent; onClose: shell.settingsOpen = false }
     }
 }

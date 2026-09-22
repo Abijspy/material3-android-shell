@@ -4,20 +4,20 @@ set -eu
 
 case "${1:-}" in
   launcher|controlCenter|notifications|clipboard|power|close)
-    quickshell -c aura ipc call aura "$1"
+    quickshell -c material3ui ipc call material3ui "$1"
     ;;
   settings)
     shift
-    quickshell -c aura ipc call aura settings "${1:-}"
+    quickshell -c material3ui ipc call material3ui settings "${1:-}"
     ;;
   wifi|bluetooth)
     [ "$#" -eq 2 ] || { echo "usage: auractl $1 <value>" >&2; exit 2; }
     aura-system "$1" "$2"
-    quickshell -c aura ipc call aura "$1" "$2"
+    quickshell -c material3ui ipc call material3ui "$1" "$2"
     ;;
   volume|brightness)
     [ "$#" -eq 2 ] || { echo "usage: auractl $1 <value>" >&2; exit 2; }
-    quickshell -c aura ipc call aura "$1" "$2"
+    quickshell -c material3ui ipc call material3ui "$1" "$2"
     ;;
   screenshot|record|battery|about)
     aura-system "$1"

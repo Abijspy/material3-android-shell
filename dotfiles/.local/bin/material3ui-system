@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# Public command name for Material3UI Shell service actions.
+exec aura-system "$@"
