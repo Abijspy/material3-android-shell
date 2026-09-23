@@ -7,11 +7,14 @@ Material3UI Shell is a Material 3 shell for **Hyprland**, built with [Quickshell
 ## Included
 
 - Material 3 adaptive palette generated from the current wallpaper
+- Expandable Dynamic Island for media controls and quick settings access
 - Top bar: launcher, workspaces, active window/media area, background tasks, calendar, status and profile
 - App launcher for LibreWolf, Thunar, terminal, settings, and user commands
 - Control centre with editable Wi-Fi/Bluetooth controls, tiles, volume balancing, screenshot/recording actions, clipboard and notifications
 - Settings categories for connectivity, wallpaper/style, display, audio, notifications, security/polkit, location/weather, bar editor, apps, battery, accessibility, updates, accounts, and about
-- Hyprland bindings and sensible preferred applications (Thunar, LibreWolf, foot)
+- Native Quickshell global shortcuts plus Hyprland bindings and sensible preferred applications (Thunar, LibreWolf, foot)
+- Live bar editor: enable or hide launcher, workspaces, active-window title, Dynamic Island, screenshot, clipboard, notifications, quick settings, clock, battery, and profile widgets
+- Bar appearance controls for compositor-backed blur/translucency, height, and top/bottom placement
 
 ## Install (Arch Linux only)
 

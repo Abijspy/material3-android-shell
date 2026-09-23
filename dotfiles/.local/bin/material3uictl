@@ -1,3 +1,33 @@
 #!/usr/bin/env sh
-# Public command name for Material3UI Shell IPC.
-exec auractl "$@"
+# Stable client for the Material3UI Shell IPC target.
+set -eu
+
+case "${1:-}" in
+  launcher|controlCenter|notifications|clipboard|power|close)
+    quickshell -c material3ui ipc call material3ui "$1"
+    ;;
+  settings)
+    shift
+    quickshell -c material3ui ipc call material3ui settings "${1:-}"
+    ;;
+  wifi|bluetooth)
+    [ "$#" -eq 2 ] || { echo "usage: material3uictl $1 <value>" >&2; exit 2; }
+    material3ui-system "$1" "$2"
+    quickshell -c material3ui ipc call material3ui "$1" "$2"
+    ;;
+  volume|brightness)
+    [ "$#" -eq 2 ] || { echo "usage: material3uictl $1 <value>" >&2; exit 2; }
+    quickshell -c material3ui ipc call material3ui "$1" "$2"
+    ;;
+  screenshot|record|battery|about)
+    material3ui-system "$1"
+    ;;
+  wallpaper)
+    [ "$#" -eq 2 ] || { echo 'usage: material3uictl wallpaper /path/to/image' >&2; exit 2; }
+    material3ui-system wallpaper "$2"
+    ;;
+  *)
+    echo 'usage: material3uictl {launcher|controlCenter|notifications|clipboard|power|close|settings [section]|wifi on|off|bluetooth on|off|volume 0-100|brightness 0-100}' >&2
+    exit 2
+    ;;
+esac

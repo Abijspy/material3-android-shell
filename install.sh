@@ -20,11 +20,9 @@ install_official() { sudo pacman -S --needed "$@"; }
 install_dotfiles() {
   mkdir -p "$HOME/.config" "$HOME/.local/bin"
   cp -R "$root/dotfiles/.config/." "$HOME/.config/"
-  cp "$root/dotfiles/.local/bin/auractl" "$HOME/.local/bin/auractl"
-  cp "$root/dotfiles/.local/bin/aura-system" "$HOME/.local/bin/aura-system"
   cp "$root/dotfiles/.local/bin/material3uictl" "$HOME/.local/bin/material3uictl"
   cp "$root/dotfiles/.local/bin/material3ui-system" "$HOME/.local/bin/material3ui-system"
-  chmod +x "$HOME/.local/bin/auractl" "$HOME/.local/bin/aura-system" "$HOME/.local/bin/material3uictl" "$HOME/.local/bin/material3ui-system"
+  chmod +x "$HOME/.local/bin/material3uictl" "$HOME/.local/bin/material3ui-system"
 }
 
 printf '%s\n' '╭──────────────────────────────────────╮'
@@ -40,6 +38,7 @@ core=(
   hyprland hyprlock xdg-desktop-portal-hyprland
   quickshell matugen
   networkmanager bluez bluez-utils wireplumber pipewire pipewire-pulse
+  jq
   brightnessctl playerctl wl-clipboard cliphist grim slurp swappy wf-recorder
   polkit-gnome foot libnotify upower swww mako power-profiles-daemon pulseaudio-utils
 )

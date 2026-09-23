@@ -3,6 +3,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell.Io
+import Quickshell.Hyprland
 
 ShellRoot {
     id: shell
@@ -20,6 +21,12 @@ ShellRoot {
     property int brightness: 76
     property string batteryInfo: "Checking battery…"
     property string aboutInfo: "Loading system details…"
+    property string activeWindow: "Desktop"
+    property var barWidgets: ({})
+    property bool barVisible: true
+    property real glassOpacity: 0.88
+    property int barHeight: 46
+    property string barPosition: "top"
     property string page: "Connected devices"
     readonly property color primary: "#b9c4ff"
     readonly property color onPrimary: "#1e2860"
@@ -27,7 +34,7 @@ ShellRoot {
     readonly property color surface: "#111318"
     readonly property color surfaceContainer: "#1d2027"
     readonly property color surfaceHigh: "#282b33"
-    readonly property color glass: Qt.rgba(surfaceContainer.r, surfaceContainer.g, surfaceContainer.b, 0.88)
+    readonly property color glass: Qt.rgba(surfaceContainer.r, surfaceContainer.g, surfaceContainer.b, glassOpacity)
     readonly property color text: "#e2e2e9"
     readonly property color muted: "#c3c6d0"
     readonly property color outline: "#8d9099"
@@ -35,15 +42,25 @@ ShellRoot {
     function closeOverlays() { launcherOpen = false; controlOpen = false; notificationsOpen = false; clipboardOpen = false; powerOpen = false }
     function toggle(which) { closeOverlays(); if (which === "launcher") launcherOpen = true; if (which === "control") controlOpen = true; if (which === "notifications") notificationsOpen = true; if (which === "clipboard") clipboardOpen = true; if (which === "power") powerOpen = true }
     function run(command) { Quickshell.execDetached(["sh", "-lc", command]) }
+    function widgetEnabled(name) { return barWidgets[name] !== false }
+    function setBarWidget(name, enabled) { if (name === "visible") barVisible = enabled; else barWidgets = Object.assign({}, barWidgets, { [name]: enabled }) }
+    function setBarStyle(name, value) { if (name === "opacity") glassOpacity = Number(value); if (name === "height") barHeight = Number(value); if (name === "position") barPosition = value }
     function refreshSystemInfo() { batteryInfo = ""; batteryQuery.running = true; aboutInfo = ""; aboutQuery.running = true }
 
-    Component.onCompleted: refreshSystemInfo()
+    Component.onCompleted: { refreshSystemInfo(); barConfigQuery.running = true; activeWindowQuery.running = true }
     Timer { interval: 60000; running: true; repeat: true; onTriggered: { shell.batteryInfo = ""; batteryQuery.running = true } }
     Process { id: batteryQuery; command: ["sh", "-lc", "material3ui-system battery"]
         stdout: SplitParser { onRead: data => shell.batteryInfo += (shell.batteryInfo ? " · " : "") + data }
     }
     Process { id: aboutQuery; command: ["sh", "-lc", "material3ui-system about"]
         stdout: SplitParser { onRead: data => shell.aboutInfo += (shell.aboutInfo ? "\n" : "") + data }
+    }
+    Process { id: barConfigQuery; command: ["sh", "-lc", "cat ~/.config/material3ui/bar.conf 2>/dev/null || true"]
+        stdout: SplitParser { onRead: data => { const pair = data.split("="); if (pair.length === 2) { if (["opacity", "height", "position"].includes(pair[0])) shell.setBarStyle(pair[0], pair[1]); else shell.setBarWidget(pair[0], pair[1] !== "false") } } }
+    }
+    Timer { interval: 2000; running: true; repeat: true; onTriggered: { activeWindow = "Desktop"; activeWindowQuery.running = true } }
+    Process { id: activeWindowQuery; command: ["sh", "-lc", "hyprctl activewindow -j 2>/dev/null | jq -r '.title // \"Desktop\"'"]
+        stdout: SplitParser { onRead: data => { if (data.length > 0) shell.activeWindow = data } }
     }
 
     // Public control plane. Examples:
@@ -65,26 +82,42 @@ ShellRoot {
         function wifi(enabled: string) { shell.wifi = enabled === "on" || enabled === "true" }
         function bluetooth(enabled: string) { shell.bluetooth = enabled === "on" || enabled === "true" }
         function reloadColours() { Quickshell.reload() }
+        function barWidget(name: string, enabled: string) { shell.setBarWidget(name, enabled === "true"); shell.run("material3ui-system bar-widget " + name + " " + enabled) }
         function volume(value: string) { shell.volume = Math.max(0, Math.min(100, Number(value))) }
         function brightness(value: string) { shell.brightness = Math.max(0, Math.min(100, Number(value))) }
     }
 
+    // Hyprland-native shortcuts avoid spawning another shell process for panels.
+    GlobalShortcut { appid: "material3ui"; name: "launcher"; description: "Open Material3UI launcher"; onPressed: shell.toggle("launcher") }
+    GlobalShortcut { appid: "material3ui"; name: "controlCenter"; description: "Open quick settings"; onPressed: shell.toggle("control") }
+    GlobalShortcut { appid: "material3ui"; name: "notifications"; description: "Open notifications"; onPressed: shell.toggle("notifications") }
+    GlobalShortcut { appid: "material3ui"; name: "clipboard"; description: "Open clipboard"; onPressed: shell.toggle("clipboard") }
+    GlobalShortcut { appid: "material3ui"; name: "power"; description: "Open power menu"; onPressed: shell.toggle("power") }
+    GlobalShortcut { appid: "material3ui"; name: "settings"; description: "Open Material3UI settings"; onPressed: { shell.closeOverlays(); shell.settingsOpen = true } }
+
     PanelWindow {
+        visible: shell.barVisible
         WlrLayershell.namespace: "material3ui"
-        anchors { top: true; left: true; right: true }
-        implicitHeight: 46
+        anchors { top: shell.barPosition === "top"; bottom: shell.barPosition === "bottom"; left: true; right: true }
+        implicitHeight: shell.barHeight
         color: shell.surface
         exclusionMode: ExclusionMode.Auto
-        Rectangle { anchors.fill: parent; color: Qt.rgba(shell.surface.r, shell.surface.g, shell.surface.b, 0.84)
+        Rectangle { anchors.fill: parent; color: Qt.rgba(shell.surface.r, shell.surface.g, shell.surface.b, shell.glassOpacity)
             RowLayout { anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14; spacing: 12
-                ToolButton { text: "◈"; font.pixelSize: 23; onClicked: shell.toggle("launcher") }
-                Row { spacing: 5; Repeater { model: 5; delegate: Button { text: index + 1; implicitWidth: 27; implicitHeight: 27; checkable: true; checked: index === 0; onClicked: { } } } }
+                ToolButton { visible: shell.widgetEnabled("launcher"); text: "◈"; font.pixelSize: 23; onClicked: shell.toggle("launcher") }
+                Row { visible: shell.widgetEnabled("workspaces"); spacing: 5; Repeater { model: 5; delegate: Button { text: index + 1; implicitWidth: 27; implicitHeight: 27; checkable: true; checked: Hyprland.focusedWorkspace && Hyprland.focusedWorkspace.id === index + 1; onClicked: Hyprland.dispatch("workspace " + (index + 1)) } } }
+                Label { visible: shell.widgetEnabled("activeWindow"); text: shell.activeWindow; color: shell.muted; font.pixelSize: 12; elide: Text.ElideRight; Layout.maximumWidth: 180 }
                 Rectangle { width: 1; height: 22; color: shell.outline }
-                Label { text: "No media playing  ·  Desktop"; color: shell.muted; Layout.fillWidth: true; elide: Text.ElideRight }
-                ToolButton { text: "◌  3"; onClicked: shell.toggle("notifications") }
-                ToolButton { text: "▣"; onClicked: shell.toggle("control") }
-                Label { text: Qt.formatDateTime(new Date(), "ddd, MMM d   hh:mm"); color: shell.text }
-                ToolButton { text: shell.batteryInfo === "" ? "A" : "⌁"; onClicked: shell.toggle("control") }
+                Item { Layout.fillWidth: true }
+                DynamicIsland { visible: shell.widgetEnabled("dynamicIsland"); Layout.alignment: Qt.AlignHCenter }
+                Item { Layout.fillWidth: true }
+                ToolButton { visible: shell.widgetEnabled("screenshot"); text: "▣"; font.pixelSize: 18; onClicked: shell.run("material3ui-system screenshot") }
+                ToolButton { visible: shell.widgetEnabled("clipboard"); text: "▤"; font.pixelSize: 18; onClicked: shell.toggle("clipboard") }
+                ToolButton { visible: shell.widgetEnabled("notifications"); text: "◌  3"; onClicked: shell.toggle("notifications") }
+                ToolButton { visible: shell.widgetEnabled("quickSettings"); text: "▣"; onClicked: shell.toggle("control") }
+                Label { visible: shell.widgetEnabled("clock"); text: Qt.formatDateTime(new Date(), "ddd, MMM d   hh:mm"); color: shell.text }
+                Label { visible: shell.widgetEnabled("battery"); text: shell.batteryInfo.split(" · ")[1] || ""; color: shell.muted; font.pixelSize: 12 }
+                ToolButton { visible: shell.widgetEnabled("profile"); text: "A"; onClicked: shell.toggle("control") }
             }
         }
     }
@@ -106,6 +139,7 @@ ShellRoot {
         PowerPanel { anchors.fill: parent; onClose: shell.closeOverlays() }
     }
     FloatingWindow { visible: shell.settingsOpen; title: "Material3UI Settings"; minimumWidth: 980; minimumHeight: 680; implicitWidth: 1120; implicitHeight: 760
+        HyprlandWindow.opacity: shell.glassOpacity
         Settings { anchors.fill: parent; onClose: shell.settingsOpen = false }
     }
 }
