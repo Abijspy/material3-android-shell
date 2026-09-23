@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Material3UI Shell-owned launcher for Hyprland's native Qt/QML Polkit agent.
+set -euo pipefail
+
+agent=/usr/lib/hyprpolkitagent/hyprpolkitagent
+if pgrep -u "$(id -u)" -x hyprpolkitagent >/dev/null 2>&1; then
+  exit 0
+fi
+[[ -x "$agent" ]] || { notify-send -a Material3UI 'Authentication unavailable' 'hyprpolkitagent is not installed.'; exit 1; }
+exec "$agent"

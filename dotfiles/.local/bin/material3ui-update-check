@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Notify once per release when a newer Material3UI Shell tag is available.
+set -euo pipefail
+
+repo="https://github.com/Abijspy/material3-android-shell.git"
+config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/material3ui"
+local_version=$(cat "$config_dir/version" 2>/dev/null || printf '0.0.0')
+latest=$(git ls-remote --tags --refs "$repo" 2>/dev/null | awk -F/ '{print $3}' | sed 's/^v//' | sort -V | tail -n 1)
+[[ -n "$latest" ]] || exit 0
+
+if [[ "$(printf '%s\n%s\n' "$local_version" "$latest" | sort -V | tail -n 1)" != "$local_version" && "$latest" != "$local_version" ]]; then
+  seen="$config_dir/last-update-notification"
+  if [[ ! -f "$seen" || "$(cat "$seen")" != "$latest" ]]; then
+    mkdir -p "$config_dir"
+    printf '%s\n' "$latest" > "$seen"
+    notify-send -a Material3UI 'Material3UI Shell update available' "v$latest is available. Update from the project repository."
+  fi
+fi

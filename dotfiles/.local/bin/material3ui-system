@@ -25,6 +25,7 @@ case "${1:-}" in
   wallpaper-pick) foot -e sh -lc 'printf "Wallpaper path: "; read -r file; material3ui-system wallpaper "$file"; read -r _' ;;
   display-reload) hyprctl reload ;;
   lock) hyprlock ;;
+  polkit-status) pgrep -u "$(id -u)" -x hyprpolkitagent >/dev/null && notify "Authentication" "Material3UI Polkit agent is active" || notify "Authentication" "Polkit agent is not running" ;;
   location) mkdir -p "$HOME/.config/material3ui"; printf '%s\n' "$2" > "$HOME/.config/material3ui/location"; notify "Location" "$2" ;;
   bar-toggle)
     mkdir -p "$HOME/.config/material3ui"
@@ -51,6 +52,7 @@ case "${1:-}" in
   default-files) xdg-mime default thunar.desktop inode/directory ;;
   power-profile) powerprofilesctl set "$2" ;;
   accessibility) hyprctl keyword animations:enabled "$2" ;;
+  hyprmod) hyprmod ;;
   update) foot -e sh -lc 'sudo pacman -Syu; read -r _' ;;
   users) foot -e sh -lc 'getent passwd | awk -F: "\$3 >= 1000 {print \$1, \$6}"; read -r _' ;;
   battery) dev=$(upower -e | grep -m1 battery || true); [[ -n "$dev" ]] && upower -i "$dev" | awk -F: '/state:|percentage:|time to/ {gsub(/^[ \t]+/, "", $2); print $2}' || echo "No battery detected" ;;

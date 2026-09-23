@@ -15,6 +15,7 @@ Material3UI Shell is a Material 3 shell for **Hyprland**, built with [Quickshell
 - Native Quickshell global shortcuts plus Hyprland bindings and sensible preferred applications (Thunar, LibreWolf, foot)
 - Live bar editor: enable or hide launcher, workspaces, active-window title, Dynamic Island, screenshot, clipboard, notifications, quick settings, clock, battery, and profile widgets
 - Bar appearance controls for compositor-backed blur/translucency, height, and top/bottom placement
+- Native Hyprland Qt/QML Polkit authentication agent and Material 3 Hyprlock screen
 
 ## Install (Arch Linux only)
 
@@ -23,6 +24,10 @@ Material3UI Shell is deliberately an Arch Linux configuration. Its single intera
 ```sh
 ./install.sh
 ```
+
+The installer uses `pacman --needed`, so Hyprland, Quickshell, Matugen, and every runtime dependency are installed only when missing. It deploys `hyprland.conf`, `hyprlock.conf`, the Material3UI Quickshell profile, Matugen template, helper commands, and a daily user-level update-notification timer. Existing Hyprland and Material3UI configuration is backed up before replacement.
+
+The installer bootstraps [Yay](https://github.com/Jguer/yay) for AUR integrations, then optionally installs [HyprMod](https://github.com/BlueManCZ/hyprmod), a graphical Hyprland editor for keybinds, monitors, rules, workspaces, profiles, and Lua configuration. Open it from Settings → System → HyprMod or with `SUPER+SHIFT+M`.
 
 Place wallpapers in `~/Pictures/Wallpapers` and run `matugen image /path/to/wallpaper`. This produces `~/.config/quickshell/material3ui/GeneratedColors.qml`; restart Quickshell to apply it.
 
