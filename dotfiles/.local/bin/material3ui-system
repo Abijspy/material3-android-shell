@@ -22,6 +22,7 @@ case "${1:-}" in
   clipboard-clear) cliphist wipe; notify "Clipboard" "History cleared" ;;
   clipboard-watch) wl-paste --type text --watch cliphist store & wl-paste --type image --watch cliphist store & ;;
   wallpaper) [[ -f "${2:-}" ]] || exit 2; mkdir -p "$HOME/.config/material3ui"; printf '%s\n' "$2" > "$HOME/.config/material3ui/wallpaper"; if ! pgrep -x swww-daemon >/dev/null; then swww-daemon & fi; swww img "$2" --transition-type grow; matugen image "$2"; quickshell -c material3ui ipc call material3ui reloadColours || true ;;
+  wallpaper-restore) saved="$HOME/.config/material3ui/wallpaper"; [[ -r "$saved" ]] || exit 0; wallpaper=$(head -n 1 "$saved"); [[ -f "$wallpaper" ]] || { notify "Wallpaper" "Saved image is unavailable"; exit 0; }; if ! pgrep -x swww-daemon >/dev/null; then swww-daemon & fi; swww img "$wallpaper" --transition-type none; matugen image "$wallpaper"; quickshell -c material3ui ipc call material3ui reloadColours || true ;;
   wallpaper-pick) foot -e sh -lc 'printf "Wallpaper path: "; read -r file; material3ui-system wallpaper "$file"; read -r _' ;;
   display-reload) hyprctl reload ;;
   lock) hyprlock ;;

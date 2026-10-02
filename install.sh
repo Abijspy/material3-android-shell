@@ -33,7 +33,7 @@ ensure_yay() {
 }
 
 install_dotfiles() {
-  mkdir -p "$HOME/.config" "$HOME/.local/bin" "$HOME/.config/material3ui"
+  mkdir -p "$HOME/.config" "$HOME/.local/bin" "$HOME/.local/share" "$HOME/.config/material3ui"
   # Preserve user customisations before replacing only Material3UI-managed files.
   if [[ -e "$HOME/.config/hypr/hyprland.conf" || -e "$HOME/.config/quickshell/material3ui" ]]; then
     backup="$HOME/.config/material3ui/backup-$(date +%Y%m%d-%H%M%S)"
@@ -43,11 +43,15 @@ install_dotfiles() {
     printf 'Existing configuration backed up to %s\n' "$backup"
   fi
   cp -R "$root/dotfiles/.config/." "$HOME/.config/"
+  cp -R "$root/dotfiles/.local/share/." "$HOME/.local/share/"
   cp "$root/dotfiles/.local/bin/material3uictl" "$HOME/.local/bin/material3uictl"
   cp "$root/dotfiles/.local/bin/material3ui-system" "$HOME/.local/bin/material3ui-system"
   cp "$root/dotfiles/.local/bin/material3ui-polkit" "$HOME/.local/bin/material3ui-polkit"
   cp "$root/dotfiles/.local/bin/material3ui-update-check" "$HOME/.local/bin/material3ui-update-check"
   cp "$root/VERSION" "$HOME/.config/material3ui/version"
+  if [[ ! -s "$HOME/.config/material3ui/wallpaper" ]]; then
+    printf '%s\n' "$HOME/.local/share/material3ui/wallpapers/midnight-dunes.png" > "$HOME/.config/material3ui/wallpaper"
+  fi
   chmod +x "$HOME/.local/bin/material3uictl" "$HOME/.local/bin/material3ui-system" "$HOME/.local/bin/material3ui-polkit" "$HOME/.local/bin/material3ui-update-check"
   systemctl --user daemon-reload
   systemctl --user enable --now material3ui-update.timer

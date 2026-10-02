@@ -28,16 +28,17 @@ ShellRoot {
     property int barHeight: 46
     property string barPosition: "top"
     property string page: "Connected devices"
-    readonly property color primary: "#b9c4ff"
-    readonly property color onPrimary: "#1e2860"
-    readonly property color primaryContainer: "#364582"
-    readonly property color surface: "#111318"
-    readonly property color surfaceContainer: "#1d2027"
-    readonly property color surfaceHigh: "#282b33"
+    GeneratedColors { id: palette }
+    readonly property color primary: palette.primary
+    readonly property color onPrimary: palette.onPrimary
+    readonly property color primaryContainer: palette.primaryContainer
+    readonly property color surface: palette.surface
+    readonly property color surfaceContainer: palette.surfaceContainer
+    readonly property color surfaceHigh: palette.surfaceContainerHigh
     readonly property color glass: Qt.rgba(surfaceContainer.r, surfaceContainer.g, surfaceContainer.b, glassOpacity)
-    readonly property color text: "#e2e2e9"
-    readonly property color muted: "#c3c6d0"
-    readonly property color outline: "#8d9099"
+    readonly property color text: palette.onSurface
+    readonly property color muted: palette.onSurfaceVariant
+    readonly property color outline: palette.outline
 
     function closeOverlays() { launcherOpen = false; controlOpen = false; notificationsOpen = false; clipboardOpen = false; powerOpen = false }
     function toggle(which) { closeOverlays(); if (which === "launcher") launcherOpen = true; if (which === "control") controlOpen = true; if (which === "notifications") notificationsOpen = true; if (which === "clipboard") clipboardOpen = true; if (which === "power") powerOpen = true }
@@ -100,7 +101,7 @@ ShellRoot {
         WlrLayershell.namespace: "material3ui"
         anchors { top: shell.barPosition === "top"; bottom: shell.barPosition === "bottom"; left: true; right: true }
         implicitHeight: shell.barHeight
-        color: shell.surface
+        color: "transparent"
         exclusionMode: ExclusionMode.Auto
         Rectangle { anchors.fill: parent; color: Qt.rgba(shell.surface.r, shell.surface.g, shell.surface.b, shell.glassOpacity)
             RowLayout { anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14; spacing: 12

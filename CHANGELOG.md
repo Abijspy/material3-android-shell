@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.0.0 — 2026-10-02
+
+- Ship the original Midnight Dunes desktop wallpaper as the first-run default.
+- Persist and restore the selected wallpaper at login through swww.
+- Generate the Material 3 palette from the restored wallpaper.
+- Promote Material3UI Shell to its first stable major release.
+
 ## v0.0.2 — 2026-09-22
 
 - Rename the shell to Material3UI Shell, including the Quickshell profile, IPC target, commands, installer, and documentation.

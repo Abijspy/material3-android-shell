@@ -1,11 +1,12 @@
 # Material3UI Shell
 
-**v0.0.2** · Arch Linux · Hyprland · Quickshell
+**v1.0.0** · Arch Linux · Hyprland · Quickshell
 
 Material3UI Shell is a Material 3 shell for **Hyprland**, built with [Quickshell](https://quickshell.outfoxxed.me/) and coloured by [Matugen](https://github.com/InioX/matugen). It is a real dotfiles starter: the bar, launcher, control centre, notifications, clipboard, power menu, and Android-inspired settings UI live in QML, while Hyprland owns window management.
 
 ## Included
 
+- Original Midnight Dunes default wallpaper, restored automatically at login
 - Material 3 adaptive palette generated from the current wallpaper
 - Expandable Dynamic Island for media controls and quick settings access
 - Top bar: launcher, workspaces, active window/media area, background tasks, calendar, status and profile
@@ -29,7 +30,7 @@ The installer uses `pacman --needed`, so Hyprland, Quickshell, Matugen, and ever
 
 The installer bootstraps [Yay](https://github.com/Jguer/yay) for AUR integrations, then optionally installs [HyprMod](https://github.com/BlueManCZ/hyprmod), a graphical Hyprland editor for keybinds, monitors, rules, workspaces, profiles, and Lua configuration. Open it from Settings → System → HyprMod or with `SUPER+SHIFT+M`.
 
-Place wallpapers in `~/Pictures/Wallpapers` and run `matugen image /path/to/wallpaper`. This produces `~/.config/quickshell/material3ui/GeneratedColors.qml`; restart Quickshell to apply it.
+The installer ships with the original Midnight Dunes wallpaper and restores it on first login. Place additional wallpapers in `~/Pictures/Wallpapers`, then use `material3uictl wallpaper /path/to/wallpaper`. Matugen generates the adaptive palette.
 
 ## Key bindings
 
