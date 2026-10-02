@@ -24,9 +24,12 @@ Material3UI Shell is deliberately an Arch Linux configuration. Its single intera
 
 ```sh
 ./install.sh
+
+# Unattended install; omit --skip-aur to also offer HyprMod.
+./install.sh --yes --skip-aur
 ```
 
-The installer uses `pacman --needed`, so Hyprland, Quickshell, Matugen, and every runtime dependency are installed only when missing. It deploys `hyprland.conf`, `hyprlock.conf`, the Material3UI Quickshell profile, Matugen template, helper commands, and a daily user-level update-notification timer. Existing Hyprland and Material3UI configuration is backed up before replacement.
+The installer performs a full Arch system upgrade, installs missing Material3UI runtime dependencies, and deploys the current `hyprland.lua`, `hyprlock.conf`, Quickshell profile, Matugen template, helper commands, default wallpaper, and a daily user-level update timer. Existing Hyprland and Material3UI configuration is backed up before replacement.
 
 The installer bootstraps [Yay](https://github.com/Jguer/yay) for AUR integrations, then optionally installs [HyprMod](https://github.com/BlueManCZ/hyprmod), a graphical Hyprland editor for keybinds, monitors, rules, workspaces, profiles, and Lua configuration. Open it from Settings → System → HyprMod or with `SUPER+SHIFT+M`.
 

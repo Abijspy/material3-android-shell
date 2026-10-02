@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.0.1 — 2026-10-02
+
+- Rewrite the Arch installer with safe upgrades, backups, unattended flags, and optional AUR setup.
+- Migrate the Hyprland profile from deprecated Hyprlang to the current Lua configuration API.
+- Preserve Material3UI startup, wallpaper restoration, blur, workspaces, and media controls in the Lua profile.
+
 ## v1.0.0 — 2026-10-02
 
 - Ship the original Midnight Dunes desktop wallpaper as the first-run default.

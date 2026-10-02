@@ -1,103 +1,138 @@
 #!/usr/bin/env bash
-# Material3UI Shell interactive installer — Arch Linux only.
-set -euo pipefail
+# Material3UI Shell installer for current Arch Linux and Hyprland Lua configs.
+set -Eeuo pipefail
 
-root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+readonly PROJECT_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+readonly CONFIG_ROOT="${XDG_CONFIG_HOME:-$HOME/.config}"
+readonly DATA_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}"
+readonly BIN_ROOT="$HOME/.local/bin"
+ASSUME_YES=false
+ENABLE_SERVICES=true
+INSTALL_AUR=true
 
-if [[ ! -f /etc/arch-release ]]; then
-  printf '%s\n' 'Material3UI Shell is intentionally Arch Linux only. Aborting.' >&2
-  exit 1
-fi
+usage() {
+  cat <<'USAGE'
+Usage: ./install.sh [--yes] [--no-enable-services] [--skip-aur]
+
+  --yes                 Accept optional installation prompts.
+  --no-enable-services  Do not enable NetworkManager, Bluetooth, or the update timer.
+  --skip-aur            Do not offer the optional HyprMod AUR package.
+USAGE
+}
+
+log()  { printf '\n==> %s\n' "$*"; }
+warn() { printf '\nWarning: %s\n' "$*" >&2; }
+die()  { printf '\nError: %s\n' "$*" >&2; exit 1; }
 
 ask() {
-  local prompt="$1" answer
+  local prompt=$1 answer
+  "$ASSUME_YES" && return 0
   read -r -p "$prompt [Y/n] " answer
   [[ -z "$answer" || "$answer" =~ ^[Yy]$ ]]
 }
 
-install_official() { sudo pacman -S --needed "$@"; }
+backup_path() {
+  local source=$1 backup_root=$2 target
+  [[ -e "$source" ]] || return 0
+  target="$backup_root/${source#"$HOME/"}"
+  mkdir -p "$(dirname -- "$target")"
+  cp -a -- "$source" "$target"
+}
+
+install_official() {
+  sudo pacman -S --needed --noconfirm "$@"
+}
 
 ensure_yay() {
   command -v yay >/dev/null 2>&1 && return 0
-  printf '\n%s\n' 'Installing Yay from the Arch User Repository…'
+  log 'Installing Yay for the optional HyprMod package'
   install_official base-devel git
+  local build_dir
   build_dir=$(mktemp -d)
-  trap 'rm -rf "$build_dir"' RETURN
-  git clone https://aur.archlinux.org/yay.git "$build_dir/yay"
-  (
-    cd "$build_dir/yay"
-    makepkg -si --needed --noconfirm
-  )
+  trap 'rm -rf -- "$build_dir"' RETURN
+  git clone --depth=1 https://aur.archlinux.org/yay.git "$build_dir/yay"
+  (cd "$build_dir/yay" && makepkg -si --needed --noconfirm)
   trap - RETURN
-  rm -rf "$build_dir"
+  rm -rf -- "$build_dir"
 }
 
-install_dotfiles() {
-  mkdir -p "$HOME/.config" "$HOME/.local/bin" "$HOME/.local/share" "$HOME/.config/material3ui"
-  # Preserve user customisations before replacing only Material3UI-managed files.
-  if [[ -e "$HOME/.config/hypr/hyprland.conf" || -e "$HOME/.config/quickshell/material3ui" ]]; then
-    backup="$HOME/.config/material3ui/backup-$(date +%Y%m%d-%H%M%S)"
-    mkdir -p "$backup"
-    [[ -e "$HOME/.config/hypr/hyprland.conf" ]] && cp -a "$HOME/.config/hypr/hyprland.conf" "$backup/hyprland.conf"
-    [[ -e "$HOME/.config/quickshell/material3ui" ]] && cp -a "$HOME/.config/quickshell/material3ui" "$backup/quickshell"
-    printf 'Existing configuration backed up to %s\n' "$backup"
+deploy_dotfiles() {
+  local backup_root="$CONFIG_ROOT/material3ui/backup-$(date +%Y%m%d-%H%M%S)"
+  local wallpaper_file="$CONFIG_ROOT/material3ui/wallpaper"
+
+  mkdir -p "$CONFIG_ROOT" "$DATA_ROOT" "$BIN_ROOT" "$CONFIG_ROOT/material3ui"
+  backup_path "$CONFIG_ROOT/hypr/hyprland.lua" "$backup_root"
+  backup_path "$CONFIG_ROOT/hypr/hyprland.conf" "$backup_root"
+  backup_path "$CONFIG_ROOT/hypr/hyprlock.conf" "$backup_root"
+  backup_path "$CONFIG_ROOT/quickshell/material3ui" "$backup_root"
+  [[ -d "$backup_root" ]] && log "Existing configuration backed up to $backup_root"
+
+  cp -a -- "$PROJECT_ROOT/dotfiles/.config/." "$CONFIG_ROOT/"
+  cp -a -- "$PROJECT_ROOT/dotfiles/.local/share/." "$DATA_ROOT/"
+  install -Dm755 "$PROJECT_ROOT/dotfiles/.local/bin/material3uictl" "$BIN_ROOT/material3uictl"
+  install -Dm755 "$PROJECT_ROOT/dotfiles/.local/bin/material3ui-system" "$BIN_ROOT/material3ui-system"
+  install -Dm755 "$PROJECT_ROOT/dotfiles/.local/bin/material3ui-polkit" "$BIN_ROOT/material3ui-polkit"
+  install -Dm755 "$PROJECT_ROOT/dotfiles/.local/bin/material3ui-update-check" "$BIN_ROOT/material3ui-update-check"
+  install -Dm644 "$PROJECT_ROOT/VERSION" "$CONFIG_ROOT/material3ui/version"
+
+  if [[ ! -s "$wallpaper_file" ]]; then
+    printf '%s\n' "$DATA_ROOT/material3ui/wallpapers/midnight-dunes.png" > "$wallpaper_file"
   fi
-  cp -R "$root/dotfiles/.config/." "$HOME/.config/"
-  cp -R "$root/dotfiles/.local/share/." "$HOME/.local/share/"
-  cp "$root/dotfiles/.local/bin/material3uictl" "$HOME/.local/bin/material3uictl"
-  cp "$root/dotfiles/.local/bin/material3ui-system" "$HOME/.local/bin/material3ui-system"
-  cp "$root/dotfiles/.local/bin/material3ui-polkit" "$HOME/.local/bin/material3ui-polkit"
-  cp "$root/dotfiles/.local/bin/material3ui-update-check" "$HOME/.local/bin/material3ui-update-check"
-  cp "$root/VERSION" "$HOME/.config/material3ui/version"
-  if [[ ! -s "$HOME/.config/material3ui/wallpaper" ]]; then
-    printf '%s\n' "$HOME/.local/share/material3ui/wallpapers/midnight-dunes.png" > "$HOME/.config/material3ui/wallpaper"
+
+  if "$ENABLE_SERVICES"; then
+    if systemctl --user daemon-reload && systemctl --user enable --now material3ui-update.timer; then
+      :
+    else
+      warn "Could not enable the user update timer. Run systemctl --user enable --now material3ui-update.timer after logging in."
+    fi
   fi
-  chmod +x "$HOME/.local/bin/material3uictl" "$HOME/.local/bin/material3ui-system" "$HOME/.local/bin/material3ui-polkit" "$HOME/.local/bin/material3ui-update-check"
-  systemctl --user daemon-reload
-  systemctl --user enable --now material3ui-update.timer
 }
+
+while (($#)); do
+  case $1 in
+    --yes) ASSUME_YES=true ;;
+    --no-enable-services) ENABLE_SERVICES=false ;;
+    --skip-aur) INSTALL_AUR=false ;;
+    --help|-h) usage; exit 0 ;;
+    *) die "Unknown option: $1" ;;
+  esac
+  shift
+done
+
+[[ -f /etc/arch-release ]] || die 'Material3UI Shell supports Arch Linux only.'
+[[ -f "$PROJECT_ROOT/VERSION" ]] || die 'Run this script from a complete Material3UI Shell checkout.'
+[[ -f "$PROJECT_ROOT/dotfiles/.config/hypr/hyprland.lua" ]] || die 'Missing Hyprland Lua configuration.'
 
 printf '%s\n' '╭──────────────────────────────────────╮'
-printf '%s\n' '│   Material3UI Shell · Arch installer  │'
+printf '%s\n' '│ Material3UI Shell · Arch installer    │'
 printf '%s\n' '╰──────────────────────────────────────╯'
-printf '\n%s\n' 'This installs Hyprland, Material3UI dependencies, and optional preferred apps.'
-if ! ask 'Continue?'; then exit 0; fi
+ask 'Install or update Material3UI Shell?' || exit 0
 
 sudo -v
-sudo pacman -Sy
-
-core=(
-  hyprland hyprlock xdg-desktop-portal-hyprland xdg-desktop-portal-gtk
-  quickshell matugen
-  networkmanager bluez bluez-utils wireplumber pipewire pipewire-pulse
-  jq git curl
-  brightnessctl playerctl wl-clipboard cliphist grim slurp swappy wf-recorder
+log 'Updating the system and installing Material3UI runtime dependencies'
+sudo pacman -Syu --needed --noconfirm \
+  hyprland hyprlock xdg-desktop-portal-hyprland xdg-desktop-portal-gtk \
+  quickshell matugen networkmanager bluez bluez-utils wireplumber pipewire pipewire-pulse \
+  jq git curl brightnessctl playerctl wl-clipboard cliphist grim slurp swappy wf-recorder \
   polkit hyprpolkitagent foot libnotify upower swww mako power-profiles-daemon pulseaudio-utils
-)
-printf '\n%s\n' 'Installing Material3UI core…'
-install_official "${core[@]}"
-
-# Material3UI uses Yay for optional AUR integrations such as HyprMod.
-ensure_yay
 
 if ask 'Install preferred applications (Thunar, LibreWolf, file utilities)?'; then
   install_official thunar thunar-archive-plugin gvfs tumbler file-roller librewolf
 fi
-if ask 'Install everyday desktop applications (pavucontrol, blueman, nwg-look)?'; then
+if ask 'Install desktop control applications (pavucontrol, blueman, nwg-look)?'; then
   install_official pavucontrol blueman nwg-look qt5ct qt6ct
 fi
-if ask 'Install fonts and emoji support (recommended for Material icons)?'; then
+if ask 'Install recommended fonts and emoji support?'; then
   install_official noto-fonts noto-fonts-emoji ttf-jetbrains-mono-nerd
 fi
-if ask 'Install HyprMod for graphical Hyprland keybind and settings configuration?'; then
-  yay -S --needed hyprmod
+if "$INSTALL_AUR" && ask 'Install HyprMod from the AUR?'; then
+  ensure_yay
+  yay -S --needed --noconfirm hyprmod
 fi
-if ask 'Enable NetworkManager and Bluetooth now?'; then
+if "$ENABLE_SERVICES" && ask 'Enable NetworkManager and Bluetooth now?'; then
   sudo systemctl enable --now NetworkManager.service bluetooth.service
 fi
-if ask 'Install the Material3UI Hyprland, Quickshell, Matugen, and systemd-user configuration now?'; then
-  install_dotfiles
-fi
 
-printf '\n%s\n' 'Installation complete.'
-printf '%s\n' 'Log out, select Hyprland, and sign in. Material3UI starts from hyprland.conf.'
+deploy_dotfiles
+log 'Installation complete'
+printf '%s\n' 'Log out, select Hyprland, and sign in. The shell starts from hyprland.lua.'
