@@ -28,6 +28,9 @@ public:
     // Theme icon by name, or an absolute path; `extraDir` is searched first
     // (tray items may ship their own icons). Size in device pixels.
     const Texture* icon(const std::string& nameOrPath, int px, const std::string& extraDir = {});
+    // Index the icon themes again and forget icons that were missing, for
+    // apps installed since (their icons arrive with them)
+    void rescan();
     // ARGB32 big-endian pixmap (StatusNotifierItem IconPixmap)
     const Texture* pixmap(const std::string& key, int w, int h, const std::vector<uint8_t>& argb);
 

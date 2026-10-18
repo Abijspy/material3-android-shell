@@ -26,17 +26,17 @@ constexpr uint32_t kRemoved = IN_DELETE | IN_MOVED_FROM;
 
 void FileWatcher::watch(const std::string& path, std::function<void()> onChange) {
     const std::filesystem::path p(path);
-    add(p.parent_path(), p.filename(), std::move(onChange));
+    add(p.parent_path(), p.filename(), std::move(onChange), true);
 }
 
 void FileWatcher::watchDir(const std::string& dir, std::function<void()> onChange) {
-    add(dir, "", std::move(onChange));
+    add(dir, "", std::move(onChange), false);
 }
 
-void FileWatcher::add(const std::string& dir, std::string name, std::function<void()> onChange) {
+void FileWatcher::add(const std::string& dir, std::string name, std::function<void()> onChange, bool create) {
     if (m_fd < 0) return;
     std::error_code ec;
-    std::filesystem::create_directories(dir, ec);
+    if (create) std::filesystem::create_directories(dir, ec);
     // One mask per directory (re-adding replaces it), so always ask for both
     const int wd = inotify_add_watch(m_fd, dir.c_str(), kWritten | kRemoved);
     if (wd < 0) return;

@@ -1,7 +1,9 @@
 #include "core/Paths.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
+#include <sstream>
 #include <unistd.h>
 #include <vector>
 
@@ -65,6 +67,21 @@ std::string dataFile(const std::string& name) {
         if (fs::exists(dir / name, ec)) return (dir / name).string();
     }
     return {};
+}
+
+std::vector<std::string> dataDirs() {
+    std::vector<std::string> dirs;
+    std::stringstream ss(env("XDG_DATA_DIRS", ""));
+    std::string d;
+    while (std::getline(ss, d, ':'))
+        if (!d.empty()) dirs.push_back(d);
+    if (dirs.empty()) dirs = {"/usr/local/share", "/usr/share"};
+    // User installs before system ones, as flatpak's profile.d script orders them
+    const std::string flatpaks[] = {env("XDG_DATA_HOME", home() + "/.local/share") + "/flatpak/exports/share",
+                                    "/var/lib/flatpak/exports/share"};
+    for (auto it = std::rbegin(flatpaks); it != std::rend(flatpaks); ++it)
+        if (std::ranges::find(dirs, *it) == dirs.end()) dirs.insert(dirs.begin(), *it);
+    return dirs;
 }
 
 } // namespace m3::paths

@@ -31,11 +31,7 @@ std::vector<std::string> applicationDirs() {
     std::vector<std::string> dirs;
     const char* home = std::getenv("XDG_DATA_HOME");
     dirs.push_back(home && *home ? std::string(home) + "/applications" : paths::home() + "/.local/share/applications");
-    const char* xdg = std::getenv("XDG_DATA_DIRS");
-    std::stringstream ss(xdg && *xdg ? xdg : "/usr/local/share:/usr/share");
-    std::string d;
-    while (std::getline(ss, d, ':'))
-        if (!d.empty()) dirs.push_back(d + "/applications");
+    for (const auto& d : paths::dataDirs()) dirs.push_back(d + "/applications");
     return dirs;
 }
 
@@ -70,7 +66,7 @@ Apps& Apps::get() {
 Apps::Apps() {
     reload();
     // Apps installed or removed while the shell runs show up without a restart
-    for (const auto& dir : applicationDirs()) FileWatcher::get().watchDir(dir, [this] { reload(); });
+    for (const auto& dir : applicationDirs()) watch(dir);
     std::ifstream in(countsFile());
     try {
         if (in) {
@@ -127,6 +123,35 @@ void Apps::reload() {
         }
     }
     std::ranges::sort(m_apps, [](const App& a, const App& b) { return lower(a.name) < lower(b.name); });
+}
+
+void Apps::watch(const std::string& dir) {
+    std::error_code ec;
+    if (fs::is_directory(dir, ec)) {
+        FileWatcher::get().watchDir(dir, [this] {
+            reload();
+            changed.emit();
+        });
+        return;
+    }
+    // Not there yet (Flatpak's exports appear with its first app): watch the
+    // nearest parent that exists, and step down as the path gets created
+    fs::path parent = fs::path(dir).parent_path();
+    while (parent.has_relative_path() && !fs::is_directory(parent, ec)) parent = parent.parent_path();
+    auto done = std::make_shared<bool>(false);
+    FileWatcher::get().watchDir(parent, [this, dir, parent, done] {
+        if (*done) return;
+        std::error_code ec;
+        fs::path p = fs::path(dir);
+        while (p != parent && !fs::is_directory(p, ec)) p = p.parent_path();
+        if (p == parent) return;
+        *done = true;
+        watch(dir);
+        if (p == fs::path(dir)) {
+            reload();
+            changed.emit();
+        }
+    });
 }
 
 int Apps::launches(const std::string& id) const {

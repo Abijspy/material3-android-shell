@@ -128,6 +128,8 @@ Dock::Dock(wl::Output* output) : m_output(output) {
             });
         }
     });
+    // Pinned apps that were just installed (or removed)
+    m_apps = Apps::get().changed.connect([this] { refresh(); });
     rebuild();
 }
 

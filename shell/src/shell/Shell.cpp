@@ -5,11 +5,13 @@
 #include "core/EventLoop.h"
 #include "core/Process.h"
 #include "ipc/IpcServer.h"
+#include "render/Images.h"
 #include "render/Renderer.h"
 #include "render/Text.h"
 #include "services/Hyprland.h"
 #include "services/Audio.h"
 #include "services/Clipboard.h"
+#include "services/Search.h"
 #include "services/Effects.h"
 #include "services/Mpris.h"
 #include "services/Network.h"
@@ -50,6 +52,8 @@ bool Shell::start() {
     Hyprland::get();
     Effects::get();
     Clipboard::get().ensureWatchers();
+    // New apps bring their icons; before anyone redraws with them
+    Apps::get().changed.connectForever([] { Images::get().rescan(); });
 
     display.onOutputReady = [this](wl::Output* o) { addOutput(o); };
     display.onOutputRemoved = [this](wl::Output* o) { removeOutput(o); };

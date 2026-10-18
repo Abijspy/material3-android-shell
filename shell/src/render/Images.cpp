@@ -50,11 +50,7 @@ std::string iconThemeName() {
 
 std::vector<std::string> iconBaseDirs() {
     std::vector<std::string> dirs = {paths::home() + "/.local/share/icons", paths::home() + "/.icons"};
-    const char* xdg = std::getenv("XDG_DATA_DIRS");
-    std::stringstream ss(xdg && *xdg ? xdg : "/usr/local/share:/usr/share");
-    std::string d;
-    while (std::getline(ss, d, ':'))
-        if (!d.empty()) dirs.push_back(d + "/icons");
+    for (const auto& d : paths::dataDirs()) dirs.push_back(d + "/icons");
     return dirs;
 }
 
@@ -74,9 +70,17 @@ Images& Images::get() {
 }
 
 Images::Images() {
+    rescan();
+}
+
+void Images::rescan() {
+    m_searchDirs.clear();
     for (const auto& theme : {iconThemeName(), std::string("Adwaita"), std::string("breeze"), std::string("hicolor")})
         indexTheme(theme);
     m_searchDirs.push_back("/usr/share/pixmaps");
+    m_lookups.clear();
+    // Loaded icons stay; misses are looked up again
+    std::erase_if(m_cache, [](const auto& kv) { return kv.first.starts_with("icon:") && !kv.second.id; });
 }
 
 void Images::indexTheme(const std::string& theme) {

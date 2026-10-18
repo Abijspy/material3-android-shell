@@ -44,7 +44,7 @@ private:
     ui::Flex* m_card = nullptr;
     bool m_shown = true, m_hovered = false;
     EventLoop::TimerId m_hideTimer = 0, m_refreshTimer = 0;
-    Connection m_events, m_workspaces;
+    Connection m_events, m_workspaces, m_apps;
 };
 
 } // namespace m3::shell

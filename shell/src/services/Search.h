@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/Signal.h"
+
 #include <functional>
 #include <optional>
 #include <string>
@@ -29,6 +31,7 @@ public:
     static Apps& get();
     const std::vector<App>& all() const { return m_apps; }
     void reload();
+    Signal<> changed; // the list reloaded: apps were installed or removed
     void launch(const App& app);
     int launches(const std::string& id) const;
     // Icon for a window class (Hyprland's "class"), via StartupWMClass or the desktop id
@@ -37,6 +40,7 @@ public:
 private:
     Apps();
     void saveCounts() const;
+    void watch(const std::string& dir);
     std::vector<App> m_apps;
     std::vector<std::pair<std::string, int>> m_counts;
 };

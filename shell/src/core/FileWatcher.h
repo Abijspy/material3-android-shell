@@ -16,7 +16,8 @@ public:
     ~FileWatcher() override;
 
     void watch(const std::string& path, std::function<void()> onChange);
-    // Any file created, changed, moved or removed directly in `dir`
+    // Any file created, changed, moved or removed directly in `dir`, which
+    // must exist (unlike watch(), it is not created)
     void watchDir(const std::string& dir, std::function<void()> onChange);
 
     int fd() const override { return m_fd; }
@@ -24,7 +25,7 @@ public:
 
 private:
     FileWatcher();
-    void add(const std::string& dir, std::string name, std::function<void()> onChange);
+    void add(const std::string& dir, std::string name, std::function<void()> onChange, bool create);
 
     struct Entry {
         std::string name; // empty: the whole directory
