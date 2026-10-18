@@ -72,15 +72,29 @@ public:
     void setPowered(bool on);
     std::string icon() const;
 
+    struct Device {
+        std::string path, name, icon; // icon: BlueZ's freedesktop icon name
+        bool paired = false, connected = false, trusted = false;
+        int rssi = 0;
+    };
+    const std::vector<Device>& devices() const { return m_devices; } // connected, paired, then nearby
+    bool discovering() const { return m_discovering; }
+    void setDiscovering(bool on);
+    void connect(const std::string& path);
+    void disconnect(const std::string& path);
+    void pair(const std::string& path); // then trust and connect
+    void forget(const std::string& path);
+
     Signal<> changed;
 
 private:
     Bluetooth();
     void refresh();
 
-    bool m_available = false, m_powered = false;
+    bool m_available = false, m_powered = false, m_discovering = false;
     std::string m_adapter;
     std::vector<std::string> m_connected;
+    std::vector<Device> m_devices;
     dbus::Subscription m_props, m_added, m_removed;
     EventLoop::TimerId m_debounce = 0;
 };

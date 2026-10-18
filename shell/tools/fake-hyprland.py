@@ -50,8 +50,23 @@ def reply(cmd):
             ])
         if what == "activewindow":
             return json.dumps({"title": state["title"], "class": "nvim"})
+        if what == "binds":
+            def b(mod, key, desc):
+                return {"modmask": mod, "key": key, "submap": "", "has_description": bool(desc),
+                        "description": desc, "dispatcher": "exec", "arg": ""}
+            binds = [b(64, "Super_L", "Shell: Spotlight (tap)"), b(64, "Space", "Shell: App launcher"),
+                     b(64, "N", "Shell: Quick Settings"), b(64, "Return", "Apps: Terminal"),
+                     b(64, "E", "Apps: File manager"), b(64, "Q", "Windows: Close"), b(64, "F", "Windows: Fullscreen"),
+                     b(64, "1", "Workspaces: Go to 1"), b(65, "1", "Workspaces: Move window to 1"),
+                     b(64, "W", "Apps: Browser (alternate)"), b(64, "C", "")]
+            return json.dumps(binds)
+        if what == "version":
+            return json.dumps({"tag": "v0.55.1", "version": "0.55.1"})
         if what == "status":
             return json.dumps({"configProvider": "lua"})
+    if cmd == "reload":
+        emit("configreloaded>>")
+        return "ok"
     if "address:" in cmd:
         print("focus window", cmd.split("address:")[1].split('"')[0], flush=True)
         return "ok"

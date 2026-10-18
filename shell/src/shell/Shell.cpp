@@ -164,6 +164,11 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         opts.anchorX = -1;
         opts.centredVertically = true;
         build = panels::wallpapers;
+    } else if (name == "settings") {
+        opts.width = 1000;
+        opts.anchorX = -1;
+        opts.centredVertically = true;
+        build = [arg](ui::Flex* card, Popup& p) { panels::settings(card, p, arg); };
     } else if (name == "overview") {
         opts.fill = true;
         build = panels::overview;
@@ -199,6 +204,8 @@ void Shell::restyle(bool relayout) {
     if (relayout) {
         TextEngine::get().clear();
         for (auto& [_, bar] : m_bars) bar->rebuild();
+        // Desktop widgets follow settings too (desktop clock on/off)
+        for (auto& [output, desktop] : m_desktops) desktop = std::make_unique<Desktop>(output);
     } else {
         for (auto& [_, bar] : m_bars) bar->redraw();
     }
@@ -288,6 +295,11 @@ void Shell::registerIpc() {
         else if (cmd == "previous") m.previous();
         const auto* p = m.active();
         return p ? std::format("{}: {} — {} [{}]", p->identity, p->title, p->artist, p->status) : std::string("no player");
+    });
+    ipc.add("settings", "settings [network|bluetooth|sound|display|appearance|notifications|lock|keybinds|packages|about]",
+            [this](const IpcServer::Args& a) {
+        togglePopup("settings", focusedOutput(), -1, a.empty() ? "" : a[0]);
+        return std::string(m_popup && !m_popup->closing() ? "open" : "closed");
     });
     ipc.add("wallpaper", "wallpaper [next|prev|set <path>|pick]", [this](const IpcServer::Args& a) {
         auto& w = Wallpaper::get();

@@ -1,5 +1,6 @@
 #include "shell/Notify.h"
 
+#include "core/Config.h"
 #include "render/Images.h"
 #include "services/Search.h"
 #include "ui/Controls.h"
@@ -196,7 +197,10 @@ void Toasts::arm(Toast& t) {
     t.timer = 0;
     const auto* n = Notifications::get().find(t.id);
     if (!n || n->urgency == Notifications::Critical || n->timeoutMs == 0) return;
-    const int ms = n->timeoutMs > 0 ? n->timeoutMs : 6000;
+    // The app's timeout, else Settings → Notifications (0: until closed)
+    const int configured = Config::get().value<int>("/notifications/timeout", 6);
+    if (n->timeoutMs < 0 && configured <= 0) return;
+    const int ms = n->timeoutMs > 0 ? n->timeoutMs : configured * 1000;
     const uint32_t id = t.id;
     t.timer = EventLoop::get().addTimer(ms, [this, id] {
         for (auto& x : m_toasts)

@@ -31,13 +31,15 @@ std::string today() {
     return buf;
 }
 
+} // namespace
+
 // Wi-Fi networks, tap to connect; secured new ones ask for the password
 void wifiView(Flex* body, const std::function<void()>& back) {
     body->clearChildren();
     auto* live = body->add<Live>();
     auto* head = live->add<Flex>(Flex::Direction::Row);
     head->setSpacing(8);
-    iconButton(head, "arrow_back", back);
+    if (back) iconButton(head, "arrow_back", back);
     auto* title = head->add<Label>("Wi-Fi");
     title->setSize(20)->setWeight(500);
     title->grow = true;
@@ -115,6 +117,8 @@ void wifiView(Flex* body, const std::function<void()>& back) {
     live->sync();
     Network::get().scan();
 }
+
+namespace {
 
 void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi) {
     body->clearChildren();

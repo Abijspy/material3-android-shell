@@ -284,23 +284,62 @@ void Bluetooth::refresh() {
         m_available = false;
         m_powered = false;
         m_connected.clear();
+        m_devices.clear();
         if (err.empty() && !a.empty() && a[0].is_object()) {
             for (const auto& [path, ifaces] : a[0].items()) {
                 if (auto ad = ifaces.find("org.bluez.Adapter1"); ad != ifaces.end() && !m_available) {
                     m_available = true;
                     m_adapter = path;
                     m_powered = flag(*ad, "Powered");
+                    m_discovering = flag(*ad, "Discovering");
                 }
-                if (auto dev = ifaces.find("org.bluez.Device1"); dev != ifaces.end() && flag(*dev, "Connected"))
-                    m_connected.push_back(str(*dev, "Alias"));
+                auto dev = ifaces.find("org.bluez.Device1");
+                if (dev == ifaces.end()) continue;
+                Device d{path, str(*dev, "Alias"), str(*dev, "Icon"), flag(*dev, "Paired"), flag(*dev, "Connected"),
+                         flag(*dev, "Trusted"), num<int>(*dev, "RSSI")};
+                if (d.name.empty()) d.name = str(*dev, "Address");
+                if (d.connected) m_connected.push_back(d.name);
+                m_devices.push_back(std::move(d));
             }
         }
+        std::ranges::sort(m_devices, [](const Device& x, const Device& y) {
+            if (x.connected != y.connected) return x.connected;
+            if (x.paired != y.paired) return x.paired;
+            return x.rssi > y.rssi;
+        });
         changed.emit();
     });
 }
 
 void Bluetooth::setPowered(bool on) {
     if (m_available) dbus::Bus::system().setProperty(kBlueZ, m_adapter, "org.bluez.Adapter1", "Powered", dbus::variant(on));
+}
+
+void Bluetooth::setDiscovering(bool on) {
+    if (!m_available) return;
+    dbus::Bus::system().call(kBlueZ, m_adapter, "org.bluez.Adapter1", on ? "StartDiscovery" : "StopDiscovery", {},
+                             [this](const dbus::Value&, const std::string&) { refresh(); });
+}
+
+void Bluetooth::connect(const std::string& path) {
+    dbus::Bus::system().call(kBlueZ, path, "org.bluez.Device1", "Connect");
+}
+
+void Bluetooth::disconnect(const std::string& path) {
+    dbus::Bus::system().call(kBlueZ, path, "org.bluez.Device1", "Disconnect");
+}
+
+void Bluetooth::pair(const std::string& path) {
+    dbus::Bus::system().call(kBlueZ, path, "org.bluez.Device1", "Pair", {}, [path](const dbus::Value&, const std::string& err) {
+        if (!err.empty()) return;
+        // Remember it and use it right away
+        dbus::Bus::system().setProperty(kBlueZ, path, "org.bluez.Device1", "Trusted", dbus::variant(true));
+        dbus::Bus::system().call(kBlueZ, path, "org.bluez.Device1", "Connect");
+    });
+}
+
+void Bluetooth::forget(const std::string& path) {
+    if (m_available) dbus::Bus::system().call(kBlueZ, m_adapter, "org.bluez.Adapter1", "RemoveDevice", dbus::args(dbus::ObjectPath{path}));
 }
 
 std::string Bluetooth::icon() const {

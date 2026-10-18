@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **Native shell phase 7: Settings** (`msg settings [page]`):
+  - **Network:** the Wi-Fi picker.
+  - **Bluetooth:** power, discovery, and pair/connect/disconnect/forget.
+  - **Sound:** volume, balance, channels and devices.
+  - **Display:** brightness, night light temperature, monitors.
+  - **Appearance:**
+    - Wallpaper: thumbnail, picker and transition.
+    - Colours: dark theme and Matugen scheme, recoloured live.
+    - Bar: style, height and island options.
+    - Clock format, fonts, and the desktop clock.
+  - **Notifications:** Do Not Disturb and pop-up duration.
+  - **Lock & idle:** lock and screen-off timers, lock before sleep.
+  - **Keybinds:** a C++ port of the editor, sharing `keybinds.json` and `keybinds_custom.lua` with the QML one.
+  - **Packages & Updates:** `checkupdates`, `yay`/`paru` and Flatpak updates, plus search and install for official, AUR (aurweb RPC) and Flatpak.
+  - **About:** logo, device and compositor details, credits.
 - **Native shell: verified end to end.**
   - **Polkit:** real polkitd authenticates a `wheel` user through the shell's agent: wrong password and retry, then authorized.
   - **Mouse:** pointer-driven tests use a `wlr-virtual-pointer` tool and a `msg debug` layout dump.

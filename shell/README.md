@@ -2,7 +2,7 @@
 
 The C++ rewrite of Material3UI: a Wayland shell drawn directly with EGL/OpenGL ES, with no Qt, QML, GTK or Quickshell underneath. It reads the same `~/.config/material3ui/config.json` and Matugen palette as the QML shell, so the two can be swapped while the port is in progress.
 
-> **Status: phases 1–6 done.** The native shell now covers the desktop day to day: bar with a dynamic island, tray, status icons and battery; Quick Settings with a Wi-Fi picker; notifications (daemon, toasts, centre); Spotlight (apps, maths, emoji, clipboard, files); OSDs; power menu; lock screen, polkit agent, greetd greeter and idle handling; wallpapers with transitions and a picker; dashboard, system monitor and overview. Settings (phase 7) still lives in the QML shell.
+> **Status: phases 1–7 done.** The native shell covers the whole desktop, Settings included: Network, Bluetooth, Sound, Display, Appearance, Notifications, Lock & idle, Keybinds, Packages & Updates and About, all writing the same `config.json` (and keybind files) as the QML shell. What remains is switching the installer over (phase 8).
 
 ## Why native
 
@@ -84,6 +84,8 @@ Pointer tests drive a `wlr-virtual-pointer` device (`build/vpointer move X Y cli
 ```bash
 # Hover, clicks, drags, Wi-Fi taps, tray menus (mock services)
 M3_SERVICES=1 M3_FAKE_HYPR=1 M3_WAIT=4 M3_SCRIPT='bash tools/test-mouse.sh' tools/dev.sh shot
+# Settings: keybind remap, a config chip, live AUR search
+M3_SERVICES=1 M3_FAKE_HYPR=1 M3_WAIT=4 M3_SCRIPT='bash tools/test-settings.sh' tools/dev.sh shot
 # polkit end to end: real polkitd authenticates "alice" through the shell's agent
 M3_USER=alice M3_SETUP='source tools/polkit-setup.sh' M3_WAIT=3 M3_SCRIPT='bash tools/test-polkit.sh' tools/dev.sh shot
 ```
@@ -103,6 +105,7 @@ material3ui msg brightness up|down|set <0-100>
 material3ui msg media play-pause|next|previous|status
 material3ui msg notifications [list|clear|dnd on|dnd off]
 material3ui msg wallpaper [next|prev|set <path>|pick]
+material3ui msg settings [network|bluetooth|sound|display|appearance|notifications|lock|keybinds|packages|about]
 material3ui msg tray | outputs | workspaces
 
 material3ui greeter                   # the greetd login screen
@@ -118,5 +121,5 @@ material3ui greeter                   # the greetd login screen
 | **4. Core panels** ✅ | Quick Settings with a Wi-Fi picker, notification daemon/toasts/centre, Spotlight (apps, maths, emoji, clipboard, files, run), OSDs, power menu, tray menus (DBusMenu) |
 | **5. Session** ✅ | Lock screen (ext-session-lock + PAM), polkit agent, greetd greeter, idle (lock, DPMS, Caffeine), lock before sleep, loginctl lock-session |
 | **6. Rich UI** ✅ | Dynamic island, dashboard, overview, wallpapers with transitions and a picker (Matugen), desktop clock, system monitor |
-| 7. Settings | The Settings app, including Packages & Updates and the keybind editor |
+| **7. Settings** ✅ | The Settings app: Network, Bluetooth (pair, connect, forget, discovery), Sound, Display (brightness, night light, monitors), Appearance (wallpaper, Matugen scheme, dark mode, bar, fonts, clock), Notifications, Lock & idle, Keybinds (same files as the QML editor), Packages & Updates (updates and search/install for official, AUR, Flatpak), About |
 | 8. Switch over | Installer and Hyprland config start `material3ui` instead of Quickshell; the QML shell is retired |
