@@ -706,8 +706,9 @@ void barPage(Flex* page, Popup&) {
     choiceRow<int>(layout, "toolbar", "Style", "", "/statusBar/backgroundStyle", 0, {{0, "Floating"}, {1, "Full width"}});
     sliderRow(layout, "height", "Height", "/statusBar/height", 40, 32, 56, 2, [](double v) { return std::format("{:.0f} px", v); });
 
-    // Widgets: three columns, one per zone. Each widget's row carries its own
-    // move, select, group and delete buttons; "Add widget" drops down the rest.
+    // Widgets: three columns, one per zone. A tap selects a widget's row; the
+    // row carries its own move, group and delete buttons; "Add widget" drops
+    // down the rest.
     auto* live = page->add<Live>();
     live->setSpacing(6);
     auto selected = std::make_shared<std::set<std::string>>();
@@ -715,7 +716,7 @@ void barPage(Flex* page, Popup&) {
     live->sync = [live, selected, dropdown] {
         live->clearChildren();
         using shell::Bar;
-        auto* g = group(live, "Widgets", "Select widgets to group them into one capsule, or edit on the bar itself");
+        auto* g = group(live, "Widgets", "Tap widgets to select them, then group them into one capsule; or edit on the bar itself");
         auto onBar = row(g, "edit", "Edit on the bar", "Move and remove widgets in place; right-clicking the bar does this too");
         pillButton(onBar.row, "Edit bar", false, [] {
             if (editBar) editBar(true);
@@ -784,13 +785,23 @@ void barPage(Flex* page, Popup&) {
                 if (free == 0) caption(menu, "Every widget is on the bar");
             }
 
-            // One row per widget: move, select, name, group, delete
+            // One row per widget: move, icon, name, group, delete. The row
+            // is a button that selects it (its icon becomes a check mark).
+            // Column 222 − padding 20 − row padding 6 leaves 196 (188 in a
+            // group's box): the name takes what the controls leave, so every
+            // row's buttons line up and nothing spills over the edge
             auto widgetRow = [&](Node* parent, const std::string& id, bool grouped) {
                 const auto m = meta(id);
                 const bool on = selected->contains(id);
-                auto* r = parent->add<Flex>(Flex::Direction::Row);
-                r->setPadding({2, 4, 4, 4})->setSpacing(2)->setRadius(Radii(14));
+                auto* r = parent->add<Button>(Flex::Direction::Row);
+                r->setPadding({2, 4, 4, 4})->setSpacing(4)->setRadius(Radii(14));
+                r->pressedRadius = 10;
                 r->setBackground(on ? ColorRef("secondary_container") : ColorRef("surface_container_high"), false);
+                r->onClicked = [selected, id, live](uint32_t button) {
+                    if (button != BTN_LEFT) return;
+                    if (!selected->erase(id)) selected->insert(id);
+                    live->syncSoon();
+                };
                 // Up and down, stacked to keep the row narrow: one step in
                 // the column, into the next column at either end, and out of
                 // a group (as the arrows on the bar's edit mode do)
@@ -806,22 +817,17 @@ void barPage(Flex* page, Popup&) {
                         save(lay);
                     };
                 }
-                auto* sel = r->add<Button>();
-                pill(sel)->setPadding(Insets(5));
-                sel->add<Icon>(on ? "check_box" : "check_box_outline_blank", 18)->setFill(on)->setColor(on ? "primary" : "on_surface_variant", false);
-                sel->onClicked = [selected, id, live](uint32_t) {
-                    if (!selected->erase(id)) selected->insert(id);
-                    live->syncSoon();
-                };
-                r->add<Icon>(m.icon, 16)->setColor("on_surface_variant", false);
+                r->add<Icon>(on ? "check_circle" : m.icon, 16)->setFill(on)->setColor(on ? "primary" : "on_surface_variant", false);
+                // 196 − moves 22 − icon 16 − two buttons 52 − spacing 16
+                const float nameWidth = grouped ? 82 : 90;
                 auto* name = r->add<Label>(m.name);
-                name->setSize(13)->setWeight(500)->setMaxWidth(92);
-                name->grow = true;
+                name->setSize(13)->setWeight(500)->setMaxWidth(nameWidth);
+                name->fixedWidth = nameWidth;
                 // Group: joins the selected widgets of this column (and this
                 // one), or the next widget when nothing else is selected;
                 // in a group it splits the group up again
                 auto* grp = r->add<Button>();
-                pill(grp)->setPadding(Insets(5));
+                pill(grp)->setPadding(Insets(4));
                 grp->add<Icon>(grouped ? "link_off" : "link", 18)->setColor(grouped ? "primary" : "on_surface_variant", false);
                 grp->onClicked = [lay, z, id, grouped, selected, save](uint32_t) mutable {
                     if (grouped) {
@@ -846,7 +852,7 @@ void barPage(Flex* page, Popup&) {
                     save(lay);
                 };
                 auto* del = r->add<Button>();
-                pill(del)->setPadding(Insets(5));
+                pill(del)->setPadding(Insets(4));
                 del->add<Icon>("delete", 18)->setColor("error", false);
                 del->onClicked = [lay, id, selected, save](uint32_t) mutable {
                     selected->erase(id);

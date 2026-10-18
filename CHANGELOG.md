@@ -1,5 +1,16 @@
 # Changelog
 
+## v4.2.1 — 2026-10-19
+
+- **Smoother Settings and scrolling.**
+  - **Layout:** sizes are remembered between changes, so a layout measures each widget about once instead of thousands of times, and animations no longer lay the window out at all.
+  - **Scrolling:** wheel steps and scrollbar drags move only the scrolled content instead of laying out the whole window every frame.
+  - **Drawing:** rows scrolled out of view are skipped, and text stays cached for 30 seconds, so scrolling back or reopening a panel no longer redraws it from scratch.
+  - **Profiling:** `M3_DEBUG_FRAMES=1` logs layout and paint times and any step that blocks for more than 8 ms.
+- **Live Wi-Fi signal:** the bar's Wi-Fi bars follow the live link quality, read every 3 seconds (NetworkManager only updated it on rescans).
+- **One network manager:** when the installer turns NetworkManager on, it offers to turn off iwd and systemd-networkd. Running them side by side made the Wi-Fi switch between them and the shell show no connection.
+- **Bar editor:** widgets move up and down with ↑/↓ on each row (into the next column at either end). Tapping a row selects it, and the row's buttons now fit and line up.
+
 ## v4.2.0 — 2026-10-18
 
 - **Bluetooth pairing with codes.** The shell is now the BlueZ pairing agent.
