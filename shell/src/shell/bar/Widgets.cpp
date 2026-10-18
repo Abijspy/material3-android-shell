@@ -22,6 +22,10 @@ SizeF BarLayout::doMeasure(SizeF available) {
     return available;
 }
 
+void BarLayout::onClick(uint32_t button) {
+    if (button == BTN_RIGHT && onContextMenu) onContextMenu();
+}
+
 void BarLayout::doArrange() {
     const auto& r = rect();
     const auto& kids = children();

@@ -17,7 +17,7 @@ Hyprland binds, scripts and other programs all use the same commands. The defaul
 | `popup quicksettings [wifi]` | Quick Settings, or straight to its Wi-Fi list |
 | `popup notifications` · `dashboard` · `overview` · `sysmon` · `power` | The notification centre, dashboard, workspace overview, system monitor and power menu |
 | `popup audio` · `network` · `bluetooth` · `run` | The small status panels and the run dialog |
-| `settings [page]` | Settings. Pages: `network`, `bluetooth`, `sound`, `display`, `appearance`, `style`, `bar`, `dock`, `tools`, `notifications`, `lock`, `keybinds`, `packages`, `about` |
+| `settings [page]` | Settings. Pages: `network`, `bluetooth`, `sound`, `display`, `appearance`, `style`, `bar`, `dock`, `tools`, `weather`, `notifications`, `lockscreen`, `lock`, `keybinds`, `packages`, `about` |
 | `clipboard` | Clipboard history |
 | `screenshot` | The screenshot tool |
 | `wallpaper pick` | The wallpaper picker |

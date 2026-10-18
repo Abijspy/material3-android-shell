@@ -64,31 +64,33 @@ The full walkthrough from a fresh system is in the [install guide](docs/INSTALL.
 
 From the moment the machine boots:
 
-**1 · Log in.** The login screen runs on greetd and uses the same clock, password pill and entrance animation as the lock screen. Pick a user and a session, or suspend and shut down from there. When you change your wallpaper or avatar, the login screen picks it up automatically. → [Login screen](docs/GREETER.md)
+**1 · Log in.** The login screen runs on greetd and is the lock screen's twin: the same clock, widgets, weather, password pill and motion. Pick a user and a session, or suspend and shut down from there. When you change your wallpaper or avatar, the login screen picks it up automatically. → [Login screen](docs/GREETER.md)
 
-**2 · The desktop.** The bar's centre holds a dynamic island. It grows to show the song that's playing, a workspace switch or an incoming notification, then shrinks back. The bar and panels are translucent with the compositor's blur behind them. A dock on the bottom edge keeps your pinned and running apps, and slides away until you need it.
+**2 · The desktop.** The bar is yours to arrange: drop widgets (weather, date, media, CPU, notifications, clipboard, screenshot and more) into its left, centre and right, or right-click it to edit. Its centre holds a dynamic island. It grows to show the song that's playing, a workspace switch or an incoming notification, then shrinks back. The bar and panels are translucent with the compositor's blur behind them. A dock on the bottom edge keeps your pinned and running apps, and slides away until you need it.
 
 **3 · Tap <kbd>Super</kbd>.** Spotlight opens. It finds apps, files and commands, does maths, and has an emoji picker. <kbd>Super</kbd><kbd>V</kbd> opens the clipboard history, images included.
 
 **4 · Open the panels.**
 - **Quick Settings:** volume, brightness, Wi-Fi, Bluetooth, Do Not Disturb, Caffeine, night light, and the connected network's live download and upload speed.
-- **Notification Centre** and **Dashboard:** notifications, the clock and a calendar.
+- **Notification Centre** and **Dashboard:** notifications, the clock, a calendar and the week's weather.
 - **Overview:** every workspace at a glance.
 
 **5 · Change the wallpaper.** Pick an image and Matugen builds a new Material 3 palette from it, or seed the palette from an accent colour you choose. The whole desktop recolours, GTK, KDE, Alacritty, kitty and Hyprland's window borders included.
 
-**6 · Something asks for your password.** The prompt comes from the shell's own polkit agent, so it looks like the rest of the desktop and not like a 2009 dialog box.
+**6 · Lock the screen.** <kbd>Super</kbd><kbd>L</kbd> shows a clock and the widgets you picked: date, weather, forecast, media, battery and a notification count. Restyle it in Settings → Lock screen.
 
-**7 · Updates arrive.** A status bar icon shows how many are pending.
+**7 · Something asks for your password.** The prompt comes from the shell's own polkit agent, so it looks like the rest of the desktop and not like a 2009 dialog box.
+
+**8 · Updates arrive.** A status bar icon shows how many are pending.
 - **Left-click** opens Packages & Updates, with official repo, AUR and Flatpak updates in one list.
 - **Middle-click** runs the upgrade in your terminal.
 - The **Repo**, **AUR** and **Flatpak** tabs search each source and install with one click.
 
 → [Packages & Updates](docs/PACKAGES.md)
 
-**8 · Something feels slow.** <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd> opens the system monitor: CPU, memory, disks and processes, read straight from `/proc`.
+**9 · Something feels slow.** <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd> opens the system monitor: CPU, memory, disks and processes, read straight from `/proc`.
 
-**9 · Grab part of the screen.** <kbd>Super</kbd><kbd>G</kbd> opens the screenshot tool, which captures a region, a window or the whole screen, with a delay. Shots are copied to the clipboard and can open in an editor. <kbd>Super</kbd><kbd>Shift</kbd><kbd>S</kbd> grabs a region straight away. <kbd>Super</kbd><kbd>Shift</kbd><kbd>X</kbd> copies the text in a region (OCR), and <kbd>Super</kbd><kbd>Shift</kbd><kbd>R</kbd> starts or stops a screen recording.
+**10 · Grab part of the screen.** <kbd>Super</kbd><kbd>G</kbd> opens the screenshot tool, which captures a region, a window or the whole screen, with a delay. Shots are copied to the clipboard and can open in an editor. <kbd>Super</kbd><kbd>Shift</kbd><kbd>S</kbd> grabs a region straight away. <kbd>Super</kbd><kbd>Shift</kbd><kbd>X</kbd> copies the text in a region (OCR), and <kbd>Super</kbd><kbd>Shift</kbd><kbd>R</kbd> starts or stops a screen recording.
 
 ## Keys worth learning
 
@@ -113,7 +115,8 @@ Most settings live in the built-in **Settings** app (<kbd>Super</kbd><kbd>I</kbd
 - **Network:** Wi-Fi, with the connection's details and live speeds.
 - **Devices and sound:** Bluetooth, sound (with left/right balance), and display.
 - **Look:** wallpaper and colour, and Look & feel: blur, transparency, corner roundness and animation speed.
-- **Bar and dock:** the status bar (position, plus a layout editor for its modules) and the dock.
+- **Bar and dock:** the status bar (position, and a widget editor for its left, centre and right) and the dock.
+- **Lock screen and weather:** the clock and widgets on the lock and login screens; your location, units and forecast.
 - **Tools:** clipboard and screenshots.
 - **Session:** notifications, and lock & idle.
 - **Keybinds, Packages & Updates, and About.**
@@ -124,7 +127,9 @@ For everything else, here is which file to edit. Updates never overwrite the fil
 | :--- | :--- |
 | Use a different terminal, browser or file manager | ✎ `~/.config/hypr/material3ui/apps.lua` |
 | Remap, disable or add keybinds | **Settings → Keybinds** (saved to ✎ `keybinds_custom.lua`) |
-| Rearrange the bar | **Settings → Status bar → Modules** |
+| Rearrange the bar | **Settings → Status bar → Widgets**, or right-click the bar |
+| Change the lock screen | **Settings → Lock screen** (the login screen follows) |
+| Set the weather location | **Settings → Weather** |
 | Pin apps to the dock | **Settings → Dock**, or right-click an app in the dock |
 | Add my own rules, monitors or autostart | ✎ `~/.config/hypr/material3ui/user.lua` |
 | Understand the Hyprland setup | [docs/HYPRLAND.md](docs/HYPRLAND.md) |

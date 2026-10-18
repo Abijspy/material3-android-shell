@@ -4,8 +4,9 @@
 #
 #    install [--enable]   Install the greeter for greetd (uses sudo). --enable also
 #                         switches the display manager to greetd.
-#    sync [--quiet]       Copy your wallpaper, colours, avatar, clock format,
-#                         keyboard layout and monitor rules to the login screen.
+#    sync [--quiet]       Copy your wallpaper, colours, lock screen (clock and
+#                         widgets), weather, avatar, keyboard layout and monitor
+#                         rules to the login screen.
 #    preview              Show the greeter inside your current session.
 #    status               Show what is installed and when it was last synced.
 #    uninstall            Remove the greeter and restore the previous greetd config.
@@ -138,7 +139,8 @@ synced = []
 if os.path.isfile(colors):
     put(colors, os.path.join(data, "colors.json")); synced.append("colours")
 
-wp = strip(get(cfg, "lock", "wallpaperPath") if separate else None) or strip(get(cfg, "appearance", "background", "wallpaperPath"))
+wp = (strip(get(cfg, "lock", "wallpaperPath") if separate else None) or strip(get(cfg, "background", "wallpaperPath"))
+      or strip(get(cfg, "appearance", "background", "wallpaperPath")))
 if wp and os.path.isfile(wp) and os.path.splitext(wp)[1].lower() in (".png", ".jpg", ".jpeg", ".webp", ".bmp"):
     dst = os.path.join(data, "wallpaper" + os.path.splitext(wp)[1].lower())
     for old in os.listdir(data):
@@ -146,6 +148,18 @@ if wp and os.path.isfile(wp) and os.path.splitext(wp)[1].lower() in (".png", ".j
             try: os.remove(os.path.join(data, old))
             except OSError: pass
     put(wp, dst); out["wallpaper"] = dst; synced.append("wallpaper")
+
+# The lock screen's look (clock, widgets) and weather settings, for the
+# greeter's config.json; and the last weather reply, so it shows at once
+lock_cfg = {k: cfg[k] for k in ("lock", "time", "weather", "appearance", "background") if k in cfg}
+for k in ("wallpaperPath",):
+    lock_cfg.get("background", {}).pop(k, None)
+with open(os.path.join(data, "config.json.tmp"), "w") as f: json.dump(lock_cfg, f, indent=2)
+os.replace(os.path.join(data, "config.json.tmp"), os.path.join(data, "config.json"))
+synced.append("lock screen")
+weather = os.path.join(state_home, "material3ui/weather.json")
+if os.path.isfile(weather):
+    put(weather, os.path.join(data, "weather.json")); synced.append("weather")
 
 avatars = {}
 prev = load(os.path.join(data, "greeter.json"))

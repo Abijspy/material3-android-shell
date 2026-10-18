@@ -3,6 +3,7 @@
 #include "core/Signal.h"
 #include "ui/Node.h"
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -13,6 +14,10 @@ namespace m3::shell {
 class BarLayout : public ui::Node {
 public:
     float margin = 8;
+    // Right click on the bar's empty space (Edit bar)
+    std::function<void()> onContextMenu;
+    bool interactive() const override { return static_cast<bool>(onContextMenu); }
+    void onClick(uint32_t button) override;
 
 protected:
     m3::SizeF doMeasure(m3::SizeF available) override;

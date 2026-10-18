@@ -12,8 +12,9 @@
 namespace m3::shell {
 
 // The lock screen's face, shared with the greeter: wallpaper with a scrim,
-// a large two-line clock and the date, then avatar, name and a password
-// pill. In greeter mode it adds user and session pickers and power buttons.
+// a clock and widgets (lock.clock and lock.widgets in config.json, edited in
+// Settings → Lock screen), then avatar, name and a password pill. In greeter
+// mode it adds user and session pickers and power buttons.
 class LockView : public ui::Flex {
 public:
     struct Choice {
@@ -52,7 +53,8 @@ private:
 
     Options m_options;
     size_t m_userIndex = 0, m_sessionIndex = 0;
-    ui::Label *m_hours, *m_minutes, *m_date, *m_name, *m_status, *m_session = nullptr;
+    ui::Label *m_hours, *m_minutes = nullptr, *m_name, *m_status, *m_session = nullptr;
+    bool m_stacked = true;
     ui::Flex* m_pill;
     ui::Label* m_avatarLetter;
     ui::TextField* m_field;

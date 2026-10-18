@@ -4,6 +4,7 @@
 #include "services/Mpris.h"
 #include "services/Search.h"
 #include "services/SystemStats.h"
+#include "services/Weather.h"
 #include "services/Wallpaper.h"
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
@@ -214,6 +215,28 @@ void dashboard(Flex* card0, Popup&) {
     auto* right = columns->add<Live>();
     right->fixedWidth = 340;
 
+    // Weather: now and the next days; opens its Settings page
+    auto* wx = right->add<Button>(Flex::Direction::Column);
+    wx->setPadding({18, 14})->setSpacing(10)->setAlignItems(Align::Stretch)->setRadius(Radii(24));
+    wx->setBackground("primary_container", false);
+    wx->pressedRadius = 16;
+    wx->onClicked = [](uint32_t) {
+        if (open) open("settings weather");
+    };
+    auto* wxTop = wx->add<Flex>(Flex::Direction::Row);
+    wxTop->setSpacing(12);
+    auto* wxIcon = wxTop->add<Icon>("cloud", 40);
+    wxIcon->setFill(true)->setColor("on_primary_container", false);
+    auto* wxTexts = wxTop->add<Flex>(Flex::Direction::Column);
+    wxTexts->setAlignItems(Align::Start);
+    wxTexts->grow = true;
+    auto* wxTemp = wxTexts->add<Label>();
+    wxTemp->setSize(30)->setWeight(600)->setColor("on_primary_container", false);
+    auto* wxSky = wxTexts->add<Label>();
+    wxSky->setSize(13)->setMaxWidth(220)->setColor("on_primary_container", false);
+    auto* wxDays = wx->add<Flex>(Flex::Direction::Row);
+    wxDays->setSpacing(4)->setAlignItems(Align::Stretch);
+
     // Now playing
     auto* media = card(right);
     auto* mediaRow = media->add<Flex>(Flex::Direction::Row);
@@ -278,7 +301,29 @@ void dashboard(Flex* card0, Popup&) {
             disk.meter->value.set(static_cast<float>(root->used) / static_cast<float>(root->total));
         }
         up->setText("Up " + duration(s.uptime()));
+
+        auto& w = Weather::get();
+        wx->setVisible(w.enabled());
+        wxIcon->setText(w.ready() ? w.icon() : "cloud_off");
+        wxTemp->setText(w.ready() ? w.temp(w.temperature()) : "–");
+        wxSky->setText(w.ready() ? Weather::describe(w.code()) + "  ·  " + w.place().substr(0, w.place().find(','))
+                                 : (w.error().empty() ? "Getting the weather…" : w.error()));
+        wxDays->clearChildren();
+        for (size_t i = 1; i < w.days().size() && i < 6; ++i) {
+            const auto& d = w.days()[i];
+            std::tm dt{};
+            strptime(d.date.c_str(), "%Y-%m-%d", &dt);
+            char day[8];
+            std::strftime(day, sizeof day, "%a", &dt);
+            auto* col = wxDays->add<Flex>(Flex::Direction::Column);
+            col->setSpacing(2)->setPadding({2, 6})->setRadius(Radii(14))->setBackground(ColorRef("surface", 0.3f), false);
+            col->grow = true;
+            col->add<Label>(day)->setSize(12)->setWeight(600)->setColor("on_primary_container", false);
+            col->add<Icon>(Weather::icon(d.code, true), 18)->setColor("on_primary_container", false);
+            col->add<Label>(w.temp(d.max))->setSize(12)->setColor("on_primary_container", false);
+        }
     };
+    right->watch(Weather::get().changed);
     right->watch(Mpris::get().changed);
     right->watch(SystemStats::get().changed);
     right->sync();

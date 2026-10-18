@@ -2,7 +2,7 @@
 
 Material3UI's shell: a Wayland shell drawn directly with EGL/OpenGL ES, with no Qt, QML, GTK or Quickshell underneath. It reads `~/.config/material3ui/config.json` and the Matugen palette.
 
-> **Status: v4.0.0, the shell Material3UI ships.** It replaced the Quickshell (QML) shell: the installer builds it, Hyprland starts it, and `material3ui msg` is the IPC.
+> **Status: the shell Material3UI ships (v4.0.0 onwards).** It replaced the Quickshell (QML) shell: the installer builds it, Hyprland starts it, and `material3ui msg` is the IPC.
 
 ## Why native
 
@@ -105,8 +105,8 @@ material3ui msg brightness up|down|set <0-100>
 material3ui msg media play-pause|next|previous|status
 material3ui msg notifications [list|clear|dnd on|dnd off]
 material3ui msg wallpaper [next|prev|set <path>|pick]
-material3ui msg settings [network|bluetooth|sound|display|appearance|style|bar|dock|tools
-                         |notifications|lock|keybinds|packages|about]
+material3ui msg settings [network|bluetooth|sound|display|appearance|style|bar|dock|tools|weather
+                         |notifications|lockscreen|lock|keybinds|packages|about]
 material3ui msg clipboard             # clipboard history (cliphist)
 material3ui msg screenshot [region|window|screen [delay s]|ocr]   # no argument: the tool
 material3ui msg record [region|screen]   # start, or stop, a screen recording

@@ -3,6 +3,7 @@
 #include "build_config.h"
 #include "core/Config.h"
 #include "core/EventLoop.h"
+#include "core/Process.h"
 #include "ipc/IpcServer.h"
 #include "render/Renderer.h"
 #include "render/Text.h"
@@ -33,6 +34,7 @@
 
 #include <cmath>
 #include <format>
+#include <unistd.h>
 
 namespace m3::shell {
 
@@ -80,9 +82,25 @@ bool Shell::start() {
     });
     if (Config::get().value<bool>("/polkit/enabled", true)) Polkit::get().start();
 
-    panels::open = [this](const std::string& name) {
-        EventLoop::get().defer([this, name] { togglePopup(name, focusedOutput(), name == "power" ? -1 : 100000); });
+    // "settings dock" opens a panel with an argument (here, a Settings page)
+    panels::open = [this](const std::string& what) {
+        EventLoop::get().defer([this, what] {
+            const auto sp = what.find(' ');
+            const std::string name = what.substr(0, sp), arg = sp == std::string::npos ? "" : what.substr(sp + 1);
+            togglePopup(name, focusedOutput(), name == "power" ? -1 : 100000, arg);
+        });
     };
+
+    // The login screen follows the lock screen: sync it a moment after
+    // settings change (a slider drag is many writes)
+    Config::get().changed.connectForever([this] {
+        if (m_greeterSync) EventLoop::get().cancel(m_greeterSync);
+        m_greeterSync = EventLoop::get().addTimer(3000, [this] {
+            m_greeterSync = 0;
+            if (Config::get().value<bool>("/lock/syncGreeter", true) && access("/var/lib/material3ui-greeter", W_OK) == 0)
+                m3::run({"material3ui-greeter", "sync", "--quiet"}, nullptr);
+        });
+    });
 
     registerIpc();
     return true;
@@ -91,8 +109,9 @@ bool Shell::start() {
 void Shell::addOutput(wl::Output* output) {
     LockScreen::get().addOutput(output); // a monitor plugged in while locked
     if (m_bars.contains(output)) return;
-    auto bar = std::make_unique<Bar>(output, [this, output](const std::string& name, float x) {
-        togglePopup(name, output, x);
+    auto bar = std::make_unique<Bar>(output, [this, output](const std::string& what, float x) {
+        const auto sp = what.find(' ');
+        togglePopup(what.substr(0, sp), output, x, sp == std::string::npos ? "" : what.substr(sp + 1));
     });
     if (!m_barsVisible) bar->setVisible(false);
     if (Config::get().value<bool>("/desktop/wallpaper", true)) m_desktops[output] = std::make_unique<Desktop>(output);
@@ -355,7 +374,7 @@ void Shell::registerIpc() {
         const auto* p = m.active();
         return p ? std::format("{}: {} — {} [{}]", p->identity, p->title, p->artist, p->status) : std::string("no player");
     });
-    ipc.add("settings", "settings [network|bluetooth|sound|display|appearance|style|bar|dock|tools|notifications|lock|keybinds|packages|about]",
+    ipc.add("settings", "settings [network|bluetooth|sound|display|appearance|style|bar|dock|tools|weather|notifications|lockscreen|lock|keybinds|packages|about]",
             [this](const IpcServer::Args& a) {
         togglePopup("settings", focusedOutput(), -1, a.empty() ? "" : a[0]);
         return std::string(m_popup && !m_popup->closing() ? "open" : "closed");

@@ -1,6 +1,27 @@
 # Changelog
 
-## v4.0.0 — 2026-10-18
+## v4.1.0 — 2026-10-18
+
+- **Weather** (Settings → Weather) comes from Open-Meteo (no API key) and refreshes every 15 minutes.
+  - **Location:** your IP finds it ("Use my location"), or you search for any city. Choose °C or °F.
+  - **Settings page:** a live card with feels-like, humidity, wind and a 7-day forecast.
+  - **Elsewhere:** weather also shows in the bar, on the dashboard and on the lock screen.
+  - **Cache:** the last reply is kept, so the weather shows before the network is up.
+- **Bar widgets:** the bar is edited in three zones (left, centre, right), and the "Add" list is now a gallery that explains each widget. Right-click empty bar space to open the editor.
+  - New widgets: weather, date (opens the dashboard calendar), media, CPU & memory, notifications (a bell with a count), and Quick Settings.
+  - Existing widgets: launcher, workspaces, window title, island, clock, network speed, tray, clipboard, screenshot, status icons, battery and power.
+- **Editable lock screen** (Settings → Lock screen):
+  - **Clock:** stacked or on one line, centred or on the left, light/regular/bold weight, and size.
+  - **Widgets:** date, weather, three-day forecast, media with controls, battery, and the number of waiting notifications (never their content). Turn each on or off, and reorder them.
+- **The login screen matches the lock screen.** `material3ui-greeter sync` copies the lock screen's clock, widgets and weather settings and the last forecast, alongside the wallpaper and colours. The greeter draws the same view and refreshes the weather itself. The shell syncs a few seconds after any settings change (Settings → Lock screen → Match the lock screen), and there's a "Sync now" button.
+- **Dashboard:** a weather card with the next five days; clicking it opens the Weather settings.
+- **Spacing:**
+  - The Sound and Wi-Fi pages in Settings now sit in grouped cards like every other page, and the Weather forecast card is spaced like a group.
+  - The sidebar scrolls to the active page.
+  - Monitors with no description no longer show a stray separator.
+  - The stacked lock-screen clock is tighter.
+
+
 
 **The native shell replaces Quickshell.** Material3UI is now one C++ program (`material3ui`) that talks to Wayland, D-Bus, PipeWire and PAM directly, and Qt, QML and Quickshell are no longer used.
 

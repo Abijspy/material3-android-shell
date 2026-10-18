@@ -2,6 +2,9 @@
 
 #include "core/Config.h"
 #include "services/Network.h"
+#include "services/Notifications.h"
+#include "services/SystemStats.h"
+#include "services/Weather.h"
 #include "shell/Panels.h"
 #include "shell/bar/Island.h"
 #include "shell/bar/Widgets.h"
@@ -9,6 +12,8 @@
 #include "wayland/Display.h"
 
 #include <algorithm>
+#include <ctime>
+#include <format>
 #include <linux/input-event-codes.h>
 
 namespace m3::shell {
@@ -67,16 +72,131 @@ private:
     Connection m_conn;
 };
 
+// A capsule-sized button: icon, optional text, opens a panel
+class Chip : public Button {
+public:
+    Chip(const std::string& icon, std::function<void()> click) : Button(Direction::Row) {
+        pill(this)->setPadding({8, 4})->setSpacing(6);
+        pressedRadius = 8;
+        m_icon = add<Icon>(icon, 20);
+        m_icon->setColor("on_surface", false);
+        m_text = add<Label>();
+        m_text->setSize(13)->setWeight(500);
+        m_text->setVisible(false);
+        onClicked = [click = std::move(click)](uint32_t b) {
+            if (b == BTN_LEFT && click) click();
+        };
+    }
+    void set(const std::string& icon, const std::string& text) {
+        m_icon->setText(icon);
+        m_text->setText(text);
+        m_text->setVisible(!text.empty());
+    }
+
+protected:
+    Icon* m_icon;
+    Label* m_text;
+};
+
+// Temperature and sky, refreshed by the weather service
+class WeatherChip : public Chip {
+public:
+    explicit WeatherChip(std::function<void()> click) : Chip("partly_cloudy_day", std::move(click)) {
+        m_conn = Weather::get().changed.connect([this] { sync(); });
+        sync();
+    }
+
+private:
+    void sync() {
+        auto& w = Weather::get();
+        set(w.ready() ? w.icon() : "cloud_off", w.ready() ? w.temp(w.temperature()) : "–");
+    }
+    Connection m_conn;
+};
+
+// "Sun 18 Oct", turning over at midnight
+class DateChip : public Chip {
+public:
+    explicit DateChip(std::function<void()> click) : Chip("calendar_month", std::move(click)) { tick(); }
+    ~DateChip() override {
+        if (m_timer) EventLoop::get().cancel(m_timer);
+    }
+
+private:
+    void tick() {
+        const std::time_t t = std::time(nullptr);
+        std::tm tm{};
+        localtime_r(&t, &tm);
+        char buf[32];
+        std::strftime(buf, sizeof buf, "%a %-d %b", &tm);
+        set("calendar_month", buf);
+        m_timer = EventLoop::get().addTimer((60 - tm.tm_sec) * 1000 + 50, [this] {
+            m_timer = 0;
+            tick();
+        });
+    }
+    EventLoop::TimerId m_timer = 0;
+};
+
+// Bell with the number of notifications; struck through in Do Not Disturb
+class NotificationChip : public Chip {
+public:
+    explicit NotificationChip(std::function<void()> click) : Chip("notifications", std::move(click)) {
+        m_conn = Notifications::get().changed.connect([this] { sync(); });
+        sync();
+    }
+
+private:
+    void sync() {
+        auto& n = Notifications::get();
+        const size_t count = n.history().size();
+        set(n.doNotDisturb() ? "notifications_off" : count ? "notifications_unread" : "notifications",
+            count ? std::to_string(count) : "");
+    }
+    Connection m_conn;
+};
+
+// CPU and memory use, sampled while on the bar
+class SysmonChip : public Chip {
+public:
+    explicit SysmonChip(std::function<void()> click) : Chip("memory", std::move(click)) {
+        m_lease = SystemStats::get().lease();
+        m_conn = SystemStats::get().changed.connect([this] { sync(); });
+        sync();
+    }
+
+private:
+    void sync() {
+        auto& s = SystemStats::get();
+        const double mem = s.memTotal() ? 100.0 * static_cast<double>(s.memUsed()) / static_cast<double>(s.memTotal()) : 0;
+        set("memory", std::format("{:.0f}%  ·  {:.0f}%", s.cpu(), mem));
+    }
+    SystemStats::Lease m_lease;
+    Connection m_conn;
+};
+
 } // namespace
 
 const std::vector<Bar::Module>& Bar::modules() {
     static const std::vector<Module> all = {
-        {"launcher", "apps", "Launcher"},       {"workspaces", "view_week", "Workspaces"},
-        {"title", "title", "Window title"},     {"island", "radio_button_checked", "Island"},
-        {"clock", "schedule", "Clock"},         {"netspeed", "swap_vert", "Network speed"},
-        {"tray", "more_horiz", "System tray"},  {"clipboard", "content_paste", "Clipboard"},
-        {"screenshot", "screenshot_region", "Screenshot"}, {"status", "wifi", "Status icons"},
-        {"battery", "battery_full", "Battery"}, {"power", "power_settings_new", "Power"},
+        {"launcher", "apps", "Launcher", "Opens Spotlight"},
+        {"workspaces", "view_week", "Workspaces", "Dots for each workspace; click to switch"},
+        {"title", "title", "Window title", "The focused window"},
+        {"island", "radio_button_checked", "Island", "Clock that grows for media and notifications"},
+        {"clock", "schedule", "Clock", "Time in your chosen format"},
+        {"calendar", "calendar_month", "Date", "Today's date; opens the dashboard calendar"},
+        {"weather", "partly_cloudy_day", "Weather", "Live temperature and sky"},
+        {"media", "music_note", "Media", "Now playing; click to pause, scroll to skip"},
+        {"netspeed", "swap_vert", "Network speed", "Live download and upload"},
+        {"sysmon", "memory", "CPU & memory", "Usage now; opens the system monitor"},
+        {"tray", "more_horiz", "System tray", "App icons and their menus"},
+        {"clipboard", "content_paste", "Clipboard", "Opens the clipboard history"},
+        {"screenshot", "screenshot_region", "Screenshot", "Opens the screenshot tool"},
+        {"notifications", "notifications", "Notifications", "Bell with a count; opens the centre"},
+        {"quicksettings", "tune", "Quick Settings", "Opens Quick Settings"},
+        {"status", "wifi", "Status icons", "Network, Bluetooth, volume; opens Quick Settings"},
+        {"battery", "battery_full", "Battery", "Charge level (hidden on desktops)"},
+        {"power", "power_settings_new", "Power", "Opens the power menu"},
     };
     return all;
 }
@@ -133,6 +253,24 @@ void Bar::addModule(Flex* zone, const std::string& id, bool floating) {
         c->add<StatusIcons>(m_openPopup);
     } else if (id == "battery") {
         capsule(zone, floating)->add<BatteryStatus>();
+    } else if (id == "media") {
+        capsule(zone, floating)->add<Media>();
+    } else if (id == "weather" || id == "calendar" || id == "notifications" || id == "sysmon") {
+        auto* c = capsule(zone, floating);
+        c->setPadding({4, 0});
+        Chip* chip = nullptr;
+        auto open = [this](const std::string& name, Node* from) {
+            m_openPopup(name, from->rect().x + from->rect().w / 2);
+        };
+        if (id == "weather") chip = c->add<WeatherChip>(std::function<void()>{});
+        else if (id == "calendar") chip = c->add<DateChip>(std::function<void()>{});
+        else if (id == "notifications") chip = c->add<NotificationChip>(std::function<void()>{});
+        else chip = c->add<SysmonChip>(std::function<void()>{});
+        const std::string target = id == "weather" ? "settings weather" : id == "calendar" ? "dashboard"
+                                 : id == "notifications" ? "notifications" : "sysmon";
+        chip->onClicked = [open, chip, target](uint32_t b) {
+            if (b == BTN_LEFT) open(target, chip);
+        };
     } else {
         // One-tap buttons that open a panel
         const auto it = std::ranges::find_if(modules(), [&](const Module& m) { return id == m.id; });
@@ -156,6 +294,8 @@ void Bar::rebuild() {
 
     auto root = std::make_unique<BarLayout>();
     auto* bg = root.get();
+    // Right click on empty bar space: straight to the bar editor
+    bg->onContextMenu = [this] { m_openPopup("settings bar", -1); };
     const auto zones = layout();
     for (size_t z = 0; z < 3; ++z) {
         auto* zone = bg->add<Flex>(Flex::Direction::Row);

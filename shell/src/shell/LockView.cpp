@@ -1,10 +1,16 @@
 #include "shell/LockView.h"
 
 #include "render/Images.h"
+#include "core/Config.h"
 #include "services/Auth.h"
+#include "services/Mpris.h"
+#include "services/Network.h"
+#include "services/Notifications.h"
+#include "services/Weather.h"
 #include "ui/Theme.h"
 
 #include <cmath>
+#include <format>
 #include <ctime>
 #include <linux/input-event-codes.h>
 
@@ -34,6 +40,110 @@ std::string initial(const std::string& name) {
     return s;
 }
 
+// One lock-screen widget: rebuilt whenever its service changes
+class LockWidget : public Flex {
+public:
+    LockWidget(std::string id, bool greeter) : Flex(Direction::Row), m_id(std::move(id)), m_greeter(greeter) {
+        setSpacing(10)->setJustify(Align::Center);
+        auto watch = [this](Signal<>& sig) { m_conns.push_back(sig.connect([this] { sync(); })); };
+        if (m_id == "weather" || m_id == "forecast") watch(Weather::get().changed);
+        if (m_id == "media") watch(Mpris::get().changed);
+        if (m_id == "battery") watch(Power::get().changed);
+        if (m_id == "notifications") watch(Notifications::get().changed);
+        if (m_id == "date") tick();
+        else sync();
+    }
+    ~LockWidget() override {
+        if (m_timer) EventLoop::get().cancel(m_timer);
+    }
+
+private:
+    // A rounded, translucent chip so widgets read on any wallpaper
+    Flex* chip() {
+        auto* c = add<Flex>(Direction::Row);
+        pill(c->setBackground(ColorRef("surface_container_high", 0.75f), false))->setPadding({16, 8})->setSpacing(8);
+        return c;
+    }
+    void tick() {
+        clearChildren();
+        const std::time_t now = std::time(nullptr);
+        std::tm tm{};
+        localtime_r(&now, &tm);
+        char buf[64];
+        std::strftime(buf, sizeof buf, "%A, %-d %B", &tm);
+        add<Label>(buf)->setSize(22)->setWeight(500)->setColor("on_surface", false);
+        m_timer = EventLoop::get().addTimer((60 - tm.tm_sec) * 1000 + 50, [this] {
+            m_timer = 0;
+            tick();
+        });
+    }
+    void sync() {
+        clearChildren();
+        auto& w = Weather::get();
+        if (m_id == "weather") {
+            if (!w.ready()) return setVisible(false);
+            setVisible(true);
+            add<Icon>(w.icon(), 30)->setFill(true)->setColor("primary", false);
+            add<Label>(w.temp(w.temperature()))->setSize(26)->setWeight(500)->setColor("on_surface", false);
+            add<Label>(Weather::describe(w.code()) + (w.place().empty() ? "" : "  ·  " + w.place().substr(0, w.place().find(','))))
+                ->setSize(16)->setColor("on_surface_variant", false);
+        } else if (m_id == "forecast") {
+            if (w.days().size() < 4) return setVisible(false);
+            setVisible(true);
+            setSpacing(8);
+            for (size_t i = 1; i < 4; ++i) {
+                const auto& d = w.days()[i];
+                std::tm tm{};
+                strptime(d.date.c_str(), "%Y-%m-%d", &tm);
+                char day[16];
+                std::strftime(day, sizeof day, "%a", &tm);
+                auto* c = chip();
+                c->add<Label>(day)->setSize(14)->setWeight(500)->setColor("on_surface", false);
+                c->add<Icon>(Weather::icon(d.code, true), 20)->setColor("primary", false);
+                c->add<Label>(w.temp(d.max) + " / " + w.temp(d.min))->setSize(14)->setColor("on_surface_variant", false);
+            }
+        } else if (m_id == "media") {
+            const auto* p = m_greeter ? nullptr : Mpris::get().active();
+            if (!p) return setVisible(false);
+            setVisible(true);
+            auto* c = chip();
+            c->setPadding({16, 6, 6, 6});
+            c->add<Icon>("music_note", 20)->setColor("primary", false);
+            c->add<Label>(p->title + (p->artist.empty() ? "" : "  ·  " + p->artist))->setSize(15)->setMaxWidth(380)->setColor("on_surface", false);
+            for (auto [icon, fn] : {std::pair<const char*, int>{"skip_previous", 0}, {p->status == "Playing" ? "pause" : "play_arrow", 1}, {"skip_next", 2}}) {
+                auto* b = c->add<Button>();
+                pill(b)->setPadding(Insets(6));
+                b->add<Icon>(icon, 20)->setColor("on_surface", false);
+                b->onClicked = [fn](uint32_t) {
+                    auto& m = Mpris::get();
+                    if (fn == 0) m.previous();
+                    else if (fn == 1) m.playPause();
+                    else m.next();
+                };
+            }
+        } else if (m_id == "battery") {
+            auto& p = Power::get();
+            if (!p.hasBattery()) return setVisible(false);
+            setVisible(true);
+            auto* c = chip();
+            c->add<Icon>(p.icon(), 20)->setColor("primary", false);
+            c->add<Label>(std::format("{}%{}", p.percent(), p.charging() ? " · charging" : ""))->setSize(15)->setColor("on_surface", false);
+        } else if (m_id == "notifications") {
+            // A count, never the content: anyone can see a lock screen
+            const size_t n = m_greeter ? 0 : Notifications::get().history().size();
+            if (n == 0) return setVisible(false);
+            setVisible(true);
+            auto* c = chip();
+            c->add<Icon>("notifications", 20)->setColor("primary", false);
+            c->add<Label>(n == 1 ? "1 notification" : std::format("{} notifications", n))->setSize(15)->setColor("on_surface", false);
+        }
+    }
+    std::string m_id;
+    bool m_greeter;
+    std::vector<Connection> m_conns;
+    EventLoop::TimerId m_timer = 0;
+};
+
 } // namespace
 
 LockView::LockView(Options options) : Flex(Direction::Column), m_options(std::move(options)) {
@@ -42,17 +152,31 @@ LockView::LockView(Options options) : Flex(Direction::Column), m_options(std::mo
     for (size_t i = 0; i < m_options.users.size(); ++i)
         if (m_options.users[i].id == m_options.user) m_userIndex = i;
 
-    // Clock: hours over minutes, like Android's lock screen
-    auto* clock = add<Flex>(Direction::Column);
-    clock->setSpacing(-28);
+    // Clock and widgets, as set in Settings → Lock screen (shared with the
+    // greeter through its synced copy of config.json)
+    const auto& cfg = Config::get();
+    m_stacked = cfg.value<std::string>("/lock/clock/style", "stacked") == "stacked";
+    const bool left = cfg.value<std::string>("/lock/clock/align", "center") == "left";
+    const float size = static_cast<float>(cfg.value<double>("/lock/clock/size", 150));
+    auto* top = add<Flex>(Direction::Column);
+    top->alignSelf = Align::Stretch;
+    top->setAlignItems(left ? Align::Start : Align::Center)->setSpacing(12)->setPadding({left ? 120.0f : 0.0f, 0});
+
+    // Clock: hours over minutes like Android's lock screen, or on one line
+    auto* clock = top->add<Flex>(Direction::Column);
+    clock->setSpacing(-size * 0.26f)->setAlignItems(left ? Align::Start : Align::Center);
     m_hours = clock->add<Label>();
-    m_minutes = clock->add<Label>();
-    for (auto* l : {m_hours, m_minutes}) l->setSize(150)->setWeight(400)->setColor("primary", false);
-    m_date = add<Label>();
-    m_date->setSize(22)->setWeight(500)->setColor("on_surface", false);
+    if (m_stacked) m_minutes = clock->add<Label>();
+    for (auto* l : {m_hours, m_minutes})
+        if (l) l->setSize(size)->setWeight(cfg.value<int>("/lock/clock/weight", 400))->setColor("primary", false);
+
+    auto ids = cfg.value<nlohmann::json>("/lock/widgets", nlohmann::json());
+    if (!ids.is_array()) ids = {"date", "weather", "media"};
+    for (const auto& id : ids)
+        if (id.is_string()) top->add<LockWidget>(id.get<std::string>(), m_options.greeter)->alignSelf = left ? Align::Start : Align::Center;
 
     auto* spacer = add<Node>();
-    spacer->minHeight = 96;
+    spacer->minHeight = 72;
 
     // Avatar and name (with pickers in greeter mode)
     auto* who = add<Flex>(Direction::Row);
@@ -124,12 +248,15 @@ void LockView::tick() {
     std::tm tm{};
     localtime_r(&now, &tm);
     char buf[64];
-    std::strftime(buf, sizeof buf, "%H", &tm);
-    m_hours->setText(buf);
-    std::strftime(buf, sizeof buf, "%M", &tm);
-    m_minutes->setText(buf);
-    std::strftime(buf, sizeof buf, "%A, %-d %B", &tm);
-    m_date->setText(buf);
+    if (m_stacked) {
+        std::strftime(buf, sizeof buf, "%H", &tm);
+        m_hours->setText(buf);
+        std::strftime(buf, sizeof buf, "%M", &tm);
+        m_minutes->setText(buf);
+    } else {
+        std::strftime(buf, sizeof buf, "%H:%M", &tm);
+        m_hours->setText(buf);
+    }
     m_clock = EventLoop::get().addTimer(static_cast<int>((60 - tm.tm_sec) * 1000 + 20), [this] {
         m_clock = 0;
         tick();

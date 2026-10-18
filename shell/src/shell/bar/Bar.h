@@ -39,6 +39,7 @@ public:
         const char* id;
         const char* icon;
         const char* name;
+        const char* about = "";
     };
     static const std::vector<Module>& modules();
     using Layout = std::array<std::vector<std::string>, 3>; // left, centre, right

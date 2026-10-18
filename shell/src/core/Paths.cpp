@@ -25,7 +25,9 @@ std::string configDir() {
 }
 
 std::string configFile() {
-    return configDir() + "/config.json";
+    // M3_CONFIG_FILE: the greeter reads the lock screen settings synced for it
+    const std::string forced = env("M3_CONFIG_FILE", "");
+    return forced.empty() ? configDir() + "/config.json" : forced;
 }
 
 std::string colorsFile() {

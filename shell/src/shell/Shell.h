@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/EventLoop.h"
 #include "core/Signal.h"
 
 #include <map>
@@ -44,6 +45,7 @@ private:
     std::unique_ptr<Toasts> m_toasts;
     std::unique_ptr<Osd> m_osd;
     bool m_barsVisible = true;
+    EventLoop::TimerId m_greeterSync = 0; // debounce for the login screen sync
 };
 
 } // namespace m3::shell

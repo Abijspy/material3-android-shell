@@ -15,6 +15,7 @@
 #include "services/Search.h"
 #include "services/SystemStats.h"
 #include "services/Wallpaper.h"
+#include "services/Weather.h"
 #include "shell/Dock.h"
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
@@ -129,6 +130,14 @@ Flex* group(Node* page, const std::string& title, const std::string& subtitle = 
     head->add<Label>(title)->setSize(14)->setWeight(600)->setColor("primary", false);
     if (!subtitle.empty()) head->add<Label>(subtitle)->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(640)->setMaxLines(2);
     return page->add<Segments>();
+}
+
+// A group holding one block of controls on a single surface (popup
+// layouts reused inside Settings)
+Flex* panelGroup(Node* page, const std::string& title, const std::string& subtitle = {}) {
+    auto* inner = group(page, title, subtitle)->add<Flex>(Flex::Direction::Column);
+    inner->setAlignItems(Align::Stretch)->setSpacing(12)->setPadding({20, 16});
+    return inner;
 }
 
 // One row: icon, title and subtitle, and a trailing slot for the control
@@ -353,9 +362,7 @@ void networkPage(Flex* page, Popup&) {
     live->watch(Network::get().detailsChanged);
     live->sync();
 
-    auto* holder = page->add<Flex>(Flex::Direction::Column);
-    holder->setAlignItems(Align::Stretch)->setPadding({0, 12, 0, 0});
-    wifiView(holder, {}, false);
+    wifiView(panelGroup(page, "Wi-Fi networks", "Tap one to connect; saved networks connect at once"), {}, false);
 }
 
 void bluetoothPage(Flex* page, Popup&) {
@@ -400,7 +407,7 @@ void bluetoothPage(Flex* page, Popup&) {
 }
 
 void soundPage(Flex* page, Popup& popup) {
-    audio(page, popup);
+    audio(panelGroup(page, "Output and input", "Volume, balance, channels and devices"), popup);
 }
 
 void displayPage(Flex* page, Popup&) {
@@ -429,7 +436,7 @@ void displayPage(Flex* page, Popup&) {
     auto* mons = group(page, "Monitors", "Arrangement and modes are set in your Hyprland config (monitors.lua)");
     if (auto j = Hyprland::get().requestJson("monitors"); j && j->is_array()) {
         for (const auto& m : *j)
-            row(mons, "monitor", std::format("{}  ·  {}", m.value("name", ""), m.value("description", "")),
+            row(mons, "monitor", m.value("description", "").empty() ? m.value("name", "") : std::format("{}  ·  {}", m.value("name", ""), m.value("description", "")),
                 std::format("{}×{} at {:.0f} Hz · scale {:.2f}{}", m.value("width", 0), m.value("height", 0),
                             m.value("refreshRate", 0.0), m.value("scale", 1.0), m.value("focused", false) ? " · focused" : ""));
     } else {
@@ -548,7 +555,7 @@ void barPage(Flex* page, Popup&) {
     auto adding = std::make_shared<int>(-1); // the zone showing its add list
     live->sync = [live, adding] {
         live->clearChildren();
-        auto* g = group(live, "Modules", "Arrange the bar: changes show on it at once");
+        auto* g = group(live, "Widgets", "Add, remove and move widgets; right-click the bar to come back here");
         auto lay = shell::Bar::layout();
         const char* zoneNames[] = {"Left", "Centre", "Right"};
         auto save = [live, adding](const shell::Bar::Layout& l) {
@@ -615,18 +622,24 @@ void barPage(Flex* page, Popup&) {
                 for (const auto& zone : lay) used = used || std::ranges::find(zone, std::string(m.id)) != zone.end();
                 if (used) continue;
                 ++unused;
-                auto* b = avail->add<Button>();
-                pill(b->setBackground("tertiary_container", false))->setPadding({12, 7})->setSpacing(6);
-                b->pressedRadius = 8;
-                b->add<Icon>(m.icon, 18)->setColor("on_tertiary_container", false);
-                b->add<Label>(m.name)->setSize(13)->setWeight(500)->setColor("on_tertiary_container", false);
+                // Gallery tile: icon, name and what it does
+                auto* b = avail->add<Button>(Flex::Direction::Column);
+                b->setBackground("tertiary_container", false)->setRadius(Radii(20))->setPadding({14, 12})->setSpacing(4);
+                b->setAlignItems(Align::Start);
+                b->pressedRadius = 12;
+                b->fixedWidth = 204;
+                auto* top = b->add<Flex>(Flex::Direction::Row);
+                top->setSpacing(8);
+                top->add<Icon>(m.icon, 20)->setColor("on_tertiary_container", false);
+                top->add<Label>(m.name)->setSize(14)->setWeight(600)->setColor("on_tertiary_container", false);
+                b->add<Label>(m.about)->setSize(12)->setMaxWidth(176)->setMaxLines(2)->setColor("on_tertiary_container", false);
                 const std::string id = m.id;
                 b->onClicked = [lay, z, id, save](uint32_t) mutable {
                     lay[z].push_back(id);
                     save(lay);
                 };
             }
-            if (unused == 0) caption(avail, "Every module is on the bar");
+            if (unused == 0) caption(avail, "Every widget is on the bar");
         }
         auto* reset = live->add<Flex>(Flex::Direction::Row);
         reset->setJustify(Align::End);
@@ -750,6 +763,201 @@ void toolsPage(Flex* page, Popup& popup) {
     }, "photo_camera");
 }
 
+void weatherPage(Flex* page, Popup&) {
+    auto* g = group(page, "Weather", "From Open-Meteo, refreshed every 15 minutes");
+    switchRow(g, "partly_cloudy_day", "Show weather", "On the bar, the dashboard and the lock screen", "/weather/enabled", true,
+              [](bool on) {
+                  if (on) Weather::get().refresh();
+              });
+    choiceRow<std::string>(g, "thermostat", "Units", "", "/weather/units", "metric", {{"metric", "°C · km/h"}, {"imperial", "°F · mph"}});
+
+    // Location: detected, or searched for
+    auto* loc = page->add<Live>();
+    loc->setSpacing(6);
+    auto query = std::make_shared<std::string>();
+    auto results = std::make_shared<std::vector<Weather::Place>>();
+    loc->sync = [loc, query, results] {
+        loc->clearChildren();
+        auto* g = group(loc, "Location");
+        const auto place = Config::get().value<nlohmann::json>("/weather/location", nlohmann::json());
+        auto current = row(g, "location_on", place.is_object() ? place.value("name", "Unknown") : "Not set",
+                           place.is_object() ? std::format("{:.2f}, {:.2f}", place.value("lat", 0.0), place.value("lon", 0.0))
+                                             : "Found from your IP address on first use");
+        pillButton(current.row, "Use my location", false, [] { Weather::get().detect(); }, "my_location");
+        pillButton(current.row, "Refresh", true, [] { Weather::get().refresh(); }, "refresh");
+        auto* fieldRow = g->add<Flex>(Flex::Direction::Row);
+        fieldRow->setPadding({16, 12});
+        auto* field = fieldRow->add<TextField>();
+        field->grow = true;
+        field->setPlaceholder("Search for a city");
+        field->setText(*query);
+        if (!query->empty()) field->focus();
+        field->onChanged = [query, results, loc](const std::string& t) {
+            *query = t;
+            Weather::get().search(t, [query, results, loc, t](std::vector<Weather::Place> found) {
+                if (*query != t) return; // a newer search is on its way
+                *results = std::move(found);
+                loc->syncSoon();
+            });
+        };
+        for (const auto& p : *results) {
+            auto r = row(g, "place", p.name, std::format("{:.2f}, {:.2f}", p.lat, p.lon));
+            pillButton(r.row, "Use", true, [p, query, results] {
+                query->clear();
+                results->clear();
+                Weather::get().setPlace(p);
+            });
+        }
+    };
+    loc->conns.push_back(Config::get().changed.connect([loc] { loc->syncSoon(); }));
+    loc->sync();
+
+    // Live conditions
+    auto* now = page->add<Live>();
+    now->setSpacing(6)->setPadding({0, 10, 0, 0});
+    now->sync = [now] {
+        now->clearChildren();
+        auto& w = Weather::get();
+        auto* card = now->add<Flex>(Flex::Direction::Column);
+        card->setPadding({24, 20})->setSpacing(14)->setAlignItems(Align::Stretch)->setRadius(Radii(28));
+        card->setBackground("primary_container", false);
+        if (!w.ready()) {
+            card->add<Label>(w.error().empty() ? "Getting the weather…" : w.error())->setSize(16)->setColor("on_primary_container", false);
+            return;
+        }
+        auto* head = card->add<Flex>(Flex::Direction::Row);
+        head->setSpacing(18);
+        head->add<Icon>(w.icon(), 64)->setFill(true)->setColor("on_primary_container", false);
+        auto* texts = head->add<Flex>(Flex::Direction::Column);
+        texts->setAlignItems(Align::Start)->setSpacing(2);
+        texts->grow = true;
+        texts->add<Label>(w.temp(w.temperature()))->setSize(48)->setWeight(600)->setColor("on_primary_container", false);
+        texts->add<Label>(Weather::describe(w.code()) + "  ·  feels like " + w.temp(w.feelsLike()))->setSize(15)->setColor("on_primary_container", false);
+        auto* right = head->add<Flex>(Flex::Direction::Column);
+        right->setAlignItems(Align::End)->setSpacing(4);
+        right->add<Label>(w.place())->setSize(14)->setWeight(600)->setMaxWidth(260)->setColor("on_primary_container", false);
+        right->add<Label>(std::format("Humidity {}%  ·  Wind {}", w.humidity(), w.windText()))->setSize(13)->setColor("on_primary_container", false);
+        if (w.updated() > 0) {
+            const std::time_t t = static_cast<std::time_t>(w.updated());
+            std::tm tm{};
+            localtime_r(&t, &tm);
+            char buf[32];
+            std::strftime(buf, sizeof buf, "Updated %H:%M", &tm);
+            right->add<Label>(buf)->setSize(12)->setColor("on_primary_container", false);
+        }
+        // The week, as tonal tiles
+        auto* week = card->add<Flex>(Flex::Direction::Row);
+        week->setSpacing(6)->setAlignItems(Align::Stretch);
+        for (size_t i = 0; i < w.days().size(); ++i) {
+            const auto& d = w.days()[i];
+            std::tm tm{};
+            strptime(d.date.c_str(), "%Y-%m-%d", &tm);
+            char day[16];
+            std::strftime(day, sizeof day, "%a", &tm);
+            auto* tile = week->add<Flex>(Flex::Direction::Column);
+            tile->setSpacing(4)->setPadding({4, 10})->setRadius(Radii(18))->setBackground(ColorRef("surface", 0.35f), false);
+            tile->grow = true;
+            tile->add<Label>(i == 0 ? std::string("Today") : std::string(day))->setSize(13)->setWeight(600)->setColor("on_primary_container", false);
+            tile->add<Icon>(Weather::icon(d.code, true), 24)->setColor("on_primary_container", false);
+            tile->add<Label>(w.temp(d.max))->setSize(14)->setWeight(500)->setColor("on_primary_container", false);
+            tile->add<Label>(w.temp(d.min))->setSize(13)->setColor("on_primary_container", false);
+        }
+        if (!w.error().empty()) card->add<Label>(w.error())->setSize(12)->setColor("on_primary_container", false);
+    };
+    now->watch(Weather::get().changed);
+    now->sync();
+}
+
+// The lock screen's widgets, in the order offered
+struct LockWidgetDef {
+    const char* id;
+    const char* icon;
+    const char* name;
+    const char* about;
+};
+const LockWidgetDef kLockWidgets[] = {
+    {"date", "calendar_month", "Date", "The day under the clock"},
+    {"weather", "partly_cloudy_day", "Weather", "Temperature and sky now"},
+    {"forecast", "date_range", "Forecast", "The next three days"},
+    {"media", "music_note", "Media", "Now playing, with controls (not on the login screen)"},
+    {"battery", "battery_full", "Battery", "Charge level"},
+    {"notifications", "notifications", "Notifications", "How many are waiting; never their content"},
+};
+
+void lockScreenPage(Flex* page, Popup& popup) {
+    auto* clock = group(page, "Clock", "The login screen shows the same clock and widgets");
+    choiceRow<std::string>(clock, "schedule", "Style", "", "/lock/clock/style", "stacked",
+                           {{"stacked", "Stacked"}, {"inline", "One line"}});
+    choiceRow<std::string>(clock, "format_align_center", "Position", "", "/lock/clock/align", "center",
+                           {{"center", "Centre"}, {"left", "Left"}});
+    choiceRow<int>(clock, "format_bold", "Weight", "", "/lock/clock/weight", 400, {{300, "Light"}, {400, "Regular"}, {600, "Bold"}});
+    sliderRow(clock, "format_size", "Size", "/lock/clock/size", 150, 72, 200, 4, [](double v) { return std::format("{:.0f} px", v); });
+
+    auto* live = page->add<Live>();
+    live->setSpacing(6);
+    live->sync = [live] {
+        live->clearChildren();
+        auto* g = group(live, "Widgets", "Under the clock, top to bottom");
+        auto j = Config::get().value<nlohmann::json>("/lock/widgets", nlohmann::json());
+        std::vector<std::string> on;
+        if (j.is_array()) {
+            for (const auto& v : j)
+                if (v.is_string()) on.push_back(v.get<std::string>());
+        } else {
+            on = {"date", "weather", "media"};
+        }
+        auto save = [](const std::vector<std::string>& ids) { Config::get().set("/lock/widgets", ids); };
+        // Enabled ones first, in their order, then the rest
+        std::vector<const LockWidgetDef*> order;
+        for (const auto& id : on)
+            for (const auto& d : kLockWidgets)
+                if (id == d.id) order.push_back(&d);
+        for (const auto& d : kLockWidgets)
+            if (std::ranges::find(on, std::string(d.id)) == on.end()) order.push_back(&d);
+        for (const auto* d : order) {
+            const auto it = std::ranges::find(on, std::string(d->id));
+            const bool enabled = it != on.end();
+            const size_t i = static_cast<size_t>(it - on.begin());
+            auto r = row(g, d->icon, d->name, d->about);
+            if (enabled && i > 0) iconButton(r.row, "arrow_upward", [on, i, save]() mutable {
+                std::swap(on[i], on[i - 1]);
+                save(on);
+            });
+            if (enabled && i + 1 < on.size()) iconButton(r.row, "arrow_downward", [on, i, save]() mutable {
+                std::swap(on[i], on[i + 1]);
+                save(on);
+            });
+            auto* sw = r.row->add<Switch>();
+            sw->setChecked(enabled, false);
+            const std::string id = d->id;
+            sw->onToggled = [on, id, save](bool v) mutable {
+                if (v) on.push_back(id);
+                else std::erase(on, id);
+                save(on);
+            };
+        }
+    };
+    live->conns.push_back(Config::get().changed.connect([live] { live->syncSoon(); }));
+    live->sync();
+
+    auto* login = group(page, "Login screen", "greetd's greeter, installed with install.sh --greeter");
+    const bool installed = access("/var/lib/material3ui-greeter", F_OK) == 0;
+    switchRow(login, "sync", "Match the lock screen", "Copies the clock, widgets, weather, wallpaper and colours when they change",
+              "/lock/syncGreeter", true);
+    auto status = row(login, "login", installed ? "Login screen installed" : "Login screen not installed",
+                      installed ? "Sync copies your look to it now" : "Run: greeter/material3ui-greeter install --enable");
+    if (installed) pillButton(status.row, "Sync now", false, [] {
+        m3::run({"material3ui-greeter", "sync"}, [](int code, const std::string& out) {
+            m3::run({"notify-send", "-a", "Settings", code == 0 ? "Login screen synced" : "Login screen sync failed", out}, nullptr);
+        });
+    }, "sync");
+    auto preview = row(login, "visibility", "Preview", "Locks the screen now: unlock with your password");
+    pillButton(preview.row, "Lock now", true, [&popup] {
+        popup.close();
+        if (lock) lock();
+    }, "lock");
+}
+
 void notificationsPage(Flex* page, Popup&) {
     auto* g = group(page, "Notifications");
     auto dnd = row(g, "do_not_disturb_on", "Do not disturb", "Only critical notifications show while this is on");
@@ -770,8 +978,6 @@ void lockPage(Flex* page, Popup&) {
     choiceRow<int>(g, "monitor", "Screen off after", "", "/idle/screenOffAfter", 900,
                    {{0, "Never"}, {120, "2 min"}, {600, "10 min"}, {900, "15 min"}, {3600, "1 hour"}});
     switchRow(g, "bedtime", "Lock before sleep", "", "/lock/lockBeforeSleep", true);
-    switchRow(g, "login", "Match the login screen", "Copies wallpaper and colours to the greeter when they change",
-              "/lock/syncGreeter", true);
     switchRow(g, "wallpaper", "Separate lock-screen wallpaper", "Uses lock.wallpaperPath", "/lock/useSeparateWallpaper", false);
     auto test = row(g, "lock", "Lock now");
     pillButton(test.row, "Lock", true, [] {
@@ -1149,8 +1355,10 @@ const PageDef kPages[] = {
     {"bar", "toolbar", "Status bar", "Position, modules and the island", barPage},
     {"dock", "dock_to_bottom", "Dock", "Pinned apps, running apps and auto-hide", dockPage},
     {"tools", "construction", "Tools", "Clipboard history and screenshots", toolsPage},
+    {"weather", "partly_cloudy_day", "Weather", "Location, units and the forecast", weatherPage},
     {"notifications", "notifications", "Notifications", "Do not disturb and pop-ups", notificationsPage},
-    {"lock", "lock", "Lock & idle", "When the screen locks and sleeps", lockPage},
+    {"lockscreen", "lock_person", "Lock screen", "Clock, widgets and the login screen", lockScreenPage},
+    {"lock", "lock_clock", "Lock & idle", "When the screen locks and sleeps", lockPage},
     {"keybinds", "keyboard", "Keybinds", "Remap, disable and add shortcuts", keybindsPage},
     {"packages", "deployed_code", "Packages & Updates", "Updates and software from repos, AUR and Flathub", packagesPage},
     {"about", "info", "About", "This device and the shell", aboutPage},
@@ -1229,7 +1437,7 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
     };
     auto items = std::make_shared<std::vector<NavItem>>();
     auto show = std::make_shared<std::function<void(size_t)>>();
-    *show = [content, scroll, items, badgeIcon, heroTitle, heroBlurb, &popup](size_t index) {
+    *show = [content, scroll, items, badgeIcon, heroTitle, heroBlurb, sideScroll, side, &popup](size_t index) {
         const auto& def = kPages[index];
         content->clearChildren();
         // Expressive header: the page's icon in a tonal shape, a large title
@@ -1250,6 +1458,12 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
             it.icon->setFill(on)->setColor(on ? "on_secondary_container" : "on_surface_variant");
             it.label->setWeight(on ? 600 : 500)->setColor(on ? "on_secondary_container" : "on_surface_variant");
         }
+        // Keep the active item in view (after the next layout)
+        Button* active = (*items)[index].button;
+        EventLoop::get().addTimer(30, [sideScroll, side, active] {
+            const float y = active->rect().y - side->rect().y;
+            sideScroll->scrollTo(y - sideScroll->rect().h / 2 + active->rect().h / 2);
+        });
     };
     size_t first = 0;
     for (size_t i = 0; i < std::size(kPages); ++i) {
