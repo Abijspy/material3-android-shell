@@ -205,7 +205,8 @@ locate_repo() {
 previous() { [[ -f "$STATE_FILE" ]] && grep -oP "\"$1\": \"\\K[^\"]*" "$STATE_FILE" 2>/dev/null || true; }
 
 # ── Packages ─────────────────────────────────────────────────────────────────
-pkg_for() { case "$1" in librewolf) echo librewolf-bin ;; zen-browser) echo zen-browser-bin ;; *) echo "$1" ;; esac; }
+# LibreWolf is in [extra] now (librewolf-bin left the AUR); Zen is still AUR-only
+pkg_for() { case "$1" in zen-browser) echo zen-browser-bin ;; *) echo "$1" ;; esac; }
 desktop_for() {
     case "$1" in
         alacritty) echo Alacritty.desktop ;; ghostty) echo com.mitchellh.ghostty.desktop ;;
@@ -353,7 +354,7 @@ if [[ -z "$CHANNEL" ]]; then
 fi
 choose TERMINAL "Terminal" "alacritty:GPU terminal, recoloured with the wallpaper" "kitty:feature-rich" "foot:minimal and fast" "ghostty:modern GPU terminal"
 choose FILE_MANAGER "File manager" "nemo:Cinnamon's" "thunar:light, from Xfce" "nautilus:GNOME Files" "dolphin:KDE's"
-choose BROWSER "Browser" "librewolf:privacy-minded Firefox (AUR)" "firefox:Mozilla Firefox" "chromium:open-source Chromium" "zen-browser:Zen (AUR)"
+choose BROWSER "Browser" "librewolf:privacy-minded Firefox" "firefox:Mozilla Firefox" "chromium:open-source Chromium" "zen-browser:Zen (AUR)"
 choose HYPR_MODE "Hyprland config" "full:Material3UI's hyprland.lua (yours is backed up)" "inject:keep yours, add the shell to it" "skip:don't touch it"
 choose CHANNEL "Updates" "latest:follow main" "release:tagged releases only"
 # The v1 config can't take an injection: it is replaced instead

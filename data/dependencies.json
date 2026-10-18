@@ -330,7 +330,7 @@
       "description": "Default file manager"
     },
     {
-      "name": "librewolf-bin",
+      "name": "librewolf",
       "command": "librewolf",
       "description": "Default web browser"
     },
