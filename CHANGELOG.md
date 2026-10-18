@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.3.0 — 2026-10-18
+
+- Add the Material3UI **greetd login screen** (`greeter/`). It mirrors the lock screen's layout, sizes, colours, placeholder text, Material-shape password dots, shake and entrance motion, and renders your lock-screen clock style; it adds a user picker, a session picker (from `wayland-sessions`) and power buttons. It handles multi-step PAM prompts (fingerprint/OTP) and remembers the last user and session; with no greetd running it opens in a preview mode.
+- Add `material3ui-greeter` (`install [--enable]`, `sync`, `preview`, `status`, `uninstall`). Install backs up `/etc/greetd/config.toml`, makes Google Sans Flex available system-wide, and grants your user write access to `/var/lib/material3ui-greeter` through an ACL so syncing needs no sudo.
+- Add **Auto sync login screen** to Settings → Lockscreen, with status, "Sync now" and "Preview". A new `GreeterSync` service watches the generated colours and the shell config and syncs after a short debounce.
+- `install.sh` gains an optional login-screen step (`--greeter`) and disables `hyprpolkitagent`, polkit-gnome and the Plasma agent user services, since the shell is the polkit agent and only one agent can register per session. `update.sh` refreshes an installed greeter when sudo is available without a prompt.
+
 ## v2.2.0 — 2026-10-18
 
 - Add `material3ui-sysmon`, Material3UI's own system monitor backend replacing dgop. Pure Python 3 standard library, reading `/proc` and `/sys`: CPU (usage, per-core, frequency, temperature), memory and swap, system counts and load, processes with true per-sample CPU deltas, disk mounts and GPUs (named from `pci.ids`).

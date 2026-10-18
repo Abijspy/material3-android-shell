@@ -95,4 +95,12 @@ fi
 
 install -Dm755 "$PROJECT_ROOT/dotfiles/.local/bin/material3uictl" "$HOME/.local/bin/material3uictl"
 ln -sf "$SHELL_DIR/scripts/sysmon/material3ui-sysmon" "$HOME/.local/bin/material3ui-sysmon"
+if [[ -d /usr/share/material3ui-greeter ]]; then
+    if sudo -n true 2>/dev/null; then
+        "$PROJECT_ROOT/greeter/material3ui-greeter" install && echo "Login screen updated."
+    else
+        echo "Login screen: run '$PROJECT_ROOT/greeter/material3ui-greeter install' to update it (needs sudo)."
+    fi
+fi
+
 echo "Update successful!"

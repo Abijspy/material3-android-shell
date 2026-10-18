@@ -45,6 +45,7 @@ ShellRoot {
     // Reference singletons to ensure they are instantiated at startup
     readonly property var _caffeine: Caffeine
     readonly property var _versionService: VersionService
+    readonly property var _greeterSync: GreeterSync
 
     Component.onCompleted: {
         MaterialThemeLoader.reapplyTheme()

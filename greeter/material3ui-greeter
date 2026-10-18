@@ -1,0 +1,243 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────────────
+#  material3ui-greeter: install, theme and preview the Material3UI greetd greeter
+#
+#    install [--enable]   Install the greeter for greetd (uses sudo). --enable also
+#                         switches the display manager to greetd.
+#    sync [--quiet]       Copy your wallpaper, colours, avatar, clock format,
+#                         keyboard layout and monitor rules to the login screen.
+#    preview              Show the greeter inside your current session.
+#    status               Show what is installed and when it was last synced.
+#    uninstall            Remove the greeter and restore the previous greetd config.
+# ─────────────────────────────────────────────────────────────────────────────
+set -euo pipefail
+
+readonly SHARE=/usr/share/material3ui-greeter
+readonly DATA=/var/lib/material3ui-greeter
+readonly GREETD_CONF=/etc/greetd/config.toml
+readonly BIN=/usr/local/bin/material3ui-greeter
+readonly FONT_DIR=/usr/local/share/fonts/material3ui
+readonly SRC="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+
+QUIET=0
+say()  { [[ "$QUIET" == 1 ]] || echo -e "\033[38;2;202;169;224m\033[1m│\033[0m $*"; }
+ok()   { [[ "$QUIET" == 1 ]] || echo -e "\033[38;2;202;169;224m\033[1m│\033[0m \033[38;2;166;209;137m✓\033[0m $*"; }
+die()  { echo -e "\033[38;2;231;130;132m✗ $1\033[0m" >&2; exit "${2:-1}"; }
+
+as_root() { if [[ "$EUID" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
+
+# The user whose appearance is mirrored (the one who ran sudo, if any).
+target_user() { echo "${SUDO_USER:-$(id -un)}"; }
+target_home() { getent passwd "$(target_user)" | cut -d: -f6; }
+
+# ── install ──────────────────────────────────────────────────────────────────
+cmd_install() {
+    local enable=0
+    [[ "${1:-}" == --enable ]] && enable=1
+    command -v greetd >/dev/null 2>&1 || pacman -Qq greetd >/dev/null 2>&1 || die "greetd is not installed (sudo pacman -S greetd)."
+    command -v qs >/dev/null 2>&1 || command -v quickshell >/dev/null 2>&1 || die "Quickshell is not installed."
+    [[ -f "$SRC/shell.qml" ]] || die "Run this from the repository's greeter/ directory (missing $SRC/shell.qml)."
+    getent passwd greeter >/dev/null || die "The 'greeter' user is missing; reinstall greetd."
+
+    local user; user="$(target_user)"
+    say "Installing greeter files to $SHARE"
+    as_root rm -rf "$SHARE"
+    as_root install -d -m 755 "$SHARE" "$SHARE/core" "$SHARE/components"
+    as_root install -m 644 "$SRC"/shell.qml "$SRC"/GreeterSurface.qml "$SRC"/hyprland.lua "$SHARE/"
+    as_root install -m 644 "$SRC"/core/* "$SHARE/core/"
+    as_root install -m 644 "$SRC"/components/* "$SHARE/components/"
+    as_root install -m 755 "$SRC"/greet-hyprland.sh "$SHARE/greet-hyprland.sh"
+    as_root install -m 755 "$SRC"/material3ui-greeter "$BIN"
+    ok "Greeter installed"
+
+    # Data dir: owned by greeter (it writes state.json); the desktop user gets
+    # write access through an ACL so the shell can sync without sudo.
+    as_root install -d -m 755 -o greeter -g greeter "$DATA" "$DATA/avatars"
+    if command -v setfacl >/dev/null 2>&1; then
+        as_root setfacl -m "u:$user:rwx" -m "d:u:$user:rwx" "$DATA" "$DATA/avatars"
+        ok "$user can sync the login screen without sudo"
+    else
+        say "setfacl not found: syncing will need sudo (install the 'acl' package)."
+    fi
+
+    # Fonts in ~/.local/share/fonts are invisible to the greeter user.
+    local home; home="$(target_home)"
+    if compgen -G "$home/.local/share/fonts/material3ui-google-sans-flex/*" >/dev/null; then
+        as_root install -d -m 755 "$FONT_DIR"
+        as_root cp -r "$home/.local/share/fonts/material3ui-google-sans-flex/." "$FONT_DIR/"
+        as_root fc-cache -f "$FONT_DIR" >/dev/null 2>&1 || true
+        ok "Google Sans Flex available system-wide"
+    fi
+
+    if [[ -f "$GREETD_CONF" ]] && ! grep -q "material3ui-greeter" "$GREETD_CONF"; then
+        as_root cp "$GREETD_CONF" "$GREETD_CONF.material3ui-backup"
+        say "Backed up $GREETD_CONF to $GREETD_CONF.material3ui-backup"
+    fi
+    as_root install -d -m 755 /etc/greetd
+    printf '%s\n' \
+        "# Material3UI greeter (managed by material3ui-greeter)" \
+        "[terminal]" \
+        "vt = 1" \
+        "" \
+        "[default_session]" \
+        "command = \"$SHARE/greet-hyprland.sh\"" \
+        "user = \"greeter\"" | as_root tee "$GREETD_CONF" >/dev/null
+    ok "greetd configured"
+
+    if [[ "$EUID" -eq 0 && -n "${SUDO_USER:-}" ]]; then
+        sudo -u "$SUDO_USER" "$BIN" sync || true
+    else
+        "$BIN" sync || true
+    fi
+
+    if [[ "$enable" == 1 ]]; then
+        as_root systemctl enable --force greetd.service
+        ok "greetd is now the display manager (takes effect on next boot)"
+    else
+        say "Enable it with: sudo systemctl enable --force greetd.service"
+    fi
+}
+
+# ── sync ─────────────────────────────────────────────────────────────────────
+cmd_sync() {
+    [[ "${1:-}" == --quiet ]] && QUIET=1
+    [[ -d "$DATA" ]] || die "Greeter not installed; run: material3ui-greeter install" 2
+    [[ -w "$DATA" ]] || die "No write access to $DATA; re-run 'material3ui-greeter install' or use sudo." 3
+
+    python3 -I - "$DATA" "$(target_user)" "$(target_home)" <<'PY'
+import json, os, re, shutil, sys, time
+data, user, home = sys.argv[1:4]
+cfg_home = os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config")
+state_home = os.environ.get("XDG_STATE_HOME") or os.path.join(home, ".local/state")
+
+def load(path):
+    try:
+        with open(path) as f: return json.load(f)
+    except (OSError, ValueError): return {}
+
+def get(d, *keys, default=None):
+    for k in keys:
+        if not isinstance(d, dict) or k not in d: return default
+        d = d[k]
+    return d
+
+def strip(p): return re.sub(r"^file://", "", p or "")
+
+def put(src, dst):
+    tmp = dst + ".tmp"
+    shutil.copyfile(src, tmp)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, dst)
+
+cfg = load(os.path.join(cfg_home, "material3ui/config.json"))
+separate = get(cfg, "lock", "useSeparateWallpaper", default=False)
+gen = os.path.join(state_home, "quickshell/user/generated")
+colors = os.path.join(gen, "lockscreencolors.json" if separate else "colors.json")
+if not os.path.isfile(colors): colors = os.path.join(gen, "colors.json")
+
+out = {"user": user, "syncedAt": int(time.time())}
+synced = []
+if os.path.isfile(colors):
+    put(colors, os.path.join(data, "colors.json")); synced.append("colours")
+
+wp = strip(get(cfg, "lock", "wallpaperPath") if separate else None) or strip(get(cfg, "appearance", "background", "wallpaperPath"))
+if wp and os.path.isfile(wp) and os.path.splitext(wp)[1].lower() in (".png", ".jpg", ".jpeg", ".webp", ".bmp"):
+    dst = os.path.join(data, "wallpaper" + os.path.splitext(wp)[1].lower())
+    for old in os.listdir(data):
+        if old.startswith("wallpaper.") and os.path.join(data, old) != dst:
+            try: os.remove(os.path.join(data, old))
+            except OSError: pass
+    put(wp, dst); out["wallpaper"] = dst; synced.append("wallpaper")
+
+avatars = {}
+prev = load(os.path.join(data, "greeter.json"))
+avatars.update(prev.get("avatars", {}))
+for cand in (strip(get(cfg, "profile", "avatarPicture")), strip(get(cfg, "bar", "avatar_path")), os.path.join(home, ".face"), os.path.join(home, ".face.icon")):
+    if cand and os.path.isfile(cand):
+        dst = os.path.join(data, "avatars", user)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        put(cand, dst); avatars[user] = dst; synced.append("avatar"); break
+out["avatars"] = avatars
+# Clock and date exactly as the lock screen renders them (Config.timeFormat,
+# Config.longDateFormat, DigitalClock with isLockscreen: true)
+style = get(cfg, "time", "timeStyle", default="24H")
+out["timeFormat"] = {"12H_pm": "hh:mm ap", "12H_PM": "hh:mm AP"}.get(style, "HH:mm")
+out["dateFormat"] = {"MDY": "dddd, MMMM d", "YMD": "yyyy/MM/dd"}.get(get(cfg, "time", "dateStyle", default="DMY"), "dddd, d MMMM")
+main_font = get(cfg, "appearance", "fonts", "main", default="Google Sans Flex") or "Google Sans Flex"
+numbers_font = get(cfg, "appearance", "fonts", "numbers", default=main_font) or main_font
+out["font"] = main_font
+clock_cfg = get(cfg, "appearance", "clock", default={}) or {}
+digital = clock_cfg.get("digital" if clock_cfg.get("useSameStyle", True) else "digitalLocked", {}) or {}
+fonts = get(cfg, "appearance", "clockFonts", default={}) or {}
+out["clock"] = {
+    "colorStyle": digital.get("colorStyle", "primary"),
+    "fontSize": digital.get("fontSize", 84),
+    "dateFontSize": digital.get("dateFontSize", 24) or 24,
+    "dateGap": digital.get("dateGap", 4) or 4,
+    "isVertical": bool(digital.get("isVertical", False)),
+    "hideAmPm": bool(digital.get("hideAmPm", False)),
+    "showDate": bool(clock_cfg.get("showLockscreenDate", True)),
+    "timeFont": fonts.get("lockscreenTimeFont") or numbers_font,
+    "dateFont": fonts.get("lockscreenDateFont") or main_font,
+}
+
+# Keyboard layout and monitor rules for the greeter's Hyprland session
+lua = []
+hypr = os.path.join(cfg_home, "hypr/material3ui")
+try:
+    m = re.search(r'kb_layout\s*=\s*"([^"]*)"', open(os.path.join(hypr, "input.lua")).read())
+    if m: lua.append('hl.config({ input = { kb_layout = "%s" } })' % m.group(1))
+except OSError: pass
+try:
+    lua += [l.rstrip() for l in open(os.path.join(hypr, "user_persistence.lua")) if l.lstrip().startswith("hl.monitor(")]
+except OSError: pass
+with open(os.path.join(data, "hyprland-local.lua.tmp"), "w") as f:
+    f.write("-- Synced from %s by material3ui-greeter\n%s\n" % (user, "\n".join(lua)))
+os.replace(os.path.join(data, "hyprland-local.lua.tmp"), os.path.join(data, "hyprland-local.lua"))
+
+with open(os.path.join(data, "greeter.json.tmp"), "w") as f: json.dump(out, f, indent=2)
+os.replace(os.path.join(data, "greeter.json.tmp"), os.path.join(data, "greeter.json"))
+print(", ".join(synced + ["clock", "keyboard"]))
+PY
+}
+
+# ── preview / status / uninstall ─────────────────────────────────────────────
+cmd_preview() {
+    local qml="$SHARE/shell.qml"
+    [[ -f "$SRC/shell.qml" ]] && qml="$SRC/shell.qml"
+    [[ -n "${WAYLAND_DISPLAY:-}" ]] || die "Run the preview inside a Wayland session."
+    say "Previewing $qml (type \"fail\" to test an error, anything else to close)"
+    env -u GREETD_SOCK M3UI_GREETER_DATA="$DATA" qs -p "$qml"
+}
+
+cmd_status() {
+    [[ -f "$SHARE/shell.qml" ]] && ok "Installed in $SHARE" || say "Not installed"
+    grep -qs "material3ui-greeter" "$GREETD_CONF" && ok "greetd uses the Material3UI greeter" || say "greetd is not configured for it"
+    systemctl is-enabled --quiet greetd.service 2>/dev/null && ok "greetd.service enabled" || say "greetd.service not enabled"
+    [[ -w "$DATA" ]] && ok "$(id -un) can sync without sudo" || say "Sync needs sudo"
+    if [[ -f "$DATA/greeter.json" ]]; then
+        local ts; ts="$(python3 -I -c 'import json,sys;print(json.load(open(sys.argv[1])).get("syncedAt",0))' "$DATA/greeter.json")"
+        ok "Last sync: $(date -d "@$ts" '+%Y-%m-%d %H:%M')"
+    fi
+}
+
+cmd_uninstall() {
+    if [[ -f "$GREETD_CONF.material3ui-backup" ]]; then
+        as_root mv "$GREETD_CONF.material3ui-backup" "$GREETD_CONF"
+        ok "Restored previous greetd config"
+    elif grep -qs "material3ui-greeter" "$GREETD_CONF"; then
+        say "No backup to restore; edit $GREETD_CONF before rebooting."
+    fi
+    as_root rm -rf "$SHARE" "$DATA" "$FONT_DIR"
+    as_root rm -f "$BIN"
+    ok "Greeter removed"
+}
+
+case "${1:-}" in
+    install) shift; cmd_install "$@" ;;
+    sync) shift; out="$(cmd_sync "$@")"; [[ "$QUIET" == 1 || "${1:-}" == --quiet ]] || ok "Synced: $out" ;;
+    preview) cmd_preview ;;
+    status) cmd_status ;;
+    uninstall) cmd_uninstall ;;
+    *) sed -n '3,11p' "$0" | sed 's/^#  \{0,1\}//'; exit 2 ;;
+esac

@@ -29,6 +29,7 @@ FILE_MANAGER=""
 BROWSER=""
 HYPR_MODE=""
 CHANNEL=""
+GREETER=""
 INSTALL_DIR=""
 ORIG_ARGS=("$@")
 
@@ -46,6 +47,8 @@ Usage: install.sh [options]
                             inject: append the shell module to your hyprland.lua
                             skip: leave Hyprland config alone
       --channel NAME        latest (default) | release
+      --greeter             Install the Material3UI greetd login screen and make
+                            greetd the display manager
       --dir PATH            Where to clone when run outside the repo
                             (default ~/.local/src/material3ui)
   -h, --help                Show this help
@@ -62,6 +65,7 @@ while [[ $# -gt 0 ]]; do
         --file-manager) need_arg "$1" "${2:-}"; FILE_MANAGER="$2"; shift ;;
         --browser) need_arg "$1" "${2:-}"; BROWSER="$2"; shift ;;
         --hypr) need_arg "$1" "${2:-}"; HYPR_MODE="$2"; shift ;;
+        --greeter) GREETER=1 ;;
         --channel) need_arg "$1" "${2:-}"; CHANNEL="$2"; shift ;;
         --dir) need_arg "$1" "${2:-}"; INSTALL_DIR="$2"; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -283,6 +287,9 @@ confirm "KDE/Qt Material You theming (Python venv)?" N && OPT_KDE=1
 confirm "Live wallpapers (mpvpaper, Wallpaper Engine)?" N && OPT_LIVEWP=1
 confirm "fish + starship prompt?" N && OPT_FISH=1
 confirm "EasyEffects and Cloudflare WARP integration?" N && OPT_EXTRAS=1
+if [[ -z "$GREETER" ]]; then
+    confirm "Material3UI login screen (greetd greeter, replaces your display manager)?" N && GREETER=1 || GREETER=0
+fi
 
 echo
 say "Terminal ${C_ACCENT}$TERMINAL${C_RST} · Files ${C_ACCENT}$FILE_MANAGER${C_RST} · Browser ${C_ACCENT}$BROWSER${C_RST} · Hyprland ${C_ACCENT}$HYPR_MODE${C_RST} · Channel ${C_ACCENT}$CHANNEL${C_RST}"
@@ -293,6 +300,7 @@ opts=()
 [[ "$OPT_LIVEWP" == 1 ]] && opts+=(live-wallpapers)
 [[ "$OPT_FISH" == 1 ]] && opts+=(fish)
 [[ "$OPT_EXTRAS" == 1 ]] && opts+=(easyeffects warp)
+[[ "$GREETER" == 1 ]] && opts+=(greeter)
 dim "Optional: ${opts[*]:-none}"
 done_ "Choices recorded."
 
@@ -312,6 +320,7 @@ else
     [[ "$OPT_FISH" == 1 ]] && PKGS+=(fish starship)
     [[ "$OPT_EXTRAS" == 1 ]] && PKGS+=(easyeffects cloudflare-warp-bin)
     [[ "$OPT_KDE" == 1 ]] && PKGS+=(python-pip)
+    [[ "$GREETER" == 1 ]] && PKGS+=(greetd acl)
     PKGS+=(hypridle gnome-keyring "$(pkg_for "$TERMINAL")" "$(pkg_for "$FILE_MANAGER")" "$(pkg_for "$BROWSER")")
     [[ "$FILE_MANAGER" == nemo ]] && PKGS+=(nemo-fileroller)
 
@@ -407,6 +416,7 @@ case "$HYPR_MODE" in
         plan "$HYPR/hyprland.lua" "append require(\"material3ui.shell\")" ;;
 esac
 plan "$HOME/.local/bin/material3uictl" "CLI"
+[[ "$GREETER" == 1 ]] && plan "/etc/greetd/config.toml" "login screen (greetd); current display manager is replaced"
 
 for entry in "${PLAN[@]}"; do
     path="${entry%%|*}"
@@ -506,6 +516,27 @@ run mkdir -p "$HOME/.local/bin"
 run install -m 755 "$REPO/dotfiles/.local/bin/material3uictl" "$HOME/.local/bin/material3uictl"
 run ln -sf "$CONFIG_HOME/quickshell/material3ui/scripts/sysmon/material3ui-sysmon" "$HOME/.local/bin/material3ui-sysmon"
 ok "material3uictl and material3ui-sysmon"
+
+# The shell is the polkit agent (Quickshell.Services.Polkit); only one agent
+# can register per session, so stop agents that would win the race.
+for agent in hyprpolkitagent.service polkit-gnome-authentication-agent-1.service plasma-polkit-agent.service; do
+    if systemctl --user is-enabled --quiet "$agent" 2>/dev/null; then
+        run systemctl --user disable --now "$agent"
+        ok "Disabled $agent (Material3UI provides the polkit agent)"
+    fi
+done
+
+if [[ "$GREETER" == 1 ]]; then
+    if command -v greetd >/dev/null 2>&1 || [[ "$DRY_RUN" == 1 ]]; then
+        if run "$REPO/greeter/material3ui-greeter" install --enable; then
+            ok "Login screen installed (greetd starts it on next boot)"
+        else
+            warn "Login screen setup failed; see the message above and re-run greeter/material3ui-greeter install --enable."
+        fi
+    else
+        warn "greetd is not installed; run 'greeter/material3ui-greeter install --enable' after installing it."
+    fi
+fi
 
 # Retire Material3UI v1 helpers (the shell now ships its own polkit agent,
 # clipboard, wallpaper and update services).

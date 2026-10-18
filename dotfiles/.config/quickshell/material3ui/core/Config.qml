@@ -566,6 +566,7 @@ property JsonObject background: JsonObject {
                 property bool showWeather: true
                 property JsonObject weather: JsonObject { property string textColorMode: "adaptive" }
                 property JsonObject security: JsonObject { property bool requirePasswordToPower: true }
+                property JsonObject greeter: JsonObject { property bool autoSync: true }
             }
 
             // --- System ---

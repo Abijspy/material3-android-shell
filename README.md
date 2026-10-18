@@ -10,7 +10,7 @@ A Quickshell-based Material 3 desktop shell for Hyprland, adopting Android 16 de
 
 > **Note**: This shell and its dependencies are designed for **Arch Linux based distributions** (Arch, CachyOS, EndeavourOS, etc.).
 
-**Version:** v2.2.0
+**Version:** v2.3.0
 **License:** AGPL-3.0 — Material3UI Shell v2 is a rebranded fork of [NAnDoroid-shell](https://github.com/na-ive/nandoroid-shell) by na-ive. See [NOTICE](NOTICE).
 
 ## Key Features
@@ -21,7 +21,8 @@ A Quickshell-based Material 3 desktop shell for Hyprland, adopting Android 16 de
 - **Quick Settings & Quick Actions:** Editable tiles for Wi-Fi, Bluetooth, VPN/WARP, night light, caffeine, game mode, power profiles, EasyEffects and more.
 - **Dashboard:** Calendar, weather, media with lyrics, system info, timers, stopwatch, alarms and reminders.
 - **Notification centre** with persistent history and popups.
-- **Lock screen** with custom clocks, separate lock wallpaper and optional fingerprint (`fprintd`), plus a built-in **Polkit** agent.
+- **Lock screen** with custom clocks, separate lock wallpaper and optional fingerprint (`fprintd`), and a matching **greetd login screen**.
+- **Built-in Polkit agent**: authentication dialogs are drawn by the shell itself (Quickshell's native polkit service), so no separate agent is needed.
 - **Region tools:** Screenshot, OCR (`tesseract`), visual search, QR scanning and screen recording with or without audio.
 - **System monitor** powered by the bundled `material3ui-sysmon` (processes with real-time CPU deltas, performance and system pages).
 - **Wallpapers:** Local, Wallhaven and online collections, live wallpapers (mpvpaper / Wallpaper Engine), auto-cycling and desktop widgets.
@@ -168,6 +169,20 @@ Update later from Settings → About, or run `update.sh all` in the checkout. Up
 | `shell.lua` | Starts the shell, panel shortcuts, region tools, layer rules — the only module `inject` mode needs |
 | `user_persistence.lua` | Written by the shell (monitor layouts, game mode) |
 | `user.lua` | **Your overrides** — loaded last, never overwritten |
+
+## Login screen (greetd)
+
+`greeter/` is a Quickshell greeter for [greetd](https://sr.ht/~kennylevinsen/greetd/) with the same UI and motion as the lock screen: the same centred clock (your lock-screen clock style, fonts and time/date format), the same bottom password pill with Material-shape dots, shake and arrow button, and the same entrance animation. It adds a user chip (avatar + name, with a user picker), a session picker in the pill's leading slot, and suspend / reboot / power-off.
+
+```bash
+sudo pacman -S greetd
+greeter/material3ui-greeter install --enable   # or pick "login screen" in install.sh / pass --greeter
+material3ui-greeter preview                    # try it inside your session
+material3ui-greeter status
+material3ui-greeter uninstall                  # restores your previous greetd config
+```
+
+greetd runs a minimal Hyprland session (`/usr/share/material3ui-greeter/hyprland.lua`) that hosts the greeter and exits once you log in. Because the `greeter` user cannot read your home directory, `material3ui-greeter sync` copies your wallpaper, Material colours (the lock-screen palette when you use a separate lock wallpaper), avatar, clock settings, keyboard layout and monitor rules to `/var/lib/material3ui-greeter`. With **Settings → Wallpaper & Style → Lockscreen → Auto sync login screen** (on by default) the shell does this automatically whenever any of them change; "Sync now" and "Preview" are next to it.
 
 ## System monitor backend
 
