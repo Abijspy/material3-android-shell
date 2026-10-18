@@ -21,6 +21,7 @@ Hyprland binds, scripts and other programs all use the same commands. The defaul
 | `clipboard` | Clipboard history |
 | `screenshot` | The screenshot tool |
 | `wallpaper pick` | The wallpaper picker |
+| `popup lockeditor` | The lock screen editor |
 
 Running a panel command again closes the panel.
 
@@ -39,6 +40,7 @@ Running a panel command again closes the panel.
 | `lock` | Locks the session (ext-session-lock) |
 | `idle inhibit\|allow` | Caffeine: keeps the screen awake |
 | `bar toggle\|show\|hide` | Status bar visibility |
+| `bar edit\|done` | Edit the bar's widgets in place, or finish |
 | `reload` | Re-reads `config.json` and the palette |
 | `quit` | Exits the shell |
 

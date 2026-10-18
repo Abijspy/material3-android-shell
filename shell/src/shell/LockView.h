@@ -15,6 +15,11 @@ namespace m3::shell {
 // a clock and widgets (lock.clock and lock.widgets in config.json, edited in
 // Settings → Lock screen), then avatar, name and a password pill. In greeter
 // mode it adds user and session pickers and power buttons.
+// One lock-screen widget by id (clock, date, weather…), live and aligned for
+// grid column `col`; the lock screen, greeter and lock screen editor share it.
+// `clockScale` shrinks the clock (the editor is smaller than the screen).
+ui::Node* addLockWidget(ui::Node* parent, const std::string& id, bool greeter, int col, float clockScale = 1);
+
 class LockView : public ui::Flex {
 public:
     struct Choice {
@@ -48,17 +53,14 @@ protected:
     void doPaint(Renderer& r) override;
 
 private:
-    void tick();
     void cycle(std::vector<Choice>& list, size_t& index, int step, ui::Label* label);
 
     Options m_options;
     size_t m_userIndex = 0, m_sessionIndex = 0;
-    ui::Label *m_hours, *m_minutes = nullptr, *m_name, *m_status, *m_session = nullptr;
-    bool m_stacked = true;
+    ui::Label *m_name, *m_status, *m_session = nullptr;
     ui::Flex* m_pill;
     ui::Label* m_avatarLetter;
     ui::TextField* m_field;
-    EventLoop::TimerId m_clock = 0;
     bool m_busy = false;
 };
 

@@ -66,7 +66,7 @@ From the moment the machine boots:
 
 **1 · Log in.** The login screen runs on greetd and is the lock screen's twin: the same clock, widgets, weather, password pill and motion. Pick a user and a session, or suspend and shut down from there. When you change your wallpaper or avatar, the login screen picks it up automatically. → [Login screen](docs/GREETER.md)
 
-**2 · The desktop.** The bar is yours to arrange: drop widgets (weather, date, media, CPU, notifications, clipboard, screenshot and more) into its left, centre and right, or right-click it to edit. Its centre holds a dynamic island. It grows to show the song that's playing, a workspace switch or an incoming notification, then shrinks back. The bar and panels are translucent with the compositor's blur behind them. A dock on the bottom edge keeps your pinned and running apps, and slides away until you need it.
+**2 · The desktop.** The bar is yours to arrange: drop widgets (weather, date, media, CPU, notifications, clipboard, screenshot and more) into its left, centre and right, or right-click it to edit it in place. Its centre holds a dynamic island. It grows to show the song that's playing, a workspace switch or an incoming notification, then shrinks back. The bar and panels are translucent with the compositor's blur behind them. A dock on the bottom edge keeps your pinned and running apps, and slides away until you need it.
 
 **3 · Tap <kbd>Super</kbd>.** Spotlight opens. It finds apps, files and commands, does maths, and has an emoji picker. <kbd>Super</kbd><kbd>V</kbd> opens the clipboard history, images included.
 
@@ -77,7 +77,7 @@ From the moment the machine boots:
 
 **5 · Change the wallpaper.** Pick an image and Matugen builds a new Material 3 palette from it, or seed the palette from an accent colour you choose. The whole desktop recolours, GTK, KDE, Alacritty, kitty and Hyprland's window borders included.
 
-**6 · Lock the screen.** <kbd>Super</kbd><kbd>L</kbd> shows a clock and the widgets you picked: date, weather, forecast, media, battery and a notification count. Restyle it in Settings → Lock screen.
+**6 · Lock the screen.** <kbd>Super</kbd><kbd>L</kbd> shows a clock and the widgets you picked: date, weather, forecast, media, battery and a notification count. Rearrange it on a grid in the full-screen lock screen editor (Settings → Lock screen).
 
 **7 · Something asks for your password.** The prompt comes from the shell's own polkit agent, so it looks like the rest of the desktop and not like a 2009 dialog box.
 
@@ -128,7 +128,7 @@ For everything else, here is which file to edit. Updates never overwrite the fil
 | Use a different terminal, browser or file manager | ✎ `~/.config/hypr/material3ui/apps.lua` |
 | Remap, disable or add keybinds | **Settings → Keybinds** (saved to ✎ `keybinds_custom.lua`) |
 | Rearrange the bar | **Settings → Status bar → Widgets**, or right-click the bar |
-| Change the lock screen | **Settings → Lock screen** (the login screen follows) |
+| Change the lock screen | **Settings → Lock screen → Open editor** (the login screen follows) |
 | Set the weather location | **Settings → Weather** |
 | Pin apps to the dock | **Settings → Dock**, or right-click an app in the dock |
 | Add my own rules, monitors or autostart | ✎ `~/.config/hypr/material3ui/user.lua` |

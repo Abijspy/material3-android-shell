@@ -294,13 +294,80 @@ void Bar::rebuild() {
 
     auto root = std::make_unique<BarLayout>();
     auto* bg = root.get();
-    // Right click on empty bar space: straight to the bar editor
-    bg->onContextMenu = [this] { m_openPopup("settings bar", -1); };
+    // Right click on empty bar space: edit the bar in place
+    bg->onContextMenu = [] {
+        if (panels::editBar) panels::editBar(true);
+    };
     const auto zones = layout();
     for (size_t z = 0; z < 3; ++z) {
         auto* zone = bg->add<Flex>(Flex::Direction::Row);
         zone->setSpacing(8);
-        for (const auto& id : zones[z]) addModule(zone, id, floating);
+        if (!editing) {
+            for (const auto& id : zones[z]) addModule(zone, id, floating);
+            continue;
+        }
+        // Edit mode: the zone outlined, each widget with ◀ ✕ ▶, then "+"
+        pill(zone->setBorder(1.5f, ColorRef("primary", 0.8f)))->setPadding({4, 2})->setSpacing(4);
+        zone->setBackground(ColorRef("surface_container", 0.85f), false);
+        zone->fixedHeight = static_cast<float>(height()) - 4;
+        for (size_t i = 0; i < zones[z].size(); ++i) {
+            auto* item = zone->add<Flex>(Flex::Direction::Row);
+            pill(item->setBackground("surface_container_highest", false))->setPadding({2, 0})->setSpacing(0);
+            addModule(item, zones[z][i], false);
+            auto control = [&](const char* icon, std::function<void(Layout&)> change) {
+                auto* b = item->add<Button>();
+                pill(b)->setPadding(Insets(3));
+                b->pressedRadius = 4;
+                b->add<Icon>(icon, 16)->setColor(icon == std::string("close") ? "error" : "on_surface_variant", false);
+                b->onClicked = [change = std::move(change)](uint32_t button) {
+                    if (button != BTN_LEFT) return;
+                    auto l = layout();
+                    change(l);
+                    setLayout(l); // the bars rebuild when config.json changes
+                };
+            };
+            const std::string id = zones[z][i];
+            // Left: earlier in the zone, else the end of the zone before
+            if (i > 0 || z > 0)
+                control("chevron_left", [z, id](Layout& l) {
+                    auto& v = l[z];
+                    const auto it = std::ranges::find(v, id);
+                    if (it == v.end()) return;
+                    const auto pos = static_cast<size_t>(it - v.begin());
+                    v.erase(it);
+                    if (pos > 0) v.insert(v.begin() + static_cast<long>(pos - 1), id);
+                    else l[z - 1].push_back(id);
+                });
+            control("close", [z, id](Layout& l) { std::erase(l[z], id); });
+            if (i + 1 < zones[z].size() || z < 2)
+                control("chevron_right", [z, id](Layout& l) {
+                    auto& v = l[z];
+                    const auto it = std::ranges::find(v, id);
+                    if (it == v.end()) return;
+                    const auto pos = static_cast<size_t>(it - v.begin());
+                    v.erase(it);
+                    if (pos < v.size()) v.insert(v.begin() + static_cast<long>(pos + 1), id);
+                    else l[z + 1].insert(l[z + 1].begin(), id);
+                });
+        }
+        auto* add = zone->add<Button>();
+        pill(add->setBackground("primary_container", false))->setPadding({8, 4})->setSpacing(4);
+        add->pressedRadius = 6;
+        add->add<Icon>("add", 18)->setColor("on_primary_container", false);
+        const char* names[] = {"left", "centre", "right"};
+        add->onClicked = [this, add, z, names](uint32_t button) {
+            if (button == BTN_LEFT) m_openPopup(std::string("barwidgets ") + names[z], add->rect().x + add->rect().w / 2);
+        };
+        if (z == 2) {
+            auto* done = zone->add<Button>();
+            pill(done->setBackground("primary", false))->setPadding({12, 4})->setSpacing(4);
+            done->pressedRadius = 6;
+            done->add<Icon>("check", 18)->setColor("on_primary", false);
+            done->add<Label>("Done")->setSize(13)->setWeight(600)->setColor("on_primary", false);
+            done->onClicked = [](uint32_t) {
+                if (panels::editBar) panels::editBar(false);
+            };
+        }
     }
 
     auto* surface = m_surface.get();

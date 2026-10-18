@@ -17,6 +17,7 @@
 #include "services/Wallpaper.h"
 #include "services/Weather.h"
 #include "shell/Dock.h"
+#include "shell/LockLayout.h"
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
 #include "shell/bar/Bar.h"
@@ -555,7 +556,11 @@ void barPage(Flex* page, Popup&) {
     auto adding = std::make_shared<int>(-1); // the zone showing its add list
     live->sync = [live, adding] {
         live->clearChildren();
-        auto* g = group(live, "Widgets", "Add, remove and move widgets; right-click the bar to come back here");
+        auto* g = group(live, "Widgets", "Add, remove and move widgets here, or on the bar itself");
+        auto onBar = row(g, "edit", "Edit on the bar", "Move and remove widgets in place; right-click the bar does this too");
+        pillButton(onBar.row, "Edit bar", true, [] {
+            if (editBar) editBar(true);
+        }, "edit");
         auto lay = shell::Bar::layout();
         const char* zoneNames[] = {"Left", "Centre", "Right"};
         auto save = [live, adding](const shell::Bar::Layout& l) {
@@ -868,74 +873,153 @@ void weatherPage(Flex* page, Popup&) {
     now->sync();
 }
 
-// The lock screen's widgets, in the order offered
-struct LockWidgetDef {
-    const char* id;
-    const char* icon;
-    const char* name;
-    const char* about;
-};
-const LockWidgetDef kLockWidgets[] = {
-    {"date", "calendar_month", "Date", "The day under the clock"},
-    {"weather", "partly_cloudy_day", "Weather", "Temperature and sky now"},
-    {"forecast", "date_range", "Forecast", "The next three days"},
-    {"media", "music_note", "Media", "Now playing, with controls (not on the login screen)"},
-    {"battery", "battery_full", "Battery", "Charge level"},
-    {"notifications", "notifications", "Notifications", "How many are waiting; never their content"},
-};
-
 void lockScreenPage(Flex* page, Popup& popup) {
-    auto* clock = group(page, "Clock", "The login screen shows the same clock and widgets");
+    auto* clock = group(page, "Clock", "Place it on the board below; the login screen shows the same");
     choiceRow<std::string>(clock, "schedule", "Style", "", "/lock/clock/style", "stacked",
                            {{"stacked", "Stacked"}, {"inline", "One line"}});
-    choiceRow<std::string>(clock, "format_align_center", "Position", "", "/lock/clock/align", "center",
-                           {{"center", "Centre"}, {"left", "Left"}});
     choiceRow<int>(clock, "format_bold", "Weight", "", "/lock/clock/weight", 400, {{300, "Light"}, {400, "Regular"}, {600, "Bold"}});
     sliderRow(clock, "format_size", "Size", "/lock/clock/size", 150, 72, 200, 4, [](double v) { return std::format("{:.0f} px", v); });
 
+    // Layout: a board of the lock screen's grid over the wallpaper
     auto* live = page->add<Live>();
     live->setSpacing(6);
-    live->sync = [live] {
+    auto sel = std::make_shared<std::pair<int, int>>(-1, -1); // selected cell (col, row)
+    live->sync = [live, sel] {
         live->clearChildren();
-        auto* g = group(live, "Widgets", "Under the clock, top to bottom");
-        auto j = Config::get().value<nlohmann::json>("/lock/widgets", nlohmann::json());
-        std::vector<std::string> on;
-        if (j.is_array()) {
-            for (const auto& v : j)
-                if (v.is_string()) on.push_back(v.get<std::string>());
-        } else {
-            on = {"date", "weather", "media"};
-        }
-        auto save = [](const std::vector<std::string>& ids) { Config::get().set("/lock/widgets", ids); };
-        // Enabled ones first, in their order, then the rest
-        std::vector<const LockWidgetDef*> order;
-        for (const auto& id : on)
-            for (const auto& d : kLockWidgets)
-                if (id == d.id) order.push_back(&d);
-        for (const auto& d : kLockWidgets)
-            if (std::ranges::find(on, std::string(d.id)) == on.end()) order.push_back(&d);
-        for (const auto* d : order) {
-            const auto it = std::ranges::find(on, std::string(d->id));
-            const bool enabled = it != on.end();
-            const size_t i = static_cast<size_t>(it - on.begin());
-            auto r = row(g, d->icon, d->name, d->about);
-            if (enabled && i > 0) iconButton(r.row, "arrow_upward", [on, i, save]() mutable {
-                std::swap(on[i], on[i - 1]);
-                save(on);
-            });
-            if (enabled && i + 1 < on.size()) iconButton(r.row, "arrow_downward", [on, i, save]() mutable {
-                std::swap(on[i], on[i + 1]);
-                save(on);
-            });
-            auto* sw = r.row->add<Switch>();
-            sw->setChecked(enabled, false);
-            const std::string id = d->id;
-            sw->onToggled = [on, id, save](bool v) mutable {
-                if (v) on.push_back(id);
-                else std::erase(on, id);
-                save(on);
+        using namespace lockgrid;
+        auto items = load();
+        auto at = [&](int c, int r) -> Item* {
+            for (auto& it : items)
+                if (it.col == c && it.row == r) return &it;
+            return nullptr;
+        };
+        const char* colName[] = {"left", "centre", "right"};
+        const char* rowName[] = {"Top", "Upper", "Lower", "Bottom"};
+
+        auto* g = group(live, "Layout", "The lock and login screens, as a grid: click a cell to add a widget, or a widget to move or remove it");
+        auto full = row(g, "fullscreen", "Edit on the lock screen", "The real screen at full size, with your widgets live");
+        pillButton(full.row, "Open editor", true, [] {
+            if (open) open("lockeditor");
+        }, "edit");
+        auto* holder = g->add<Flex>(Flex::Direction::Column);
+        holder->setAlignItems(Align::Stretch)->setSpacing(12)->setPadding({16, 16});
+
+        // What the selection allows
+        auto* tools = holder->add<Flex>(Flex::Direction::Column);
+        tools->setAlignItems(Align::Stretch)->setSpacing(10);
+        const int c = sel->first, r = sel->second;
+        if (c < 0) {
+            caption(tools, "Select a cell on the board below.");
+        } else if (Item* it = at(c, r)) {
+            auto* bar = tools->add<Flex>(Flex::Direction::Row);
+            bar->setSpacing(8);
+            const auto* d = find(it->id);
+            auto* name = bar->add<Label>(std::format("{}  ·  {} {}", d->name, rowName[r], colName[c]));
+            name->setSize(14)->setWeight(600);
+            name->grow = true;
+            // Moving onto a taken cell swaps the two
+            auto move = [items, c, r, sel](int dc, int dr) mutable {
+                const int nc = c + dc, nr = r + dr;
+                if (nc < 0 || nc >= kCols || nr < 0 || nr >= kRows) return;
+                for (auto& o : items)
+                    if (o.col == nc && o.row == nr) {
+                        o.col = c;
+                        o.row = r;
+                    } else if (o.col == c && o.row == r) {
+                        o.col = nc;
+                        o.row = nr;
+                    }
+                *sel = {nc, nr};
+                save(items);
             };
+            if (c > 0) iconButton(bar, "arrow_back", [move]() mutable { move(-1, 0); });
+            if (r > 0) iconButton(bar, "arrow_upward", [move]() mutable { move(0, -1); });
+            if (r < kRows - 1) iconButton(bar, "arrow_downward", [move]() mutable { move(0, 1); });
+            if (c < kCols - 1) iconButton(bar, "arrow_forward", [move]() mutable { move(1, 0); });
+            pillButton(bar, "Remove", false, [items, c, r, sel]() mutable {
+                std::erase_if(items, [&](const Item& o) { return o.col == c && o.row == r; });
+                *sel = {-1, -1};
+                save(items);
+            }, "delete");
+        } else {
+            auto* l = tools->add<Label>(std::format("Add to {} {}", rowName[r], colName[c]));
+            l->setSize(14)->setWeight(600);
+            l->alignSelf = Align::Start;
+            auto* gallery = tools->add<Flow>();
+            size_t free = 0;
+            for (const auto& d : widgets()) {
+                if (std::ranges::any_of(items, [&](const Item& o) { return o.id == d.id; })) continue;
+                ++free;
+                auto* b = gallery->add<Button>(Flex::Direction::Column);
+                b->setBackground("tertiary_container", false)->setRadius(Radii(18))->setPadding({12, 10})->setSpacing(2);
+                b->setAlignItems(Align::Start);
+                b->pressedRadius = 10;
+                b->fixedWidth = 160;
+                auto* top = b->add<Flex>(Flex::Direction::Row);
+                top->setSpacing(6);
+                top->add<Icon>(d.icon, 18)->setColor("on_tertiary_container", false);
+                top->add<Label>(d.name)->setSize(13)->setWeight(600)->setColor("on_tertiary_container", false);
+                b->add<Label>(d.about)->setSize(12)->setMaxWidth(136)->setColor("on_tertiary_container", false);
+                const std::string id = d.id;
+                b->onClicked = [items, id, c, r, sel](uint32_t) mutable {
+                    items.push_back({id, c, r});
+                    *sel = {c, r};
+                    save(items);
+                };
+            }
+            if (free == 0) caption(gallery, "Every widget is placed. Remove one to put it here.");
         }
+        // Wallpaper under the cells, like the real screen
+        auto* board = holder->add<Node>();
+        board->fixedHeight = 4 * 70 + 3 * 6 + 24;
+        const std::string wp = Wallpaper::get().lockPath();
+        auto* bg = board->add<ImageView>(10, 10, [wp](float scale, int& w, int& h) -> GLuint {
+            if (wp.empty()) return 0;
+            auto* t = Images::get().picture(wp, static_cast<int>(700 * scale), static_cast<int>(320 * scale), true);
+            if (!t) return 0;
+            w = t->width;
+            h = t->height;
+            return t->id;
+        });
+        bg->cover = true;
+        auto* scrim = board->add<Flex>(Flex::Direction::Column);
+        scrim->setBackground(ColorRef("surface", 0.55f), false)->setRadius(Radii(20))->setPadding(Insets(12))->setSpacing(6);
+        scrim->setAlignItems(Align::Stretch);
+        for (int r = 0; r < kRows; ++r) {
+            auto* rowFlex = scrim->add<Flex>(Flex::Direction::Row);
+            rowFlex->setSpacing(6)->setAlignItems(Align::Stretch)->setJustify(Align::Center);
+            for (int c = 0; c < kCols; ++c) {
+                const Item* it = at(c, r);
+                const bool selected = sel->first == c && sel->second == r;
+                auto* cell = rowFlex->add<Button>(Flex::Direction::Row);
+                cell->fixedWidth = 208; // equal thirds of the board
+                cell->fixedHeight = 70;
+                cell->setRadius(Radii(16))->setSpacing(8)->setJustify(Align::Center);
+                cell->pressedRadius = 8;
+                if (it) {
+                    const auto* d = find(it->id);
+                    cell->setBackground(selected ? "primary" : "secondary_container", false);
+                    cell->add<Icon>(d->icon, 22)->setFill(true)->setColor(selected ? "on_primary" : "on_secondary_container", false);
+                    cell->add<Label>(d->name)->setSize(14)->setWeight(600)->setColor(selected ? "on_primary" : "on_secondary_container", false);
+                } else {
+                    cell->setBackground(selected ? ColorRef("primary", 0.25f) : ColorRef("surface_container_highest", 0.35f), false);
+                    cell->setBorder(selected ? 2 : 1, selected ? ColorRef("primary") : ColorRef("outline_variant"));
+                    cell->add<Icon>("add", 22)->setColor(selected ? "primary" : "on_surface_variant", false);
+                }
+                cell->onClicked = [sel, live, c, r](uint32_t) {
+                    *sel = sel->first == c && sel->second == r ? std::pair{-1, -1} : std::pair{c, r};
+                    live->syncSoon();
+                };
+            }
+        }
+
+        auto* foot = holder->add<Flex>(Flex::Direction::Row);
+        foot->setJustify(Align::End);
+        pillButton(foot, "Default layout", false, [sel] {
+            *sel = {-1, -1};
+            Config::get().set("/lock/grid", nullptr);
+            Config::get().set("/lock/widgets", nullptr);
+        }, "restart_alt");
     };
     live->conns.push_back(Config::get().changed.connect([live] { live->syncSoon(); }));
     live->sync();

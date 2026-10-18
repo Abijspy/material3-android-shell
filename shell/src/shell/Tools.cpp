@@ -8,6 +8,7 @@
 #include "services/Search.h"
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
+#include "shell/bar/Bar.h"
 #include "ui/Controls.h"
 #include "wayland/Display.h"
 
@@ -255,6 +256,50 @@ void screenshot(Flex* card, Popup& popup) {
             };
         }
     }
+}
+
+void barWidgets(Flex* card, Popup& popup, const std::string& zone) {
+    const size_t z = zone == "left" ? 0 : zone == "right" ? 2 : 1;
+    auto* head = card->add<Flex>(Flex::Direction::Row);
+    head->setSpacing(10);
+    head->add<Icon>("widgets", 24)->setColor("primary", false);
+    auto* title = head->add<Label>("Add to the " + std::string(z == 0 ? "left" : z == 2 ? "right" : "centre"));
+    title->setSize(20)->setWeight(600);
+    title->grow = true;
+    iconButton(head, "close", [&popup] { popup.close(); });
+
+    const auto lay = Bar::layout();
+    Flex* line = nullptr;
+    size_t count = 0;
+    for (const auto& m : Bar::modules()) {
+        bool used = false;
+        for (const auto& v : lay) used = used || std::ranges::find(v, std::string(m.id)) != v.end();
+        if (used) continue;
+        // Two tiles per line
+        if (count++ % 2 == 0) {
+            line = card->add<Flex>(Flex::Direction::Row);
+            line->setSpacing(8)->setAlignItems(Align::Stretch);
+        }
+        auto* b = line->add<Button>(Flex::Direction::Column);
+        b->setBackground("secondary_container", false)->setRadius(Radii(20))->setPadding({14, 12})->setSpacing(4);
+        b->setAlignItems(Align::Start);
+        b->pressedRadius = 12;
+        b->grow = true;
+        b->fixedWidth = 212;
+        auto* top = b->add<Flex>(Flex::Direction::Row);
+        top->setSpacing(8);
+        top->add<Icon>(m.icon, 20)->setColor("on_secondary_container", false);
+        top->add<Label>(m.name)->setSize(14)->setWeight(600)->setColor("on_secondary_container", false);
+        b->add<Label>(m.about)->setSize(12)->setMaxWidth(184)->setMaxLines(2)->setColor("on_secondary_container", false);
+        const std::string id = m.id;
+        b->onClicked = [id, z, &popup](uint32_t) {
+            auto l = Bar::layout();
+            l[z].push_back(id);
+            Bar::setLayout(l);
+            popup.close();
+        };
+    }
+    if (count == 0) caption(card, "Every widget is already on the bar.");
 }
 
 } // namespace m3::shell::panels

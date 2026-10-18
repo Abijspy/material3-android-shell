@@ -1,12 +1,13 @@
 #include "shell/LockView.h"
 
-#include "render/Images.h"
 #include "core/Config.h"
+#include "render/Images.h"
 #include "services/Auth.h"
 #include "services/Mpris.h"
 #include "services/Network.h"
 #include "services/Notifications.h"
 #include "services/Weather.h"
+#include "shell/LockLayout.h"
 #include "ui/Theme.h"
 
 #include <cmath>
@@ -43,8 +44,13 @@ std::string initial(const std::string& name) {
 // One lock-screen widget: rebuilt whenever its service changes
 class LockWidget : public Flex {
 public:
-    LockWidget(std::string id, bool greeter) : Flex(Direction::Row), m_id(std::move(id)), m_greeter(greeter) {
+    LockWidget(std::string id, bool greeter, Align align, float clockScale)
+        : Flex(Direction::Row), m_id(std::move(id)), m_greeter(greeter), m_align(align), m_clockScale(clockScale) {
         setSpacing(10)->setJustify(Align::Center);
+        if (m_id == "clock") {
+            clockTick();
+            return;
+        }
         auto watch = [this](Signal<>& sig) { m_conns.push_back(sig.connect([this] { sync(); })); };
         if (m_id == "weather" || m_id == "forecast") watch(Weather::get().changed);
         if (m_id == "media") watch(Mpris::get().changed);
@@ -58,6 +64,33 @@ public:
     }
 
 private:
+    // Hours over minutes like Android's lock screen, or on one line
+    void clockTick() {
+        clearChildren();
+        const auto& cfg = Config::get();
+        const bool stacked = cfg.value<std::string>("/lock/clock/style", "stacked") == "stacked";
+        const float size = static_cast<float>(cfg.value<double>("/lock/clock/size", 150)) * m_clockScale;
+        auto* col = add<Flex>(Direction::Column);
+        col->setSpacing(-size * 0.26f)->setAlignItems(m_align);
+        const std::time_t now = std::time(nullptr);
+        std::tm tm{};
+        localtime_r(&now, &tm);
+        char buf[16];
+        auto line = [&](const char* fmt) {
+            std::strftime(buf, sizeof buf, fmt, &tm);
+            col->add<Label>(buf)->setSize(size)->setWeight(cfg.value<int>("/lock/clock/weight", 400))->setColor("primary", false);
+        };
+        if (stacked) {
+            line("%H");
+            line("%M");
+        } else {
+            line("%H:%M");
+        }
+        m_timer = EventLoop::get().addTimer((60 - tm.tm_sec) * 1000 + 50, [this] {
+            m_timer = 0;
+            clockTick();
+        });
+    }
     // A rounded, translucent chip so widgets read on any wallpaper
     Flex* chip() {
         auto* c = add<Flex>(Direction::Row);
@@ -140,11 +173,72 @@ private:
     }
     std::string m_id;
     bool m_greeter;
+    Align m_align;
+    float m_clockScale;
     std::vector<Connection> m_conns;
     EventLoop::TimerId m_timer = 0;
 };
 
+// Places widgets in a 3-column grid: columns are equal thirds (contents
+// left, centred, right), rows take their tallest widget and empty rows
+// collapse, so the block reads top to bottom like the editor's grid.
+class LockGrid : public Node {
+public:
+    float spacing = 14, sidePadding = 96;
+    void place(Node* child, int col, int row) { m_cells.push_back({child, col, row}); }
+
+protected:
+    SizeF doMeasure(SizeF available) override {
+        float h = 0;
+        int rows = 0;
+        for (const float rh : rowHeights(available.w)) {
+            if (rh <= 0) continue;
+            h += rh;
+            ++rows;
+        }
+        if (rows > 1) h += spacing * static_cast<float>(rows - 1);
+        return {available.w, h};
+    }
+    void doArrange() override {
+        const auto& r = rect();
+        const float colW = (r.w - sidePadding * 2) / lockgrid::kCols;
+        const auto heights = rowHeights(r.w);
+        std::vector<float> rowY(heights.size());
+        float y = r.y;
+        for (size_t i = 0; i < heights.size(); ++i) {
+            rowY[i] = y;
+            if (heights[i] > 0) y += heights[i] + spacing;
+        }
+        for (const auto& c : m_cells) {
+            const SizeF s = c.node->measure({colW, 1e6f});
+            const float x0 = r.x + sidePadding + colW * static_cast<float>(c.col);
+            const float x = c.col == 0 ? x0 : c.col == 1 ? x0 + (colW - s.w) / 2 : x0 + colW - s.w;
+            const auto row = static_cast<size_t>(c.row);
+            c.node->arrange({x, rowY[row] + (heights[row] - s.h) / 2, s.w, s.h});
+        }
+    }
+
+private:
+    struct Cell {
+        Node* node;
+        int col, row;
+    };
+    std::vector<float> rowHeights(float width) {
+        std::vector<float> h(lockgrid::kRows, 0);
+        const float colW = (width - sidePadding * 2) / lockgrid::kCols;
+        for (const auto& c : m_cells)
+            if (c.node->shown()) h[static_cast<size_t>(c.row)] = std::max(h[static_cast<size_t>(c.row)], c.node->measure({colW, 1e6f}).h);
+        return h;
+    }
+    std::vector<Cell> m_cells;
+};
+
 } // namespace
+
+ui::Node* addLockWidget(ui::Node* parent, const std::string& id, bool greeter, int col, float clockScale) {
+    const Align align = col == 0 ? Align::Start : col == 1 ? Align::Center : Align::End;
+    return parent->add<LockWidget>(id, greeter, align, clockScale);
+}
 
 LockView::LockView(Options options) : Flex(Direction::Column), m_options(std::move(options)) {
     setJustify(Align::Center)->setAlignItems(Align::Center)->setSpacing(0);
@@ -152,28 +246,11 @@ LockView::LockView(Options options) : Flex(Direction::Column), m_options(std::mo
     for (size_t i = 0; i < m_options.users.size(); ++i)
         if (m_options.users[i].id == m_options.user) m_userIndex = i;
 
-    // Clock and widgets, as set in Settings → Lock screen (shared with the
-    // greeter through its synced copy of config.json)
-    const auto& cfg = Config::get();
-    m_stacked = cfg.value<std::string>("/lock/clock/style", "stacked") == "stacked";
-    const bool left = cfg.value<std::string>("/lock/clock/align", "center") == "left";
-    const float size = static_cast<float>(cfg.value<double>("/lock/clock/size", 150));
-    auto* top = add<Flex>(Direction::Column);
-    top->alignSelf = Align::Stretch;
-    top->setAlignItems(left ? Align::Start : Align::Center)->setSpacing(12)->setPadding({left ? 120.0f : 0.0f, 0});
-
-    // Clock: hours over minutes like Android's lock screen, or on one line
-    auto* clock = top->add<Flex>(Direction::Column);
-    clock->setSpacing(-size * 0.26f)->setAlignItems(left ? Align::Start : Align::Center);
-    m_hours = clock->add<Label>();
-    if (m_stacked) m_minutes = clock->add<Label>();
-    for (auto* l : {m_hours, m_minutes})
-        if (l) l->setSize(size)->setWeight(cfg.value<int>("/lock/clock/weight", 400))->setColor("primary", false);
-
-    auto ids = cfg.value<nlohmann::json>("/lock/widgets", nlohmann::json());
-    if (!ids.is_array()) ids = {"date", "weather", "media"};
-    for (const auto& id : ids)
-        if (id.is_string()) top->add<LockWidget>(id.get<std::string>(), m_options.greeter)->alignSelf = left ? Align::Start : Align::Center;
+    // Clock and widgets on the grid set in Settings → Lock screen (shared
+    // with the greeter through its synced copy of config.json)
+    auto* grid = add<LockGrid>();
+    grid->alignSelf = Align::Stretch;
+    for (const auto& it : lockgrid::load()) grid->place(addLockWidget(grid, it.id, m_options.greeter, it.col), it.col, it.row);
 
     auto* spacer = add<Node>();
     spacer->minHeight = 72;
@@ -236,32 +313,9 @@ LockView::LockView(Options options) : Flex(Direction::Column), m_options(std::mo
             });
     }
 
-    tick();
 }
 
-LockView::~LockView() {
-    if (m_clock) EventLoop::get().cancel(m_clock);
-}
-
-void LockView::tick() {
-    const std::time_t now = std::time(nullptr);
-    std::tm tm{};
-    localtime_r(&now, &tm);
-    char buf[64];
-    if (m_stacked) {
-        std::strftime(buf, sizeof buf, "%H", &tm);
-        m_hours->setText(buf);
-        std::strftime(buf, sizeof buf, "%M", &tm);
-        m_minutes->setText(buf);
-    } else {
-        std::strftime(buf, sizeof buf, "%H:%M", &tm);
-        m_hours->setText(buf);
-    }
-    m_clock = EventLoop::get().addTimer(static_cast<int>((60 - tm.tm_sec) * 1000 + 20), [this] {
-        m_clock = 0;
-        tick();
-    });
-}
+LockView::~LockView() = default;
 
 void LockView::cycle(std::vector<Choice>& list, size_t& index, int step, Label* label) {
     if (list.empty()) return;

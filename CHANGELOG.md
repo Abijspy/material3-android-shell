@@ -1,6 +1,17 @@
 # Changelog
 
-## v4.1.0 — 2026-10-18
+## v4.1.1 — 2026-10-18
+
+- **Edit the bar in place:** Settings → Status bar → **Edit bar**, a right-click on the bar, or `material3ui msg bar edit` turns on edit mode.
+  - **Zones and widgets:** each zone is outlined, and every widget gets ◀ ✕ ▶ to move it (across zones too) or remove it.
+  - **Adding:** a "+" in each zone opens a widget picker that explains each widget.
+  - **Leaving:** **Done** (or `msg bar done`) ends edit mode.
+- **Lock screen editor:** the lock screen at full size, with your wallpaper and live widgets, on a 3 × 4 grid. Open it from Settings → Lock screen → **Open editor**, or with `material3ui msg popup lockeditor`.
+  - **Editing:** click an empty cell to add a widget there, or click a widget to move it with arrows (it swaps with any widget in the way) or remove it.
+  - **Buttons:** **Default**, **Clock style**, **Try it** (locks the screen) and **Done**.
+- **Lock screen grid:** widgets sit on the grid's cells (`lock.grid`), the clock included. Columns align left, centre and right, and rows size to their widgets. Settings → Lock screen also has a compact board of the same grid. Layouts from v4.1.0 carry over, and the login screen follows the grid.
+
+
 
 - **Weather** (Settings → Weather) comes from Open-Meteo (no API key) and refreshes every 15 minutes.
   - **Location:** your IP finds it ("Use my location"), or you search for any city. Choose °C or °F.

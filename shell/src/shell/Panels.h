@@ -36,5 +36,11 @@ std::string formatRate(double bytesPerSecond);
 inline std::function<void(const std::string& name)> open;
 // Set by the shell: lock the session
 inline std::function<void()> lock;
+// Set by the shell: turn the bars' edit mode on or off
+inline std::function<void(bool)> editBar;
+// The widget picker the bar's "+" opens; zone is left, centre or right
+void barWidgets(ui::Flex* card, Popup& popup, const std::string& zone);
+// The lock screen at full size, editable on its grid
+void lockEditor(ui::Flex* card, Popup& popup);
 
 } // namespace m3::shell::panels

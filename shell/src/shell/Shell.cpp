@@ -102,6 +102,15 @@ bool Shell::start() {
         });
     });
 
+    panels::editBar = [this](bool on) {
+        // Not inside the click that asked: rebuilding destroys that button
+        EventLoop::get().defer([this, on] {
+            Bar::editing = on;
+            if (on && m_popup) m_popup->close();
+            for (auto& [_, bar] : m_bars) bar->rebuild();
+        });
+    };
+
     registerIpc();
     return true;
 }
@@ -198,6 +207,12 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         opts.anchorX = -1;
         opts.centredVertically = true;
         build = panels::wallpapers;
+    } else if (name == "lockeditor") {
+        opts.fill = true;
+        build = panels::lockEditor;
+    } else if (name == "barwidgets") {
+        opts.width = 480;
+        build = [arg](ui::Flex* card, Popup& p) { panels::barWidgets(card, p, arg); };
     } else if (name == "clipboard") {
         opts.width = 560;
         opts.anchorX = -1;
@@ -269,8 +284,12 @@ void Shell::registerIpc() {
         restyle(true);
         return std::string("reloaded");
     });
-    ipc.add("bar", "bar [toggle|show|hide]: status bar visibility", [this](const IpcServer::Args& args) {
+    ipc.add("bar", "bar [toggle|show|hide|edit|done]: visibility, or edit the widgets in place", [this](const IpcServer::Args& args) {
         const std::string mode = args.empty() ? "toggle" : args[0];
+        if (mode == "edit" || mode == "done") {
+            panels::editBar(mode == "edit");
+            return std::string(mode == "edit" ? "editing" : "done");
+        }
         if (mode == "show") m_barsVisible = true;
         else if (mode == "hide") m_barsVisible = false;
         else if (mode == "toggle") m_barsVisible = !m_barsVisible;

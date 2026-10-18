@@ -95,7 +95,7 @@ M3_USER=alice M3_SETUP='source tools/polkit-setup.sh' M3_WAIT=3 M3_SCRIPT='bash 
 
 ```
 material3ui msg ping | version | quit | reload | status
-material3ui msg bar [toggle|show|hide]
+material3ui msg bar [toggle|show|hide|edit|done]
 material3ui msg popup quicksettings [wifi] | notifications | audio | network | bluetooth
                       | dashboard | sysmon | overview | power | run
 material3ui msg launcher [text]       # "=" maths, ":" emoji, "#" clipboard, "@" files, ">" run

@@ -42,6 +42,9 @@ public:
         const char* about = "";
     };
     static const std::vector<Module>& modules();
+    // Edit mode, on every bar at once: widgets get move/remove controls,
+    // each zone a "+" that opens the widget picker, and a Done button
+    static inline bool editing = false;
     using Layout = std::array<std::vector<std::string>, 3>; // left, centre, right
     static Layout layout();
     static void setLayout(const Layout& layout);
