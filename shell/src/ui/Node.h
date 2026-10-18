@@ -53,6 +53,10 @@ public:
     SizeF measure(SizeF available);
     void arrange(const RectF& rect);
     const RectF& rect() const { return m_rect; }
+    static long measureCount(); // doMeasure() calls so far (frame debugging)
+    // Forget every remembered measurement (a layout pass starts, or anything
+    // that affects sizes changed)
+    static void invalidateMeasures();
 
     void paint(Renderer& r);
 
@@ -123,6 +127,14 @@ private:
     std::vector<std::unique_ptr<Node>> m_children;
     RectF m_rect;
     bool m_visible = true;
+    // The last two measurements (parents measure, then arrange with the
+    // final size), valid until the measure generation moves on
+    struct Measured {
+        uint64_t generation = 0;
+        SizeF available, size;
+    };
+    Measured m_measured[2];
+    uint8_t m_nextMeasured = 0;
 };
 
 // Row or column container with padding, spacing, cross-axis alignment, an

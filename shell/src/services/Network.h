@@ -85,6 +85,8 @@ private:
     Details m_details;
     int m_trafficLeases = 0;
     EventLoop::TimerId m_trafficTimer = 0;
+    EventLoop::TimerId m_signalTimer = 0;
+    void sampleSignal();
     std::chrono::steady_clock::time_point m_lastSample{};
 };
 

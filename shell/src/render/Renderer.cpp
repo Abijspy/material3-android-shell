@@ -309,6 +309,16 @@ void Renderer::popClip() {
     applyClip();
 }
 
+bool Renderer::visible(const RectF& rect) const {
+    if (m_clips.empty()) return true;
+    const auto [ox, oy] = m_offsets.back();
+    const auto& c = m_clips.back();
+    // A little slack for borders and focus rings drawn just outside a rect
+    constexpr float slack = 8;
+    return rect.x + ox - slack < c.right() && rect.right() + ox + slack > c.x && rect.y + oy - slack < c.bottom() &&
+           rect.bottom() + oy + slack > c.y;
+}
+
 void Renderer::applyClip() {
     if (m_clips.empty()) {
         glDisable(GL_SCISSOR_TEST);

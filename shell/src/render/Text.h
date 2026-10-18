@@ -5,6 +5,7 @@
 #include <GLES2/gl2.h>
 #include <cstdint>
 #include <string>
+#include <chrono>
 #include <unordered_map>
 
 namespace m3 {
@@ -29,7 +30,8 @@ struct TextMetrics {
 
 // Pango lays text out, Cairo rasterises it to an alpha mask at the surface's
 // scale, and the mask is cached as a GL texture keyed by text, style and
-// scale. Unused textures are evicted after a few frames.
+// scale. Textures unused for a while (or beyond a budget) are evicted, so
+// rows scrolled away and panels reopened soon after draw from the cache.
 class TextEngine {
 public:
     struct Texture {
@@ -52,14 +54,14 @@ private:
 
     struct Entry {
         Texture tex;
-        uint64_t lastUsed = 0;
+        std::chrono::steady_clock::time_point lastUsed;
     };
 
     std::string key(const std::string& text, const TextStyle& style, float scale) const;
 
     std::unordered_map<std::string, TextMetrics> m_metrics;
     std::unordered_map<std::string, Entry> m_textures;
-    uint64_t m_frame = 0;
+    std::chrono::steady_clock::time_point m_now, m_lastSweep;
     void* m_measureContext = nullptr; // PangoContext*
 };
 

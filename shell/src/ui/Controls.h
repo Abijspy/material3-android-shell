@@ -97,11 +97,13 @@ protected:
 private:
     static constexpr float kGutter = 14;
     float maxOffset() const;
+    void placeContent();
     bool overflows() const { return m_contentHeight > rect().h + 0.5f; }
     RectF thumb() const;
     Tween m_offset{0, motion::shortMs, Easing::standard()};
     Tween m_bar{0, motion::shortMs, Easing::standard()}; // 0 idle … 1 hovered/dragging
     float m_contentHeight = 0;
+    float m_placedOffset = 0; // the offset the content was last arranged at
     float m_grab = -1; // pointer offset within the thumb while dragging
     bool m_hovered = false;
 };

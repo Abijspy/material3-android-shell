@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <poll.h>
@@ -98,10 +99,15 @@ int EventLoop::run() {
     m_running = true;
     std::vector<pollfd> fds;
     std::vector<EventSource*> polled;
+    // M3_DEBUG_FRAMES: report loop iterations that keep the shell busy
+    static const bool debug = std::getenv("M3_DEBUG_FRAMES") != nullptr;
+    using Ms = std::chrono::duration<double, std::milli>;
     while (m_running) {
+        const auto t0 = Clock::now();
         auto deferred = std::move(m_deferred);
         m_deferred.clear();
         for (auto& fn : deferred) fn();
+        const auto t1 = Clock::now();
 
         std::erase(m_sources, nullptr);
         fds.clear();
@@ -118,10 +124,12 @@ int EventLoop::run() {
             const int t = s->timeoutMs();
             if (t >= 0 && (timeout < 0 || t < timeout)) timeout = t;
         }
+        const auto t2 = Clock::now();
         if (::poll(fds.data(), fds.size(), timeout) < 0 && errno != EINTR) {
             std::cerr << "material3ui: poll: " << std::strerror(errno) << '\n';
             return 1;
         }
+        const auto tp = Clock::now();
 
         for (size_t i = 0; i < polled.size(); ++i) {
             // Skip sources removed by an earlier dispatch this iteration
@@ -131,8 +139,17 @@ int EventLoop::run() {
         }
         // Worker-thread results run once every source (Wayland's prepared
         // read included) has been dispatched
+        const auto t3 = Clock::now();
         if (fds[0].revents) drainPosted();
+        const auto t4 = Clock::now();
         runTimers();
+        if (debug) {
+            const auto t5 = Clock::now();
+            const double busy = Ms(t2 - t0).count() + Ms(t5 - tp).count();
+            if (busy > 8)
+                std::cerr << "material3ui: busy " << busy << "ms: deferred " << Ms(t1 - t0).count() << " sources "
+                          << Ms(t3 - tp).count() << " posted " << Ms(t4 - t3).count() << " timers " << Ms(t5 - t4).count() << '\n';
+        }
     }
     return m_exitCode;
 }

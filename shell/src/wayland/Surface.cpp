@@ -13,6 +13,7 @@
 #include "viewporter-client-protocol.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cxxabi.h>
 #include <format>
@@ -224,6 +225,9 @@ void Surface::frameDone() {
 
 void Surface::layout() {
     if (!m_root) return;
+    // Sizes may depend on things that changed without a requestLayout
+    // (fields set directly, theme fonts): measure afresh, once per node
+    ui::Node::invalidateMeasures();
     const SizeF size{static_cast<float>(m_width), static_cast<float>(m_height)};
     m_root->measure(size);
     m_root->arrange({0, 0, size.w, size.h});
@@ -237,15 +241,25 @@ void Surface::render() {
         m_dirty = true;
         return;
     }
+    using Clock = std::chrono::steady_clock;
+    const auto t0 = Clock::now();
+    const bool laidOut = m_needsLayout;
+    const long measuresBefore = ui::Node::measureCount();
     if (m_needsLayout) layout();
+    const auto t1 = Clock::now();
     m_dirty = false;
 
     auto& r = Renderer::get();
     r.begin(m_eglSurface, bufferWidth(), bufferHeight(), m_scale);
     if (m_root) m_root->paint(r);
+    const auto t2 = Clock::now();
     // Painting may flag more work (running animations); that becomes the next frame
     m_dirty = m_dirty || (m_root && m_root->animating());
-    if (debugFrames()) log::info("frame {} {}x{}@{} dirty={}", m_tag, m_width, m_height, m_scale, m_dirty);
+    if (debugFrames()) {
+        auto ms = [](auto d) { return std::chrono::duration<double, std::milli>(d).count(); };
+        log::info("frame {} {}x{}@{} dirty={} layout={} {:.2f}ms ({} measures) paint {:.2f}ms", m_tag, m_width, m_height,
+                  m_scale, m_dirty, laidOut, ms(t1 - t0), ui::Node::measureCount() - measuresBefore, ms(t2 - t1));
+    }
 
     m_frame = wl_surface_frame(m_surface);
     wl_callback_add_listener(m_frame, &kFrame, this);

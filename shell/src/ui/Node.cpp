@@ -41,13 +41,38 @@ bool Node::shown() const {
     return std::any_of(m_children.begin(), m_children.end(), [](auto& c) { return c->shown(); });
 }
 
+namespace {
+long g_measures = 0;
+// Measurements are remembered only between changes: any requestLayout()
+// and every layout pass start a new generation, so a size never outlives
+// what it was computed from
+uint64_t g_generation = 1;
+} // namespace
+
+long Node::measureCount() {
+    return g_measures;
+}
+
+void Node::invalidateMeasures() {
+    ++g_generation;
+}
+
 SizeF Node::measure(SizeF available) {
     if (!shown()) return {};
+    // Containers measure their children while measuring and again while
+    // arranging, level by level: without this a deep tree measures its
+    // leaves thousands of times per pass
+    for (const auto& m : m_measured)
+        if (m.generation == g_generation && m.available.w == available.w && m.available.h == available.h) return m.size;
+    ++g_measures;
     SizeF s = doMeasure(available);
     if (fixedWidth) s.w = *fixedWidth;
     if (fixedHeight) s.h = *fixedHeight;
     s.w = std::max(s.w, minWidth);
     s.h = std::max(s.h, minHeight);
+    // Keep the newest two: overwrite the older slot
+    m_measured[m_nextMeasured] = {g_generation, available, s};
+    m_nextMeasured ^= 1;
     return s;
 }
 
@@ -71,7 +96,7 @@ void Node::doArrange() {
 }
 
 void Node::paint(Renderer& r) {
-    if (!shown()) return;
+    if (!shown() || !r.visible(m_rect)) return;
     const float o = m_opacity.value(), dy = m_translateY.value(), dx = m_translateX.value();
     if (o <= 0.001f) return;
     if (o < 1) r.pushOpacity(o);
@@ -131,6 +156,7 @@ Host* Node::host() const {
 }
 
 void Node::requestLayout() {
+    invalidateMeasures();
     if (auto* h = host()) h->requestLayout();
 }
 

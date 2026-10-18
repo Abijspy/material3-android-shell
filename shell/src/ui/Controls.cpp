@@ -182,7 +182,17 @@ float ScrollView::maxOffset() const {
 
 void ScrollView::scrollTo(float y, bool animate) {
     m_offset.set(std::clamp(y, 0.0f, maxOffset()), animate);
-    requestLayout();
+    // Only the content moves: re-place it here (cheap, sizes are
+    // remembered) instead of laying out the whole surface every frame
+    placeContent();
+    requestRedraw();
+}
+
+void ScrollView::placeContent() {
+    if (!content() || rect().w <= 0) return;
+    const float off = std::clamp(m_offset.value(), 0.0f, maxOffset());
+    m_placedOffset = off;
+    content()->arrange({rect().x, rect().y - off, rect().w - (overflows() ? kGutter : 0), m_contentHeight});
 }
 
 bool ScrollView::onScroll(int d) {
@@ -197,9 +207,7 @@ void ScrollView::doArrange() {
     const bool over = c.h > rect().h + 0.5f;
     if (over) c = content()->measure({rect().w - kGutter, 1e6f});
     m_contentHeight = c.h;
-    const float off = std::clamp(m_offset.value(), 0.0f, maxOffset());
-    content()->arrange({rect().x, rect().y - off, rect().w - (over ? kGutter : 0), c.h});
-    if (m_offset.running()) requestLayout();
+    placeContent();
 }
 
 RectF ScrollView::thumb() const {
@@ -213,6 +221,11 @@ RectF ScrollView::thumb() const {
 }
 
 void ScrollView::doPaint(Renderer& r) {
+    // While the offset eases, follow it before the content paints
+    if (m_offset.running() || m_offset.value() != m_placedOffset) {
+        placeContent();
+        if (m_offset.running()) requestRedraw();
+    }
     if (!overflows()) return;
     const float k = m_bar.value();
     // Track only while engaged; the thumb always shows there is more

@@ -51,6 +51,9 @@ public:
 
     void pushClip(const RectF& r);
     void popClip();
+    // False when `r` (layout coordinates) falls wholly outside the clip:
+    // rows scrolled out of view need no drawing
+    bool visible(const RectF& r) const;
 
     float scale() const { return m_scale; }
 

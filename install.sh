@@ -366,6 +366,20 @@ OPT_FONTS=0 OPT_SERVICES=0 OPT_KDE=0 OPT_FISH=0 OPT_EXTRAS=0
 info "${B}Extras${R}"
 confirm "Fonts (Google Sans Flex, Material Symbols, JetBrains Mono)?" Y && OPT_FONTS=1
 confirm "Turn on NetworkManager and Bluetooth?" Y && OPT_SERVICES=1
+# The shell talks to NetworkManager. iwd or systemd-networkd running beside
+# it (Arch's install defaults) fight it for the Wi-Fi card: the connection
+# flips between them and the shell shows none
+NET_RIVALS=()
+for svc in iwd systemd-networkd; do
+    if systemctl is-enabled --quiet "$svc.service" 2>/dev/null || systemctl is-active --quiet "$svc.service" 2>/dev/null; then
+        NET_RIVALS+=("$svc")
+    fi
+done
+OPT_NET_ONLY=0
+if [[ "$OPT_SERVICES" == 1 && ${#NET_RIVALS[@]} -gt 0 ]]; then
+    note "${NET_RIVALS[*]} also manage the network, and fight NetworkManager for the Wi-Fi."
+    confirm "Turn ${NET_RIVALS[*]} off so NetworkManager alone manages it? (Wi-Fi reconnects through NetworkManager; pick your network again if it asks)" Y && OPT_NET_ONLY=1
+fi
 confirm "Material You colours for KDE/Qt apps (a Python venv)?" N && OPT_KDE=1
 confirm "fish with the starship prompt?" N && OPT_FISH=1
 confirm "EasyEffects and Cloudflare WARP?" N && OPT_EXTRAS=1
@@ -567,6 +581,13 @@ fi
 # ── 7. Session ───────────────────────────────────────────────────────────────
 section "Session"
 SESSION_LINES=0
+if [[ "$OPT_NET_ONLY" == 1 ]]; then
+    # Last, after every download: the network drops while it changes hands
+    for svc in "${NET_RIVALS[@]}"; do
+        if do_ sudo systemctl disable --now "$svc.service" >>"$LOG" 2>&1; then ok "$svc off (NetworkManager manages the network)"; else warn "Couldn't turn $svc off"; fi
+    done
+    SESSION_LINES=1
+fi
 if [[ "$OPT_SERVICES" == 1 ]]; then
     for svc in NetworkManager bluetooth; do
         if systemctl list-unit-files "$svc.service" >/dev/null 2>&1; then

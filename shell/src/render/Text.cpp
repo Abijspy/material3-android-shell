@@ -43,6 +43,7 @@ TextEngine& TextEngine::get() {
 }
 
 TextEngine::TextEngine() {
+    m_now = m_lastSweep = std::chrono::steady_clock::now();
     auto* map = pango_cairo_font_map_get_default();
     m_measureContext = pango_font_map_create_context(map);
 }
@@ -60,14 +61,14 @@ TextMetrics TextEngine::measure(const std::string& text, const TextStyle& style)
     pango_layout_get_pixel_extents(layout, nullptr, &logical);
     g_object_unref(layout);
     TextMetrics m{static_cast<float>(logical.width), static_cast<float>(logical.height)};
-    if (m_metrics.size() > 4096) m_metrics.clear();
+    if (m_metrics.size() > 32768) m_metrics.clear();
     return m_metrics[k] = m;
 }
 
 const TextEngine::Texture& TextEngine::texture(const std::string& text, const TextStyle& style, float scale) {
     const auto k = key(text, style, scale);
     auto& entry = m_textures[k];
-    entry.lastUsed = m_frame;
+    entry.lastUsed = m_now;
     if (entry.tex.id) return entry.tex;
 
     // Lay out at device scale so glyphs are hinted for the real pixel grid.
@@ -104,10 +105,16 @@ const TextEngine::Texture& TextEngine::texture(const std::string& text, const Te
 }
 
 void TextEngine::collect() {
-    ++m_frame;
+    using namespace std::chrono;
+    m_now = steady_clock::now();
+    // Sweep once a second, not after every frame of every surface
+    if (m_now - m_lastSweep < seconds(1)) return;
+    m_lastSweep = m_now;
+    // Unused for 30 s, or for 5 s once the cache grows past its budget
+    const auto keep = m_textures.size() > 3000 ? seconds(5) : seconds(30);
     std::vector<GLuint> dead;
     std::erase_if(m_textures, [&](auto& kv) {
-        if (m_frame - kv.second.lastUsed < 120) return false;
+        if (m_now - kv.second.lastUsed < keep) return false;
         dead.push_back(kv.second.tex.id);
         return true;
     });

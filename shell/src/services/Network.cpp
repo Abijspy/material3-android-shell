@@ -9,6 +9,7 @@
 #include <format>
 #include <fstream>
 #include <memory>
+#include <sstream>
 #include <systemd/sd-bus.h>
 
 namespace m3 {
@@ -94,6 +95,32 @@ Network::Network() {
                             });
     refresh();
     findWifiDevice();
+    // NetworkManager updates a connected network's strength only when it
+    // rescans (minutes apart): read the live link quality instead
+    m_signalTimer = EventLoop::get().addTimer(3000, [this] { sampleSignal(); }, true);
+}
+
+void Network::sampleSignal() {
+    if (m_kind != Kind::Wifi) return;
+    // /proc/net/wireless: "wlan0: 0000   70.  -36.  -256 …" (link quality out of 70)
+    std::ifstream in("/proc/net/wireless");
+    std::string line;
+    for (int i = 0; i < 2 && std::getline(in, line); ++i) {} // headers
+    while (std::getline(in, line)) {
+        std::istringstream ss(line);
+        std::string iface, status;
+        double link = 0;
+        ss >> iface >> status >> link;
+        if (!iface.empty() && iface.back() == ':') iface.pop_back();
+        if (!m_details.iface.empty() && iface != m_details.iface) continue;
+        const int pct = std::clamp(static_cast<int>(std::lround(link * 100 / 70)), 0, 100);
+        // Small wobbles would rebuild open panels for nothing
+        if (pct > 0 && std::abs(pct - m_strength) >= 3) {
+            m_strength = pct;
+            changed.emit();
+        }
+        return;
+    }
 }
 
 void Network::findWifiDevice() {
