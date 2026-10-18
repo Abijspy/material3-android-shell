@@ -22,7 +22,7 @@
   <img alt="Release" src="https://img.shields.io/github/v/release/Abijspy/material3-android-shell?label=release&color=6750A4"/>
   <img alt="Hyprland" src="https://img.shields.io/badge/Hyprland-0.55%2B-58E1FF"/>
   <img alt="Arch" src="https://img.shields.io/badge/Arch-based-1793D1"/>
-  <img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0-7D5260"/>
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-7D5260"/>
 </p>
 
 ---
@@ -203,7 +203,7 @@ Yes: run `material3ui-greeter preview`.
 
 ## Credits
 
-Material3UI began as a fork of **[NAnDoroid-shell](https://github.com/na-ive/nandoroid-shell)** by [na-ive](https://github.com/na-ive), and gratefully stays AGPL-3.0 like its parent. Since the fork it has added its own installer, Hyprland setup, login screen, polkit agent, package manager, system monitor and logo. See [NOTICE](NOTICE) for what changed, and the [upstream changelog](docs/UPSTREAM_CHANGELOG.md) for NAnDoroid's history.
+Material3UI began as a fork of **[NAnDoroid-shell](https://github.com/na-ive/nandoroid-shell)** by [na-ive](https://github.com/na-ive), and is MIT-licensed with its authors' permission. Since the fork it has added its own installer, Hyprland setup, login screen, polkit agent, package manager, system monitor and logo. See [NOTICE](NOTICE) for what changed, and the [upstream changelog](docs/UPSTREAM_CHANGELOG.md) for NAnDoroid's history.
 
 It also stands on the work of:
 - [Quickshell](https://quickshell.org) by outfoxxed: the framework.

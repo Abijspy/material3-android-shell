@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **License:** Material3UI Shell is now MIT-licensed (previously AGPL-3.0), with the permission of the NAnDoroid-shell authors. See `LICENSE` and `NOTICE`.
 - **Native C++ shell, phases 2 and 3** (`shell/`):
   - Input:
     - Keyboard through xkbcommon, with key repeat and focus routing.
