@@ -1011,7 +1011,7 @@
     "User": "User",
     "Username": "Username",
     "Uses current wallpaper": "Uses current wallpaper",
-    "Using native Linux 'ps' fallback. Install 'dgop' for enhanced real-time 1-second CPU deltas.": "Using native Linux 'ps' fallback. Install 'dgop' for enhanced real-time 1-second CPU deltas.",
+    "Using native Linux 'ps' fallback. Install python3 to enable material3ui-sysmon's real-time CPU deltas.": "Using native Linux 'ps' fallback. Install python3 to enable material3ui-sysmon's real-time CPU deltas.",
     "Utility Tools": "Utility Tools",
     "VENDOR": "VENDOR",
     "Value Color": "Value Color",

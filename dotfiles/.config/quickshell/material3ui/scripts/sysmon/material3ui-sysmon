@@ -1,0 +1,493 @@
+#!/usr/bin/env python3
+"""material3ui-sysmon: Material3UI's system monitor backend (dgop replacement).
+
+Reads /proc and /sys directly (Python standard library only) and reports
+JSON for the shell's System Monitor and About pages.
+
+  material3ui-sysmon meta [--modules cpu,memory,...] [--limit N]
+      One-shot JSON snapshot (--json is accepted for dgop compatibility).
+  material3ui-sysmon server [--port 63490] [--interval 1.0]
+      Local HTTP server. GET /meta?modules=processes,system&limit=150
+      Per-process and total CPU are measured as deltas between samples.
+  material3ui-sysmon top [--limit 15]
+      Human-readable process table.
+
+Modules: cpu, memory, system, processes, diskmounts, gpu.
+"""
+
+import argparse
+import json
+import os
+import pwd
+import sys
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
+
+VERSION = "1.0.0"
+DEFAULT_PORT = 63490
+CLK_TCK = os.sysconf("SC_CLK_TCK")
+PAGE_KB = os.sysconf("SC_PAGE_SIZE") // 1024
+ALL_MODULES = ("cpu", "memory", "system", "processes", "diskmounts", "gpu")
+REAL_FS = {
+    "ext2", "ext3", "ext4", "btrfs", "xfs", "f2fs", "zfs", "bcachefs", "jfs",
+    "reiserfs", "vfat", "exfat", "ntfs", "ntfs3", "fuseblk", "hfsplus", "nilfs2",
+}
+
+
+def read(path, default=""):
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except OSError:
+        return default
+
+
+def human_bytes(n):
+    for unit in ("B", "K", "M", "G", "T", "P"):
+        if abs(n) < 1024 or unit == "P":
+            return f"{n:.1f}{unit}" if unit != "B" else f"{int(n)}B"
+        n /= 1024.0
+    return f"{n:.1f}P"
+
+
+# ── CPU ──────────────────────────────────────────────────────────────────────
+
+def cpu_times():
+    """Return (busy, total) jiffies for the aggregate CPU line plus per-core."""
+    out = {}
+    for line in read("/proc/stat").splitlines():
+        if not line.startswith("cpu"):
+            break
+        parts = line.split()
+        vals = [int(v) for v in parts[1:9]] + [0] * (8 - len(parts[1:9]))
+        idle = vals[3] + vals[4]
+        total = sum(vals)
+        out[parts[0]] = (total - idle, total)
+    return out
+
+
+def cpu_model():
+    info = read("/proc/cpuinfo")
+    for key in ("model name", "Hardware", "Processor", "cpu model"):
+        for line in info.splitlines():
+            if line.startswith(key) and ":" in line:
+                return line.split(":", 1)[1].strip()
+    return os.uname().machine
+
+
+def cpu_freq_mhz():
+    freqs = []
+    base = "/sys/devices/system/cpu"
+    try:
+        for name in os.listdir(base):
+            if name.startswith("cpu") and name[3:].isdigit():
+                v = read(f"{base}/{name}/cpufreq/scaling_cur_freq").strip()
+                if v.isdigit():
+                    freqs.append(int(v) / 1000)
+    except OSError:
+        pass
+    return round(sum(freqs) / len(freqs)) if freqs else None
+
+
+def cpu_temp_c():
+    """Best-effort package temperature from hwmon (k10temp, coretemp, zenpower)."""
+    base = "/sys/class/hwmon"
+    try:
+        hwmons = sorted(os.listdir(base))
+    except OSError:
+        return None
+    for preferred in ("k10temp", "coretemp", "zenpower", "cpu_thermal", "acpitz"):
+        for h in hwmons:
+            if read(f"{base}/{h}/name").strip() == preferred:
+                v = read(f"{base}/{h}/temp1_input").strip()
+                if v.lstrip("-").isdigit():
+                    return round(int(v) / 1000, 1)
+    return None
+
+
+# ── Memory ───────────────────────────────────────────────────────────────────
+
+def meminfo():
+    m = {}
+    for line in read("/proc/meminfo").splitlines():
+        key, _, rest = line.partition(":")
+        val = rest.split()
+        if val and val[0].isdigit():
+            m[key] = int(val[0])
+    total = m.get("MemTotal", 0)
+    avail = m.get("MemAvailable", m.get("MemFree", 0))
+    swap_total = m.get("SwapTotal", 0)
+    swap_free = m.get("SwapFree", 0)
+    return {
+        "total": total,  # kB, as dgop reports
+        "available": avail,
+        "used": total - avail,
+        "free": m.get("MemFree", 0),
+        "buffers": m.get("Buffers", 0),
+        "cached": m.get("Cached", 0) + m.get("SReclaimable", 0),
+        "usedPercent": round((total - avail) / total * 100, 1) if total else 0,
+        "swapTotal": swap_total,
+        "swapUsed": swap_total - swap_free,
+    }
+
+
+# ── Processes ────────────────────────────────────────────────────────────────
+
+_users = {}
+
+
+def username(uid):
+    if uid not in _users:
+        try:
+            _users[uid] = pwd.getpwuid(uid).pw_name
+        except KeyError:
+            _users[uid] = str(uid)
+    return _users[uid]
+
+
+def read_proc(pid):
+    """Return a raw sample for one pid, or None if it vanished."""
+    stat = read(f"/proc/{pid}/stat")
+    if not stat:
+        return None
+    # comm may contain spaces/parentheses: split on the last ')'
+    rparen = stat.rfind(")")
+    comm = stat[stat.find("(") + 1:rparen]
+    fields = stat[rparen + 2:].split()
+    try:
+        ticks = int(fields[11]) + int(fields[12])  # utime + stime
+        threads = int(fields[17])
+        rss_pages = int(fields[21])
+        state = fields[0]
+    except (IndexError, ValueError):
+        return None
+    try:
+        uid = os.stat(f"/proc/{pid}").st_uid
+    except OSError:
+        return None
+    cmdline = read(f"/proc/{pid}/cmdline").replace("\0", " ").strip()
+    return {
+        "pid": pid,
+        "ticks": ticks,
+        "threads": threads,
+        "state": state,
+        "command": comm,
+        "fullCommand": cmdline or f"[{comm}]",
+        "memoryKB": rss_pages * PAGE_KB,
+        "uid": uid,
+    }
+
+
+def sample_processes():
+    procs = {}
+    for name in os.listdir("/proc"):
+        if name.isdigit():
+            p = read_proc(int(name))
+            if p:
+                procs[p["pid"]] = p
+    return procs
+
+
+def uptime_s():
+    try:
+        return float(read("/proc/uptime").split()[0])
+    except (IndexError, ValueError):
+        return 0.0
+
+
+# ── Disks ────────────────────────────────────────────────────────────────────
+
+def disk_mounts():
+    seen = set()
+    out = []
+    for line in read("/proc/mounts").splitlines():
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        device, mount, fstype = parts[0], parts[1].replace("\\040", " "), parts[2]
+        if fstype not in REAL_FS or device in seen:
+            continue
+        try:
+            st = os.statvfs(mount)
+        except OSError:
+            continue
+        seen.add(device)
+        size = st.f_blocks * st.f_frsize
+        avail = st.f_bavail * st.f_frsize
+        used = size - st.f_bfree * st.f_frsize
+        out.append({
+            "device": device,
+            "mount": mount,
+            "mountpoint": mount,
+            "fstype": fstype,
+            "size": human_bytes(size),
+            "used": human_bytes(used),
+            "avail": human_bytes(avail),
+            "sizeBytes": size,
+            "usedBytes": used,
+            "availBytes": avail,
+            "percent": f"{round(used / size * 100) if size else 0}%",
+        })
+    out.sort(key=lambda d: (d["mount"] != "/", d["mount"]))
+    return out
+
+
+# ── GPU ──────────────────────────────────────────────────────────────────────
+
+VENDORS = {"0x10de": "NVIDIA", "0x1002": "AMD", "0x8086": "Intel", "0x1af4": "Virtio", "0x15ad": "VMware"}
+_pci_ids = None
+
+
+def pci_names():
+    """Parse hwdata's pci.ids into {(vendor, device): name} once."""
+    global _pci_ids
+    if _pci_ids is not None:
+        return _pci_ids
+    _pci_ids = {}
+    for path in ("/usr/share/hwdata/pci.ids", "/usr/share/misc/pci.ids"):
+        text = read(path)
+        if not text:
+            continue
+        vendor = None
+        for line in text.splitlines():
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("C "):
+                break  # device classes follow; not needed
+            if not line.startswith("\t"):
+                vendor = line[:4].lower()
+                _pci_ids[(vendor, None)] = line[6:].strip()
+            elif not line.startswith("\t\t") and vendor:
+                _pci_ids[(vendor, line[1:5].lower())] = line[7:].strip()
+        break
+    return _pci_ids
+
+
+def gpus():
+    out = []
+    seen = set()
+    base = "/sys/class/drm"
+    try:
+        cards = sorted(n for n in os.listdir(base) if n.startswith("card") and "-" not in n)
+    except OSError:
+        cards = []
+    for card in cards:
+        dev = os.path.realpath(f"{base}/{card}/device")
+        if dev in seen:
+            continue
+        seen.add(dev)
+        vendor_id = read(f"{dev}/vendor").strip().lower()
+        device_id = read(f"{dev}/device").strip().lower()
+        if not vendor_id:
+            continue
+        ids = pci_names()
+        full = ids.get((vendor_id[2:], device_id[2:]), f"Device {device_id}")
+        display = full[full.find("[") + 1:full.rfind("]")] if "[" in full and "]" in full else full
+        driver = os.path.basename(os.path.realpath(f"{dev}/driver")) if os.path.exists(f"{dev}/driver") else ""
+        out.append({
+            "vendor": VENDORS.get(vendor_id, ids.get((vendor_id[2:], None), vendor_id)),
+            "fullName": full,
+            "displayName": display,
+            "driver": driver,
+            "pciId": f"{vendor_id[2:]}:{device_id[2:]}",
+            "bus": os.path.basename(dev),
+        })
+    return {"gpus": out}
+
+
+# ── Collector ────────────────────────────────────────────────────────────────
+
+class Monitor:
+    """Keeps the previous sample so CPU figures are true deltas."""
+
+    def __init__(self, track_processes=True):
+        self.lock = threading.Lock()
+        self.prev_time = time.monotonic()
+        self.prev_cpu = cpu_times()
+        self.prev_procs = sample_processes() if track_processes else {}
+        self.cpu_static = {"model": cpu_model(), "count": os.cpu_count() or 1}
+
+    def snapshot(self, modules, limit=0):
+        with self.lock:
+            now = time.monotonic()
+            elapsed = max(now - self.prev_time, 1e-3)
+            data = {"version": VERSION, "timestamp": time.time()}
+            procs = None
+            if "processes" in modules or "system" in modules:
+                procs = sample_processes()
+
+            if "cpu" in modules:
+                cur = cpu_times()
+                cores = []
+                for key, (busy, total) in sorted(cur.items(), key=lambda kv: (kv[0] != "cpu", len(kv[0]), kv[0])):
+                    pb, pt = self.prev_cpu.get(key, (busy, total))
+                    dt = total - pt
+                    usage = round((busy - pb) / dt * 100, 1) if dt > 0 else 0.0
+                    if key == "cpu":
+                        data["cpu"] = dict(self.cpu_static, usage=usage)
+                    else:
+                        cores.append(usage)
+                data["cpu"]["cores"] = cores
+                data["cpu"]["frequency"] = cpu_freq_mhz()
+                data["cpu"]["temperature"] = cpu_temp_c()
+                self.prev_cpu = cur
+
+            if "memory" in modules:
+                data["memory"] = meminfo()
+
+            if "system" in modules:
+                load = read("/proc/loadavg").split()
+                data["system"] = {
+                    "processes": len(procs),
+                    "threads": sum(p["threads"] for p in procs.values()),
+                    "uptime": uptime_s(),
+                    "loadavg": [float(x) for x in load[:3]] if len(load) >= 3 else [],
+                    "hostname": os.uname().nodename,
+                    "kernel": os.uname().release,
+                }
+
+            if "processes" in modules:
+                rows = []
+                for pid, p in procs.items():
+                    prev = self.prev_procs.get(pid)
+                    dticks = p["ticks"] - prev["ticks"] if prev else 0
+                    cpu = max(0.0, dticks / CLK_TCK / elapsed * 100)  # % of one core
+                    rows.append({
+                        "pid": pid,
+                        "command": p["command"],
+                        "fullCommand": p["fullCommand"],
+                        "cpu": round(cpu, 1),
+                        "memoryKB": p["memoryKB"],
+                        "threads": p["threads"],
+                        "state": p["state"],
+                        "username": username(p["uid"]),
+                    })
+                rows.sort(key=lambda r: (r["cpu"], r["memoryKB"]), reverse=True)
+                data["processes"] = rows[:limit] if limit > 0 else rows
+
+            if procs is not None:
+                self.prev_procs = procs
+            if "diskmounts" in modules:
+                data["diskmounts"] = disk_mounts()
+            if "gpu" in modules:
+                data["gpu"] = gpus()
+
+            self.prev_time = now
+            data["cursor"] = str(int(now * 1000))
+            return data
+
+
+def parse_modules(value):
+    if not value or value == "all":
+        return set(ALL_MODULES)
+    mods = {m.strip() for m in value.split(",") if m.strip()}
+    unknown = mods - set(ALL_MODULES)
+    if unknown:
+        raise ValueError(f"unknown module(s): {', '.join(sorted(unknown))}")
+    return mods
+
+
+# ── Commands ─────────────────────────────────────────────────────────────────
+
+def cmd_meta(args):
+    mods = parse_modules(args.modules)
+    mon = Monitor(track_processes="processes" in mods)
+    if mods & {"cpu", "processes"}:
+        time.sleep(args.sample)  # give CPU deltas something to measure
+    json.dump(mon.snapshot(mods, args.limit), sys.stdout, indent=2 if args.pretty else None)
+    sys.stdout.write("\n")
+
+
+def cmd_top(args):
+    mon = Monitor()
+    time.sleep(args.sample)
+    snap = mon.snapshot({"cpu", "memory", "system", "processes"}, args.limit)
+    cpu, mem, system = snap["cpu"], snap["memory"], snap["system"]
+    print(f"CPU {cpu['usage']:5.1f}%  {cpu['model']}  ({cpu['count']} threads)")
+    print(f"MEM {mem['usedPercent']:5.1f}%  {human_bytes(mem['used'] * 1024)} / {human_bytes(mem['total'] * 1024)}")
+    print(f"{system['processes']} processes, {system['threads']} threads, load {' '.join(map(str, system['loadavg']))}\n")
+    print(f"{'PID':>7} {'USER':<12} {'CPU%':>6} {'MEM':>8}  COMMAND")
+    for p in snap["processes"]:
+        print(f"{p['pid']:>7} {p['username'][:12]:<12} {p['cpu']:>6.1f} {human_bytes(p['memoryKB'] * 1024):>8}  {p['command']}")
+
+
+def cmd_server(args):
+    mon = Monitor()
+
+    class Handler(BaseHTTPRequestHandler):
+        server_version = f"material3ui-sysmon/{VERSION}"
+
+        def log_message(self, *_):
+            pass
+
+        def send_json(self, code, payload):
+            body = json.dumps(payload).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            url = urlparse(self.path)
+            q = parse_qs(url.query)
+            if url.path in ("/meta", "/gops/meta"):
+                try:
+                    mods = parse_modules(q.get("modules", ["all"])[0])
+                    limit = int(q.get("limit", ["0"])[0] or 0)
+                except ValueError as e:
+                    self.send_json(400, {"error": str(e)})
+                    return
+                self.send_json(200, mon.snapshot(mods, limit))
+            elif url.path == "/health":
+                self.send_json(200, {"ok": True, "version": VERSION})
+            else:
+                self.send_json(404, {"error": "not found", "endpoints": ["/meta", "/health"]})
+
+    try:
+        httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    except OSError as e:
+        sys.exit(f"material3ui-sysmon: cannot listen on 127.0.0.1:{args.port}: {e.strerror}")
+    print(f"material3ui-sysmon {VERSION} listening on http://127.0.0.1:{args.port}", flush=True)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="material3ui-sysmon", description=__doc__.split("\n\n")[0])
+    ap.add_argument("--version", action="version", version=VERSION)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    meta = sub.add_parser("meta", help="print a JSON snapshot")
+    meta.add_argument("--modules", default="all", help="comma-separated: " + ",".join(ALL_MODULES))
+    meta.add_argument("--limit", type=int, default=0, help="max processes (0 = all)")
+    meta.add_argument("--sample", type=float, default=0.25, help="CPU sampling window in seconds")
+    meta.add_argument("--json", action="store_true", help="accepted for dgop compatibility")
+    meta.add_argument("--pretty", action="store_true", help="indent the JSON")
+    meta.set_defaults(func=cmd_meta)
+
+    top = sub.add_parser("top", help="print a process table")
+    top.add_argument("--limit", type=int, default=15)
+    top.add_argument("--sample", type=float, default=0.5)
+    top.set_defaults(func=cmd_top)
+
+    server = sub.add_parser("server", help="serve JSON over local HTTP")
+    server.add_argument("--port", type=int, default=DEFAULT_PORT)
+    server.set_defaults(func=cmd_server)
+
+    args = ap.parse_args()
+    try:
+        args.func(args)
+    except ValueError as e:
+        ap.error(str(e))
+    except BrokenPipeError:
+        pass
+
+
+if __name__ == "__main__":
+    main()

@@ -504,7 +504,8 @@ esac
 
 run mkdir -p "$HOME/.local/bin"
 run install -m 755 "$REPO/dotfiles/.local/bin/material3uictl" "$HOME/.local/bin/material3uictl"
-ok "material3uictl"
+run ln -sf "$CONFIG_HOME/quickshell/material3ui/scripts/sysmon/material3ui-sysmon" "$HOME/.local/bin/material3ui-sysmon"
+ok "material3uictl and material3ui-sysmon"
 
 # Retire Material3UI v1 helpers (the shell now ships its own polkit agent,
 # clipboard, wallpaper and update services).

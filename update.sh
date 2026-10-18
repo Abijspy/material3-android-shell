@@ -94,4 +94,5 @@ if [[ "$MODE" == all ]]; then
 fi
 
 install -Dm755 "$PROJECT_ROOT/dotfiles/.local/bin/material3uictl" "$HOME/.local/bin/material3uictl"
+ln -sf "$SHELL_DIR/scripts/sysmon/material3ui-sysmon" "$HOME/.local/bin/material3ui-sysmon"
 echo "Update successful!"

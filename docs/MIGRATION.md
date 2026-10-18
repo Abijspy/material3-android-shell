@@ -19,7 +19,7 @@ When you move to Material3UI Shell, you are only replacing the "shell" portion o
 | Lock screen | Hyprlock infused with Material3UI customizations |
 | Display settings | Built-in Display Settings for resolution, scale, and arrangement |
 | Bluetooth and Wi-Fi settings | Built-in controls within the Quick Settings and main Settings panel |
-| System monitor | A built-in System Monitor powered by dgop |
+| System monitor | A built-in System Monitor powered by the bundled `material3ui-sysmon` |
 
 ### What Material3UI Does Not Replace
 

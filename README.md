@@ -10,7 +10,7 @@ A Quickshell-based Material 3 desktop shell for Hyprland, adopting Android 16 de
 
 > **Note**: This shell and its dependencies are designed for **Arch Linux based distributions** (Arch, CachyOS, EndeavourOS, etc.).
 
-**Version:** v2.1.0
+**Version:** v2.2.0
 **License:** AGPL-3.0 — Material3UI Shell v2 is a rebranded fork of [NAnDoroid-shell](https://github.com/na-ive/nandoroid-shell) by na-ive. See [NOTICE](NOTICE).
 
 ## Key Features
@@ -23,7 +23,7 @@ A Quickshell-based Material 3 desktop shell for Hyprland, adopting Android 16 de
 - **Notification centre** with persistent history and popups.
 - **Lock screen** with custom clocks, separate lock wallpaper and optional fingerprint (`fprintd`), plus a built-in **Polkit** agent.
 - **Region tools:** Screenshot, OCR (`tesseract`), visual search, QR scanning and screen recording with or without audio.
-- **System monitor** (`dgop`) with processes, performance and system pages.
+- **System monitor** powered by the bundled `material3ui-sysmon` (processes with real-time CPU deltas, performance and system pages).
 - **Wallpapers:** Local, Wallhaven and online collections, live wallpapers (mpvpaper / Wallpaper Engine), auto-cycling and desktop widgets.
 - **Auto-generated colours:** The whole shell, GTK, KDE, terminals and apps are themed from the wallpaper with Matugen Material 3 tokens.
 - **Settings app** with onboarding, presets, translations, display, audio, network and Bluetooth dialogs, music recognition (`songrec`), floating lyrics and in-shell OTA updates.
@@ -73,7 +73,7 @@ Update later from Settings → About, or run `update.sh all` in the checkout. Up
 | :--- | :--- | :--- |
 | **Compositor** | `hyprland` | The tiling Wayland compositor hosting the shell. |
 | **Framework** | `quickshell` | The engine (0.5.0+) used to build and run the shell. |
-| **Monitor** | `dgop` | System monitoring (CPU, RAM, Temp) stats. |
+| **Monitor** | bundled | `material3ui-sysmon`: CPU, RAM, temperature, disks, GPU and processes from `/proc` and `/sys` (needs only `python3`). |
 | **Theme** | `matugen` | Material 3 theme generation from wallpapers. |
 | **GTK Theme** | `adw-gtk-theme` | Libadwaita-like theme for GTK3 applications. |
 | **Scripting** | `python3` | Used by terminal color scripts and utilities. |
@@ -168,6 +168,19 @@ Update later from Settings → About, or run `update.sh all` in the checkout. Up
 | `shell.lua` | Starts the shell, panel shortcuts, region tools, layer rules — the only module `inject` mode needs |
 | `user_persistence.lua` | Written by the shell (monitor layouts, game mode) |
 | `user.lua` | **Your overrides** — loaded last, never overwritten |
+
+## System monitor backend
+
+`material3ui-sysmon` is Material3UI's own replacement for dgop. It lives in `scripts/sysmon/`, is pure Python 3 standard library, and reads `/proc` and `/sys` directly; the installer also links it to `~/.local/bin`.
+
+```bash
+material3ui-sysmon top                      # process table
+material3ui-sysmon meta --pretty            # JSON: cpu, memory, system, processes, diskmounts, gpu
+material3ui-sysmon meta --modules cpu,gpu
+material3ui-sysmon server --port 63490      # GET /meta?modules=processes,system&limit=150, GET /health
+```
+
+The shell starts the server only while the System Monitor's Processes tab is open, so CPU usage per process is a true delta between samples. Without `python3` it falls back to `ps`.
 
 ## IPC
 
@@ -313,7 +326,7 @@ This project is a personal creation inspired by the following open-source develo
 - **[pC](https://github.com/pctrade)** - UI design, layout, and interaction references from [end4-pC](https://github.com/pctrade/end4-pC).
 - **[P3DROVFX](https://github.com/P3DROVFX)** - Design and interaction references from [ii-p3drovfx](https://github.com/P3DROVFX/ii-p3drovfx).
 - **[vaguesyntax (Vynx)](https://github.com/vaguesyntax)** - UI design and interaction references from [ii-vynx](https://github.com/vaguesyntax/ii-vynx).
-- **[AvengeMedia](https://github.com/AvengeMedia)** - System monitoring implementation inspired by [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell) and powered by [dgop](https://github.com/AvengeMedia/dgop).
+- **[AvengeMedia](https://github.com/AvengeMedia)** - System Monitor design inspired by, and the installer flow and Lua config layout following, [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell); `material3ui-sysmon` replaces its [dgop](https://github.com/AvengeMedia/dgop) monitor with a compatible-shaped JSON API.
 - **[Axenide](https://github.com/Axenide)** - Spatial UI and Dynamic Island (notch) design references from [Ambxst](https://github.com/Axenide/Ambxst).
 
 ### Assets

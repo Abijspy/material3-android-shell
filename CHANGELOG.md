@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.2.0 — 2026-10-18
+
+- Add `material3ui-sysmon`, Material3UI's own system monitor backend replacing dgop. Pure Python 3 standard library, reading `/proc` and `/sys`: CPU (usage, per-core, frequency, temperature), memory and swap, system counts and load, processes with true per-sample CPU deltas, disk mounts and GPUs (named from `pci.ids`).
+- `meta` (one-shot JSON), `top` (table) and `server` (local HTTP on `127.0.0.1:63490`, `/meta` and `/health`) commands.
+- The System Monitor's Processes tab and the About page's hardware summary now use it; it ships with the shell, so no extra package is needed. The `ps` fallback remains for systems without `python3`.
+- The installer and `update.sh` link it to `~/.local/bin/material3ui-sysmon`.
+
 ## v2.1.0 — 2026-10-18
 
 - Rewrite the installer around a reviewed, seven-step flow modelled on DankMaterialShell's: preflight → choices → dependency review → packages → configuration review → deploy → summary. It logs every run, backs up everything it replaces, supports `--yes`, `--dry-run`, `--terminal`, `--file-manager`, `--browser`, `--hypr full|inject|skip`, `--channel`, `--skip-deps` and `--dir`, and hands over to the cloned script when run through `curl`.

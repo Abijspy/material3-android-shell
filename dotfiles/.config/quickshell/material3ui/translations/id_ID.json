@@ -1011,7 +1011,7 @@
     "User": "Pengguna",
     "Username": "Nama Pengguna",
     "Uses current wallpaper": "Menggunakan wallpaper saat ini",
-    "Using native Linux 'ps' fallback. Install 'dgop' for enhanced real-time 1-second CPU deltas.": "Menggunakan 'ps' Linux asli. Pasang 'dgop' untuk delta CPU 1-detik realtime.",
+    "Using native Linux 'ps' fallback. Install python3 to enable material3ui-sysmon's real-time CPU deltas.": "Menggunakan 'ps' Linux asli. Pasang python3 untuk mengaktifkan delta CPU real-time dari material3ui-sysmon.",
     "Utility Tools": "Alat Bantu",
     "VENDOR": "VENDOR",
     "Value Color": "Warna Nilai",

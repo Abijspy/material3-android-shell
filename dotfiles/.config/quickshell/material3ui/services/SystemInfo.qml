@@ -70,13 +70,13 @@ Singleton {
         }
     }
 
-    // ── dgop (primary) ──
+    // ── material3ui-sysmon (primary) ──
     Process {
         id: getHardwareInfo
-        command: ["sh", "-c", "test -x /usr/bin/dgop && /usr/bin/dgop meta --json --modules cpu,memory,diskmounts,gpu || exit 1"]
+        command: ["sh", "-c", 'command -v python3 >/dev/null && "$1" meta --json --modules cpu,memory,diskmounts,gpu --sample 0', "sh", Quickshell.shellPath("scripts/sysmon/material3ui-sysmon")]
         onExited: exitCode => {
             if (exitCode !== 0) {
-                // dgop not available or failed — run fallback
+                // sysmon unavailable or failed: run fallback
                 getManufacturerFallback.running = true
                 getProductFallback.running = true
                 getCpuFallback.running = true
@@ -131,7 +131,7 @@ Singleton {
         }
     }
 
-    // ── Pure proc/sysfs fallback (when dgop is unavailable) ──
+    // ── Pure proc/sysfs fallback (when sysmon is unavailable) ──
     Process {
         id: getManufacturerFallback
         running: false

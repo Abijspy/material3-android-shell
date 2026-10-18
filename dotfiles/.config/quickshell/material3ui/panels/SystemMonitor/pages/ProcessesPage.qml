@@ -36,7 +36,7 @@ Item {
         if (c.includes("quickshell") || c.includes("waybar") || c.includes("hyprland") || c.includes("swww") || c.includes("dunst")) return "desktop_windows";
         if (c.includes("python") || c.includes("node") || c.includes("ruby") || c.includes("java") || c.includes("rust")) return "developer_board";
         if (c.includes("pipewire") || c.includes("wireplumber") || c.includes("pulseaudio")) return "graphic_eq";
-        if (c.includes("dgop") || c.includes("top") || c.includes("htop")) return "monitoring";
+        if (c.includes("material3ui-sys") || c.includes("top") || c.includes("htop")) return "monitoring";
         return "memory";
     }
 
@@ -158,9 +158,9 @@ Item {
             }
         }
 
-        // Notice banner if dgop is not installed (Automatic Native Fallback Active)
+        // Notice banner when sysmon is unavailable (automatic native fallback active)
         Rectangle {
-            visible: !SystemData.isDgopAvailable
+            visible: !SystemData.isSysmonAvailable
             Layout.fillWidth: true
             implicitHeight: 36 * Appearance.effectiveScale
             color: Functions.ColorUtils.applyAlpha(Appearance.colors.colWarning, 0.1)
@@ -180,7 +180,7 @@ Item {
                     color: Appearance.colors.colWarning
                 }
                 StyledText {
-                    text: I18nService.tr("Using native Linux 'ps' fallback. Install 'dgop' for enhanced real-time 1-second CPU deltas.")
+                    text: I18nService.tr("Using native Linux 'ps' fallback. Install python3 to enable material3ui-sysmon's real-time CPU deltas.")
                     font.pixelSize: Appearance.font.pixelSize.smaller
                     color: Appearance.colors.colOnLayer1
                     Layout.fillWidth: true
@@ -263,7 +263,7 @@ Item {
                         }
 
                         StyledText {
-                            text: (modelData.command === "dgop" || modelData.command === "/usr/bin/dgop" || (modelData.command && modelData.command.includes("dgop"))) ? "material3ui-monitor" : modelData.command
+                            text: (modelData.command && modelData.command.startsWith("material3ui-sys")) ? "material3ui-sysmon" : modelData.command
                             Layout.fillWidth: true
                             elide: Text.ElideRight
                             font.weight: Font.Normal
@@ -315,7 +315,7 @@ Item {
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                     onClicked: (mouse) => {
                         if (mouse.button === Qt.RightButton) {
-                            const displayName = (modelData.command === "dgop" || modelData.command === "/usr/bin/dgop" || (modelData.command && modelData.command.includes("dgop"))) ? "material3ui-monitor" : modelData.command;
+                            const displayName = (modelData.command && modelData.command.startsWith("material3ui-sys")) ? "material3ui-sysmon" : modelData.command;
                             root.activeContextPid = modelData.pid;
                             processMenu.targetPid = modelData.pid;
                             processMenu.targetName = displayName;

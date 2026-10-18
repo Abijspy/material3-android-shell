@@ -7,9 +7,9 @@ import "../core"
 
 /**
  * Service providing system performance metrics using native Linux APIs (/proc, /sys, df).
- * Uses dgop server daemon exclusively for the Processes tab when active, ensuring 100% accurate
- * 1-second real-time delta CPU calculation without any 'ps 100%' glitches.
- * Zero idle daemon overhead when Processes tab is not open.
+ * The Processes tab is served by material3ui-sysmon (scripts/sysmon), our own /proc reader,
+ * which measures per-process CPU as true deltas between samples instead of 'ps' lifetime averages.
+ * It only runs while the Processes tab is open; 'ps' is the fallback when python3 is missing.
  */
 Singleton {
     id: root
@@ -137,30 +137,31 @@ Singleton {
     property var lastNetworkStats: null
     property var lastDiskStats: null
     property var lastUpdateTime: 0
-    property string lastCursor: ""
     property bool processFetchPending: false
-    property bool isDgopAvailable: false
+    property bool isSysmonAvailable: false
+    readonly property string sysmonPath: Quickshell.shellPath("scripts/sysmon/material3ui-sysmon")
+    readonly property int sysmonPort: 63490
 
-    // Check if dgop binary is installed on the system
+    // material3ui-sysmon ships with the shell; it only needs python3
     Process {
-        id: checkDgopProc
-        command: ["which", "dgop"]
+        id: checkSysmonProc
+        command: ["sh", "-c", 'command -v python3 >/dev/null && test -x "$1" && echo yes', "sh", root.sysmonPath]
         running: true
         stdout: StdioCollector {
             onStreamFinished: {
-                root.isDgopAvailable = this.text.trim() !== "";
+                root.isSysmonAvailable = this.text.trim() === "yes";
             }
         }
     }
 
-    // Long-running dgop daemon process (Runs ONLY when Processes tab is active and dgop is installed)
+    // Long-running sysmon server (runs ONLY while the Processes tab is active)
     Process {
-        id: dgopServerProc
-        command: ["dgop", "server"]
-        running: root.isProcessesTabActive && root.isDgopAvailable
+        id: sysmonServerProc
+        command: [root.sysmonPath, "server", "--port", String(root.sysmonPort)]
+        running: root.isProcessesTabActive && root.isSysmonAvailable
     }
 
-    // Native Linux ps fallback process (Runs when dgop is not installed)
+    // Native Linux ps fallback process (runs when sysmon is unavailable)
     Process {
         id: psProc
         command: ["bash", "-c", "ps -eo pid,%cpu,rss,user,comm --sort=-%cpu | head -n 101"]
@@ -255,7 +256,7 @@ Singleton {
         stdout: StdioCollector {
             onStreamFinished: {
                 const count = parseInt(this.text.trim());
-                if (!isNaN(count) && count > 0 && (!root.isProcessesTabActive || !root.isDgopAvailable)) {
+                if (!isNaN(count) && count > 0 && (!root.isProcessesTabActive || !root.isSysmonAvailable)) {
                     root.processCount = count;
                 }
             }
@@ -319,17 +320,14 @@ Singleton {
         }
     }
 
-    // Fetch real-time processes (uses dgop server REST API when installed, or native ps fallback)
+    // Fetch real-time processes (sysmon HTTP API, or native ps fallback)
     function fetchProcesses() {
         if (!root.isProcessesTabActive) return;
 
-        if (root.isDgopAvailable) {
+        if (root.isSysmonAvailable) {
             if (root.processFetchPending) return;
             root.processFetchPending = true;
-            let url = "http://127.0.0.1:63484/gops/meta?modules=processes,system&limit=150";
-            if (root.lastCursor !== "") {
-                url += "&proc_cursor=" + encodeURIComponent(root.lastCursor) + "&cpu_cursor=" + encodeURIComponent(root.lastCursor);
-            }
+            const url = `http://127.0.0.1:${root.sysmonPort}/meta?modules=processes,system&limit=150`;
 
             const xhr = new XMLHttpRequest();
             xhr.open("GET", url, true);
@@ -339,8 +337,6 @@ Singleton {
                     if (xhr.status === 200) {
                         try {
                             const data = JSON.parse(xhr.responseText);
-                            if (data.cursor) root.lastCursor = data.cursor;
-                            
                             if (data.system) {
                                 root.processCount = data.system.processes || 0;
                                 root.threadCount = data.system.threads || 0;
@@ -353,7 +349,7 @@ Singleton {
                                     command: proc.command || "",
                                     fullCommand: proc.fullCommand || "",
                                     cpu: (proc.cpu || 0) / Math.max(1, root.cpuThreads),
-                                    memoryKB: proc.memoryKB || proc.pssKB || 0,
+                                    memoryKB: proc.memoryKB || 0,
                                     username: proc.username || ""
                                 }));
                             }
@@ -513,7 +509,7 @@ Singleton {
             customDiskProc.running = true;
         }
 
-        // 7. Trigger Processes fetch via dgop REST server (Only when Processes tab is active)
+        // 7. Trigger Processes fetch via the sysmon server (Only when Processes tab is active)
         if (root.isProcessesTabActive) {
             root.fetchProcesses();
         } else {
@@ -589,9 +585,9 @@ Singleton {
     }
 
     Component.onDestruction: {
-        dgopServerProc.running = false;
+        sysmonServerProc.running = false;
         psProc.running = false;
-        checkDgopProc.running = false;
+        checkSysmonProc.running = false;
         tempProc.running = false;
         gpuProc.running = false;
         customDiskProc.running = false;
