@@ -126,7 +126,8 @@ private:
     EventLoop::TimerId m_debounce = 0;
 };
 
-// Battery from UPower's display device, or sysfs when UPower is absent.
+// Battery from UPower's display device, or sysfs when UPower is absent;
+// power profiles from power-profiles-daemon (or tuned-ppd) when running.
 class Power {
 public:
     static Power& get();
@@ -136,7 +137,16 @@ public:
     bool charging() const { return m_charging; }
     bool full() const { return m_full; }
     long long secondsLeft() const { return m_seconds; } // to empty or full; 0 unknown
+    double watts() const { return m_watts; }             // charge or discharge rate; 0 unknown
+    int health() const { return m_health; }              // full charge vs design, %; 0 unknown
     std::string icon() const;
+    // "Charging · 1 h 20 min to full", "On battery · 3 h 5 min left" …
+    std::string status() const;
+
+    // "power-saver", "balanced", "performance"; empty without the daemon
+    const std::string& profile() const { return m_profile; }
+    const std::vector<std::string>& profiles() const { return m_profiles; }
+    void setProfile(const std::string& profile);
 
     Signal<> changed;
 
@@ -144,12 +154,18 @@ private:
     Power();
     void fromUPower(const dbus::Value& props);
     void pollSysfs();
+    void findSysfs();
+    void readHealth();
+    void loadProfiles(size_t from = 0);
 
     bool m_present = false, m_charging = false, m_full = false;
-    int m_percent = 0;
+    int m_percent = 0, m_health = 0;
     long long m_seconds = 0;
+    double m_watts = 0;
     std::string m_sysfs;
-    dbus::Subscription m_sub;
+    std::string m_profile, m_ppd, m_ppdPath; // the daemon's bus name and object, once found
+    std::vector<std::string> m_profiles;
+    dbus::Subscription m_sub, m_profileSub;
     EventLoop::TimerId m_poll = 0;
 };
 

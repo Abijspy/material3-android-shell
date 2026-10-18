@@ -140,6 +140,10 @@ Writer variant(bool v) {
     return [v](sd_bus_message* m) { sd_bus_message_append(m, "v", "b", static_cast<int>(v)); };
 }
 
+Writer variant(const std::string& v) {
+    return [v](sd_bus_message* m) { sd_bus_message_append(m, "v", "s", v.c_str()); };
+}
+
 Subscription& Subscription::operator=(Subscription&& o) noexcept {
     if (this != &o) {
         if (m_slot) sd_bus_slot_unref(m_slot);

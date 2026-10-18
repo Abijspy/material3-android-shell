@@ -199,7 +199,7 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         opts.centredVertically = true;
         build = [arg](ui::Flex* card, Popup& p) { panels::launcher(card, p, arg); };
     } else if (name == "dashboard") {
-        opts.width = 760;
+        opts.width = 0; // the calendar and the 340 px column, evenly padded
         build = panels::dashboard;
     } else if (name == "sysmon") {
         opts.width = 680;

@@ -66,7 +66,7 @@ Popup::Popup(wl::Output* output, Options options, const std::function<void(Flex*
     m_card->setPadding(Insets(20))->setSpacing(12)->setAlignItems(Align::Stretch);
     m_card->setBackground(ColorRef("surface_container", Theme::get().panelOpacity()), false)->setRadius(Radii(28));
     m_card->blurBehind = true;
-    if (!m_options.fill) m_card->fixedWidth = m_options.width;
+    if (!m_options.fill && m_options.width > 0) m_card->fixedWidth = m_options.width;
     // Enter: fade in while dropping a few pixels into place
     m_card->setOpacity(0, false);
     m_card->setTranslateY(12 * m_drop, false);

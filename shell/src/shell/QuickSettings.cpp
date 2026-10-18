@@ -10,6 +10,7 @@
 #include "ui/Controls.h"
 #include "ui/Theme.h"
 
+#include <algorithm>
 #include <ctime>
 #include <format>
 #include <memory>
@@ -264,6 +265,21 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi) {
     };
     mic->onClicked = [](uint32_t) { Audio::get().toggleMuted(true); };
 
+    // Battery: charge, what it is doing, and the power mode
+    auto* battery = live->add<Flex>(Flex::Direction::Row);
+    battery->setPadding({16, 10})->setSpacing(12)->setRadius(Radii(20))->setBackground("surface_container_high", false);
+    auto* batIcon = battery->add<Icon>("battery_full", 22);
+    auto* batText = battery->add<Flex>(Flex::Direction::Column);
+    batText->setAlignItems(Align::Start);
+    batText->grow = true;
+    auto* batPercent = batText->add<Label>();
+    batPercent->setSize(14)->setWeight(500);
+    auto* batStatus = batText->add<Label>();
+    batStatus->setSize(12)->setColor("on_surface_variant", false)->setMaxWidth(170);
+    std::vector<std::pair<std::string, Button*>> modes;
+    for (const auto& [profile, icon] : {std::pair{"power-saver", "eco"}, {"balanced", "balance"}, {"performance", "bolt"}})
+        modes.push_back({profile, iconButton(battery, icon, [p = std::string(profile)] { Power::get().setProfile(p); })});
+
     // The connection at a glance, with live speeds; opens the Wi-Fi view
     auto* net = live->add<Button>(Flex::Direction::Row);
     net->setPadding({16, 10})->setSpacing(12)->setRadius(Radii(20))->setBackground("surface_container_high", false);
@@ -321,6 +337,19 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi) {
         night->set(g_nightLight, g_nightLight ? "4500 K" : "Off");
         const auto* src = a.source();
         mic->set(src && !src->muted, !src ? "None" : src->muted ? "Muted" : "On");
+        auto& pw = Power::get();
+        battery->setVisible(pw.hasBattery() || !pw.profile().empty());
+        batIcon->setText(pw.hasBattery() ? pw.icon() : "power");
+        batIcon->setColor(pw.hasBattery() && pw.percent() <= 15 && !pw.charging() ? "error" : "primary");
+        batPercent->setText(pw.hasBattery() ? std::to_string(pw.percent()) + "%" : "Power mode");
+        batStatus->setText(pw.hasBattery() ? pw.status() : "");
+        batStatus->setVisible(pw.hasBattery());
+        for (auto& [profile, button] : modes) {
+            const bool on = pw.profile() == profile;
+            button->setVisible(std::ranges::find(pw.profiles(), profile) != pw.profiles().end());
+            button->setBackground(on ? ColorRef("primary") : ColorRef::none());
+            static_cast<Icon*>(button->children()[0].get())->setFill(on)->setColor(on ? "on_primary" : "on_surface_variant");
+        }
         const auto* p = Mpris::get().active();
         media->setVisible(p != nullptr);
         if (p) {
@@ -337,6 +366,7 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi) {
     live->watch(Notifications::get().changed);
     live->watch(Idle::get().changed);
     live->watch(Mpris::get().changed);
+    live->watch(Power::get().changed);
     live->sync();
 }
 

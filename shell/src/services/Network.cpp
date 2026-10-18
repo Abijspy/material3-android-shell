@@ -526,6 +526,74 @@ Power::Power() {
     m_sub = dbus::Bus::system().onPropertiesChanged("org.freedesktop.UPower", dev,
                                                     [load](const dbus::Value&, const std::string&) { load(); });
     load();
+    findSysfs();
+    readHealth();
+    loadProfiles();
+}
+
+void Power::findSysfs() {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    for (const auto& e : fs::directory_iterator("/sys/class/power_supply", ec)) {
+        std::string type;
+        std::ifstream(e.path() / "type") >> type;
+        if (type == "Battery") {
+            m_sysfs = e.path();
+            break;
+        }
+    }
+}
+
+void Power::readHealth() {
+    if (m_sysfs.empty()) return;
+    // Energy (µWh) or charge (µAh), whichever the driver reports
+    long long full = 0, design = 0;
+    for (const char* kind : {"energy", "charge"}) {
+        std::ifstream(m_sysfs + "/" + kind + "_full") >> full;
+        std::ifstream(m_sysfs + "/" + kind + "_full_design") >> design;
+        if (full > 0 && design > 0) break;
+    }
+    m_health = full > 0 && design > 0 ? static_cast<int>(std::lround(100.0 * static_cast<double>(full) / static_cast<double>(design))) : 0;
+}
+
+namespace {
+// The UPower name first; power-profiles-daemon before 0.20 and tuned-ppd
+// answer on the old one
+const std::pair<const char*, const char*> kProfileDaemons[] = {
+    {"org.freedesktop.UPower.PowerProfiles", "/org/freedesktop/UPower/PowerProfiles"},
+    {"net.hadess.PowerProfiles", "/net/hadess/PowerProfiles"},
+};
+} // namespace
+
+void Power::loadProfiles(size_t from) {
+    if (from >= std::size(kProfileDaemons)) return;
+    // Once found, only that daemon is reread
+    const std::string name = m_ppd.empty() ? kProfileDaemons[from].first : m_ppd;
+    const std::string path = m_ppd.empty() ? kProfileDaemons[from].second : m_ppdPath;
+    dbus::Bus::system().getAll(name, path, name, [this, name, path, from](const dbus::Value& p, bool ok) {
+        if (!ok) {
+            if (m_ppd.empty()) loadProfiles(from + 1);
+            return;
+        }
+        m_profile = str(p, "ActiveProfile");
+        m_profiles.clear();
+        if (auto it = p.find("Profiles"); it != p.end() && it->is_array())
+            for (const auto& entry : *it)
+                if (entry.is_object()) m_profiles.push_back(str(entry, "Profile"));
+        if (m_ppd.empty()) {
+            m_ppd = name;
+            m_ppdPath = path;
+            m_profileSub = dbus::Bus::system().onPropertiesChanged(name, path, [this](const dbus::Value&, const std::string&) { loadProfiles(); });
+        }
+        changed.emit();
+    });
+}
+
+void Power::setProfile(const std::string& profile) {
+    if (m_ppd.empty() || profile == m_profile) return;
+    m_profile = profile; // shown at once; the daemon's change confirms it
+    changed.emit();
+    dbus::Bus::system().setProperty(m_ppd, m_ppdPath, m_ppd, "ActiveProfile", dbus::variant(profile));
 }
 
 void Power::fromUPower(const dbus::Value& p) {
@@ -536,22 +604,13 @@ void Power::fromUPower(const dbus::Value& p) {
     m_charging = state == 1 || state == 5;
     m_full = state == 4;
     m_seconds = m_charging ? num<long long>(p, "TimeToFull") : num<long long>(p, "TimeToEmpty");
+    m_watts = num<double>(p, "EnergyRate");
+    readHealth();
     changed.emit();
 }
 
 void Power::pollSysfs() {
-    namespace fs = std::filesystem;
-    if (m_sysfs.empty()) {
-        std::error_code ec;
-        for (const auto& e : fs::directory_iterator("/sys/class/power_supply", ec)) {
-            std::string type;
-            std::ifstream(e.path() / "type") >> type;
-            if (type == "Battery") {
-                m_sysfs = e.path();
-                break;
-            }
-        }
-    }
+    if (m_sysfs.empty()) findSysfs();
     m_present = !m_sysfs.empty();
     if (m_present) {
         m_percent = readInt(m_sysfs + "/capacity");
@@ -560,6 +619,10 @@ void Power::pollSysfs() {
         m_charging = status == "Charging";
         m_full = status == "Full";
         m_seconds = 0;
+        // power_now in µW; absent on charge-reporting drivers
+        long long power = 0;
+        std::ifstream(m_sysfs + "/power_now") >> power;
+        m_watts = static_cast<double>(power) / 1e6;
     }
     changed.emit();
 }
@@ -569,6 +632,17 @@ std::string Power::icon() const {
     if (m_full || m_percent >= 95) return "battery_full";
     // Material Symbols has battery_0_bar … battery_6_bar
     return "battery_" + std::to_string(std::clamp(m_percent * 7 / 100, 0, 6)) + "_bar";
+}
+
+std::string Power::status() const {
+    if (m_full) return "Fully charged";
+    std::string left;
+    if (m_seconds > 0) {
+        const long long h = m_seconds / 3600, min = (m_seconds % 3600) / 60;
+        left = h > 0 ? std::to_string(h) + " h " + std::to_string(min) + " min" : std::to_string(min) + " min";
+    }
+    if (m_charging) return left.empty() ? "Charging" : "Charging · " + left + " to full";
+    return left.empty() ? "On battery" : "On battery · " + left + " left";
 }
 
 // ── Brightness ──

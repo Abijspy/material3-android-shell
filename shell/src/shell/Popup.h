@@ -23,7 +23,7 @@ public:
     struct Options {
         std::string name;
         float anchorX = -1; // < 0: centred horizontally
-        float width = 360;
+        float width = 360; // 0: as wide as the content
         bool centredVertically = false;
         bool fill = false; // the card takes the whole output (overview)
     };

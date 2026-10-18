@@ -44,6 +44,7 @@ Writer args(Args... a) {
 
 // A variant holding one basic value (for Properties.Set)
 Writer variant(bool v);
+Writer variant(const std::string& v);
 
 // Unsubscribes when destroyed.
 class Subscription {

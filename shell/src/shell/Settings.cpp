@@ -830,6 +830,75 @@ void dockPage(Flex* page, Popup&) {
     live->sync();
 }
 
+// ── Battery ──
+
+// A level bar as wide as it is given
+class Meter : public Node {
+public:
+    Meter(float value, ColorRef color) : m_value(std::clamp(value, 0.0f, 1.0f)), m_color(std::move(color)) {}
+
+protected:
+    SizeF doMeasure(SizeF available) override { return {available.w, 12}; }
+    void doPaint(Renderer& r) override {
+        r.rect(rect(), ColorRef("surface_container_highest").resolve(), Radii(6));
+        RectF fill = rect();
+        fill.w *= m_value;
+        if (fill.w > 0) r.rect(fill, m_color.resolve(), Radii(6));
+    }
+
+private:
+    float m_value;
+    ColorRef m_color;
+};
+
+void batteryPage(Flex* page, Popup&) {
+    auto* live = page->add<Live>();
+    live->setSpacing(6);
+    live->watch(Power::get().changed);
+    live->sync = [live] {
+        live->clearChildren();
+        auto& p = Power::get();
+        if (p.hasBattery()) {
+            // The charge, large, with a bar that fills to it
+            auto* hero = live->add<Flex>(Flex::Direction::Column);
+            hero->setPadding({24, 20})->setSpacing(10)->setRadius(Radii(kOuter))->setBackground("surface_container_high", false);
+            hero->setAlignItems(Align::Stretch);
+            auto* top = hero->add<Flex>(Flex::Direction::Row);
+            top->setSpacing(14);
+            const bool low = p.percent() <= 15 && !p.charging();
+            top->add<Icon>(p.icon(), 40)->setFill(true)->setColor(low ? "error" : "primary", false);
+            auto* texts = top->add<Flex>(Flex::Direction::Column);
+            texts->setAlignItems(Align::Start);
+            texts->add<Label>(std::to_string(p.percent()) + "%")->setSize(36)->setWeight(600);
+            texts->add<Label>(p.status())->setSize(14)->setColor("on_surface_variant", false);
+            hero->add<Meter>(static_cast<float>(p.percent()) / 100.0f,
+                             ColorRef(low ? "error" : p.charging() ? "tertiary" : "primary"));
+
+            auto* g = group(live, "Details");
+            row(g, "bolt", p.charging() ? "Charging at" : "Using",
+                p.watts() > 0 ? std::format("{:.1f} W", p.watts()) : p.full() ? "Plugged in, not charging" : "Not reported");
+            row(g, "battery_profile", "Health",
+                p.health() > 0 ? std::format("{}% of its design capacity", p.health()) : "Not reported");
+        }
+
+        auto* modes = group(live, "Power mode", "How hard the CPU and GPU may work: battery life against speed");
+        if (p.profiles().empty()) {
+            row(modes, "power_off", "Power modes are unavailable", "Install and enable power-profiles-daemon");
+            return;
+        }
+        const std::pair<const char*, const char*> labels[] = {
+            {"power-saver", "Power saver"}, {"balanced", "Balanced"}, {"performance", "Performance"}};
+        std::vector<std::pair<std::string, std::string>> options;
+        for (const auto& [id, label] : labels)
+            if (std::ranges::find(p.profiles(), id) != p.profiles().end()) options.push_back({id, label});
+        auto r = row(modes, "speed", "Mode", p.profile() == "power-saver"   ? "Longest battery life, slower"
+                                            : p.profile() == "performance" ? "Fastest, drains the battery sooner"
+                                                                           : "Speed when needed, saving otherwise");
+        connectedGroup<std::string>(r.row, p.profile(), options, [](std::string v) { Power::get().setProfile(v); });
+    };
+    live->sync();
+}
+
 // ── Default apps ──
 //
 // File types go through xdg-mime (~/.config/mimeapps.list). The browser,
@@ -1714,6 +1783,7 @@ const PageDef kPages[] = {
     {"network", "wifi", "Network", "Wi-Fi networks and your connection", networkPage},
     {"bluetooth", "bluetooth", "Bluetooth", "Pair and connect devices", bluetoothPage},
     {"sound", "volume_up", "Sound", "Outputs, inputs, balance and apps", soundPage},
+    {"battery", "battery_full", "Battery & power", "Charge, power draw, health and the power mode", batteryPage},
     {"display", "brightness_medium", "Display", "Brightness, night light and monitors", displayPage},
     {"appearance", "palette", "Wallpaper & colour", "Wallpaper, Material You colours and fonts", appearancePage},
     {"style", "blur_on", "Look & feel", "Blur, transparency, corners and motion", stylePage},
