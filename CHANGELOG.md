@@ -1,5 +1,17 @@
 # Changelog
 
+## v4.1.3 — 2026-10-18
+
+- **A new installer.** It asks everything first, shows one plan, confirms once, then runs to the end.
+  - **The plan** shows your apps, Hyprland mode and update channel; the packages that are missing; the shell build; and every config it will write (`+` new, `~` replaced and backed up).
+  - **Re-runs** start from your previous choices.
+  - **sudo** is asked for once and kept alive through the build.
+  - **Each step** shows a spinner and its duration, and keeps its output in the log. A failing step prints the end of that log.
+- **Undo:** every replaced file is backed up next to a `restore.sh`. `./install.sh --restore [stamp]` undoes an install's config changes (the last one by default, listing older ones).
+- **Uninstall:** `./install.sh --uninstall` removes the shell from `/usr`; your configs stay.
+- **Dry run:** `--dry-run` prints one line per file. Without a terminal the installer runs as `--yes`.
+- **Removed:** the live-wallpaper option. The native shell doesn't play video wallpapers.
+
 ## v4.1.2 — 2026-10-18
 
 - **Bar editor in Settings** (Settings → Status bar → Widgets): three columns, Left, Middle and Right.
