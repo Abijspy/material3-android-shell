@@ -1,5 +1,29 @@
 # Changelog
 
+## v4.2.0 — 2026-10-18
+
+- **Bluetooth pairing with codes.** The shell is now the BlueZ pairing agent.
+  - **Codes:** it shows a 6-digit code to compare, a code to type on a keyboard, or a box for a PIN shown on the device, and asks before a device may connect.
+  - **Nearby devices:** Settings → Bluetooth lists **My devices** and **Nearby devices**; the Bluetooth tile in Quick Settings and the bar's Bluetooth popup show the same list. Tap to pair, connect or disconnect.
+  - **Progress:** each device shows "Pairing…" or "Connecting…", and failures say why in plain words.
+  - **From the other side:** when a phone starts pairing and no list is open, a pairing dialog opens.
+  - **Searching** runs only while a list is open; unnamed devices (beacons) are hidden.
+- **Battery & power.**
+  - **Settings → Battery & power:** live charge with a level bar, time left, power draw and battery health.
+  - **Power modes:** Power saver, Balanced and Performance (power-profiles-daemon), in Settings, Quick Settings and a new popup from the bar's battery widget.
+- **Default apps** (Settings → Default apps): browser, files, terminal, email, text, images, video, music, PDF and archives. The browser, file manager and terminal also set Super+B, Super+E and Super+Return.
+- **Themes for more apps.** Wallpaper colours now reach Firefox and LibreWolf (on next start), VS Code, Code - OSS, VSCodium, Cursor and Windsurf (pick **Material3UI** as the colour theme), foot, ghostty, WezTerm and zathura. Only installed apps are themed.
+- **Wallpaper & colour.**
+  - **Gallery:** every wallpaper side by side; a click applies it. The wallpapers the shell ships are always listed.
+  - **Fonts:** dropdowns of the installed fonts, searchable, each shown in its own face.
+- **Launcher:** apps installed or removed while the shell runs show up without a restart, Flatpak apps included, with their icons.
+- **Fixes**
+  - **Wallpaper colours:** a new wallpaper recolours the desktop again (Matugen 4 stopped when an image had several source colours).
+  - **Hyprland 0.56:** removed `misc.vfr` and `decoration.shadow.ignore_window`, which the config error banner reported.
+  - **Short screens:** Settings no longer runs off the bottom or the top of the screen.
+  - **Dashboard:** even margins on both sides.
+  - **Bar:** the battery widget's hover follows its capsule.
+
 ## v4.1.3 — 2026-10-18
 
 - **A new installer.** It asks everything first, shows one plan, confirms once, then runs to the end.
