@@ -340,13 +340,30 @@ done_ "Dependency review complete."
 step "Packages"
 if [[ ${#MISSING[@]} -gt 0 ]]; then
     AUR=""
-    for h in paru yay; do command -v "$h" >/dev/null 2>&1 && { AUR="$h"; break; }; done
+    # A helper built against an older libalpm fails to start ("libalpm.so.N: cannot open
+    # shared object file"), so check that it runs, not just that it exists.
+    for h in paru yay; do
+        command -v "$h" >/dev/null 2>&1 || continue
+        if "$h" --version >/dev/null 2>&1; then AUR="$h"; break; fi
+        warn "$h is installed but fails to start (likely built against an older libalpm); skipping it."
+    done
     if [[ -z "$AUR" ]]; then
-        say "No AUR helper found; bootstrapping paru."
-        run sudo pacman -S --needed --noconfirm base-devel git
+        say "No working AUR helper found; bootstrapping paru."
+        run sudo pacman -Syu --needed --noconfirm base-devel git
         tmp="$(mktemp -d)"
-        run git clone --depth 1 https://aur.archlinux.org/paru-bin.git "$tmp/paru-bin"
-        if [[ "$DRY_RUN" == 0 ]]; then (cd "$tmp/paru-bin" && makepkg -si --noconfirm); fi
+        if [[ "$DRY_RUN" == 0 ]]; then
+            # paru-bin is prebuilt and tied to one libalpm soname; build paru from
+            # source against the system's libalpm when the binary does not run.
+            run git clone --depth 1 https://aur.archlinux.org/paru-bin.git "$tmp/paru-bin"
+            (cd "$tmp/paru-bin" && makepkg -si --noconfirm) || true
+            if ! paru --version >/dev/null 2>&1; then
+                warn "paru-bin does not run against this libalpm; building paru from source."
+                pacman -Qq paru-bin >/dev/null 2>&1 && run sudo pacman -Rdd --noconfirm paru-bin
+                run git clone --depth 1 https://aur.archlinux.org/paru.git "$tmp/paru"
+                (cd "$tmp/paru" && makepkg -si --noconfirm) || die "Building paru failed. Install an AUR helper (paru or yay) and re-run the installer."
+                paru --version >/dev/null 2>&1 || die "paru still fails to start. Run 'sudo pacman -Syu', then re-run the installer."
+            fi
+        fi
         rm -rf "$tmp"
         AUR=paru
     fi

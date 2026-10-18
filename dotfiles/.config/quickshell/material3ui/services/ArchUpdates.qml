@@ -79,7 +79,7 @@ Singleton {
             fi
             echo "#AUR"
             for h in paru yay; do
-                if command -v "$h" >/dev/null 2>&1; then
+                if command -v "$h" >/dev/null 2>&1 && "$h" --version >/dev/null 2>&1; then
                     echo "#HELPER $h"
                     [ "$1" = 1 ] && "$h" -Qua --color never 2>/dev/null
                     break
