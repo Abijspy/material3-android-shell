@@ -41,7 +41,7 @@ You need an Arch-based system (Arch, CachyOS, EndeavourOS, ...) with Hyprland 0.
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Abijspy/material3-android-shell/main/install.sh)"
 ```
 
-The installer walks you through seven short steps and asks before it changes anything. To see exactly what it would do first, clone the repo and run `./install.sh --dry-run`.
+The installer asks a few questions, shows you one plan (packages, the shell build, every config it will write) and only then runs, with backups and a `restore.sh` for everything it replaces. To preview it, clone the repo and run `./install.sh --dry-run`.
 
 <details>
 <summary><b>Installer options</b></summary>
@@ -54,7 +54,9 @@ The installer walks you through seven short steps and asks before it changes any
 | `--terminal` · `--file-manager` · `--browser` | Your apps. The defaults are Alacritty, Nemo and LibreWolf. |
 | `--greeter` | Also install the greetd login screen (asks for sudo) |
 | `--channel latest` · `release` | Follow `main` (default), or the latest tagged release |
-| `--skip-deps` | Don't install packages; only deploy the configs |
+| `--skip-deps` | Don't install packages; only build the shell and deploy the configs |
+| `--restore [stamp]` | Put back the configs an install replaced (the last one by default) |
+| `--uninstall` | Remove the shell from `/usr`; configs stay |
 
 The full walkthrough from a fresh system is in the [install guide](docs/INSTALL.md). Coming from KDE or GNOME? Read the [migration guide](docs/MIGRATION.md).
 

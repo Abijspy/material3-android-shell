@@ -35,15 +35,34 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Abijspy/material3-androi
 
 When run this way the repository is cloned to `~/.local/src/material3ui` (change it with `--dir`) and the installer continues from the clone. You can also run `./install.sh` from any checkout.
 
-The installer runs seven steps:
+The installer asks everything first, shows one plan, and after you confirm it runs to the end without further questions:
 
-1. **Preflight** checks that you are on an Arch-based system, not root, and that Hyprland is 0.55 or newer (needed for the Lua config). Everything is logged to `~/.cache/material3ui/install-<timestamp>.log`.
-2. **Choices**: terminal (Alacritty by default), file manager (Nemo), browser (LibreWolf), how to handle Hyprland (`full`, `inject` or `skip`), update channel, and optional components (fonts, NetworkManager/Bluetooth services, KDE theming, live wallpapers, fish + starship, EasyEffects/WARP).
-3. **Dependency review** lists what is already installed and what is missing, and asks before installing anything.
-4. **Packages** are installed with `yay` (bootstrapped when it is missing), followed by Google Sans Flex and optional extras.
-5. **Configuration review** shows every file that will be written. Existing files are marked and backed up to `~/.config/material3ui/backups/<timestamp>/`. Configs without the `# Material3UI Configuration` marker (your own Matugen or Alacritty setup) are left alone.
-6. **Deploy** builds the shell from `shell/` with meson and installs it to `/usr` (sudo: the lock screen's PAM file goes to `/etc/pam.d`). It then installs the Matugen templates and theme hooks, Alacritty config and Hyprland modules, and sets the XDG default file manager and browser. It also backs up and removes the v3 Quickshell shell and older helpers if present.
-7. **Summary** offers to reload Hyprland and start the shell when you are already in a Hyprland session.
+1. **Checks:** an Arch-based system, not root, and Hyprland 0.55 or newer (needed for the Lua config).
+2. **Your setup:**
+   - **Apps and modes:** your terminal (Alacritty by default), file manager (Nemo) and browser (LibreWolf); how to handle Hyprland (`full`, `inject` or `skip`); and the update channel.
+   - **Extras:** fonts, NetworkManager/Bluetooth, KDE colours, fish + starship, EasyEffects/WARP, and the login screen.
+   - **Re-runs:** when you install again, your previous choices are the defaults.
+3. **The plan:** everything in one place.
+   - **Packages:** what's missing (found with `pacman -T`).
+   - **Shell:** the build it will install.
+   - **Configs:** every config it will write. `+` is new, and `~` replaces a file, which is backed up first.
+   - **Left alone:** configs without the `# Material3UI Configuration` marker, such as your own Matugen or Alacritty setup.
+4. **Packages:** installed with `yay` (set up first when it's missing or broken), then Google Sans Flex and the extras. sudo is asked for once and kept alive until the end.
+5. **The shell:** built from `shell/` with meson and installed to `/usr`. The lock screen's PAM file goes to `/etc/pam.d`.
+6. **Configs:** the Matugen templates and theme hooks, Alacritty and Hyprland. The v3 Quickshell shell and older helpers are backed up and removed.
+7. **Session:** NetworkManager and Bluetooth, other polkit agents turned off (the shell is the agent), default apps, and the login screen.
+
+Each step shows a spinner and how long it took. The full output goes to `~/.cache/material3ui/install-<timestamp>.log`, and if a step fails you see the end of that log.
+
+### Undo and uninstall
+
+Every replaced file is copied to `~/.config/material3ui/backups/<timestamp>/`, and a `restore.sh` there records each change.
+
+```bash
+./install.sh --restore              # put back what the last install changed
+./install.sh --restore 20261018-154507   # or an older one
+./install.sh --uninstall            # remove the shell from /usr (configs stay)
+```
 
 ### Unattended installs
 
@@ -51,7 +70,7 @@ The installer runs seven steps:
 ./install.sh --yes                                   # accept every default
 ./install.sh --yes --terminal foot --file-manager thunar --browser firefox
 ./install.sh --yes --hypr inject --channel release --skip-deps
-./install.sh --dry-run                               # print every step, change nothing
+./install.sh --dry-run                               # show the plan and every step, change nothing
 ```
 
 ### Hyprland modes
