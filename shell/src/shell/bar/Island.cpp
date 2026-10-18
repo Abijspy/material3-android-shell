@@ -5,6 +5,7 @@
 #include "services/Mpris.h"
 #include "services/Notifications.h"
 #include "shell/bar/Widgets.h"
+#include "ui/Theme.h"
 
 #include <cmath>
 #include <ctime>
@@ -19,7 +20,8 @@ constexpr float kPadding = 14;
 }
 
 Island::Island(OpenPopup open) : Button(Direction::Row), m_open(std::move(open)) {
-    pill(this)->setBackground("surface_container_high", false);
+    pill(this)->setBackground(ColorRef("surface_container_high", Theme::get().barOpacity()), false);
+    blurBehind = true;
     fixedHeight = 32;
     onClicked = [this](uint32_t button) {
         if (button == BTN_LEFT && m_mode != Mode::Media) m_open("dashboard", rect().x + rect().w / 2);

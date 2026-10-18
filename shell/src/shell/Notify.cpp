@@ -4,6 +4,7 @@
 #include "render/Images.h"
 #include "services/Search.h"
 #include "ui/Controls.h"
+#include "ui/Theme.h"
 #include "wayland/Display.h"
 
 #include <algorithm>
@@ -78,7 +79,13 @@ ImageView::Provider imageFor(const Notifications::Notification& n) {
 NotificationCard::NotificationCard(const Notifications::Notification& n, bool toast)
     : Button(Direction::Column), m_id(n.id) {
     setPadding(Insets(16))->setSpacing(10)->setAlignItems(Align::Stretch)->setRadius(Radii(24));
-    setBackground(toast ? "surface_container_high" : "surface_container_highest", false);
+    if (toast) {
+        // Toasts float over windows: translucent and blurred like panels
+        setBackground(ColorRef("surface_container_high", Theme::get().panelOpacity()), false);
+        blurBehind = true;
+    } else {
+        setBackground("surface_container_highest", false);
+    }
     if (n.urgency == Notifications::Critical) setBorder(2, "error");
     fixedWidth = toast ? kToastWidth : std::optional<float>{};
 

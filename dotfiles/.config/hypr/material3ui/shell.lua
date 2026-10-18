@@ -69,3 +69,15 @@ end
 for _, ns in ipairs({ "regionSelector", "recordingMarker" }) do
 	hl.layer_rule({ match = { namespace = "quickshell:" .. ns }, blur = false, no_anim = true })
 end
+
+-- The native shell (material3ui): its layers and blur follow
+-- Settings → Appearance → Effects, written to effects_custom.lua
+local ok_fx, fx = pcall(require, "material3ui.effects_custom")
+if not ok_fx or type(fx) ~= "table" then fx = {} end
+for _, ns in ipairs({ "bar", "popup", "toasts", "osd" }) do
+	hl.layer_rule({ match = { namespace = "material3ui-" .. ns }, blur = fx.blur ~= false, ignore_alpha = fx.ignore_alpha or 0.6 })
+end
+hl.layer_rule({ match = { namespace = "material3ui-wallpaper" }, blur = false, no_anim = true })
+if fx.size then
+	hl.config({ decoration = { blur = { size = fx.size, passes = fx.passes or 3 } } })
+end

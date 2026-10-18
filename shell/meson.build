@@ -6,7 +6,7 @@ project('material3ui', 'cpp', 'c',
 
 wayland_client = dependency('wayland-client')
 wayland_egl = dependency('wayland-egl')
-wayland_protocols = dependency('wayland-protocols', version: '>= 1.32')
+wayland_protocols = dependency('wayland-protocols', version: '>= 1.45')
 wlr_protocols = dependency('wlr-protocols')
 egl = dependency('egl')
 glesv2 = dependency('glesv2')
@@ -34,6 +34,7 @@ protocols = {
   'viewporter': wl_dir / 'stable/viewporter/viewporter.xml',
   'ext-session-lock-v1': wl_dir / 'staging/ext-session-lock/ext-session-lock-v1.xml',
   'ext-idle-notify-v1': wl_dir / 'staging/ext-idle-notify/ext-idle-notify-v1.xml',
+  'ext-background-effect-v1': wl_dir / 'staging/ext-background-effect/ext-background-effect-v1.xml',
   'wlr-layer-shell-unstable-v1': wlr_dir / 'unstable/wlr-layer-shell-unstable-v1.xml',
 }
 
@@ -67,6 +68,7 @@ sources = files(
   'src/render/Text.cpp',
   'src/services/Audio.cpp',
   'src/services/Auth.cpp',
+  'src/services/Effects.cpp',
   'src/services/Hyprland.cpp',
   'src/services/Idle.cpp',
   'src/services/Keybinds.cpp',

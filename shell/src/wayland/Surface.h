@@ -17,6 +17,7 @@ struct wl_callback;
 struct wl_egl_window;
 struct wp_fractional_scale_v1;
 struct wp_viewport;
+struct ext_background_effect_surface_v1;
 
 namespace m3::wl {
 
@@ -127,6 +128,10 @@ private:
     std::optional<std::vector<RectF>> m_input;
     std::vector<ui::Node*> m_hoverChain; // nodes the pointer is within
     void updateHoverWithin(ui::Node* hit);
+    // Blur behind blurBehind nodes, when the compositor offers it
+    void updateBlurRegion();
+    ext_background_effect_surface_v1* m_blur = nullptr;
+    std::vector<RectF> m_blurRects;
     Connection m_imagesReady;
     bool m_inputDirty = false;
 };

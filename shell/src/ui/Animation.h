@@ -14,12 +14,18 @@ struct Easing {
     static constexpr Easing standard() { return {0.2f, 0.0f, 0.0f, 1.0f}; }
     static constexpr Easing emphasizedDecelerate() { return {0.05f, 0.7f, 0.1f, 1.0f}; }
     static constexpr Easing emphasizedAccelerate() { return {0.3f, 0.0f, 0.8f, 0.15f}; }
+    // M3 Expressive spatial springs, as overshooting curves
+    static constexpr Easing expressiveFast() { return {0.42f, 1.67f, 0.21f, 0.90f}; }
+    static constexpr Easing expressiveDefault() { return {0.38f, 1.21f, 0.22f, 1.00f}; }
 };
 
 namespace motion {
 inline constexpr int shortMs = 150;
 inline constexpr int mediumMs = 300;
 inline constexpr int longMs = 500;
+// Settings → Appearance → Animation speed: durations are multiplied by this;
+// 0 turns animation off
+inline float scale = 1;
 } // namespace motion
 
 using AnimClock = std::chrono::steady_clock;

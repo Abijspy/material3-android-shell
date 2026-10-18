@@ -80,6 +80,12 @@ def system():
         def GetSettings(self):
             return {"802-11-wireless": {"ssid": dbus.ByteArray(b"Home-5G")}, "connection": {"id": "Home"}}
 
+    def addr(a, prefix=None):
+        d = {"address": a}
+        if prefix is not None:
+            d["prefix"] = dbus.UInt32(prefix)
+        return dbus.Dictionary(d, signature="sv")
+
     def ap(n, ssid, strength, secured):
         return PropObject(bus, f"/org/freedesktop/NetworkManager/AccessPoint/{n}", {NM + ".AccessPoint": {
             "Strength": dbus.Byte(strength), "Ssid": dbus.ByteArray(ssid),
@@ -97,13 +103,26 @@ def system():
             "PrimaryConnection": o("/org/freedesktop/NetworkManager/ActiveConnection/1")}}),
         PropObject(bus, "/org/freedesktop/NetworkManager/ActiveConnection/1", {NM + ".Connection.Active": {
             "Type": "802-11-wireless", "Id": "Home",
+            "Ip4Config": o("/org/freedesktop/NetworkManager/IP4Config/1"),
+            "Ip6Config": o("/org/freedesktop/NetworkManager/IP6Config/1"),
             "Devices": dbus.Array([o("/org/freedesktop/NetworkManager/Devices/1")], signature="o")}}),
+        PropObject(bus, "/org/freedesktop/NetworkManager/IP4Config/1", {NM + ".IP4Config": {
+            "AddressData": dbus.Array([addr("192.168.1.42", 24)], signature="a{sv}"),
+            "Gateway": "192.168.1.1",
+            "NameserverData": dbus.Array([addr("192.168.1.1"), addr("1.1.1.1")], signature="a{sv}")}}),
+        PropObject(bus, "/org/freedesktop/NetworkManager/IP6Config/1", {NM + ".IP6Config": {
+            "AddressData": dbus.Array([addr("fe80::1c2a:3bff:fe4d:5e6f", 64), addr("2001:db8::42", 64)], signature="a{sv}"),
+            "Gateway": ""}}),
+        # The loopback stands in for the radio: its counters move in tests
         Wireless(bus, "/org/freedesktop/NetworkManager/Devices/1", {
-            NM + ".Device.Wireless": {"ActiveAccessPoint": o("/org/freedesktop/NetworkManager/AccessPoint/1")},
-            NM + ".Device": {"DeviceType": dbus.UInt32(2)}}),
+            NM + ".Device.Wireless": {"ActiveAccessPoint": o("/org/freedesktop/NetworkManager/AccessPoint/1"),
+                                      "Bitrate": dbus.UInt32(866000), "PermHwAddress": "3C:A9:F4:12:7B:9E"},
+            NM + ".Device": {"DeviceType": dbus.UInt32(2), "Interface": "lo", "IpInterface": "lo",
+                             "HwAddress": "3C:A9:F4:12:7B:9E"}}),
         PropObject(bus, "/org/freedesktop/NetworkManager/AccessPoint/1", {NM + ".AccessPoint": {
             "Strength": dbus.Byte(72), "Ssid": dbus.ByteArray(b"Home-5G"), "Flags": dbus.UInt32(1),
-            "WpaFlags": dbus.UInt32(0), "RsnFlags": dbus.UInt32(0x188)}}),
+            "WpaFlags": dbus.UInt32(0), "RsnFlags": dbus.UInt32(0x188),
+            "Frequency": dbus.UInt32(5180), "MaxBitrate": dbus.UInt32(1201000)}}),
         PropObject(bus, "/org/freedesktop/UPower/devices/DisplayDevice", {"org.freedesktop.UPower.Device": {
             "IsPresent": True, "Type": dbus.UInt32(2), "Percentage": 76.0, "State": dbus.UInt32(2),
             "TimeToEmpty": dbus.Int64(9000), "TimeToFull": dbus.Int64(0)}}),

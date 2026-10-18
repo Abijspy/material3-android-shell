@@ -4,6 +4,7 @@
 #include "wayland/Surface.h"
 
 #include "cursor-shape-v1-client-protocol.h"
+#include "ext-background-effect-v1-client-protocol.h"
 #include "ext-idle-notify-v1-client-protocol.h"
 #include "ext-session-lock-v1-client-protocol.h"
 #include "fractional-scale-v1-client-protocol.h"
@@ -24,6 +25,12 @@
 namespace m3::wl {
 
 namespace {
+
+const ext_background_effect_manager_v1_listener kBackgroundEffect = {
+    .capabilities = [](void*, ext_background_effect_manager_v1*, uint32_t flags) {
+        Display::get().backgroundEffectCapabilities(flags);
+    },
+};
 
 bool debugFocus() {
     static const bool on = std::getenv("M3_DEBUG_FOCUS") != nullptr;
@@ -145,6 +152,10 @@ void Display::addGlobal(wl_registry* r, uint32_t name, const char* iface, uint32
         m_lockManager = wl_registry_bind(r, name, &ext_session_lock_manager_v1_interface, 1);
     } else if (i == ext_idle_notifier_v1_interface.name) {
         m_idleNotifier = wl_registry_bind(r, name, &ext_idle_notifier_v1_interface, 1);
+    } else if (i == ext_background_effect_manager_v1_interface.name) {
+        m_backgroundEffect = static_cast<ext_background_effect_manager_v1*>(
+            wl_registry_bind(r, name, &ext_background_effect_manager_v1_interface, 1));
+        ext_background_effect_manager_v1_add_listener(m_backgroundEffect, &kBackgroundEffect, this);
     } else if (i == wp_viewporter_interface.name) {
         m_viewporter = static_cast<wp_viewporter*>(wl_registry_bind(r, name, &wp_viewporter_interface, 1));
     } else if (i == wl_output_interface.name && version >= 4) {
@@ -154,6 +165,14 @@ void Display::addGlobal(wl_registry* r, uint32_t name, const char* iface, uint32
         wl_output_add_listener(out->handle, &kOutput, out.get());
         m_outputs.push_back(std::move(out));
     }
+}
+
+void Display::backgroundEffectCapabilities(uint32_t flags) {
+    const bool capable = flags & EXT_BACKGROUND_EFFECT_MANAGER_V1_CAPABILITY_BLUR;
+    if (capable == m_blurCapable) return;
+    m_blurCapable = capable;
+    log::info("compositor blur {}", capable ? "available" : "unavailable");
+    for (auto* s : Surface::all()) s->requestRedraw();
 }
 
 void Display::removeGlobal(uint32_t name) {

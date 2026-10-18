@@ -16,6 +16,7 @@
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
 #include "ui/Controls.h"
+#include "ui/Theme.h"
 
 #include <cmath>
 #include <format>
@@ -35,17 +36,66 @@ using namespace m3::shell::kit;
 namespace {
 
 // ── Building blocks ──
+//
+// M3 Expressive: lists are segmented (each row its own surface, a hairline
+// apart, large outer and small inner corners), choices are connected button
+// groups, and pressed controls spring into a tighter shape.
 
-// A titled group of rows on one rounded surface
+constexpr float kOuter = 24, kInner = 6;
+
+// Rebuilds a page by id (after a reset, so its controls show the defaults)
+std::function<void(const std::string&)> reshow;
+
+// The rows of one group. Their backgrounds are painted here, shaped by their
+// place in the group, so rows added or hidden later reshape the stack.
+class Segments : public Flex {
+public:
+    Segments() : Flex(Direction::Column) { setAlignItems(Align::Stretch)->setSpacing(2); }
+
+protected:
+    void doArrange() override {
+        Flex::doArrange();
+        const auto rows = shownRows();
+        for (size_t i = 0; i < rows.size(); ++i) {
+            const Radii want = shape(i, rows.size());
+            const Radii& has = rows[i]->radius();
+            // Hover and press layers follow the segment's corners
+            if (has.tl != want.tl || has.bl != want.bl) rows[i]->setRadius(want);
+        }
+    }
+    void doPaint(Renderer& r) override {
+        const Color bg = ColorRef("surface_container_high", std::min(1.0f, Theme::get().panelOpacity() + 0.06f)).resolve();
+        const float k = Theme::get().roundness();
+        const auto rows = shownRows();
+        for (size_t i = 0; i < rows.size(); ++i) {
+            const Radii s = shape(i, rows.size());
+            const float half = std::min(rows[i]->rect().w, rows[i]->rect().h) / 2;
+            auto f = [&](float v) { return std::min(v * k, half); };
+            r.rect(rows[i]->rect(), bg, {f(s.tl), f(s.tr), f(s.br), f(s.bl)});
+        }
+    }
+
+private:
+    std::vector<Flex*> shownRows() const {
+        std::vector<Flex*> out;
+        for (const auto& c : children())
+            if (c->shown())
+                if (auto* f = dynamic_cast<Flex*>(c.get())) out.push_back(f);
+        return out;
+    }
+    static Radii shape(size_t i, size_t n) {
+        const float top = i == 0 ? kOuter : kInner, bottom = i + 1 == n ? kOuter : kInner;
+        return {top, top, bottom, bottom};
+    }
+};
+
+// A titled group of rows
 Flex* group(Node* page, const std::string& title, const std::string& subtitle = {}) {
     auto* head = page->add<Flex>(Flex::Direction::Column);
-    head->setAlignItems(Align::Start)->setSpacing(2)->setPadding({4, 8, 4, 0});
-    head->add<Label>(title)->setSize(15)->setWeight(600)->setColor("primary", false);
+    head->setAlignItems(Align::Start)->setSpacing(2)->setPadding({8, 10, 8, 2});
+    head->add<Label>(title)->setSize(14)->setWeight(600)->setColor("primary", false);
     if (!subtitle.empty()) head->add<Label>(subtitle)->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(640)->setMaxLines(2);
-    auto* g = page->add<Flex>(Flex::Direction::Column);
-    g->setAlignItems(Align::Stretch)->setSpacing(0)->setRadius(Radii(24))->setBackground("surface_container_high", false);
-    g->setPadding({0, 6});
-    return g;
+    return page->add<Segments>();
 }
 
 // One row: icon, title and subtitle, and a trailing slot for the control
@@ -57,14 +107,14 @@ struct Row {
 
 Row row(Node* group, const std::string& icon, const std::string& title, const std::string& subtitle = {}) {
     auto* r = group->add<Flex>(Flex::Direction::Row);
-    r->setPadding({20, 10})->setSpacing(16);
-    r->minHeight = 56;
+    r->setPadding({20, 12})->setSpacing(16);
+    r->minHeight = 60;
     if (!icon.empty()) r->add<Icon>(icon, 22)->setColor("on_surface_variant", false);
     auto* texts = r->add<Flex>(Flex::Direction::Column);
     texts->setAlignItems(Align::Start)->setSpacing(1);
     texts->grow = true;
     auto* t = texts->add<Label>(title);
-    t->setSize(15)->setMaxWidth(420);
+    t->setSize(15)->setWeight(500)->setMaxWidth(420);
     auto* s = texts->add<Label>(subtitle);
     s->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(440)->setMaxLines(2);
     s->setVisible(!subtitle.empty());
@@ -73,7 +123,8 @@ Row row(Node* group, const std::string& icon, const std::string& title, const st
 
 Button* pillButton(Node* parent, const std::string& label, bool primary, std::function<void()> fn, const std::string& icon = {}) {
     auto* b = parent->add<Button>();
-    pill(b->setBackground(primary ? "primary" : "secondary_container", false))->setPadding({18, 9})->setSpacing(8);
+    pill(b->setBackground(primary ? "primary" : "secondary_container", false))->setPadding({18, 10})->setSpacing(8);
+    b->pressedRadius = 10;
     if (!icon.empty()) b->add<Icon>(icon, 18)->setColor(primary ? "on_primary" : "on_secondary_container", false);
     b->add<Label>(label)->setSize(14)->setWeight(500)->setColor(primary ? "on_primary" : "on_secondary_container", false);
     b->onClicked = [fn = std::move(fn)](uint32_t button) {
@@ -95,33 +146,48 @@ void switchRow(Node* g, const std::string& icon, const std::string& title, const
     };
 }
 
-// Chips for a short list of values; the active one is filled
+// M3 Expressive connected button group: segments a hairline apart with tight
+// inner corners; the selected one turns primary and rounds off completely.
+template <typename T>
+Flex* connectedGroup(Node* parent, T current, std::vector<std::pair<T, std::string>> options, std::function<void(T)> pick) {
+    auto* chips = parent->add<Flex>(Flex::Direction::Row);
+    chips->setSpacing(2);
+    auto buttons = std::make_shared<std::vector<std::pair<T, Button*>>>();
+    auto paint = [buttons](const T& selected, bool animate) {
+        const size_t n = buttons->size();
+        for (size_t i = 0; i < n; ++i) {
+            auto& [val, btn] = (*buttons)[i];
+            const bool on = val == selected;
+            const float l = on || i == 0 ? 100 : 8, rr = on || i + 1 == n ? 100 : 8;
+            btn->setRadius({l, rr, rr, l});
+            btn->setBackground(on ? ColorRef("primary") : ColorRef("surface_container_highest"), animate);
+            for (auto& c : btn->children())
+                if (auto* lab = dynamic_cast<Label*>(c.get())) lab->setColor(on ? "on_primary" : "on_surface", animate);
+        }
+    };
+    for (const auto& [value, label] : options) {
+        auto* b = chips->add<Button>();
+        b->setPadding({14, 9})->setSpacing(6);
+        b->pressedRadius = 4;
+        b->add<Label>(label)->setSize(13)->setWeight(500);
+        buttons->push_back({value, b});
+        b->onClicked = [=, v = value](uint32_t) {
+            paint(v, true);
+            if (pick) pick(v);
+        };
+    }
+    paint(current, false);
+    return chips;
+}
+
 template <typename T>
 void choiceRow(Node* g, const std::string& icon, const std::string& title, const std::string& sub, const std::string& pointer,
                T fallback, std::vector<std::pair<T, std::string>> options, std::function<void(T)> after = {}) {
     auto r = row(g, icon, title, sub);
-    auto* chips = r.row->add<Flex>(Flex::Direction::Row);
-    chips->setSpacing(4);
-    auto current = std::make_shared<T>(Config::get().value<T>(pointer, fallback));
-    auto buttons = std::make_shared<std::vector<std::pair<T, Button*>>>();
-    for (const auto& [value, label] : options) {
-        auto* b = chips->add<Button>();
-        pill(b)->setPadding({12, 7});
-        auto* l = b->add<Label>(label);
-        l->setSize(13)->setWeight(500);
-        buttons->push_back({value, b});
-        b->onClicked = [=, v = value](uint32_t) {
-            *current = v;
-            Config::get().set(pointer, v);
-            for (auto& [val, btn] : *buttons) {
-                btn->setBackground(val == v ? ColorRef("primary") : ColorRef("surface_container_highest"));
-                static_cast<Label*>(btn->children()[0].get())->setColor(val == v ? "on_primary" : "on_surface");
-            }
-            if (after) after(v);
-        };
-        b->setBackground(value == *current ? ColorRef("primary") : ColorRef("surface_container_highest"), false);
-        l->setColor(value == *current ? "on_primary" : "on_surface", false);
-    }
+    connectedGroup<T>(r.row, Config::get().value<T>(pointer, fallback), std::move(options), [pointer, after](T v) {
+        Config::get().set(pointer, v);
+        if (after) after(v);
+    });
 }
 
 void sliderRow(Node* g, const std::string& icon, const std::string& title, const std::string& pointer, double fallback,
@@ -150,6 +216,10 @@ void textRow(Node* g, const std::string& icon, const std::string& title, const s
     f->onSubmit = [pointer](const std::string& t) { Config::get().set(pointer, t); };
 }
 
+std::string percent(double v) {
+    return std::format("{:.0f}%", v * 100);
+}
+
 std::string readFirstLine(const std::string& path, const std::string& prefix = {}) {
     std::ifstream in(path);
     std::string line;
@@ -158,18 +228,101 @@ std::string readFirstLine(const std::string& path, const std::string& prefix = {
     return {};
 }
 
-// Re-run Matugen on the current wallpaper (after scheme or mode changes)
+// Re-run Matugen (after scheme, mode or accent changes)
 void recolour() {
-    const auto p = Wallpaper::get().path();
-    if (!p.empty()) Wallpaper::get().set(p);
+    Wallpaper::get().recolour();
 }
 
 // ── Pages ──
 
 void networkPage(Flex* page, Popup&) {
+    auto* live = page->add<Live>();
+    live->setSpacing(6);
+
+    // The connected network's own segment: its name, then live speeds on
+    // tonal tiles
+    auto* g = group(live, "Connection");
+    auto* current = g->add<Flex>(Flex::Direction::Column);
+    current->setAlignItems(Align::Stretch)->setSpacing(4)->setPadding({0, 0, 0, 16});
+    auto status = row(current, "wifi", "Not connected");
+    status.row->setPadding({20, 12, 20, 4});
+    auto* hero = current->add<Flex>(Flex::Direction::Row);
+    hero->setSpacing(8)->setAlignItems(Align::Stretch)->setPadding({16, 0});
+    auto stat = [hero](const char* icon, const char* title, const char* bg, const char* fg) {
+        auto* t = hero->add<Flex>(Flex::Direction::Column);
+        t->setAlignItems(Align::Start)->setSpacing(2)->setPadding({16, 12})->setRadius(Radii(20))->setBackground(bg, false);
+        t->grow = true;
+        auto* top = t->add<Flex>(Flex::Direction::Row);
+        top->setSpacing(6);
+        top->add<Icon>(icon, 18)->setColor(fg, false);
+        top->add<Label>(title)->setSize(12)->setWeight(500)->setColor(fg, false);
+        auto* v = t->add<Label>("–");
+        v->setSize(24)->setWeight(600)->setColor(fg, false);
+        return v;
+    };
+    auto* down = stat("arrow_downward", "Download", "primary_container", "on_primary_container");
+    auto* up = stat("arrow_upward", "Upload", "tertiary_container", "on_tertiary_container");
+    auto* linkTile = stat("speed", "Link speed", "secondary_container", "on_secondary_container");
+
+    struct Detail {
+        Row row;
+        Label* value;
+    };
+    auto detail = [g](const char* icon, const char* title, const char* sub = "") {
+        auto r = row(g, icon, title, sub);
+        auto* v = r.row->add<Label>();
+        v->setSize(14)->setColor("on_surface_variant", false)->setMaxWidth(300);
+        return Detail{r, v};
+    };
+    auto band = detail("radio", "Band");
+    auto security = detail("shield_lock", "Security");
+    auto ipv4 = detail("lan", "IPv4 address");
+    auto gateway = detail("router", "Gateway");
+    auto dns = detail("dns", "DNS");
+    auto ipv6 = detail("public", "IPv6 address");
+    auto mac = detail("fingerprint", "Hardware address");
+    auto iface = detail("settings_ethernet", "Interface");
+    auto used = detail("data_usage", "Data used", "Since the interface came up");
+
+    auto lease = Network::get().watchTraffic();
+    live->sync = [=] {
+        (void)lease; // sampling runs while the page is open
+        auto& n = Network::get();
+        const auto& d = n.details();
+        const bool on = n.kind() != Network::Kind::None;
+        hero->setVisible(on);
+        current->setPadding({0, 0, 0, on ? 16.0f : 0.0f});
+        down->setText(formatRate(d.rxRate));
+        up->setText(formatRate(d.txRate));
+        linkTile->setText(d.linkRate > 0 ? std::format("{} Mb/s", d.linkRate) : "–");
+        static_cast<Icon*>(status.row->children()[0].get())->setText(n.icon());
+        status.title->setText(!on ? (n.connecting() ? "Connecting…" : "Not connected") : n.name());
+        status.subtitle->setText(n.kind() == Network::Kind::Wifi ? std::format("Wi-Fi · signal {}%", n.strength())
+                                 : n.kind() == Network::Kind::Ethernet ? "Ethernet" : on ? "Connected" : "");
+        status.subtitle->setVisible(!status.subtitle->text().empty());
+        auto set = [on](const Detail& x, const std::string& v) {
+            x.value->setText(v);
+            x.row.row->setVisible(on && !v.empty());
+        };
+        std::string rate = d.band();
+        if (d.maxRate > 0) rate += (rate.empty() ? "" : " · ") + std::format("up to {} Mb/s", d.maxRate);
+        set(band, n.kind() == Network::Kind::Wifi ? rate : "");
+        set(security, d.security);
+        set(ipv4, d.ipv4);
+        set(gateway, d.gateway);
+        set(dns, d.dns);
+        set(ipv6, d.ipv6);
+        set(mac, d.mac);
+        set(iface, d.iface);
+        set(used, d.iface.empty() ? "" : std::format("↓ {}  ·  ↑ {}", formatBytes(d.rxTotal), formatBytes(d.txTotal)));
+    };
+    live->watch(Network::get().changed);
+    live->watch(Network::get().detailsChanged);
+    live->sync();
+
     auto* holder = page->add<Flex>(Flex::Direction::Column);
-    holder->setAlignItems(Align::Stretch);
-    wifiView(holder, {});
+    holder->setAlignItems(Align::Stretch)->setPadding({0, 12, 0, 0});
+    wifiView(holder, {}, false);
 }
 
 void bluetoothPage(Flex* page, Popup&) {
@@ -275,23 +428,96 @@ void appearancePage(Flex* page, Popup& popup) {
                            {{"random", "Random"}, {"fade", "Fade"}, {"wipe", "Wipe"}, {"grow", "Grow"}});
     switchRow(wp, "schedule", "Desktop clock", "A large clock on the wallpaper", "/desktop/clock", true);
 
-    auto* colour = group(page, "Colours", "Material You colours come from the wallpaper (Matugen)");
+    auto* colour = group(page, "Colours", "Material You colours come from the wallpaper, or from an accent you pick");
     switchRow(colour, "dark_mode", "Dark theme", "", "/background/darkmode", true, [](bool) { recolour(); });
     choiceRow<std::string>(colour, "palette", "Scheme", "", "/background/matugenScheme", "scheme-content",
                            {{"scheme-content", "Content"}, {"scheme-tonal-spot", "Tonal"}, {"scheme-expressive", "Expressive"},
                             {"scheme-vibrant", "Vibrant"}, {"scheme-monochrome", "Mono"}},
                            [](std::string) { recolour(); });
 
-    auto* bar = group(page, "Status bar");
-    choiceRow<int>(bar, "toolbar", "Style", "", "/statusBar/backgroundStyle", 0, {{0, "Floating"}, {1, "Full width"}});
-    sliderRow(bar, "height", "Height", "/statusBar/height", 40, 32, 56, 2, [](double v) { return std::format("{:.0f} px", v); });
-    switchRow(bar, "view_carousel", "Show workspace switches in the island", "", "/statusBar/islandWorkspace", true);
-    choiceRow<std::string>(bar, "schedule", "Clock", "", "/time/format", "hh:mm",
-                           {{"hh:mm", "24-hour"}, {"h:mm AP", "12-hour"}, {"hh:mm:ss", "Seconds"}});
+    // Accent: the wallpaper, or a seed colour for Matugen
+    auto accent = row(colour, "colorize", "Accent", "");
+    auto* swatches = accent.row->add<Flex>(Flex::Direction::Row);
+    swatches->setSpacing(6);
+    const std::vector<std::string> seeds = {"", "#6750a4", "#0061a4", "#006d3b", "#8b5000", "#b3261e", "#984061", "#006a6a"};
+    auto chosen = std::make_shared<std::string>(Config::get().value<std::string>("/appearance/accent", ""));
+    auto dots = std::make_shared<std::vector<Button*>>();
+    auto mark = [dots, seeds, chosen] {
+        for (size_t i = 0; i < dots->size(); ++i) (*dots)[i]->setBorder(seeds[i] == *chosen ? 3 : 0, "on_surface");
+    };
+    for (const auto& seed : seeds) {
+        auto* d = swatches->add<Button>();
+        pill(d)->fixedWidth = 30;
+        d->fixedHeight = 30;
+        d->pressedRadius = 6;
+        if (seed.empty()) {
+            // "From the wallpaper"
+            d->setBackground("surface_container_highest", false)->setJustify(Align::Center);
+            d->add<Icon>("wallpaper", 16)->setColor("on_surface_variant", false);
+        } else {
+            d->setBackground(ColorRef(*Color::fromHex(seed)), false);
+        }
+        d->onClicked = [seed, chosen, mark](uint32_t) {
+            *chosen = seed;
+            mark();
+            Config::get().set("/appearance/accent", seed);
+            recolour();
+        };
+        dots->push_back(d);
+    }
+    mark();
 
     auto* fonts = group(page, "Fonts");
     textRow(fonts, "text_fields", "Interface", "/appearance/fonts/main", "Google Sans Flex");
     textRow(fonts, "code", "Monospace", "/appearance/fonts/monospace", "JetBrains Mono NF");
+}
+
+void stylePage(Flex* page, Popup&) {
+    auto* fx = group(page, "Blur & transparency", "Panels let the desktop show through, softened by the compositor's blur");
+    switchRow(fx, "blur_on", "Blur", Hyprland::get().available() ? "Behind the bar, panels, notifications and OSD"
+                                                                  : "Needs Hyprland, or a compositor with ext-background-effect",
+              "/appearance/blur/enabled", true);
+    sliderRow(fx, "blur_medium", "Blur strength", "/appearance/blur/size", 8, 2, 20, 1,
+              [](double v) { return std::format("Radius {:.0f} · applies to windows too", v); });
+    sliderRow(fx, "toolbar", "Bar opacity", "/appearance/transparency/bar", 0.8, 0.3, 1, 0.05, percent);
+    sliderRow(fx, "select_window", "Panel opacity", "/appearance/transparency/panels", 0.9, 0.3, 1, 0.05, percent);
+
+    auto* shape = group(page, "Shape & motion");
+    choiceRow<double>(shape, "rounded_corner", "Corners", "Every card, button and panel", "/appearance/roundness", 1.0,
+                      {{0.35, "Sharp"}, {0.7, "Soft"}, {1.0, "Round"}, {1.3, "Extra"}});
+    choiceRow<double>(shape, "animation", "Animation speed", "", "/appearance/animationSpeed", 1.0,
+                      {{0.0, "Off"}, {0.6, "Fast"}, {1.0, "Normal"}, {1.5, "Relaxed"}});
+
+    auto* reset = group(page, "Defaults");
+    auto r = row(reset, "restart_alt", "Reset look & feel", "Blur, opacity, corners and motion");
+    pillButton(r.row, "Reset", false, [] {
+        for (const char* key : {"/appearance/blur/enabled", "/appearance/blur/size", "/appearance/transparency/bar",
+                                "/appearance/transparency/panels", "/appearance/roundness", "/appearance/animationSpeed"})
+            Config::get().set(key, nullptr);
+        // Not inside the click: the rebuild destroys this button
+        EventLoop::get().defer([] {
+            if (reshow) reshow("style");
+        });
+    });
+}
+
+void barPage(Flex* page, Popup&) {
+    auto* layout = group(page, "Layout");
+    choiceRow<std::string>(layout, "vertical_align_top", "Position", "", "/statusBar/position", "top",
+                           {{"top", "Top"}, {"bottom", "Bottom"}});
+    choiceRow<int>(layout, "toolbar", "Style", "", "/statusBar/backgroundStyle", 0, {{0, "Floating"}, {1, "Full width"}});
+    sliderRow(layout, "height", "Height", "/statusBar/height", 40, 32, 56, 2, [](double v) { return std::format("{:.0f} px", v); });
+
+    auto* modules = group(page, "Modules", "Status icons always stay: they open Quick Settings");
+    switchRow(modules, "view_week", "Workspaces", "", "/statusBar/modules/workspaces", true);
+    switchRow(modules, "title", "Window title", "", "/statusBar/modules/title", true);
+    switchRow(modules, "more_horiz", "System tray", "", "/statusBar/modules/tray", true);
+    switchRow(modules, "battery_full", "Battery", "Hidden anyway on desktops", "/statusBar/modules/battery", true);
+
+    auto* island = group(page, "Island & clock");
+    switchRow(island, "view_carousel", "Show workspace switches in the island", "", "/statusBar/islandWorkspace", true);
+    choiceRow<std::string>(island, "schedule", "Clock", "", "/time/format", "hh:mm",
+                           {{"hh:mm", "24-hour"}, {"h:mm AP", "12-hour"}, {"hh:mm:ss", "Seconds"}});
 }
 
 void notificationsPage(Flex* page, Popup&) {
@@ -677,20 +903,23 @@ struct PageDef {
     const char* id;
     const char* icon;
     const char* title;
+    const char* blurb;
     void (*build)(Flex*, Popup&);
 };
 
 const PageDef kPages[] = {
-    {"network", "wifi", "Network", networkPage},
-    {"bluetooth", "bluetooth", "Bluetooth", bluetoothPage},
-    {"sound", "volume_up", "Sound", soundPage},
-    {"display", "brightness_medium", "Display", displayPage},
-    {"appearance", "palette", "Appearance", appearancePage},
-    {"notifications", "notifications", "Notifications", notificationsPage},
-    {"lock", "lock", "Lock & idle", lockPage},
-    {"keybinds", "keyboard", "Keybinds", keybindsPage},
-    {"packages", "deployed_code", "Packages & Updates", packagesPage},
-    {"about", "info", "About", aboutPage},
+    {"network", "wifi", "Network", "Wi-Fi networks and your connection", networkPage},
+    {"bluetooth", "bluetooth", "Bluetooth", "Pair and connect devices", bluetoothPage},
+    {"sound", "volume_up", "Sound", "Outputs, inputs, balance and apps", soundPage},
+    {"display", "brightness_medium", "Display", "Brightness, night light and monitors", displayPage},
+    {"appearance", "palette", "Wallpaper & colour", "Wallpaper, Material You colours and fonts", appearancePage},
+    {"style", "blur_on", "Look & feel", "Blur, transparency, corners and motion", stylePage},
+    {"bar", "toolbar", "Status bar", "Position, modules and the island", barPage},
+    {"notifications", "notifications", "Notifications", "Do not disturb and pop-ups", notificationsPage},
+    {"lock", "lock", "Lock & idle", "When the screen locks and sleeps", lockPage},
+    {"keybinds", "keyboard", "Keybinds", "Remap, disable and add shortcuts", keybindsPage},
+    {"packages", "deployed_code", "Packages & Updates", "Updates and software from repos, AUR and Flathub", packagesPage},
+    {"about", "info", "About", "This device and the shell", aboutPage},
 };
 
 } // namespace
@@ -700,51 +929,81 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
     auto* columns = card->add<Flex>(Flex::Direction::Row);
     columns->setAlignItems(Align::Start)->setSpacing(12);
 
+    // Navigation drawer
     auto* side = columns->add<Flex>(Flex::Direction::Column);
-    side->setAlignItems(Align::Stretch)->setSpacing(2)->setPadding({4, 8});
-    side->fixedWidth = 232;
-    side->minHeight = 660;
+    side->setAlignItems(Align::Stretch)->setSpacing(2)->setPadding({4, 12, 4, 8});
+    side->fixedWidth = 244;
+    side->minHeight = 680;
     auto* title = side->add<Label>("Settings");
-    title->setSize(24)->setWeight(500);
+    title->setSize(30)->setWeight(600);
     title->alignSelf = Align::Start;
     auto* gap = side->add<Node>();
-    gap->minHeight = 12;
+    gap->minHeight = 14;
 
     auto* scroll = columns->add<ScrollView>();
-    scroll->maxHeight = 660;
-    scroll->fixedWidth = 720;
+    scroll->maxHeight = 680;
+    scroll->fixedWidth = 740;
     auto* content = scroll->add<Flex>(Flex::Direction::Column);
-    content->setAlignItems(Align::Stretch)->setSpacing(14)->setPadding({4, 8, 12, 8});
+    content->setAlignItems(Align::Stretch)->setSpacing(6)->setPadding({4, 4, 12, 12});
 
-    auto buttons = std::make_shared<std::vector<Button*>>();
+    struct NavItem {
+        Button* button;
+        Icon* icon;
+        Label* label;
+    };
+    auto items = std::make_shared<std::vector<NavItem>>();
     auto show = std::make_shared<std::function<void(size_t)>>();
-    *show = [content, scroll, buttons, &popup](size_t index) {
+    *show = [content, scroll, items, &popup](size_t index) {
+        const auto& def = kPages[index];
         content->clearChildren();
-        auto* h = content->add<Label>(kPages[index].title);
-        h->setSize(28)->setWeight(500);
-        h->alignSelf = Align::Start;
-        kPages[index].build(content, popup);
+        // Expressive header: the page's icon in a tonal shape, a large title
+        auto* hero = content->add<Flex>(Flex::Direction::Row);
+        hero->setSpacing(16)->setPadding({4, 4, 4, 12});
+        auto* badge = hero->add<Flex>(Flex::Direction::Row);
+        badge->setJustify(Align::Center)->setRadius(Radii(18))->setBackground("primary_container", false);
+        badge->fixedWidth = 56;
+        badge->fixedHeight = 56;
+        badge->add<Icon>(def.icon, 28)->setFill(true)->setColor("on_primary_container", false);
+        auto* texts = hero->add<Flex>(Flex::Direction::Column);
+        texts->setAlignItems(Align::Start)->setSpacing(2);
+        texts->add<Label>(def.title)->setSize(32)->setWeight(600);
+        texts->add<Label>(def.blurb)->setSize(14)->setColor("on_surface_variant", false);
+        def.build(content, popup);
         scroll->scrollTo(0, false);
-        for (size_t i = 0; i < buttons->size(); ++i) {
-            auto* b = (*buttons)[i];
-            b->setBackground(i == index ? ColorRef("secondary_container") : ColorRef::none());
-            for (auto& c : b->children())
-                if (auto* l = dynamic_cast<Label*>(c.get())) l->setColor(i == index ? "on_secondary_container" : "on_surface_variant");
+        // New page: rises into place
+        content->setOpacity(0, false);
+        content->setTranslateY(24, false);
+        content->setOpacity(1);
+        content->setTranslateY(0);
+        for (size_t i = 0; i < items->size(); ++i) {
+            const bool on = i == index;
+            auto& it = (*items)[i];
+            it.button->setBackground(on ? ColorRef("secondary_container") : ColorRef::none());
+            it.icon->setFill(on)->setColor(on ? "on_secondary_container" : "on_surface_variant");
+            it.label->setWeight(on ? 600 : 500)->setColor(on ? "on_secondary_container" : "on_surface_variant");
         }
     };
     size_t first = 0;
     for (size_t i = 0; i < std::size(kPages); ++i) {
         auto* b = side->add<Button>(Flex::Direction::Row);
-        pill(b)->setPadding({16, 11})->setSpacing(14);
-        b->add<Icon>(kPages[i].icon, 22)->setColor("on_surface_variant", false);
-        b->add<Label>(kPages[i].title)->setSize(15)->setWeight(500)->setColor("on_surface_variant", false);
+        pill(b)->setPadding({16, 12})->setSpacing(14);
+        b->pressedRadius = 12;
+        auto* icon = b->add<Icon>(kPages[i].icon, 22);
+        icon->setColor("on_surface_variant", false);
+        auto* label = b->add<Label>(kPages[i].title);
+        label->setSize(15)->setWeight(500)->setColor("on_surface_variant", false);
         b->onClicked = [show, i](uint32_t) {
             // The page rebuild must not run inside the click that asked for it
             EventLoop::get().defer([show, i] { (*show)(i); });
         };
-        buttons->push_back(b);
+        items->push_back({b, icon, label});
         if (initial == kPages[i].id) first = i;
     }
+    // Only called from inside this popup (a page's reset button)
+    reshow = [show](const std::string& id) {
+        for (size_t i = 0; i < std::size(kPages); ++i)
+            if (id == kPages[i].id) (*show)(i);
+    };
     (*show)(first);
 }
 

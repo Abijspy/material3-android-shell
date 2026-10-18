@@ -1,9 +1,13 @@
 #pragma once
 
+#include "core/EventLoop.h"
 #include "core/Signal.h"
 #include "dbus/Bus.h"
 
+#include <chrono>
+#include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -40,8 +44,25 @@ public:
     void disconnect();
     std::string lastError() const { return m_error; }
 
+    // The primary connection in depth (Settings and Quick Settings show it)
+    struct Details {
+        std::string iface, mac, ipv4, gateway, dns, ipv6;
+        std::string security;        // Wi-Fi: "WPA3", "WPA2", "Open"…
+        int frequency = 0;           // Wi-Fi, MHz
+        int linkRate = 0;            // Mb/s: Wi-Fi bitrate or Ethernet speed
+        int maxRate = 0;             // Wi-Fi: the access point's best, Mb/s
+        double rxRate = 0, txRate = 0; // bytes/s, while traffic is watched
+        uint64_t rxTotal = 0, txTotal = 0;
+        std::string band() const;    // "5 GHz · channel 36"
+    };
+    const Details& details() const { return m_details; }
+    // Live download/upload rates, sampled each second while a lease is held
+    using Lease = std::shared_ptr<void>;
+    [[nodiscard]] Lease watchTraffic();
+
     Signal<> changed;
     Signal<> accessPointsChanged;
+    Signal<> detailsChanged; // addresses, rates and traffic
 
 private:
     Network();
@@ -50,6 +71,8 @@ private:
     void refresh();
     void loadPrimary(const std::string& path);
     void loadAccessPoint(const std::string& path);
+    void loadDetails(const dbus::Value& active);
+    void sampleTraffic();
 
     bool m_available = false, m_wifiEnabled = false, m_connecting = false;
     Kind m_kind = Kind::None;
@@ -59,6 +82,10 @@ private:
     dbus::Subscription m_devSub;
     int m_strength = 0;
     dbus::Subscription m_nmChanged, m_apChanged, m_owner;
+    Details m_details;
+    int m_trafficLeases = 0;
+    EventLoop::TimerId m_trafficTimer = 0;
+    std::chrono::steady_clock::time_point m_lastSample{};
 };
 
 // BlueZ: adapter power and connected devices.

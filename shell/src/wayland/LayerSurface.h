@@ -28,6 +28,7 @@ public:
     ~LayerSurface() override;
 
     void setSize(int width, int height);
+    void setAnchor(uint32_t anchor);
     void setExclusiveZone(int zone);
     void setKeyboard(Keyboard mode);
     void setVisible(bool visible);

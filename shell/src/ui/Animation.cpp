@@ -25,9 +25,10 @@ float Easing::at(float t) const {
 }
 
 float Tween::progress() const {
-    if (m_duration <= 0) return 1;
+    const float duration = static_cast<float>(m_duration) * motion::scale;
+    if (duration <= 0) return 1;
     const auto ms = std::chrono::duration<float, std::milli>(AnimClock::now() - m_start).count();
-    return std::clamp(ms / static_cast<float>(m_duration), 0.0f, 1.0f);
+    return std::clamp(ms / duration, 0.0f, 1.0f);
 }
 
 void Tween::set(float target, bool animate) {

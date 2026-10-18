@@ -23,6 +23,7 @@ struct wl_surface;
 struct zwlr_layer_shell_v1;
 struct wp_cursor_shape_manager_v1;
 struct wp_cursor_shape_device_v1;
+struct ext_background_effect_manager_v1;
 
 namespace m3::wl {
 
@@ -58,6 +59,9 @@ public:
     wl_seat* seat() const { return m_seat; }
     wp_fractional_scale_manager_v1* fractionalScale() const { return m_fractionalScale; }
     wp_viewporter* viewporter() const { return m_viewporter; }
+    // Set when the compositor can blur behind surfaces (ext-background-effect)
+    ext_background_effect_manager_v1* backgroundEffect() const { return m_blurCapable ? m_backgroundEffect : nullptr; }
+    void backgroundEffectCapabilities(uint32_t flags);
 
     const std::vector<std::unique_ptr<Output>>& outputs() const { return m_outputs; }
     std::function<void(Output*)> onOutputReady;
@@ -99,6 +103,8 @@ private:
     wp_cursor_shape_device_v1* m_cursorShape = nullptr;
     wp_fractional_scale_manager_v1* m_fractionalScale = nullptr;
     wp_viewporter* m_viewporter = nullptr;
+    ext_background_effect_manager_v1* m_backgroundEffect = nullptr;
+    bool m_blurCapable = false;
     wl_keyboard* m_keyboard = nullptr;
     void* m_lockManager = nullptr;
     void* m_idleNotifier = nullptr;

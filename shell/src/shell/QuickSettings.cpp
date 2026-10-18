@@ -8,6 +8,7 @@
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
 #include "ui/Controls.h"
+#include "ui/Theme.h"
 
 #include <ctime>
 #include <format>
@@ -31,10 +32,72 @@ std::string today() {
     return buf;
 }
 
+// Speeds of the current connection: "5 GHz · 866 Mb/s"
+std::string linkSummary() {
+    const auto& d = Network::get().details();
+    std::string out = d.band();
+    if (auto c = out.find(" · channel"); c != std::string::npos) out = out.substr(0, c);
+    if (d.linkRate > 0) out += (out.empty() ? "" : " · ") + std::format("{} Mb/s", d.linkRate);
+    return out;
+}
+
+// Download and upload, side by side; returns the two value labels
+std::pair<Label*, Label*> rates(Node* parent, float size) {
+    auto* box = parent->add<Flex>(Flex::Direction::Row);
+    box->setSpacing(10);
+    std::pair<Label*, Label*> out;
+    for (int i = 0; i < 2; ++i) {
+        auto* r = box->add<Flex>(Flex::Direction::Row);
+        r->setSpacing(2);
+        r->add<Icon>(i == 0 ? "arrow_downward" : "arrow_upward", size + 2)->setColor(i == 0 ? "primary" : "tertiary", false);
+        auto* l = r->add<Label>("–");
+        l->setSize(size)->setWeight(500)->setFamily(Theme::get().fontFamily());
+        l->minWidth = size * 4.6f; // steady width as digits change
+        (i == 0 ? out.first : out.second) = l;
+    }
+    return out;
+}
+
+// Inside the connected network's entry: link, live speeds and address,
+// refreshed every second without rebuilding the list around it
+void connectedInfo(Flex* parent, const char* fg) {
+    auto* live = parent->add<Live>();
+    live->setSpacing(6);
+    auto* link = live->add<Label>();
+    link->setSize(12)->setColor(fg, false)->setMaxWidth(340)->setMaxLines(2);
+    auto [down, up] = rates(live, 13);
+    for (Label* l : {down, up}) l->setColor(fg, false);
+    auto* addr = live->add<Label>();
+    addr->setSize(12)->setColor(fg, false)->setMaxWidth(340);
+    auto lease = Network::get().watchTraffic();
+    live->sync = [=] {
+        (void)lease; // sampling runs while the entry is shown
+        auto& n = Network::get();
+        const auto& d = n.details();
+        std::string sub = n.kind() == Network::Kind::Wifi ? std::format("Signal {}%", n.strength()) : "Connected";
+        if (auto l = linkSummary(); !l.empty()) sub += " · " + l;
+        if (!d.security.empty()) sub += " · " + d.security;
+        link->setText(sub);
+        down->setText(formatRate(d.rxRate));
+        up->setText(formatRate(d.txRate));
+        addr->setText(d.ipv4.empty() ? "Getting an address…" : "IP " + d.ipv4 + (d.gateway.empty() ? "" : "  ·  Gateway " + d.gateway));
+    };
+    live->watch(Network::get().changed);
+    live->watch(Network::get().detailsChanged);
+    live->sync();
+}
+
 } // namespace
 
+std::string formatRate(double bps) {
+    if (bps < 1000) return std::format("{:.0f} B/s", bps);
+    if (bps < 1e6) return std::format("{:.0f} KB/s", bps / 1e3);
+    if (bps < 1e9) return std::format("{:.1f} MB/s", bps / 1e6);
+    return std::format("{:.2f} GB/s", bps / 1e9);
+}
+
 // Wi-Fi networks, tap to connect; secured new ones ask for the password
-void wifiView(Flex* body, const std::function<void()>& back) {
+void wifiView(Flex* body, const std::function<void()>& back, bool details) {
     body->clearChildren();
     auto* live = body->add<Live>();
     auto* head = live->add<Flex>(Flex::Direction::Row);
@@ -67,9 +130,13 @@ void wifiView(Flex* body, const std::function<void()>& back) {
         }
         if (n.accessPoints().empty()) caption(list, "Searching…");
         for (const auto& ap : n.accessPoints()) {
-            auto* row = list->add<Button>(Flex::Direction::Row);
-            row->setPadding({14, 10})->setSpacing(12)->setRadius(Radii(16));
-            if (ap.active) row->setBackground("secondary_container", false);
+            auto* entry = list->add<Button>(Flex::Direction::Column);
+            entry->setAlignItems(Align::Stretch)->setSpacing(8)->setRadius(Radii(16));
+            entry->setPadding({14, 10});
+            entry->pressedRadius = 10;
+            auto* row = entry->add<Flex>(Flex::Direction::Row);
+            row->setSpacing(12);
+            if (ap.active) entry->setBackground("secondary_container", false);
             const char* bars = ap.strength >= 80 ? "signal_wifi_4_bar" : ap.strength >= 55 ? "network_wifi_3_bar"
                              : ap.strength >= 30 ? "network_wifi_2_bar" : "network_wifi_1_bar";
             row->add<Icon>(bars, 20)->setColor(ap.active ? "on_secondary_container" : "on_surface_variant", false);
@@ -78,10 +145,16 @@ void wifiView(Flex* body, const std::function<void()>& back) {
             texts->grow = true;
             texts->add<Label>(ap.ssid)->setSize(14)->setMaxWidth(240)->setColor(ap.active ? "on_secondary_container" : "on_surface", false);
             if (ap.active || ap.saved)
-                texts->add<Label>(ap.active ? "Connected" : "Saved")->setSize(12)->setColor("on_surface_variant", false);
+                texts->add<Label>(ap.active ? "Connected" : "Saved")->setSize(12)->setColor(ap.active ? "on_secondary_container" : "on_surface_variant", false);
             if (ap.secured) row->add<Icon>("lock", 16)->setColor("on_surface_variant", false);
+            // The connected entry carries its own details and speeds
+            if (ap.active && details) {
+                auto* info = entry->add<Flex>(Flex::Direction::Column);
+                info->setAlignItems(Align::Start)->setPadding({32, 0, 0, 2});
+                connectedInfo(info, "on_secondary_container");
+            }
             auto apCopy = ap;
-            row->onClicked = [=](uint32_t) {
+            entry->onClicked = [=](uint32_t) {
                 if (apCopy.active) return Network::get().disconnect();
                 if (apCopy.secured && !apCopy.saved) {
                     *expanded = *expanded == apCopy.ssid ? "" : apCopy.ssid;
@@ -188,6 +261,23 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi) {
     };
     mic->onClicked = [](uint32_t) { Audio::get().toggleMuted(true); };
 
+    // The connection at a glance, with live speeds; opens the Wi-Fi view
+    auto* net = live->add<Button>(Flex::Direction::Row);
+    net->setPadding({16, 10})->setSpacing(12)->setRadius(Radii(20))->setBackground("surface_container_high", false);
+    net->pressedRadius = 12;
+    auto* netIcon = net->add<Icon>("wifi", 22);
+    netIcon->setColor("primary", false);
+    auto* netText = net->add<Flex>(Flex::Direction::Column);
+    netText->setAlignItems(Align::Start);
+    netText->grow = true;
+    auto* netName = netText->add<Label>();
+    netName->setSize(14)->setWeight(500)->setMaxWidth(150);
+    auto* netLink = netText->add<Label>();
+    netLink->setSize(12)->setColor("on_surface_variant", false)->setMaxWidth(150);
+    auto [netDown, netUp] = rates(net, 12);
+    net->onClicked = [showWifi](uint32_t) { showWifi(); };
+    auto lease = Network::get().watchTraffic();
+
     // Now playing
     auto* media = live->add<Flex>(Flex::Direction::Row);
     media->setPadding({16, 12})->setSpacing(12)->setRadius(Radii(20))->setBackground("surface_container_high", false);
@@ -212,6 +302,14 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi) {
         if (light) light->setValue(Brightness::get().value());
         auto& n = Network::get();
         wifi->set(n.wifiEnabled(), !n.wifiEnabled() ? "Off" : n.kind() == Network::Kind::Wifi ? n.name() : "On");
+        (void)lease;
+        net->setVisible(n.kind() != Network::Kind::None);
+        netIcon->setText(n.icon());
+        netName->setText(n.name());
+        const auto summary = linkSummary();
+        netLink->setText(summary.empty() ? (n.kind() == Network::Kind::Wifi ? std::format("Signal {}%", n.strength()) : "Connected") : summary);
+        netDown->setText(formatRate(n.details().rxRate));
+        netUp->setText(formatRate(n.details().txRate));
         auto& b = Bluetooth::get();
         bt->set(b.powered(), !b.available() ? "Unavailable" : !b.powered() ? "Off"
                            : b.connected().empty() ? "On" : b.connected().front());
@@ -231,6 +329,7 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi) {
     live->watch(Audio::get().changed);
     live->watch(Brightness::get().changed);
     live->watch(Network::get().changed);
+    live->watch(Network::get().detailsChanged);
     live->watch(Bluetooth::get().changed);
     live->watch(Notifications::get().changed);
     live->watch(Idle::get().changed);

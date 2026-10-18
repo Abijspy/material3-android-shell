@@ -23,6 +23,9 @@ public:
     bool visible() const { return m_surface->visible(); }
     void redraw() { m_surface->requestRedraw(); }
 
+    // Top or bottom edge, from statusBar.position
+    static uint32_t anchor();
+
 private:
     int height() const;
 

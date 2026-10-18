@@ -24,8 +24,11 @@ void systemMonitor(ui::Flex* card, Popup& popup);
 void wallpapers(ui::Flex* card, Popup& popup);
 void overview(ui::Flex* card, Popup& popup);
 void settings(ui::Flex* card, Popup& popup, const std::string& page);
-// The Wi-Fi network list (Quick Settings and Settings); back may be empty
-void wifiView(ui::Flex* body, const std::function<void()>& back);
+// The Wi-Fi network list (Quick Settings and Settings); back may be empty.
+// `details` adds the connected network's speeds and addresses above it.
+void wifiView(ui::Flex* body, const std::function<void()>& back, bool details = true);
+// Download/upload as "1.2 MB/s"
+std::string formatRate(double bytesPerSecond);
 
 // Set by the shell: open another panel by name (Quick Settings → power menu…)
 inline std::function<void(const std::string& name)> open;

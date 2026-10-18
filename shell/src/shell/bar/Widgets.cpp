@@ -3,6 +3,7 @@
 #include "core/Config.h"
 #include "core/EventLoop.h"
 #include "services/Hyprland.h"
+#include "ui/Theme.h"
 
 #include <algorithm>
 #include <cmath>
@@ -45,7 +46,10 @@ Flex* capsule(Node* parent, bool filled) {
     f->setPadding({12, 0})->setSpacing(8);
     f->fixedHeight = 32;
     f->collapseWhenEmpty = true;
-    if (filled) pill(f->setBackground("surface_container_high", false));
+    if (filled) {
+        pill(f->setBackground(ColorRef("surface_container_high", Theme::get().barOpacity()), false));
+        f->blurBehind = true;
+    }
     return f;
 }
 

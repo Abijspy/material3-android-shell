@@ -74,14 +74,24 @@ void Wallpaper::set(const std::string& p) {
     Config::get().set("/background/wallpaperPath", "file://" + p);
     m_last = p;
     changed.emit();
+    recolour();
+}
+
+void Wallpaper::recolour() {
     // New palette for the whole desktop, written where Theme watches
-    if (Config::get().value<bool>("/background/matugen", true)) {
-        const bool dark = Config::get().value<bool>("/background/darkmode", true);
-        const auto scheme = Config::get().value<std::string>("/background/matugenScheme", "scheme-content");
-        run({"matugen", "image", p, "--mode", dark ? "dark" : "light", "--type", scheme}, [](int code, const std::string&) {
-            if (code != 0) log::warn("matugen failed ({}); the palette is unchanged", code);
-        });
-    }
+    if (!Config::get().value<bool>("/background/matugen", true)) return;
+    const bool dark = Config::get().value<bool>("/background/darkmode", true);
+    const auto scheme = Config::get().value<std::string>("/background/matugenScheme", "scheme-content");
+    // A chosen accent colour seeds the palette instead of the wallpaper
+    const auto accent = Config::get().value<std::string>("/appearance/accent", "");
+    std::vector<std::string> cmd = {"matugen"};
+    if (accent.size() == 7 && accent[0] == '#') cmd.insert(cmd.end(), {"color", "hex", accent});
+    else if (!path().empty()) cmd.insert(cmd.end(), {"image", path()});
+    else return;
+    cmd.insert(cmd.end(), {"--mode", dark ? "dark" : "light", "--type", scheme});
+    run(cmd, [](int code, const std::string&) {
+        if (code != 0) log::warn("matugen failed ({}); the palette is unchanged", code);
+    });
 }
 
 void Wallpaper::next(int step) {

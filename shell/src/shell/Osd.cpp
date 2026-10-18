@@ -70,7 +70,8 @@ void Osd::show(const std::string& icon, float value, const std::string& label) {
         auto root = std::make_unique<Flex>(Flex::Direction::Row);
         root->setJustify(Align::Center);
         m_pill = root->add<Flex>(Flex::Direction::Row);
-        pill(m_pill->setBackground("surface_container_high", false))->setPadding({20, 14})->setSpacing(14);
+        pill(m_pill->setBackground(ColorRef("surface_container_high", Theme::get().panelOpacity()), false))->setPadding({20, 14})->setSpacing(14);
+        m_pill->blurBehind = true;
         m_icon = m_pill->add<Icon>(icon, 24);
         m_icon->setColor("primary");
         m_bar = m_pill->add<Bar>();

@@ -20,6 +20,8 @@ public:
 
     // Sets it and regenerates the Material palette with Matugen
     void set(const std::string& path);
+    // Re-runs Matugen (after the scheme, mode or accent changes)
+    void recolour();
     void next(int step = 1);
 
     Signal<> changed;

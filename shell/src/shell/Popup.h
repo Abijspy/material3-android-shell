@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/EventLoop.h"
+#include "core/Signal.h"
 #include "ui/Node.h"
 #include "wayland/LayerSurface.h"
 
@@ -45,6 +46,8 @@ private:
     std::unique_ptr<wl::LayerSurface> m_surface;
     ui::Flex* m_card = nullptr;
     bool m_closing = false;
+    Connection m_theme;
+    float m_drop = -1; // which way the card slides in and out
     EventLoop::TimerId m_closeTimer = 0;
 };
 

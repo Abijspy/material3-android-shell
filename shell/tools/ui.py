@@ -19,6 +19,8 @@ TOP, BOTTOM, LEFT, RIGHT = 1, 2, 4, 8
 def layout():
     out = subprocess.run(["./build/material3ui", "msg", "debug"], capture_output=True, text=True).stdout
     surfaces = []
+    # A bottom bar's exclusive zone pushes full-area popups up instead
+    bottom_bar = any(l.startswith("surface material3ui-bar ") and "anchor=14" in l for l in out.splitlines())
     for line in out.splitlines():
         if line.startswith("surface "):
             parts = line.split()
@@ -34,7 +36,7 @@ def layout():
             y = mt if anchor & TOP else (H - h - mb if anchor & BOTTOM else (H - h) / 2)
             # Full-area popups sit below the bar's exclusive zone
             if anchor & TOP and anchor & BOTTOM:
-                y = H - h - mb
+                y = mt if bottom_bar else H - h - mb
             surfaces.append({"ns": ns, "x": x, "y": y, "nodes": []})
         elif surfaces:
             f = line.split(" ", 6)

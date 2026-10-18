@@ -38,6 +38,42 @@ int readInt(const std::string& path) {
     return v;
 }
 
+uint64_t readU64(const std::string& path) {
+    uint64_t v = 0;
+    std::ifstream(path) >> v;
+    return v;
+}
+
+// NM80211ApSecurityFlags
+std::string securityName(uint32_t flags, uint32_t wpa, uint32_t rsn) {
+    if (rsn & 0x400) return "WPA3";
+    if (rsn & 0x200) return "WPA2 Enterprise";
+    if (rsn) return "WPA2";
+    if (wpa & 0x200) return "WPA Enterprise";
+    if (wpa) return "WPA";
+    if (rsn & 0x800 || wpa & 0x800) return "Enhanced open";
+    return flags & 1 ? "WEP" : "Open";
+}
+
+// First address of an AddressData/NameserverData list (aa{sv})
+std::string firstAddress(const dbus::Value& props, const char* key, bool withPrefix) {
+    auto it = props.find(key);
+    if (it == props.end() || !it->is_array() || it->empty()) return "";
+    const auto& a = (*it)[0];
+    std::string out = str(a, "address");
+    if (withPrefix && !out.empty() && a.contains("prefix")) out += "/" + std::to_string(num<uint32_t>(a, "prefix"));
+    return out;
+}
+
+std::string allAddresses(const dbus::Value& props, const char* key) {
+    auto it = props.find(key);
+    if (it == props.end() || !it->is_array()) return "";
+    std::string out;
+    for (const auto& a : *it)
+        if (auto v = str(a, "address"); !v.empty()) out += (out.empty() ? "" : ", ") + v;
+    return out;
+}
+
 } // namespace
 
 // ── Network ──
@@ -197,7 +233,9 @@ void Network::loadPrimary(const std::string& path) {
         m_kind = Kind::None;
         m_name.clear();
         m_apChanged = {};
+        m_details = {};
         changed.emit();
+        detailsChanged.emit();
         return;
     }
     dbus::Bus::system().getAll(kNM, path, "org.freedesktop.NetworkManager.Connection.Active",
@@ -205,6 +243,7 @@ void Network::loadPrimary(const std::string& path) {
         if (!ok) return;
         const std::string type = str(p, "Type");
         m_name = str(p, "Id");
+        loadDetails(p);
         if (type == "802-11-wireless") {
             m_kind = Kind::Wifi;
             const auto devices = p.value("Devices", dbus::Value::array());
@@ -229,16 +268,133 @@ void Network::loadAccessPoint(const std::string& path) {
                 m_strength = c["Strength"].get<int>();
                 changed.emit();
             }
+            if (c.contains("Frequency")) {
+                m_details.frequency = num<int>(c, "Frequency");
+                detailsChanged.emit();
+            }
         });
     }
     dbus::Bus::system().getAll(kNM, path, "org.freedesktop.NetworkManager.AccessPoint", [this](const dbus::Value& p, bool) {
         m_strength = num<int>(p, "Strength");
+        m_details.frequency = num<int>(p, "Frequency");
+        m_details.maxRate = num<int>(p, "MaxBitrate") / 1000;
+        m_details.security = securityName(num<uint32_t>(p, "Flags"), num<uint32_t>(p, "WpaFlags"), num<uint32_t>(p, "RsnFlags"));
+        detailsChanged.emit();
         if (auto it = p.find("Ssid"); it != p.end() && it->is_binary()) {
             const auto& bytes = it->get_binary();
             m_name.assign(bytes.begin(), bytes.end());
         }
         changed.emit();
     });
+}
+
+void Network::loadDetails(const dbus::Value& active) {
+    auto& bus = dbus::Bus::system();
+    const bool wifi = str(active, "Type") == "802-11-wireless";
+    // Fields are overwritten as replies arrive (NM refreshes often; clearing
+    // first would flicker); a different connection starts from scratch
+    if (!wifi) {
+        m_details.frequency = m_details.maxRate = 0;
+        m_details.security.clear();
+    }
+    if (const auto ip4 = str(active, "Ip4Config"); !ip4.empty() && ip4 != "/")
+        bus.getAll(kNM, ip4, "org.freedesktop.NetworkManager.IP4Config", [this](const dbus::Value& p, bool ok) {
+            if (!ok) return;
+            m_details.ipv4 = firstAddress(p, "AddressData", true);
+            m_details.gateway = str(p, "Gateway");
+            m_details.dns = allAddresses(p, "NameserverData");
+            detailsChanged.emit();
+        });
+    if (const auto ip6 = str(active, "Ip6Config"); !ip6.empty() && ip6 != "/")
+        bus.getAll(kNM, ip6, "org.freedesktop.NetworkManager.IP6Config", [this](const dbus::Value& p, bool ok) {
+            if (!ok) return;
+            m_details.ipv6.clear();
+            // The first global address; link-local ones say little
+            if (auto it = p.find("AddressData"); it != p.end() && it->is_array())
+                for (const auto& a : *it)
+                    if (auto v = str(a, "address"); !v.empty() && !v.starts_with("fe80")) {
+                        m_details.ipv6 = v;
+                        break;
+                    }
+            detailsChanged.emit();
+        });
+    const auto devices = active.value("Devices", dbus::Value::array());
+    if (devices.empty()) return detailsChanged.emit();
+    const std::string dev = devices[0].get<std::string>();
+    bus.getAll(kNM, dev, "org.freedesktop.NetworkManager.Device", [this](const dbus::Value& p, bool ok) {
+        if (!ok) return;
+        const std::string iface = str(p, "IpInterface").empty() ? str(p, "Interface") : str(p, "IpInterface");
+        if (iface != m_details.iface) m_lastSample = {}; // other counters: no rate from the jump
+        m_details.iface = iface;
+        m_details.mac = str(p, "HwAddress");
+        sampleTraffic();
+        detailsChanged.emit();
+    });
+    bus.getAll(kNM, dev, wifi ? "org.freedesktop.NetworkManager.Device.Wireless" : "org.freedesktop.NetworkManager.Device.Wired",
+               [this, wifi](const dbus::Value& p, bool ok) {
+        if (!ok) return;
+        // Wireless Bitrate is kbit/s; wired Speed is Mb/s
+        m_details.linkRate = wifi ? num<int>(p, "Bitrate") / 1000 : num<int>(p, "Speed");
+        if (m_details.mac.empty()) m_details.mac = str(p, "PermHwAddress");
+        detailsChanged.emit();
+    });
+}
+
+Network::Lease Network::watchTraffic() {
+    if (m_trafficLeases++ == 0) {
+        m_lastSample = {};
+        sampleTraffic();
+        m_trafficTimer = EventLoop::get().addTimer(1000, [this] {
+            sampleTraffic();
+            // The Wi-Fi bitrate moves with the radio: refresh it with the counters
+            if (m_kind == Kind::Wifi && !m_wifiDevice.empty())
+                dbus::Bus::system().getAll(kNM, m_wifiDevice, "org.freedesktop.NetworkManager.Device.Wireless",
+                                           [this](const dbus::Value& p, bool ok) {
+                    if (ok) m_details.linkRate = num<int>(p, "Bitrate") / 1000;
+                });
+            detailsChanged.emit();
+        }, true);
+    }
+    return Lease(nullptr, [this](void*) {
+        if (--m_trafficLeases == 0 && m_trafficTimer) {
+            EventLoop::get().cancel(m_trafficTimer);
+            m_trafficTimer = 0;
+        }
+    });
+}
+
+void Network::sampleTraffic() {
+    if (m_details.iface.empty()) return;
+    const std::string base = "/sys/class/net/" + m_details.iface + "/statistics/";
+    const uint64_t rx = readU64(base + "rx_bytes"), tx = readU64(base + "tx_bytes");
+    const auto now = std::chrono::steady_clock::now();
+    if (m_lastSample != std::chrono::steady_clock::time_point{} && rx >= m_details.rxTotal && tx >= m_details.txTotal) {
+        const double secs = std::chrono::duration<double>(now - m_lastSample).count();
+        if (secs > 0.2) {
+            m_details.rxRate = static_cast<double>(rx - m_details.rxTotal) / secs;
+            m_details.txRate = static_cast<double>(tx - m_details.txTotal) / secs;
+        }
+    }
+    m_details.rxTotal = rx;
+    m_details.txTotal = tx;
+    m_lastSample = now;
+}
+
+std::string Network::Details::band() const {
+    if (frequency <= 0) return "";
+    int channel = 0;
+    std::string ghz;
+    if (frequency < 3000) {
+        ghz = "2.4 GHz";
+        channel = frequency == 2484 ? 14 : (frequency - 2407) / 5;
+    } else if (frequency < 5925) {
+        ghz = "5 GHz";
+        channel = (frequency - 5000) / 5;
+    } else {
+        ghz = "6 GHz";
+        channel = (frequency - 5950) / 5;
+    }
+    return ghz + " · channel " + std::to_string(channel);
 }
 
 void Network::setWifiEnabled(bool on) {

@@ -59,6 +59,15 @@ void LayerSurface::destroyRole() {
     m_layer = nullptr;
 }
 
+void LayerSurface::setAnchor(uint32_t anchor) {
+    if (anchor == m_options.anchor) return;
+    m_options.anchor = anchor;
+    if (m_layer) {
+        zwlr_layer_surface_v1_set_anchor(m_layer, anchor);
+        wl_surface_commit(wlSurface());
+    }
+}
+
 void LayerSurface::setSize(int width, int height) {
     m_options.width = width;
     m_options.height = height;

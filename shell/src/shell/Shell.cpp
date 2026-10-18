@@ -8,6 +8,7 @@
 #include "render/Text.h"
 #include "services/Hyprland.h"
 #include "services/Audio.h"
+#include "services/Effects.h"
 #include "services/Mpris.h"
 #include "services/Network.h"
 #include "services/Notifications.h"
@@ -42,6 +43,7 @@ bool Shell::start() {
     if (!IpcServer::get().listen()) return false;
     // Outside Hyprland the bars still run; workspaces just stay empty
     Hyprland::get();
+    Effects::get();
 
     display.onOutputReady = [this](wl::Output* o) { addOutput(o); };
     display.onOutputRemoved = [this](wl::Output* o) { removeOutput(o); };
@@ -165,7 +167,7 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         opts.centredVertically = true;
         build = panels::wallpapers;
     } else if (name == "settings") {
-        opts.width = 1000;
+        opts.width = 1024;
         opts.anchorX = -1;
         opts.centredVertically = true;
         build = [arg](ui::Flex* card, Popup& p) { panels::settings(card, p, arg); };
@@ -296,7 +298,7 @@ void Shell::registerIpc() {
         const auto* p = m.active();
         return p ? std::format("{}: {} — {} [{}]", p->identity, p->title, p->artist, p->status) : std::string("no player");
     });
-    ipc.add("settings", "settings [network|bluetooth|sound|display|appearance|notifications|lock|keybinds|packages|about]",
+    ipc.add("settings", "settings [network|bluetooth|sound|display|appearance|style|bar|notifications|lock|keybinds|packages|about]",
             [this](const IpcServer::Args& a) {
         togglePopup("settings", focusedOutput(), -1, a.empty() ? "" : a[0]);
         return std::string(m_popup && !m_popup->closing() ? "open" : "closed");

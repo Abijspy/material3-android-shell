@@ -1,5 +1,8 @@
 #include "shell/Popup.h"
 
+#include "core/Config.h"
+#include "ui/Theme.h"
+
 #include <algorithm>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
@@ -18,6 +21,7 @@ public:
     float margin = 8;
     bool centreV = false;
     bool fill = false;
+    bool fromBottom = false; // the bar is on the bottom edge: drop up from it
 
 protected:
     SizeF doMeasure(SizeF available) override { return available; }
@@ -32,8 +36,9 @@ protected:
         const SizeF s = card->measure({r.w - margin * 2, r.h - margin * 2});
         float x = anchorX < 0 ? (r.w - s.w) / 2 : anchorX - s.w / 2;
         x = std::clamp(x, r.x + margin, std::max(r.x + margin, r.right() - margin - s.w));
-        const float y = centreV ? r.y + (r.h - s.h) / 3 : r.y + margin;
-        card->arrange({x, y, s.w, std::min(s.h, r.h - margin * 2)});
+        const float h = std::min(s.h, r.h - margin * 2);
+        const float y = centreV ? r.y + (r.h - s.h) / 3 : fromBottom ? r.bottom() - margin - h : r.y + margin;
+        card->arrange({x, y, s.w, h});
     }
 };
 
@@ -53,15 +58,24 @@ Popup::Popup(wl::Output* output, Options options, const std::function<void(Flex*
     root->anchorX = m_options.anchorX;
     root->centreV = m_options.centredVertically;
     root->fill = m_options.fill;
+    root->fromBottom = Config::get().value<std::string>("/statusBar/position", "top") == "bottom";
+    m_drop = root->fromBottom && !m_options.centredVertically ? 1.0f : -1.0f;
     m_card = root->add<Flex>(Flex::Direction::Column);
     m_card->setPadding(Insets(20))->setSpacing(12)->setAlignItems(Align::Stretch);
-    m_card->setBackground("surface_container", false)->setRadius(Radii(28));
+    m_card->setBackground(ColorRef("surface_container", Theme::get().panelOpacity()), false)->setRadius(Radii(28));
+    m_card->blurBehind = true;
     if (!m_options.fill) m_card->fixedWidth = m_options.width;
     // Enter: fade in while dropping a few pixels into place
     m_card->setOpacity(0, false);
-    m_card->setTranslateY(-12, false);
+    m_card->setTranslateY(12 * m_drop, false);
     m_card->setOpacity(1);
     m_card->setTranslateY(0);
+
+    // Opacity and roundness are live: Settings previews them on itself
+    m_theme = Theme::get().changed.connect([this] {
+        m_card->setBackground(ColorRef("surface_container", Theme::get().panelOpacity()));
+        m_card->requestLayout();
+    });
 
     build(m_card, *this);
     m_surface->setRoot(std::move(root));
@@ -83,7 +97,7 @@ void Popup::close() {
     if (m_closing) return;
     m_closing = true;
     m_card->setOpacity(0);
-    m_card->setTranslateY(-8);
+    m_card->setTranslateY(8 * m_drop);
     m_closeTimer = EventLoop::get().addTimer(ui::motion::mediumMs, [this] {
         m_closeTimer = 0;
         if (onClosed) onClosed(); // the owner destroys us here

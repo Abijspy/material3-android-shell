@@ -189,9 +189,22 @@ Flex* pill(Flex* f) {
     return f;
 }
 
+Radii Flex::baseRadius() const {
+    const float k = Theme::get().roundness();
+    const float half = std::min(rect().w, rect().h) / 2;
+    // Pills only lose roundness, so "Sharp" squares chips off too
+    if (m_pill) return Radii(half * std::min(k, 1.0f));
+    auto f = [&](float v) { return std::min(v * k, half); };
+    return {f(m_radius.tl), f(m_radius.tr), f(m_radius.br), f(m_radius.bl)};
+}
+
 Radii Flex::effectiveRadius() const {
-    if (m_pill) return Radii(std::min(rect().w, rect().h) / 2);
-    return m_radius;
+    return baseRadius();
+}
+
+float Flex::cornerRadius() const {
+    const Radii r = effectiveRadius();
+    return std::max({r.tl, r.tr, r.br, r.bl});
 }
 
 SizeF Flex::doMeasure(SizeF available) {
@@ -369,6 +382,13 @@ void Button::onHover(bool hovered) {
 
 void Button::onPress(uint32_t, float, float) {
     m_state.set(0.12f);
+    if (pressedRadius >= 0) m_press.set(1);
+    requestRedraw();
+}
+
+void Button::onRelease() {
+    m_state.set(m_hovered ? 0.08f : 0.0f);
+    m_press.set(0);
     requestRedraw();
 }
 
@@ -376,6 +396,16 @@ void Button::onClick(uint32_t button) {
     m_state.set(m_hovered ? 0.08f : 0.0f);
     requestRedraw();
     if (onClicked) onClicked(button);
+}
+
+Radii Button::effectiveRadius() const {
+    const Radii base = baseRadius();
+    const float t = m_press.value();
+    if (pressedRadius < 0 || t == 0) return base;
+    const float to = std::min(pressedRadius * Theme::get().roundness(), std::min(rect().w, rect().h) / 2);
+    // The spring overshoots; corners never go negative
+    auto mix = [&](float from) { return std::max(0.0f, from + (to - from) * t); };
+    return {mix(base.tl), mix(base.tr), mix(base.br), mix(base.bl)};
 }
 
 bool Button::onScroll(int d) {
@@ -388,7 +418,7 @@ void Button::doPaint(Renderer& r) {
     Flex::doPaint(r);
     const float a = m_state.value();
     if (a > 0) r.rect(rect(), stateLayer.resolve().withAlpha(a), effectiveRadius());
-    if (m_state.running()) requestRedraw();
+    if (m_state.running() || m_press.running()) requestRedraw();
 }
 
 } // namespace m3::ui

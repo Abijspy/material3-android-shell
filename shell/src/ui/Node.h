@@ -88,6 +88,11 @@ public:
     bool grow = false; // takes leftover main-axis space in a Flex
     Align alignSelf = Align::Center;
 
+    // The compositor blurs what is behind this node's rect (translucent
+    // cards); the surface collects these into its blur region after layout
+    bool blurBehind = false;
+    virtual float cornerRadius() const { return 0; }
+
     void setVisible(bool v);
     bool visible() const { return m_visible; }
     // Visible, and, for collapseWhenEmpty containers, has a shown child
@@ -134,14 +139,18 @@ public:
     Flex* setAlignItems(Align a);
     Flex* setBackground(const ColorRef& c, bool animate = true);
     Flex* setRadius(Radii r);
+    const Radii& radius() const { return m_radius; }
     Flex* setBorder(float width, const ColorRef& c);
+    float cornerRadius() const override;
 
 protected:
     SizeF doMeasure(SizeF available) override;
     void doArrange() override;
     void doPaint(Renderer& r) override;
     bool doAnimating() const override { return m_background.running(); }
-    Radii effectiveRadius() const;
+    // The set radius scaled by the theme's roundness, never past a pill
+    virtual Radii effectiveRadius() const;
+    Radii baseRadius() const;
 
     Direction m_dir;
     float m_spacing = 0;
@@ -207,19 +216,25 @@ public:
     std::function<void(uint32_t button)> onClicked;
     std::function<void(int direction)> onScrolled;
     ColorRef stateLayer = ColorRef("on_surface");
+    // M3 Expressive shape morph: while pressed the corners spring towards
+    // this radius (< 0: no morph)
+    float pressedRadius = -1;
 
     bool interactive() const override { return true; }
     void onHover(bool hovered) override;
     void onPress(uint32_t button, float x, float y) override;
+    void onRelease() override;
     void onClick(uint32_t button) override;
     bool onScroll(int d) override;
 
 protected:
     void doPaint(Renderer& r) override;
-    bool doAnimating() const override { return Flex::doAnimating() || m_state.running(); }
+    bool doAnimating() const override { return Flex::doAnimating() || m_state.running() || m_press.running(); }
+    Radii effectiveRadius() const override;
 
 private:
     Tween m_state{0, motion::shortMs, Easing::standard()};
+    Tween m_press{0, motion::mediumMs, Easing::expressiveFast()};
     bool m_hovered = false;
 };
 

@@ -5,8 +5,10 @@
 #include "render/Images.h"
 #include "render/Renderer.h"
 #include "render/Text.h"
+#include "ui/Theme.h"
 #include "wayland/Display.h"
 
+#include "ext-background-effect-v1-client-protocol.h"
 #include "fractional-scale-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
 
@@ -125,6 +127,9 @@ void Surface::destroySurface() {
     m_eglWindow = nullptr;
     if (m_viewport) wp_viewport_destroy(m_viewport);
     m_viewport = nullptr;
+    if (m_blur) ext_background_effect_surface_v1_destroy(m_blur);
+    m_blur = nullptr;
+    m_blurRects.clear();
     if (m_fractional) wp_fractional_scale_v1_destroy(m_fractional);
     m_fractional = nullptr;
     destroyRole();
@@ -258,8 +263,69 @@ void Surface::render() {
             wl_region_destroy(region);
         }
     }
+    updateBlurRegion();
     r.end(m_eglSurface); // eglSwapBuffers commits the surface
     TextEngine::get().collect();
+}
+
+namespace {
+
+// wl_region is rectangles only: a rounded rect becomes a stack of bands whose
+// insets follow the corner arc, kept inside the curve so no blur shows past it
+void addRounded(std::vector<RectF>& out, const RectF& r, float radius) {
+    radius = std::min(radius, std::min(r.w, r.h) / 2);
+    if (radius < 2) {
+        out.push_back(r);
+        return;
+    }
+    const int bands = std::clamp(static_cast<int>(radius / 3), 2, 8);
+    for (int i = 0; i < bands; ++i) {
+        const float d0 = radius * static_cast<float>(i) / static_cast<float>(bands);
+        const float d1 = radius * static_cast<float>(i + 1) / static_cast<float>(bands);
+        const float dy = radius - d0; // distance from the arc's centre line
+        const float inset = radius - std::sqrt(std::max(0.0f, radius * radius - dy * dy));
+        out.push_back({r.x + inset, r.y + d0, r.w - inset * 2, d1 - d0});
+        out.push_back({r.x + inset, r.bottom() - d1, r.w - inset * 2, d1 - d0});
+    }
+    out.push_back({r.x, r.y + radius, r.w, r.h - radius * 2});
+}
+
+void collectBlur(const ui::Node* n, std::vector<RectF>& out) {
+    if (!n->shown()) return;
+    if (n->blurBehind && n->rect().w > 0 && n->rect().h > 0) {
+        addRounded(out, n->rect(), n->cornerRadius());
+        return; // children sit on top of it
+    }
+    for (const auto& c : n->children()) collectBlur(c.get(), out);
+}
+
+} // namespace
+
+void Surface::updateBlurRegion() {
+    auto* manager = Display::get().backgroundEffect();
+    std::vector<RectF> rects;
+    if (manager && m_root && Theme::get().blur()) collectBlur(m_root.get(), rects);
+    auto same = [](const std::vector<RectF>& a, const std::vector<RectF>& b) {
+        return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](const RectF& x, const RectF& y) {
+                   return x.x == y.x && x.y == y.y && x.w == y.w && x.h == y.h;
+               });
+    };
+    if (same(rects, m_blurRects) && (m_blur || rects.empty())) return;
+    if (!m_blur) {
+        if (!manager) return;
+        m_blur = ext_background_effect_manager_v1_get_background_effect(manager, m_surface);
+    }
+    m_blurRects = std::move(rects);
+    if (m_blurRects.empty()) {
+        ext_background_effect_surface_v1_set_blur_region(m_blur, nullptr);
+        return;
+    }
+    wl_region* region = wl_compositor_create_region(Display::get().compositor());
+    for (const auto& b : m_blurRects)
+        wl_region_add(region, static_cast<int>(std::ceil(b.x)), static_cast<int>(std::ceil(b.y)),
+                      static_cast<int>(std::floor(b.w)), static_cast<int>(std::floor(b.h)));
+    ext_background_effect_surface_v1_set_blur_region(m_blur, region);
+    wl_region_destroy(region);
 }
 
 // ── Input ──

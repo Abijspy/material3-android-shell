@@ -4,7 +4,9 @@
 #include "core/FileWatcher.h"
 #include "core/Log.h"
 #include "core/Paths.h"
+#include "ui/Animation.h"
 
+#include <algorithm>
 #include <cctype>
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -62,12 +64,25 @@ Theme& Theme::get() {
 
 Theme::Theme() {
     load();
+    loadEffects();
     FileWatcher::get().watch(paths::colorsFile(), [this] {
         log::info("palette changed, recolouring");
         load();
         notify();
     });
-    Config::get().changed.connectForever([this] { notify(); });
+    Config::get().changed.connectForever([this] {
+        loadEffects();
+        notify();
+    });
+}
+
+void Theme::loadEffects() {
+    auto& c = Config::get();
+    m_blur = c.value<bool>("/appearance/blur/enabled", true);
+    m_barOpacity = std::clamp(static_cast<float>(c.value<double>("/appearance/transparency/bar", 0.8)), 0.3f, 1.0f);
+    m_panelOpacity = std::clamp(static_cast<float>(c.value<double>("/appearance/transparency/panels", 0.9)), 0.3f, 1.0f);
+    m_roundness = std::clamp(static_cast<float>(c.value<double>("/appearance/roundness", 1.0)), 0.0f, 1.5f);
+    ui::motion::scale = std::clamp(static_cast<float>(c.value<double>("/appearance/animationSpeed", 1.0)), 0.0f, 2.0f);
 }
 
 void Theme::load() {
