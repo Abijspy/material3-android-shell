@@ -37,7 +37,9 @@ protected:
         float x = anchorX < 0 ? (r.w - s.w) / 2 : anchorX - s.w / 2;
         x = std::clamp(x, r.x + margin, std::max(r.x + margin, r.right() - margin - s.w));
         const float h = std::min(s.h, r.h - margin * 2);
-        const float y = centreV ? r.y + (r.h - s.h) / 3 : fromBottom ? r.bottom() - margin - h : r.y + margin;
+        // Centred with the clamped height: a card taller than the screen
+        // must not start above its top edge
+        const float y = centreV ? std::max(r.y + margin, r.y + (r.h - h) / 3) : fromBottom ? r.bottom() - margin - h : r.y + margin;
         card->arrange({x, y, s.w, h});
     }
 };

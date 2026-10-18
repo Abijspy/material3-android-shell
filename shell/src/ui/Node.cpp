@@ -215,7 +215,10 @@ SizeF Flex::doMeasure(SizeF available) {
     int count = 0;
     for (auto& c : children()) {
         if (!c->shown()) continue;
-        const auto s = c->measure(inner);
+        // Down a column each child gets the height its earlier siblings left,
+        // so a scroll view under a header caps to the room really there
+        const float spent = main + (count > 0 ? m_spacing * static_cast<float>(count) : 0);
+        const auto s = c->measure(row ? inner : SizeF{inner.w, std::max(0.0f, inner.h - spent)});
         main += row ? s.w : s.h;
         cross = std::max(cross, row ? s.h : s.w);
         ++count;
@@ -238,7 +241,10 @@ void Flex::doArrange() {
     float used = 0;
     int visibleCount = 0, growCount = 0;
     for (auto& c : children()) {
-        sizes.push_back(c->shown() ? c->measure({content.w, content.h}) : SizeF{});
+        // As in doMeasure: only the room left after the earlier siblings
+        const float spent = used + m_spacing * static_cast<float>(visibleCount);
+        const SizeF room = row ? SizeF{content.w, content.h} : SizeF{content.w, std::max(0.0f, content.h - spent)};
+        sizes.push_back(c->shown() ? c->measure(room) : SizeF{});
         if (!c->shown()) continue;
         used += row ? sizes.back().w : sizes.back().h;
         ++visibleCount;
