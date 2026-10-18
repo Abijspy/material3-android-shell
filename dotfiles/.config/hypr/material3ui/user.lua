@@ -1,0 +1,8 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+--  Material3UI Shell: Your overrides
+--  Loaded last and never overwritten by install.sh or update.sh.
+--
+--  Examples:
+--    hl.config({ input = { kb_layout = "us,de" } })
+--    hl.bind("SUPER + C", hl.dsp.exec_cmd("code"))
+-- ─────────────────────────────────────────────────────────────────────────────

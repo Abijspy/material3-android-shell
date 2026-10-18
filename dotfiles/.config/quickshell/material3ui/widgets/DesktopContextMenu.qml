@@ -265,7 +265,7 @@ PanelWindow {
 
     Process {
         id: terminalProcess
-        command: ["kitty"]
+        command: [(Quickshell.env("TERMINAL") || "alacritty")]
     }
 
     // Helper component for menu items

@@ -10,8 +10,8 @@ input_path = '~/.config/matugen/templates/colors.json'
 output_path = '~/.local/state/quickshell/user/generated/colors.json'
 
 [templates.hyprland]
-input_path = '~/.config/matugen/templates/hyprland/colors.conf'
-output_path = '~/.config/hypr/hyprland/colors.conf'
+input_path = '~/.config/matugen/templates/hyprland/colors.lua'
+output_path = '~/.config/hypr/material3ui/colors.lua'
 
 [templates.hyprlock]
 input_path = '~/.config/matugen/templates/hyprland/hyprlock-colors.conf'
@@ -20,6 +20,10 @@ output_path = '~/.config/hypr/hyprlock/colors.conf'
 [templates.fuzzel]
 input_path = '~/.config/matugen/templates/fuzzel/fuzzel_theme.ini'
 output_path = '~/.config/fuzzel/fuzzel_theme.ini'
+
+[templates.alacritty]
+input_path = '~/.config/matugen/templates/alacritty.toml'
+output_path = '~/.config/alacritty/material3ui-theme.toml'
 
 [templates.kitty]
 input_path = '~/.config/matugen/templates/kitty_theme.conf'

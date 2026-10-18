@@ -142,7 +142,7 @@ Singleton {
         }
     }
 
-    // GUI connection editor availability; falls back to nmtui in kitty.
+    // GUI connection editor availability; falls back to nmtui in $TERMINAL.
     property bool advEditorAvailable: false
     Process {
         id: advEditorCheckProc
@@ -158,7 +158,7 @@ Singleton {
         if (advEditorAvailable) {
             Quickshell.execDetached(["nm-connection-editor"]);
         } else {
-            Quickshell.execDetached(["kitty", "-e", "nmtui"]);
+            Quickshell.execDetached([(Quickshell.env("TERMINAL") || "alacritty"), "-e", "nmtui"]);
         }
     }
 

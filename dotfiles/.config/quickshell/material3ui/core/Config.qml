@@ -466,7 +466,7 @@ property JsonObject background: JsonObject {
                 property int hoverRegionHeight: 5
                 property bool pinnedOnStartup: false
                 property bool monochromeIcons: true
-                property list<string> pinnedApps: ["kitty", "org.kde.dolphin"]
+                property list<string> pinnedApps: ["alacritty", "nemo", "librewolf"]
                 property list<string> ignoredAppRegexes: ["^xwaylandvideobridge$"]
                 property real scale: 1.0
                 property bool showLauncher: true

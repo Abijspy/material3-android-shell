@@ -29,50 +29,35 @@ Before running the installer, make sure your system meets these basic requiremen
 
 ## Quick Installation
 
-The easiest way to install Material3UI Shell is by using the interactive installation script. Run the following command in your terminal:
-
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Abijspy/material3-android-shell/main/install.sh)"
 ```
 
-The script will guide you through the process step by step. Here is what to expect during the installation:
+When run this way the repository is cloned to `~/.local/src/material3ui` (change it with `--dir`) and the installer continues from the clone. You can also run `./install.sh` from any checkout.
 
-### 1. Choosing the Install Location
-By default, the shell will be installed in `~/.local/src/material3ui`. You can choose a different location if you prefer.
+The installer runs seven steps:
 
-### 2. Installing Dependencies
-The installer categorizes dependencies to give you control over what gets installed:
-* **Core Dependencies (Required):** Includes Hyprland, Quickshell, Pipewire, NetworkManager, Matugen, and essential CLI tools like Python3. Python3 is specifically required to apply dynamic colors to your terminal.
-* **Fonts (Recommended):** Sets up Google Sans Flex, Material Symbols Rounded, and JetBrains Mono Nerd Font for the intended visual experience.
-* **Terminal Setup (Optional):** Installs Kitty, Fish, and Starship if you want your terminal to match the shell's aesthetics.
-* **CLI Tool (Optional):** Installs the Material3UI CLI for unified command line control.
+1. **Preflight** checks that you are on an Arch-based system, not root, and that Hyprland is 0.55 or newer (needed for the Lua config). Everything is logged to `~/.cache/material3ui/install-<timestamp>.log`.
+2. **Choices**: terminal (Alacritty by default), file manager (Nemo), browser (LibreWolf), how to handle Hyprland (`full`, `inject` or `skip`), update channel, and optional components (fonts, NetworkManager/Bluetooth services, KDE theming, live wallpapers, fish + starship, EasyEffects/WARP).
+3. **Dependency review** lists what is already installed and what is missing, and asks before installing anything.
+4. **Packages** are installed with `paru` or `yay` (paru is bootstrapped when neither exists), followed by Google Sans Flex and optional extras.
+5. **Configuration review** shows every file that will be written. Existing files are marked and backed up to `~/.config/material3ui/backups/<timestamp>/`. Configs without the `# Material3UI Configuration` marker (your own Matugen or Alacritty setup) are left alone.
+6. **Deploy** installs the shell, Matugen templates, Alacritty config, Hyprland modules and `material3uictl`, sets the XDG default file manager and browser, and removes Material3UI v1 helpers if present.
+7. **Summary** offers to reload Hyprland and start the shell when you are already in a Hyprland session.
 
-### 3. Copying Configuration Files
-The script will safely copy necessary configuration files into your `~/.config/` directory:
-* `quickshell/material3ui/` contains the actual shell.
-* `matugen/` contains template configurations for theme generation.
-* `starship.toml` provides the custom prompt layout if you use Starship.
-
-### 4. Setting Up the Material3UI CLI (Optional)
-The repository ships `material3uictl`, a small client for the shell's `material3ui` IPC target. The installer offers to copy it to `~/.local/bin/`; to do it by hand:
+### Unattended installs
 
 ```bash
-install -Dm755 dotfiles/.local/bin/material3uictl ~/.local/bin/material3uictl
-material3uictl help
+./install.sh --yes                                   # accept every default
+./install.sh --yes --terminal foot --file-manager thunar --browser firefox
+./install.sh --yes --hypr inject --channel release --skip-deps
+./install.sh --dry-run                               # print every step, change nothing
 ```
 
-Make sure `~/.local/bin` is on your `$PATH`.
-
-### 5. Configuration Injection (Optional)
-The installer can safely append source lines to your existing configurations without deleting your personal settings:
-* **Kitty:** Injects `include current-theme.conf` for dynamic color support.
-* **Fish:** Injects the Starship initialization command.
-* **Hyprland:** Creates a dedicated `material3ui.lua` file and sources it in your main configuration.
-
-### 6. Selecting an Update Channel
-You can choose how you want to receive updates:
-* **Stable:** Follows official release tags.
-* **Canary:** Follows the absolute latest commits on the main branch for cutting edge features.
+### Hyprland modes
+* **full** (default): `~/.config/hypr/hyprland.lua` is replaced by the Material3UI entry point, which loads modules from `~/.config/hypr/material3ui/`. Put your own settings in `material3ui/user.lua`.
+* **inject**: your `hyprland.lua` is kept; `require("material3ui.shell")`, `require("material3ui.colors")` and `require("material3ui.user_persistence")` are appended.
+* **skip**: Hyprland config is not touched.
 
 ## Post-Installation Steps
 

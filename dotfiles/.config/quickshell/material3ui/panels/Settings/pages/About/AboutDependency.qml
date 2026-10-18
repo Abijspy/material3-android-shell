@@ -243,7 +243,7 @@ ColumnLayout {
                     onClicked: {
                         var missing = SysCheckService.dependencyData.filter(d => !d.installed).map(d => d.name);
                         if (missing.length > 0)
-                            Quickshell.execDetached(["kitty", "--hold", "-e", "paru", "-S", "--needed"].concat(missing));
+                            Quickshell.execDetached([(Quickshell.env("TERMINAL") || "alacritty"), "--hold", "-e", "paru", "-S", "--needed"].concat(missing));
                     }
 
                     RowLayout {
@@ -493,7 +493,7 @@ ColumnLayout {
                                             implicitHeight: 32 * Appearance.effectiveScale
                                             buttonRadius: 16 * Appearance.effectiveScale
                                             colBackground: Appearance.colors.colPrimary
-                                            onClicked: Quickshell.execDetached(["kitty", "--hold", "-e", "paru", "-S", "--needed", modelData.name]);
+                                            onClicked: Quickshell.execDetached([(Quickshell.env("TERMINAL") || "alacritty"), "--hold", "-e", "paru", "-S", "--needed", modelData.name]);
 
                                             RowLayout {
                                                 id: installBtnRow

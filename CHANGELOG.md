@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.1.0 — 2026-10-18
+
+- Rewrite the installer around a reviewed, seven-step flow modelled on DankMaterialShell's: preflight → choices → dependency review → packages → configuration review → deploy → summary. It logs every run, backs up everything it replaces, supports `--yes`, `--dry-run`, `--terminal`, `--file-manager`, `--browser`, `--hypr full|inject|skip`, `--channel`, `--skip-deps` and `--dir`, and hands over to the cloned script when run through `curl`.
+- Default apps are now **Alacritty**, **Nemo** and **LibreWolf**. The choice is written to `hypr/material3ui/apps.lua`, exported as `$TERMINAL` / `$BROWSER`, and registered as the XDG defaults; Nemo's terminal follows the chosen terminal.
+- Rewrite the Hyprland Lua config as small modules (`env`, `apps`, `monitors`, `appearance`, `colors`, `input`, `rules`, `autostart`, `keybinds`, `shell`, `user`), loaded with dotted `require`s; `user.lua` is yours and never overwritten.
+- Hyprland border colours come from the wallpaper through a new Matugen `colors.lua` template; add an Alacritty theme template and config.
+- Add media, mic-mute, `Print`, `SUPER+Escape` (power menu) and `SUPER+B` bindings; panel bindings use the unified `material3ui` IPC target.
+- The shell launches `$TERMINAL` (falling back to Alacritty) instead of a hardcoded kitty, and pins Alacritty, Nemo and LibreWolf to the dock by default.
+- `update.sh` keeps `apps.lua`, `user.lua`, `user_persistence.lua` and `colors.lua`, honours the recorded Hyprland mode, and only updates Alacritty/Matugen/starship configs that carry the Material3UI marker.
+- Add `swappy` to the root dependency list so it matches the shell's copy.
+
 ## v2.0.0 — 2026-10-18
 
 Material3UI Shell is rebuilt on [NAnDoroid-shell](https://github.com/na-ive/nandoroid-shell) and is now licensed under AGPL-3.0.

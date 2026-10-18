@@ -45,7 +45,7 @@ If you have not already done so, install and configure Hyprland as your system c
 sudo pacman -S hyprland
 ```
 
-Your `~/.config/hypr/hyprland.lua` should at least include your monitor setup, input settings, preferred window rules, and keybinds. You can safely keep your existing Hyprland configuration. The Material3UI installer will create a separate `material3ui.lua` file and source it, so your personal shortcuts are never overwritten.
+Your existing `~/.config/hypr/hyprland.lua` can stay: run the installer with `--hypr inject` and it only appends `require("material3ui.shell")` (plus the colour and persistence modules), so your personal shortcuts are never overwritten. The default `full` mode instead backs up your file and installs the modular Material3UI config.
 
 ### 2. Configure Desktop Portals
 This step is crucial. Without the proper portals, fundamental features like screen sharing and file selection will fail. Install them using:
@@ -89,44 +89,16 @@ Every panel is reachable through the unified `material3ui` IPC target. `material
 
 Per-panel targets (`launcher`, `dashboard`, `settings`, `lock`, `region`, …) remain available; run `material3uictl targets` to list them.
 
-### 5. Update Your Keybinds
-Because Material3UI uses the CLI tool to manage its panels, you should bind these commands in your `hyprland.lua`. Here is a great starting point based on the default configuration:
+### 5. Keybinds
+With the default `full` Hyprland mode you do not need to write any bindings: they live in `~/.config/hypr/material3ui/shell.lua` (shell panels) and `keybinds.lua` (apps, windows, media). Override or add your own in `~/.config/hypr/material3ui/user.lua`:
 
 ```lua
--- Tapping Super opens Spotlight
-hl.bind("SUPER + Super_L", hl.dsp.exec_cmd("material3ui spotlight toggle"), { release = true })
-
--- Panel Toggles (via CLI)
-hl.bind("SUPER + Space", hl.dsp.exec_cmd("material3ui launcher toggle"))
-hl.bind("SUPER + A", hl.dsp.exec_cmd("material3ui notifications toggle"))
-hl.bind("SUPER + N", hl.dsp.exec_cmd("material3ui quicksettings toggle"))
-hl.bind("SUPER + G", hl.dsp.exec_cmd("material3ui quickactions toggle"))
-hl.bind("SUPER + D", hl.dsp.exec_cmd("material3ui dashboard toggle"))
-hl.bind("SUPER + I", hl.dsp.exec_cmd("material3ui settings toggle"))
-hl.bind("SUPER + Tab", hl.dsp.exec_cmd("material3ui overview toggle"))
-hl.bind("SUPER + L", hl.dsp.exec_cmd("material3ui lock activate"))
-hl.bind("CTRL + ALT + Delete", hl.dsp.exec_cmd("material3ui systemmonitor toggle"))
-
--- Smooth Brightness Controls
-hl.bind("XF86MonBrightnessUp", hl.dsp.exec_cmd("material3ui brightness increment"), { locked = true, repeating = true })
-hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("material3ui brightness decrement"), { locked = true, repeating = true })
+-- user.lua: loaded last, never overwritten
+hl.bind("SUPER + C", hl.dsp.exec_cmd("code"))
+hl.bind("SUPER + M", hl.dsp.exec_cmd("material3uictl dashboard"))
 ```
 
-### 6. Quickshell Global Shortcuts
-Certain features remain bound directly as native Quickshell global shortcuts. These should be placed in your `hyprland.lua` exactly like this:
-
-```lua
--- Region Tools (Screenshots & Recording)
-hl.bind("SUPER + SHIFT + S", hl.dsp.global("quickshell:regionScreenshot"))
-hl.bind("SUPER + SHIFT + R", hl.dsp.global("quickshell:regionRecord"), { locked = true })
-hl.bind("SUPER + SHIFT + X", hl.dsp.global("quickshell:regionOcr"))
-
--- Spotlight Specifics
-hl.bind("SUPER + Period", hl.dsp.global("quickshell:spotlightEmoji"), { description = "Emoji >> clipboard" })
-hl.bind("SUPER + V", hl.dsp.global("quickshell:spotlightClipboard"), { description = "Clipboard history >> clipboard" })
-```
-
-If you ever need the raw IPC commands, they are fully documented in the main README.
+If you keep your own `hyprland.lua` (`--hypr inject`), adding `require("material3ui.shell")` gives you the shell, its panel shortcuts and region tools without changing anything else.
 
 ## Advice for KDE Plasma Migrants
 

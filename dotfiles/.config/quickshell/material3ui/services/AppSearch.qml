@@ -28,6 +28,8 @@ Singleton {
         "spotify-client": "spotify",
         "com.spotify.client": "spotify",
         "kitty": "kitty",
+        "alacritty": "Alacritty",
+        "librewolf": "librewolf",
         "org.wezfurlong.wezterm": "org.wezfurlong.wezterm",
         "upscayl": "org.upscayl.Upscayl"
     })
@@ -96,6 +98,7 @@ Singleton {
         if (lowClass.includes("code") || lowClass.includes("vsc")) return "visual-studio-code";
         if (lowClass.includes("discord")) return "discord";
         if (lowClass.includes("terminal")) return "utilities-terminal";
+        if (lowClass.includes("nemo")) return iconExists("nemo") ? "nemo" : "system-file-manager";
         if (lowClass.includes("thunar") || lowClass.includes("dolphin")) return "system-file-manager";
 
         // 6. Direct Icon System Check
