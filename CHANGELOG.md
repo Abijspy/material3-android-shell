@@ -36,6 +36,8 @@
 
 
 
+## v4.0.0 — 2026-10-18
+
 **The native shell replaces Quickshell.** Material3UI is now one C++ program (`material3ui`) that talks to Wayland, D-Bus, PipeWire and PAM directly, and Qt, QML and Quickshell are no longer used.
 
 Breaking changes:
