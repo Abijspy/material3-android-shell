@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/Signal.h"
 #include "ui/Input.h"
 #include "ui/Node.h"
 
@@ -119,6 +120,7 @@ private:
     ui::Node* m_focus = nullptr;
     float m_pointerX = 0, m_pointerY = 0;
     std::optional<std::vector<RectF>> m_input;
+    Connection m_imagesReady;
     bool m_inputDirty = false;
 };
 

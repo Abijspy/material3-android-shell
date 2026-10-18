@@ -2,6 +2,7 @@
 
 #include "core/EventLoop.h"
 #include "core/Log.h"
+#include "render/Images.h"
 #include "render/Renderer.h"
 #include "render/Text.h"
 #include "wayland/Display.h"
@@ -46,6 +47,7 @@ bool debugFrames() {
 
 Surface::Surface(Output* output) : m_output(output) {
     m_scale = output ? static_cast<float>(output->scale) : 1.0f;
+    m_imagesReady = Images::get().ready.connect([this] { requestRedraw(); });
 }
 
 Surface::~Surface() {

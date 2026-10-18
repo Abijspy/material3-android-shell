@@ -24,6 +24,7 @@ public:
         float anchorX = -1; // < 0: centred horizontally
         float width = 360;
         bool centredVertically = false;
+        bool fill = false; // the card takes the whole output (overview)
     };
 
     Popup(wl::Output* output, Options options, const std::function<void(ui::Flex* card, Popup& popup)>& build);

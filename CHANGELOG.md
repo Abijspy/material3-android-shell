@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Native C++ shell, phases 4–6** (`shell/`):
+  - **Notifications:** a full notification daemon, with toasts and a notification centre.
+  - **Quick Settings:** sliders, tiles, now playing, and a Wi-Fi picker with password entry.
+  - **Spotlight:** apps, calculator, emoji, clipboard history, files and run, with keyboard navigation.
+  - **Indicators and menus:** volume/brightness OSDs, a power menu, and DBusMenu tray menus.
+  - **Session:** an ext-session-lock lock screen with PAM, a polkit agent, `material3ui greeter` for greetd, and idle handling (lock, screen off, Caffeine, lock before sleep).
+  - **Wallpaper:** a per-output wallpaper layer with fade/wipe/grow transitions, a picker that runs Matugen, and a desktop clock.
+  - **Panels:** the dynamic island (media, notifications, workspace switches), a dashboard with a calendar, the system monitor and a workspace overview.
 - **Installer:** paru is no longer installed or used. The installer installs packages with yay and bootstraps `yay-bin` when yay is missing, building `yay` from source if the prebuilt binary doesn't run against the system's libalpm. `scripts/install_deps.sh` uses yay too. Packages & Updates still detects paru if you already have it.
 - **Installer:** fix `libalpm.so.15: cannot open shared object file` when bootstrapping paru. An AUR helper is used only if it actually starts. When the prebuilt `paru-bin` doesn't run against the system's libalpm, the installer builds `paru` from source, and it runs a full `pacman -Syu` first. The package-updates check also skips a helper that fails to start.
 - **License:** Material3UI Shell is now MIT-licensed (previously AGPL-3.0), with the permission of the NAnDoroid-shell authors. See `LICENSE` and `NOTICE`.

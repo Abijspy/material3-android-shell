@@ -28,7 +28,23 @@ public:
         bool focused = false;
     };
 
+    struct Client {
+        std::string address, cls, title, monitor;
+        int workspace = 0;
+        float x = 0, y = 0, w = 0, h = 0;
+        bool floating = false;
+    };
+    struct MonitorGeometry {
+        std::string name;
+        float x = 0, y = 0, w = 0, h = 0, scale = 1;
+    };
+
     static Hyprland& get();
+
+    // Fetched on demand (the overview), not tracked
+    std::vector<Client> clients() const;
+    std::vector<MonitorGeometry> monitorGeometry() const;
+    void focusWindow(const std::string& address);
 
     bool available() const { return !m_dir.empty(); }
     bool usingLua() const { return m_lua; }

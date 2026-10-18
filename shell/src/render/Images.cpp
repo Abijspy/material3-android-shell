@@ -263,6 +263,34 @@ const Images::Texture* Images::picture(const std::string& path, int w, int h, bo
             }
             std::vector<unsigned char> bgra;
             int pw = 0, ph = 0;
+            if (!pb && path.ends_with(".png")) {
+                // gdk-pixbuf's glycin loaders need a sandbox that some setups
+                // (containers) can't provide; Cairo reads PNG directly
+                cairo_surface_t* png = cairo_image_surface_create_from_png(path.c_str());
+                if (cairo_surface_status(png) == CAIRO_STATUS_SUCCESS) {
+                    const int iw2 = cairo_image_surface_get_width(png), ih2 = cairo_image_surface_get_height(png);
+                    const double sx = static_cast<double>(w) / iw2, sy = static_cast<double>(h) / ih2;
+                    const double f = std::min(cover ? std::max(sx, sy) : std::min(sx, sy), 1.0);
+                    pw = std::max(1, static_cast<int>(iw2 * f + 0.5));
+                    ph = std::max(1, static_cast<int>(ih2 * f + 0.5));
+                    cairo_surface_t* out = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, pw, ph);
+                    cairo_t* cr = cairo_create(out);
+                    cairo_scale(cr, static_cast<double>(pw) / iw2, static_cast<double>(ph) / ih2);
+                    cairo_set_source_surface(cr, png, 0, 0);
+                    cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+                    cairo_paint(cr);
+                    cairo_destroy(cr);
+                    cairo_surface_flush(out);
+                    // Already premultiplied BGRA: copy row by row (stride may pad)
+                    const int stride = cairo_image_surface_get_stride(out);
+                    const unsigned char* data = cairo_image_surface_get_data(out);
+                    bgra.resize(static_cast<size_t>(pw) * ph * 4);
+                    for (int y = 0; y < ph; ++y)
+                        std::copy_n(data + static_cast<size_t>(y) * stride, pw * 4, bgra.data() + static_cast<size_t>(y) * pw * 4);
+                    cairo_surface_destroy(out);
+                }
+                cairo_surface_destroy(png);
+            }
             if (pb) {
                 pw = gdk_pixbuf_get_width(pb);
                 ph = gdk_pixbuf_get_height(pb);
@@ -276,6 +304,7 @@ const Images::Texture* Images::picture(const std::string& path, int w, int h, bo
                 m_pending.erase(key);
                 for (auto& fn : waiters)
                     if (fn) fn();
+                this->ready.emit();
             });
         }).detach();
     }

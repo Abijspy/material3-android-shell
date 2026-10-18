@@ -114,6 +114,7 @@ void Apps::reload() {
                 else if (key == "Exec") app.exec = cleanExec(val);
                 else if (key == "Icon") app.icon = val;
                 else if (key == "Keywords") app.keywords = val;
+                else if (key == "StartupWMClass") app.wmClass = val;
                 else if (key == "Terminal") app.terminal = val == "true";
                 else if ((key == "NoDisplay" || key == "Hidden") && val == "true") hidden = true;
                 else if (key == "OnlyShowIn" && val.find(desktop) == std::string::npos) hidden = true;
@@ -128,6 +129,19 @@ void Apps::reload() {
 int Apps::launches(const std::string& id) const {
     auto it = std::ranges::find(m_counts, id, &std::pair<std::string, int>::first);
     return it != m_counts.end() ? it->second : 0;
+}
+
+std::string Apps::iconForClass(const std::string& cls) const {
+    const std::string c = lower(cls);
+    for (const auto& a : m_apps)
+        if (lower(a.wmClass) == c) return a.icon;
+    for (const auto& a : m_apps) {
+        std::string id = lower(a.id);
+        if (id.ends_with(".desktop")) id.resize(id.size() - 8);
+        // "org.gnome.Nautilus" ↔ "nautilus", "firefox" ↔ "firefox"
+        if (id == c || id.ends_with("." + c)) return a.icon;
+    }
+    return c; // many apps name their icon after their class
 }
 
 void Apps::launch(const App& app) {

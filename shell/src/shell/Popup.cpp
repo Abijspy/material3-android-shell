@@ -17,6 +17,7 @@ public:
     float anchorX = -1;
     float margin = 8;
     bool centreV = false;
+    bool fill = false;
 
 protected:
     SizeF doMeasure(SizeF available) override { return available; }
@@ -24,6 +25,10 @@ protected:
         if (children().empty()) return;
         auto& card = children().front();
         const auto& r = rect();
+        if (fill) {
+            card->arrange({r.x + 32, r.y + 32, r.w - 64, r.h - 64});
+            return;
+        }
         const SizeF s = card->measure({r.w - margin * 2, r.h - margin * 2});
         float x = anchorX < 0 ? (r.w - s.w) / 2 : anchorX - s.w / 2;
         x = std::clamp(x, r.x + margin, std::max(r.x + margin, r.right() - margin - s.w));
@@ -47,10 +52,11 @@ Popup::Popup(wl::Output* output, Options options, const std::function<void(Flex*
     auto root = std::make_unique<PopupLayout>();
     root->anchorX = m_options.anchorX;
     root->centreV = m_options.centredVertically;
+    root->fill = m_options.fill;
     m_card = root->add<Flex>(Flex::Direction::Column);
     m_card->setPadding(Insets(20))->setSpacing(12)->setAlignItems(Align::Stretch);
     m_card->setBackground("surface_container", false)->setRadius(Radii(28));
-    m_card->fixedWidth = m_options.width;
+    if (!m_options.fill) m_card->fixedWidth = m_options.width;
     // Enter: fade in while dropping a few pixels into place
     m_card->setOpacity(0, false);
     m_card->setTranslateY(-12, false);

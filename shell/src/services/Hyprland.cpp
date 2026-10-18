@@ -99,6 +99,46 @@ void Hyprland::dispatch(const std::string& lua, const std::string& legacy) {
     request("dispatch " + (m_lua ? lua : legacy));
 }
 
+std::vector<Hyprland::Client> Hyprland::clients() const {
+    std::vector<Client> out;
+    auto j = requestJson("clients");
+    if (!j || !j->is_array()) return out;
+    for (const auto& c : *j) {
+        Client cl;
+        cl.address = c.value("address", "");
+        cl.cls = c.value("class", "");
+        cl.title = c.value("title", "");
+        cl.monitor = std::to_string(c.value("monitor", 0));
+        cl.floating = c.value("floating", false);
+        if (c.contains("workspace")) cl.workspace = c["workspace"].value("id", 0);
+        if (c.contains("at") && c["at"].size() == 2) {
+            cl.x = c["at"][0].get<float>();
+            cl.y = c["at"][1].get<float>();
+        }
+        if (c.contains("size") && c["size"].size() == 2) {
+            cl.w = c["size"][0].get<float>();
+            cl.h = c["size"][1].get<float>();
+        }
+        if (cl.workspace > 0 && c.value("mapped", true) && !c.value("hidden", false)) out.push_back(cl);
+    }
+    return out;
+}
+
+std::vector<Hyprland::MonitorGeometry> Hyprland::monitorGeometry() const {
+    std::vector<MonitorGeometry> out;
+    if (auto j = requestJson("monitors"); j && j->is_array())
+        for (const auto& m : *j) {
+            const float scale = m.value("scale", 1.0f);
+            out.push_back({m.value("name", ""), m.value("x", 0.0f), m.value("y", 0.0f),
+                           m.value("width", 0.0f) / scale, m.value("height", 0.0f) / scale, scale});
+        }
+    return out;
+}
+
+void Hyprland::focusWindow(const std::string& address) {
+    dispatch("hl.dsp.focus({ window = \"address:" + address + "\" })", "focuswindow address:" + address);
+}
+
 void Hyprland::focusWorkspace(int id) {
     request(m_lua ? std::format("dispatch hl.dsp.focus({{ workspace = \"{}\" }})", id)
                   : std::format("dispatch workspace {}", id));

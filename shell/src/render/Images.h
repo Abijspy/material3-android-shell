@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/Signal.h"
+
 #include <GLES2/gl2.h>
 #include <cstdint>
 #include <functional>
@@ -38,6 +40,9 @@ public:
     const Texture* picture(const std::string& path, int w, int h, bool cover, std::function<void()> ready = {});
 
     std::string findIcon(const std::string& name, int px, const std::string& extraDir = {});
+
+    // A picture finished decoding: surfaces repaint to show it
+    Signal<> ready;
 
 private:
     Images();

@@ -36,12 +36,25 @@ def reply(cmd):
             return json.dumps([{"id": i, "name": str(i), "monitor": "HEADLESS-1", "windows": n}
                                for i, n in state["workspaces"].items()])
         if what == "monitors":
-            return json.dumps([{"name": "HEADLESS-1", "focused": True,
-                                "activeWorkspace": {"id": state["active"], "name": str(state["active"])}}])
+            return json.dumps([{"name": "HEADLESS-1", "focused": True, "x": 0, "y": 0, "width": 1600, "height": 900,
+                                "scale": 1.0, "activeWorkspace": {"id": state["active"], "name": str(state["active"])}}])
+        if what == "clients":
+            def win(addr, ws, x, y, w, h, cls, title):
+                return {"address": addr, "workspace": {"id": ws}, "at": [x, y], "size": [w, h], "class": cls,
+                        "title": title, "monitor": 0, "floating": False, "mapped": True, "hidden": False}
+            return json.dumps([
+                win("0x1", 1, 8, 48, 788, 844, "foot", "~/projects — foot"),
+                win("0x2", 1, 804, 48, 788, 844, "org.gnome.Nautilus", "Files"),
+                win("0x3", 2, 8, 48, 1584, 844, "foot", "nvim — material3ui"),
+                win("0x4", 4, 200, 150, 1200, 600, "foot", "htop"),
+            ])
         if what == "activewindow":
             return json.dumps({"title": state["title"], "class": "nvim"})
         if what == "status":
             return json.dumps({"configProvider": "lua"})
+    if "address:" in cmd:
+        print("focus window", cmd.split("address:")[1].split('"')[0], flush=True)
+        return "ok"
     m = re.search(r'workspace = "(\d+)"', cmd) or re.match(r"dispatch workspace (\d+)$", cmd)
     if cmd.startswith("dispatch") and m:
         state["active"] = int(m.group(1))

@@ -22,7 +22,7 @@ struct SearchResult {
 class Apps {
 public:
     struct App {
-        std::string id, name, generic, comment, exec, icon, keywords;
+        std::string id, name, generic, comment, exec, icon, keywords, wmClass;
         bool terminal = false;
     };
 
@@ -31,6 +31,8 @@ public:
     void reload();
     void launch(const App& app);
     int launches(const std::string& id) const;
+    // Icon for a window class (Hyprland's "class"), via StartupWMClass or the desktop id
+    std::string iconForClass(const std::string& cls) const;
 
 private:
     Apps();

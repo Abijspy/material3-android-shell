@@ -138,15 +138,16 @@ class ImageView : public Node {
 public:
     using Provider = std::function<GLuint(float scale, int& w, int& h)>;
     ImageView(float size, Provider provider);
+    ImageView(float width, float height, Provider provider);
     void setProvider(Provider p);
     bool cover = false; // fill and crop instead of fit
 
 protected:
-    SizeF doMeasure(SizeF) override { return {m_size, m_size}; }
+    SizeF doMeasure(SizeF) override { return {m_width, m_height}; }
     void doPaint(Renderer& r) override;
 
 private:
-    float m_size;
+    float m_width, m_height;
     Provider m_provider;
 };
 

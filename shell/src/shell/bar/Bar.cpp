@@ -1,6 +1,7 @@
 #include "shell/bar/Bar.h"
 
 #include "core/Config.h"
+#include "shell/bar/Island.h"
 #include "shell/bar/Widgets.h"
 #include "wayland/Display.h"
 
@@ -38,12 +39,9 @@ void Bar::rebuild() {
     if (floating) pill(ws->setBackground("surface_container_high", false));
     auto* titleCap = capsule(start, floating);
     titleCap->add<WindowTitle>();
-    auto* mediaCap = capsule(start, floating);
-    mediaCap->setPadding({2, 0});
-    mediaCap->add<Media>();
 
-    auto* centre = capsule(bg, floating);
-    centre->add<Clock>();
+    // The dynamic island is its own pill
+    bg->add<Island>(m_openPopup);
 
     auto* end = bg->add<Flex>(Flex::Direction::Row);
     end->setSpacing(8);

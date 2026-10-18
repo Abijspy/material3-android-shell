@@ -15,6 +15,8 @@
 #include "services/Idle.h"
 #include "services/Polkit.h"
 #include "services/Session.h"
+#include "services/Wallpaper.h"
+#include "shell/Desktop.h"
 #include "shell/LockScreen.h"
 #include "shell/Notify.h"
 #include "shell/Osd.h"
@@ -86,11 +88,13 @@ void Shell::addOutput(wl::Output* output) {
         togglePopup(name, output, x);
     });
     if (!m_barsVisible) bar->setVisible(false);
+    if (Config::get().value<bool>("/desktop/wallpaper", true)) m_desktops[output] = std::make_unique<Desktop>(output);
     m_bars[output] = std::move(bar);
 }
 
 void Shell::removeOutput(wl::Output* output) {
     LockScreen::get().removeOutput(output);
+    m_desktops.erase(output);
     if (m_popup && m_popup->output() == output) m_popup.reset();
     m_bars.erase(output);
 }
@@ -146,6 +150,22 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         opts.anchorX = -1;
         opts.centredVertically = true;
         build = [arg](ui::Flex* card, Popup& p) { panels::launcher(card, p, arg); };
+    } else if (name == "dashboard") {
+        opts.width = 760;
+        build = panels::dashboard;
+    } else if (name == "sysmon") {
+        opts.width = 680;
+        opts.anchorX = -1;
+        opts.centredVertically = true;
+        build = panels::systemMonitor;
+    } else if (name == "wallpapers") {
+        opts.width = 880;
+        opts.anchorX = -1;
+        opts.centredVertically = true;
+        build = panels::wallpapers;
+    } else if (name == "overview") {
+        opts.fill = true;
+        build = panels::overview;
     } else if (name.starts_with("polkit:")) {
         opts.width = 460;
         opts.anchorX = -1;
@@ -208,8 +228,9 @@ void Shell::registerIpc() {
     ipc.add("popup", "popup <quicksettings|notifications|audio|network|bluetooth|power|run>: toggle a panel",
             [this](const IpcServer::Args& a) {
         if (a.empty()) return std::string("error: popup needs a name");
-        // Status panels open under the right end of the bar
-        togglePopup(a[0], focusedOutput(), 100000, a.size() > 1 ? a[1] : "");
+        // Status panels open under the right end of the bar; the dashboard
+        // under the island
+        togglePopup(a[0], focusedOutput(), a[0] == "dashboard" ? -1 : 100000, a.size() > 1 ? a[1] : "");
         return std::string(m_popup && !m_popup->closing() ? "open" : "closed");
     });
     ipc.add("launcher", "launcher [text]: toggle Spotlight, optionally pre-filled (\"#\" clipboard, \":\" emoji…)",
@@ -266,6 +287,15 @@ void Shell::registerIpc() {
         else if (cmd == "previous") m.previous();
         const auto* p = m.active();
         return p ? std::format("{}: {} — {} [{}]", p->identity, p->title, p->artist, p->status) : std::string("no player");
+    });
+    ipc.add("wallpaper", "wallpaper [next|prev|set <path>|pick]", [this](const IpcServer::Args& a) {
+        auto& w = Wallpaper::get();
+        const std::string cmd = a.empty() ? "" : a[0];
+        if (cmd == "next") w.next(1);
+        else if (cmd == "prev") w.next(-1);
+        else if (cmd == "set" && a.size() > 1) w.set(a[1]);
+        else if (cmd == "pick") togglePopup("wallpapers", focusedOutput(), -1);
+        return w.path().empty() ? std::string("no wallpaper") : w.path();
     });
     ipc.add("lock", "Lock the session", [](const auto&) {
         LockScreen::get().lock();

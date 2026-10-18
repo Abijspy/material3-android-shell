@@ -2,7 +2,7 @@
 
 The C++ rewrite of Material3UI: a Wayland shell drawn directly with EGL/OpenGL ES, with no Qt, QML, GTK or Quickshell underneath. It reads the same `~/.config/material3ui/config.json` and Matugen palette as the QML shell, so the two can be swapped while the port is in progress.
 
-> **Status: phases 1–3 done.** The status bar runs on every output: workspaces, window title, now playing, clock, tray, network/Bluetooth/volume icons and battery. Sound, Wi-Fi and Bluetooth popups and a run prompt work with mouse and keyboard. The bigger panels (Quick Settings, notifications, Spotlight, lock screen…) still live in the QML shell; see the roadmap below.
+> **Status: phases 1–6 done.** The native shell now covers the desktop day to day: bar with a dynamic island, tray, status icons and battery; Quick Settings with a Wi-Fi picker; notifications (daemon, toasts, centre); Spotlight (apps, maths, emoji, clipboard, files); OSDs; power menu; lock screen, polkit agent, greetd greeter and idle handling; wallpapers with transitions and a picker; dashboard, system monitor and overview. Settings (phase 7) still lives in the QML shell.
 
 ## Why native
 
@@ -10,7 +10,7 @@ The C++ rewrite of Material3UI: a Wayland shell drawn directly with EGL/OpenGL E
 | :--- | :--- |
 | System access goes through Quickshell's bindings, or shells out to `hyprctl`, `pacman`, Python | Direct Unix sockets, inotify, sysfs, D-Bus (sd-bus) and PipeWire (libpulse); PAM comes next |
 | JavaScript inside QML is untyped and hard to refactor | C++20, compiled with warnings on |
-| Every Quickshell release can break the shell | Depends only on libwayland, EGL/GLES2, Pango/Cairo, xkbcommon, libsystemd, libpulse, librsvg and nlohmann-json |
+| Every Quickshell release can break the shell | Depends only on libwayland, EGL/GLES2, Pango/Cairo, xkbcommon, libsystemd, libpulse, librsvg, gdk-pixbuf, PAM, polkit-agent and nlohmann-json |
 
 ## Architecture
 
@@ -20,9 +20,9 @@ src/
              (inotify), Config (config.json by JSON pointer), Signal (scoped
              connections), Process (detached spawn)
   wayland/   Display (registry, outputs, seat, pointer, keyboard with xkbcommon
-             and key repeat, cursor-shape), LayerSurface (frame-paced layer
-             surface, fractional scale via wp-fractional-scale + viewporter,
-             keyboard focus routing)
+             and key repeat, cursor-shape, session-lock and idle globals),
+             Surface (frame-paced rendering, fractional scale, input regions,
+             focus) with LayerSurface and LockSurface roles
   render/    Renderer (EGL; SDF rounded-rect, alpha-mask and image programs,
              clip/opacity/translate stacks), Text (Pango → Cairo → GL texture),
              Images (icon-theme lookup, PNG, SVG via librsvg, ARGB pixmaps)
@@ -31,12 +31,18 @@ src/
              Tween/ColorTween (M3 easing), Theme (Matugen roles, live)
   dbus/      Bus: sd-bus on the event loop, async calls, signals, properties,
              D-Bus values as JSON
-  services/  Hyprland, Audio (libpulse: volume, balance, per channel, devices),
-             Network (NetworkManager), Bluetooth (BlueZ), Power (UPower, sysfs
-             fallback), Brightness (sysfs + logind), Mpris, Tray
-             (StatusNotifierWatcher/host)
+  services/  Hyprland, Audio (libpulse), Network (NetworkManager, Wi-Fi list and
+             connect), Bluetooth, Power (UPower), Brightness, Mpris, Tray (SNI +
+             DBusMenu), Notifications (daemon), Search (apps, maths, emoji,
+             cliphist, fd), Session (logind), Idle (ext-idle-notify), Auth (PAM),
+             Polkit (agent on a GLib thread), Wallpaper, SystemStats
   ipc/       IpcServer and `material3ui msg` client
-  shell/     Shell (surfaces per output, popups, IPC), Popup, Panels, bar/
+  shell/     Shell (surfaces per output, popups, IPC), Popup and the panels
+             (QuickSettings, Launcher, Menus, Rich), Notify (toasts), Osd,
+             LockScreen + LockView, Desktop (wallpaper, desktop clock), bar/
+             (incl. the dynamic Island)
+  greeter/   `material3ui greeter` for greetd
+  polkit/    the PolkitAgentListener GObject (C)
 ```
 
 Rules the code follows:
@@ -50,7 +56,9 @@ The overall approach (a poll loop, direct Wayland, a GLES scene graph, Pango tex
 
 ## Building
 
-Dependencies: `meson`, `wayland`, `wayland-protocols`, `wlr-protocols`, `mesa` (EGL/GLES2), `pango`, `cairo`, `libxkbcommon`, `systemd-libs` (sd-bus), `libpulse` (talks to `pipewire-pulse`), `librsvg`, `nlohmann-json`.
+Dependencies: `meson`, `wayland`, `wayland-protocols`, `wlr-protocols`, `mesa` (EGL/GLES2), `pango`, `cairo`, `libxkbcommon`, `systemd-libs` (sd-bus), `libpulse` (talks to `pipewire-pulse`), `librsvg`, `gdk-pixbuf2`, `pam`, `polkit`, `nlohmann-json`. At runtime, optionally: `matugen` (palette), `cliphist` + `wl-clipboard` (clipboard history), `fd` (file search), `hyprsunset` (night light).
+
+`meson install` also installs `/etc/pam.d/material3ui` (the lock screen's PAM service; it includes `login`).
 
 ```bash
 meson setup build
@@ -63,10 +71,12 @@ No Arch box handy? `tools/dev.sh` builds in an Arch container, and `tools/dev.sh
 
 | Variable | Effect |
 | :--- | :--- |
-| `M3_FAKE_HYPR=1` | Serve a fake Hyprland (`tools/fake-hyprland.py`) |
+| `M3_FAKE_HYPR=1` | Serve a fake Hyprland with workspaces and windows (`tools/fake-hyprland.py`) |
 | `M3_SERVICES=1` | Start a session bus, a stand-in system bus, PipeWire with two stereo null sinks, and mock NetworkManager, UPower, BlueZ, an MPRIS player and tray items (`tools/mock-services.py`) |
 | `M3_SCRIPT="…"` | Commands to run before the screenshot (`material3ui msg …`, `wtype` for typing, extra `grim` shots) |
 | `M3_SCALE=1.5` | Output scale, to check fractional scaling |
+| `M3_SETUP="…"` | Commands run before the shell starts (users, config, `tools/make-wallpapers.py`, `tools/fake-greetd.py`) |
+| `M3_ARGS=greeter` | Arguments for `material3ui` (test the greeter) |
 | `M3_DEBUG_FRAMES=1`, `M3_DEBUG_FOCUS=1` | Log frames, or keyboard focus and key events |
 
 ## IPC
@@ -74,11 +84,18 @@ No Arch box handy? `tools/dev.sh` builds in an Arch container, and `tools/dev.sh
 ```
 material3ui msg ping | version | quit | reload | status
 material3ui msg bar [toggle|show|hide]
-material3ui msg popup audio|network|bluetooth|run
+material3ui msg popup quicksettings [wifi] | notifications | audio | network | bluetooth
+                      | dashboard | sysmon | overview | power | run
+material3ui msg launcher [text]       # "=" maths, ":" emoji, "#" clipboard, "@" files, ">" run
+material3ui msg lock | idle [inhibit|allow]
 material3ui msg volume up|down|mute|mic-mute|set <0-150>|balance <-100..100>
 material3ui msg brightness up|down|set <0-100>
 material3ui msg media play-pause|next|previous|status
+material3ui msg notifications [list|clear|dnd on|dnd off]
+material3ui msg wallpaper [next|prev|set <path>|pick]
 material3ui msg tray | outputs | workspaces
+
+material3ui greeter                   # the greetd login screen
 ```
 
 ## Roadmap to parity with the QML shell
@@ -88,8 +105,8 @@ material3ui msg tray | outputs | workspaces
 | **1. Foundation** ✅ | Event loop, Wayland and layer shell, GLES renderer, text, scene graph and flex layout, M3 motion, Matugen theme, config, IPC, Hyprland service, status bar (workspaces, window title, clock, battery) |
 | **2. Input and popups** ✅ | Keyboard (xkbcommon, repeat), popups anchored to the bar (Esc or click outside closes, M3 enter/exit motion), slider, switch, scroll view, text field, fractional scale |
 | **3. System services** ✅ | D-Bus (sd-bus), audio volume/balance/per-channel/devices (libpulse on PipeWire), NetworkManager, BlueZ, UPower, MPRIS, brightness, StatusNotifier tray; bar widgets and Sound/Wi-Fi/Bluetooth/Run popups |
-| 4. Core panels | Quick Settings, Notification daemon and centre, Spotlight launcher (apps, files, calculator, clipboard, emoji), OSDs, power menu, tray menus (DBusMenu), Wi-Fi network list |
-| 5. Session | Lock screen (ext-session-lock + PAM), polkit agent, greetd greeter, idle (ext-idle-notify) |
-| 6. Rich UI | Dynamic island, dashboard, overview, wallpaper picker and transitions, desktop widgets, system monitor |
+| **4. Core panels** ✅ | Quick Settings with a Wi-Fi picker, notification daemon/toasts/centre, Spotlight (apps, maths, emoji, clipboard, files, run), OSDs, power menu, tray menus (DBusMenu) |
+| **5. Session** ✅ | Lock screen (ext-session-lock + PAM), polkit agent, greetd greeter, idle (lock, DPMS, Caffeine), lock before sleep, loginctl lock-session |
+| **6. Rich UI** ✅ | Dynamic island, dashboard, overview, wallpapers with transitions and a picker (Matugen), desktop clock, system monitor |
 | 7. Settings | The Settings app, including Packages & Updates and the keybind editor |
 | 8. Switch over | Installer and Hyprland config start `material3ui` instead of Quickshell; the QML shell is retired |

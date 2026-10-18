@@ -415,7 +415,10 @@ void TextField::doPaint(Renderer& r) {
 
 // ── ImageView ──
 
-ImageView::ImageView(float size, Provider provider) : m_size(size), m_provider(std::move(provider)) {}
+ImageView::ImageView(float size, Provider provider) : ImageView(size, size, std::move(provider)) {}
+
+ImageView::ImageView(float width, float height, Provider provider)
+    : m_width(width), m_height(height), m_provider(std::move(provider)) {}
 
 void ImageView::setProvider(Provider p) {
     m_provider = std::move(p);
