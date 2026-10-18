@@ -1,0 +1,16 @@
+# Build and headless-test environment for the C++ shell.
+#   podman build -t material3ui-dev -f shell/tools/Containerfile shell/tools
+FROM docker.io/library/archlinux:latest
+
+RUN pacman -Syu --noconfirm --needed \
+        base-devel meson ninja cmake pkgconf git \
+        wayland wayland-protocols wlr-protocols mesa libglvnd pango cairo libxkbcommon nlohmann-json \
+        pipewire libpulse polkit glib2 \
+        sway swaybg grim gdb noto-fonts ttf-jetbrains-mono-nerd curl \
+    && pacman -Scc --noconfirm
+
+# Material Symbols (the shell's icon font) is only packaged in the AUR
+RUN mkdir -p /usr/share/fonts/material-symbols \
+    && curl -fsSL -o "/usr/share/fonts/material-symbols/MaterialSymbolsRounded.ttf" \
+        "https://github.com/google/material-design-icons/raw/master/variablefont/MaterialSymbolsRounded%5BFILL,GRAD,opsz,wght%5D.ttf" \
+    && fc-cache -f

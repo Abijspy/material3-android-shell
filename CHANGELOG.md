@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Native C++ shell, phase 1** (`shell/`). A Wayland shell drawn directly with EGL/GLES2 and Pango, with no Qt, QML or Quickshell, following Noctalia's architecture with original code:
+  - Core: a poll event loop, layer-shell surfaces with frame pacing, an SDF rounded-rect renderer, a scene graph with flex layout, and Material 3 motion.
+  - Shared with the QML shell: it reads the same `config.json` and Matugen palette, and recolours live when either changes.
+  - Services: a Hyprland socket service and Unix-socket IPC (`material3ui msg`).
+  - UI so far: the status bar with animated workspaces, window title, clock and battery.
+  - Testing: `shell/tools/dev.sh` builds in an Arch container and screenshots the shell under headless Sway, optionally against a fake Hyprland.
 - **Keybind editor** in Settings → System → Keybinds. It lists the shell's Hyprland binds live, grouped and searchable. Click a bind to remap it (modifier chips plus press-a-key capture), disable it or reset it. You can also add custom command binds, and conflicts are flagged. Binds from `user.lua` are listed read-only.
   - The default binds in `shell.lua` and `keybinds.lua` now go through a new `bindings.lua` registry, which applies the edits from the shell-written `keybinds_custom.lua` before binding. Updates never overwrite that file.
 - **Channels** in Settings → Audio for the default output (and for stereo microphones):

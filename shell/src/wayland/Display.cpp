@@ -1,0 +1,213 @@
+#include "wayland/Display.h"
+
+#include "core/Log.h"
+#include "wayland/LayerSurface.h"
+
+#include "cursor-shape-v1-client-protocol.h"
+#include "wayland/LayerShellProtocol.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <linux/input-event-codes.h>
+#include <poll.h>
+#include <wayland-client.h>
+
+namespace m3::wl {
+
+namespace {
+
+const wl_registry_listener kRegistry = {
+    .global = [](void* data, wl_registry* r, uint32_t name, const char* iface, uint32_t version) {
+        static_cast<Display*>(data)->addGlobal(r, name, iface, version);
+    },
+    .global_remove = [](void* data, wl_registry*, uint32_t name) { static_cast<Display*>(data)->removeGlobal(name); },
+};
+
+const wl_output_listener kOutput = {
+    .geometry = [](void*, wl_output*, int32_t, int32_t, int32_t, int32_t, int32_t, const char*, const char*, int32_t) {},
+    .mode = [](void*, wl_output*, uint32_t, int32_t, int32_t, int32_t) {},
+    .done = [](void* data, wl_output*) { Display::get().outputDone(static_cast<Output*>(data)); },
+    .scale = [](void* data, wl_output*, int32_t factor) { static_cast<Output*>(data)->scale = factor; },
+    .name = [](void* data, wl_output*, const char* name) { static_cast<Output*>(data)->name = name; },
+    .description = [](void* data, wl_output*, const char* d) { static_cast<Output*>(data)->description = d; },
+};
+
+const wl_seat_listener kSeat = {
+    .capabilities = [](void* data, wl_seat*, uint32_t caps) { static_cast<Display*>(data)->seatCapabilities(caps); },
+    .name = [](void*, wl_seat*, const char*) {},
+};
+
+// Newer libwayland adds events (warp) that are never sent at the version we
+// bind; leaving them unset is intended.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+const wl_pointer_listener kPointer = {
+    .enter = [](void* data, wl_pointer*, uint32_t serial, wl_surface* s, wl_fixed_t x, wl_fixed_t y) {
+        static_cast<Display*>(data)->pointerEnter(serial, s, wl_fixed_to_double(x), wl_fixed_to_double(y));
+    },
+    .leave = [](void* data, wl_pointer*, uint32_t, wl_surface* s) { static_cast<Display*>(data)->pointerLeave(s); },
+    .motion = [](void* data, wl_pointer*, uint32_t, wl_fixed_t x, wl_fixed_t y) {
+        static_cast<Display*>(data)->pointerMotion(wl_fixed_to_double(x), wl_fixed_to_double(y));
+    },
+    .button = [](void* data, wl_pointer*, uint32_t, uint32_t, uint32_t button, uint32_t state) {
+        static_cast<Display*>(data)->pointerButton(button, state == WL_POINTER_BUTTON_STATE_PRESSED);
+    },
+    .axis = [](void* data, wl_pointer*, uint32_t, uint32_t axis, wl_fixed_t value) {
+        static_cast<Display*>(data)->pointerAxis(axis, wl_fixed_to_double(value));
+    },
+    .frame = [](void* data, wl_pointer*) { static_cast<Display*>(data)->pointerFrame(); },
+    .axis_source = [](void*, wl_pointer*, uint32_t) {},
+    .axis_stop = [](void*, wl_pointer*, uint32_t, uint32_t) {},
+    .axis_discrete = [](void*, wl_pointer*, uint32_t, int32_t) {},
+    .axis_value120 = [](void*, wl_pointer*, uint32_t, int32_t) {},
+    .axis_relative_direction = [](void*, wl_pointer*, uint32_t, uint32_t) {},
+};
+#pragma GCC diagnostic pop
+
+} // namespace
+
+Display& Display::get() {
+    static Display instance;
+    return instance;
+}
+
+bool Display::connect() {
+    m_display = wl_display_connect(nullptr);
+    if (!m_display) {
+        log::error("cannot connect to a Wayland compositor (is WAYLAND_DISPLAY set?)");
+        return false;
+    }
+    m_registry = wl_display_get_registry(m_display);
+    wl_registry_add_listener(m_registry, &kRegistry, this);
+    wl_display_roundtrip(m_display); // globals
+    wl_display_roundtrip(m_display); // output names and seat capabilities
+
+    if (!m_compositor || !m_layerShell) {
+        log::error("the compositor does not support wlr-layer-shell");
+        return false;
+    }
+    EventLoop::get().add(this);
+    return true;
+}
+
+void Display::addGlobal(wl_registry* r, uint32_t name, const char* iface, uint32_t version) {
+    const std::string_view i(iface);
+    if (i == wl_compositor_interface.name) {
+        m_compositor = static_cast<wl_compositor*>(wl_registry_bind(r, name, &wl_compositor_interface, std::min(version, 6u)));
+    } else if (i == zwlr_layer_shell_v1_interface.name) {
+        m_layerShell = static_cast<zwlr_layer_shell_v1*>(wl_registry_bind(r, name, &zwlr_layer_shell_v1_interface, std::min(version, 4u)));
+    } else if (i == wl_seat_interface.name && !m_seat) {
+        m_seat = static_cast<wl_seat*>(wl_registry_bind(r, name, &wl_seat_interface, std::min(version, 5u)));
+        wl_seat_add_listener(m_seat, &kSeat, this);
+    } else if (i == wp_cursor_shape_manager_v1_interface.name) {
+        m_cursorShapeManager = static_cast<wp_cursor_shape_manager_v1*>(
+            wl_registry_bind(r, name, &wp_cursor_shape_manager_v1_interface, 1));
+    } else if (i == wl_output_interface.name && version >= 4) {
+        auto out = std::make_unique<Output>();
+        out->globalName = name;
+        out->handle = static_cast<wl_output*>(wl_registry_bind(r, name, &wl_output_interface, 4));
+        wl_output_add_listener(out->handle, &kOutput, out.get());
+        m_outputs.push_back(std::move(out));
+    }
+}
+
+void Display::removeGlobal(uint32_t name) {
+    auto it = std::find_if(m_outputs.begin(), m_outputs.end(), [name](auto& o) { return o->globalName == name; });
+    if (it == m_outputs.end()) return;
+    if (onOutputRemoved) onOutputRemoved(it->get());
+    wl_output_release((*it)->handle);
+    m_outputs.erase(it);
+}
+
+void Display::outputDone(Output* output) {
+    if (output->ready) return;
+    output->ready = true;
+    if (onOutputReady) onOutputReady(output);
+}
+
+void Display::seatCapabilities(uint32_t caps) {
+    const bool hasPointer = caps & WL_SEAT_CAPABILITY_POINTER;
+    if (hasPointer && !m_pointer) {
+        m_pointer = wl_seat_get_pointer(m_seat);
+        wl_pointer_add_listener(m_pointer, &kPointer, this);
+        if (m_cursorShapeManager) m_cursorShape = wp_cursor_shape_manager_v1_get_pointer(m_cursorShapeManager, m_pointer);
+    } else if (!hasPointer && m_pointer) {
+        if (m_cursorShape) wp_cursor_shape_device_v1_destroy(m_cursorShape);
+        m_cursorShape = nullptr;
+        wl_pointer_release(m_pointer);
+        m_pointer = nullptr;
+    }
+}
+
+void Display::pointerEnter(uint32_t serial, wl_surface* surface, double x, double y) {
+    m_pointerFocus = LayerSurface::fromSurface(surface);
+    m_pointerX = x;
+    m_pointerY = y;
+    // Without a cursor of our own the pointer would keep whatever it showed last
+    if (m_cursorShape) wp_cursor_shape_device_v1_set_shape(m_cursorShape, serial, WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT);
+    if (m_pointerFocus) m_pointerFocus->pointerMotion(x, y);
+}
+
+void Display::pointerLeave(wl_surface* surface) {
+    if (auto* s = LayerSurface::fromSurface(surface)) s->pointerLeave();
+    m_pointerFocus = nullptr;
+}
+
+void Display::pointerMotion(double x, double y) {
+    m_pointerX = x;
+    m_pointerY = y;
+    if (m_pointerFocus) m_pointerFocus->pointerMotion(x, y);
+}
+
+void Display::pointerButton(uint32_t button, bool pressed) {
+    if (m_pointerFocus) m_pointerFocus->pointerButton(button, pressed);
+}
+
+void Display::pointerAxis(uint32_t axis, double value) {
+    if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) m_scrollAccum += value;
+}
+
+void Display::pointerFrame() {
+    // One notch is 10 units on most mice; touchpads send many small deltas
+    if (std::abs(m_scrollAccum) >= 10 && m_pointerFocus) {
+        m_pointerFocus->pointerScroll(m_scrollAccum > 0 ? 1 : -1);
+        m_scrollAccum = 0;
+    }
+}
+
+LayerSurface* LayerSurface::fromSurface(wl_surface* surface) {
+    return surface ? static_cast<LayerSurface*>(wl_surface_get_user_data(surface)) : nullptr;
+}
+
+int Display::fd() const {
+    return wl_display_get_fd(m_display);
+}
+
+void Display::prepare() {
+    if (m_reading) wl_display_cancel_read(m_display);
+    while (wl_display_prepare_read(m_display) != 0) wl_display_dispatch_pending(m_display);
+    m_reading = true;
+    if (wl_display_flush(m_display) < 0 && errno != EAGAIN) {
+        log::error("lost the Wayland connection");
+        EventLoop::get().quit(1);
+    }
+}
+
+void Display::dispatch(short revents) {
+    if (m_reading) {
+        if (revents & POLLIN)
+            wl_display_read_events(m_display);
+        else
+            wl_display_cancel_read(m_display);
+        m_reading = false;
+    }
+    if (revents & (POLLHUP | POLLERR)) {
+        log::error("the compositor closed the connection");
+        EventLoop::get().quit(1);
+        return;
+    }
+    wl_display_dispatch_pending(m_display);
+}
+
+} // namespace m3::wl

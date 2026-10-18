@@ -1,0 +1,201 @@
+#pragma once
+
+#include "render/Renderer.h"
+#include "render/Text.h"
+#include "ui/Animation.h"
+#include "ui/Color.h"
+#include "ui/Geometry.h"
+
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace m3::ui {
+
+// Whoever displays a tree (a layer surface) gets told when it must lay out or
+// repaint. Nodes never paint or relayout synchronously from a setter.
+class Host {
+public:
+    virtual ~Host() = default;
+    virtual void requestLayout() = 0;
+    virtual void requestRedraw() = 0;
+    // A node is going away; drop any pointer to it (hover, press)
+    virtual void nodeDestroyed(class Node*) {}
+};
+
+enum class Align { Start, Center, End, Stretch };
+
+// Scene graph base: owns children, measures and arranges them, paints itself
+// then its children, and routes pointer input to the deepest interactive node.
+class Node {
+public:
+    virtual ~Node();
+
+    template <typename T, typename... Args>
+    T* add(Args&&... args) {
+        auto child = std::make_unique<T>(std::forward<Args>(args)...);
+        T* raw = child.get();
+        adopt(std::move(child));
+        return raw;
+    }
+    void adopt(std::unique_ptr<Node> child);
+    void clearChildren();
+    const std::vector<std::unique_ptr<Node>>& children() const { return m_children; }
+
+    // Layout: measure() returns the preferred size within `available`;
+    // arrange() assigns the final rect.
+    SizeF measure(SizeF available);
+    void arrange(const RectF& rect);
+    const RectF& rect() const { return m_rect; }
+
+    void paint(Renderer& r);
+
+    // Input
+    Node* hitTest(float x, float y);
+    virtual bool interactive() const { return false; }
+    virtual void onHover(bool) {}
+    virtual void onPress(uint32_t) {}
+    virtual void onClick(uint32_t) {}
+    virtual void onScroll(int) {}
+
+    // Animations still running in this subtree
+    bool animating() const;
+
+    // Sizing constraints honoured by parents
+    std::optional<float> fixedWidth, fixedHeight;
+    float minWidth = 0, minHeight = 0;
+    bool grow = false; // takes leftover main-axis space in a Flex
+    Align alignSelf = Align::Center;
+
+    void setVisible(bool v);
+    bool visible() const { return m_visible; }
+    // Visible, and, for collapseWhenEmpty containers, has a shown child
+    bool shown() const;
+    bool collapseWhenEmpty = false;
+
+    void requestLayout();
+    void requestRedraw();
+    void setHost(Host* host) { m_host = host; }
+
+protected:
+    virtual SizeF doMeasure(SizeF available);
+    virtual void doArrange();
+    virtual void doPaint(Renderer&) {}
+    virtual bool doAnimating() const { return false; }
+
+    Node* parent() const { return m_parent; }
+
+private:
+    Host* host() const;
+
+    Node* m_parent = nullptr;
+    Host* m_host = nullptr;
+    std::vector<std::unique_ptr<Node>> m_children;
+    RectF m_rect;
+    bool m_visible = true;
+};
+
+// Row or column container with padding, spacing, cross-axis alignment, an
+// optional rounded background and border. The workhorse of every layout.
+class Flex : public Node {
+public:
+    enum class Direction { Row, Column };
+
+    explicit Flex(Direction dir = Direction::Row) : m_dir(dir) {}
+
+    Flex* setSpacing(float s);
+    Flex* setPadding(Insets p);
+    Flex* setJustify(Align a);
+    Flex* setAlignItems(Align a);
+    Flex* setBackground(const ColorRef& c, bool animate = true);
+    Flex* setRadius(Radii r);
+    Flex* setBorder(float width, const ColorRef& c);
+
+protected:
+    SizeF doMeasure(SizeF available) override;
+    void doArrange() override;
+    void doPaint(Renderer& r) override;
+    bool doAnimating() const override { return m_background.running(); }
+    Radii effectiveRadius() const;
+
+    Direction m_dir;
+    float m_spacing = 0;
+    Insets m_padding;
+    Align m_justify = Align::Start;
+    Align m_alignItems = Align::Center;
+    ColorTween m_background;
+    Radii m_radius;
+    float m_borderWidth = 0;
+    ColorRef m_border = ColorRef::none();
+    // Pill radius: half the smaller side, whatever the final size
+    bool m_pill = false;
+
+    friend Flex* pill(Flex*);
+};
+
+// Makes a Flex fully rounded at any size
+Flex* pill(Flex* f);
+
+class Label : public Node {
+public:
+    explicit Label(std::string text = {});
+
+    Label* setText(const std::string& text);
+    Label* setSize(float px);
+    Label* setWeight(int w);
+    Label* setColor(const ColorRef& c, bool animate = true);
+    Label* setMaxWidth(float w);
+    Label* setFamily(const std::string& family);
+    const std::string& text() const { return m_text; }
+
+protected:
+    SizeF doMeasure(SizeF available) override;
+    void doPaint(Renderer& r) override;
+    bool doAnimating() const override { return m_color.running(); }
+    TextStyle style() const;
+
+    std::string m_text;
+    std::string m_family; // empty: the theme font
+    float m_size = 14;
+    int m_weight = 400;
+    float m_maxWidth = 0;
+    bool m_icon = false;
+    float m_fill = 0;
+    ColorTween m_color{ColorRef("on_surface")};
+};
+
+// A Material Symbols glyph by ligature name ("wifi", "volume_up").
+class Icon : public Label {
+public:
+    explicit Icon(std::string name = {}, float size = 20);
+    Icon* setFill(bool filled);
+};
+
+// Clickable container with the Material state layer: an on-surface tint at
+// 8% on hover and 10% on press.
+class Button : public Flex {
+public:
+    explicit Button(Direction dir = Direction::Row);
+
+    std::function<void(uint32_t button)> onClicked;
+    std::function<void(int direction)> onScrolled;
+    ColorRef stateLayer = ColorRef("on_surface");
+
+    bool interactive() const override { return true; }
+    void onHover(bool hovered) override;
+    void onPress(uint32_t) override;
+    void onClick(uint32_t button) override;
+    void onScroll(int d) override;
+
+protected:
+    void doPaint(Renderer& r) override;
+    bool doAnimating() const override { return Flex::doAnimating() || m_state.running(); }
+
+private:
+    Tween m_state{0, motion::shortMs, Easing::standard()};
+    bool m_hovered = false;
+};
+
+} // namespace m3::ui

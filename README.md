@@ -166,6 +166,7 @@ flowchart LR
 | [`dotfiles/.config/matugen/`](dotfiles/.config/matugen) | Colour templates for other apps |
 | [`greeter/`](greeter) | The greetd login screen and the `material3ui-greeter` tool |
 | [`scripts/sysmon/`](scripts/sysmon) | The system monitor backend |
+| [`shell/`](shell) | The native C++ shell, in progress: no Qt or QML ([roadmap](shell/README.md)) |
 | [`data/dependencies.json`](data/dependencies.json) | What the installer installs ([readable list](docs/DEPENDENCIES.md)) |
 
 ## FAQ
