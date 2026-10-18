@@ -88,9 +88,11 @@ private:
     std::chrono::steady_clock::time_point m_lastSample{};
 };
 
-// BlueZ: adapter power and connected devices.
+// BlueZ: adapter power, devices, discovery, and the pairing agent that
+// asks the user to confirm or enter codes.
 class Bluetooth {
 public:
+    using Lease = std::shared_ptr<void>;
     static Bluetooth& get();
 
     bool available() const { return m_available; }
@@ -102,6 +104,7 @@ public:
     struct Device {
         std::string path, name, icon; // icon: BlueZ's freedesktop icon name
         bool paired = false, connected = false, trusted = false;
+        bool named = false; // has a real name (unnamed ones are beacons and the like)
         int rssi = 0;
     };
     const std::vector<Device>& devices() const { return m_devices; } // connected, paired, then nearby
@@ -110,13 +113,45 @@ public:
     void connect(const std::string& path);
     void disconnect(const std::string& path);
     void pair(const std::string& path); // then trust and connect
+    void cancelPairing();
     void forget(const std::string& path);
+    // "Pairing…", "Connecting…" while an action on that device runs
+    std::string busy(const std::string& path) const;
+    const std::string& lastError() const { return m_error; }
 
+    // Discovery while a device list is open; stops with the last lease
+    [[nodiscard]] Lease scan();
+
+    // A code to confirm, show or enter, or a connection to allow
+    struct Request {
+        enum class Kind { None, Confirm, ShowCode, EnterPin, EnterPasskey, Authorize };
+        Kind kind = Kind::None;
+        std::string device, name, code; // code: the PIN or 6-digit passkey
+    };
+    const Request& request() const { return m_request; }
+    void accept(const std::string& entered = {}); // confirm, allow, or submit what was typed
+    void reject();
+    // Views that show requests hold one; without any, `requested` fires
+    [[nodiscard]] Lease showRequests();
     Signal<> changed;
+    Signal<> requested; // a request arrived and no view is showing them
 
 private:
     Bluetooth();
     void refresh();
+    void registerAgent();
+    int handleAgent(sd_bus_message* m);
+    void ask(Request::Kind kind, sd_bus_message* m, const std::string& device, const std::string& code = {});
+    void clearRequest();
+    std::string nameOf(const std::string& path) const;
+
+    Request m_request;
+    sd_bus_message* m_pending = nullptr; // the agent call awaiting the user's answer
+    sd_bus_slot* m_agentObject = nullptr;
+    bool m_agentRegistered = false, m_wasPowered = false;
+    int m_scanLeases = 0, m_requestViews = 0;
+    std::map<std::string, std::string> m_busy;
+    std::string m_error;
 
     bool m_available = false, m_powered = false, m_discovering = false;
     std::string m_adapter;

@@ -12,9 +12,19 @@ namespace m3::shell::panels {
 void audio(ui::Flex* card, Popup& popup);
 void network(ui::Flex* card, Popup& popup);
 void bluetooth(ui::Flex* card, Popup& popup);
+// A pairing question asked while no device list is open
+void bluetoothPair(ui::Flex* card, Popup& popup);
+// Paired and nearby devices, scanning while shown, with the pairing prompt
+// (Quick Settings and the bar popup); back may be empty
+void bluetoothView(ui::Flex* body, const std::function<void()>& back);
+// The pending pairing question, if any: the code to compare or type, or a
+// field for one, and the buttons that answer it (call inside a Live sync)
+void bluetoothPrompt(ui::Flex* parent);
+// Material Symbol for a BlueZ device icon name ("audio-headset" …)
+std::string bluetoothGlyph(const std::string& bluezIcon);
 void battery(ui::Flex* card, Popup& popup);
 void run(ui::Flex* card, Popup& popup);
-void quickSettings(ui::Flex* card, Popup& popup, const std::string& view = {}); // view: "wifi"
+void quickSettings(ui::Flex* card, Popup& popup, const std::string& view = {}); // view: "wifi", "bluetooth"
 void notifications(ui::Flex* card, Popup& popup);
 void power(ui::Flex* card, Popup& popup);
 void launcher(ui::Flex* card, Popup& popup, const std::string& initial);

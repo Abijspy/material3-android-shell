@@ -4,7 +4,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <memory>
 #include <systemd/sd-bus.h>
@@ -452,7 +454,7 @@ void Bluetooth::refresh() {
                 auto dev = ifaces.find("org.bluez.Device1");
                 if (dev == ifaces.end()) continue;
                 Device d{path, str(*dev, "Alias"), str(*dev, "Icon"), flag(*dev, "Paired"), flag(*dev, "Connected"),
-                         flag(*dev, "Trusted"), num<int>(*dev, "RSSI")};
+                         flag(*dev, "Trusted"), !str(*dev, "Name").empty(), num<int>(*dev, "RSSI")};
                 if (d.name.empty()) d.name = str(*dev, "Address");
                 if (d.connected) m_connected.push_back(d.name);
                 m_devices.push_back(std::move(d));
@@ -463,6 +465,15 @@ void Bluetooth::refresh() {
             if (x.paired != y.paired) return x.paired;
             return x.rssi > y.rssi;
         });
+        if (m_available && !m_agentRegistered) registerAgent();
+        // Switched on while a device list is open: look for devices
+        if (m_powered && !m_wasPowered && m_scanLeases > 0 && !m_discovering) setDiscovering(true);
+        m_wasPowered = m_powered;
+        // A code shown for pairing started on the other device: done once paired
+        if (m_request.kind == Request::Kind::ShowCode) {
+            auto it = std::ranges::find(m_devices, m_request.device, &Device::path);
+            if (it != m_devices.end() && it->paired) clearRequest();
+        }
         changed.emit();
     });
 }
@@ -477,8 +488,40 @@ void Bluetooth::setDiscovering(bool on) {
                              [this](const dbus::Value&, const std::string&) { refresh(); });
 }
 
+namespace {
+const char* kAgentPath = "/org/material3ui/BluetoothAgent";
+
+// BlueZ errors read "org.bluez.Error.AuthenticationFailed: …"; keep the words
+std::string readable(const std::string& err) {
+    const auto colon = err.find(": ");
+    std::string s = colon != std::string::npos ? err.substr(colon + 2) : err;
+    if (s.find("AuthenticationFailed") != std::string::npos || s == "Authentication Failed") return "the code was not accepted";
+    if (s.find("AuthenticationCanceled") != std::string::npos || s == "Authentication Canceled") return "pairing was cancelled";
+    if (s.find("ConnectionAttemptFailed") != std::string::npos || s.find("Page Timeout") != std::string::npos)
+        return "it did not answer; is it nearby and in pairing mode?";
+    return s;
+}
+} // namespace
+
+std::string Bluetooth::nameOf(const std::string& path) const {
+    auto it = std::ranges::find(m_devices, path, &Device::path);
+    return it != m_devices.end() ? it->name : "the device";
+}
+
+std::string Bluetooth::busy(const std::string& path) const {
+    auto it = m_busy.find(path);
+    return it != m_busy.end() ? it->second : "";
+}
+
 void Bluetooth::connect(const std::string& path) {
-    dbus::Bus::system().call(kBlueZ, path, "org.bluez.Device1", "Connect");
+    m_busy[path] = "Connecting…";
+    m_error.clear();
+    changed.emit();
+    dbus::Bus::system().call(kBlueZ, path, "org.bluez.Device1", "Connect", {}, [this, path](const dbus::Value&, const std::string& err) {
+        m_busy.erase(path);
+        if (!err.empty()) m_error = "Couldn't connect to " + nameOf(path) + ": " + readable(err);
+        changed.emit();
+    });
 }
 
 void Bluetooth::disconnect(const std::string& path) {
@@ -486,12 +529,161 @@ void Bluetooth::disconnect(const std::string& path) {
 }
 
 void Bluetooth::pair(const std::string& path) {
-    dbus::Bus::system().call(kBlueZ, path, "org.bluez.Device1", "Pair", {}, [path](const dbus::Value&, const std::string& err) {
-        if (!err.empty()) return;
+    m_busy[path] = "Pairing…";
+    m_error.clear();
+    changed.emit();
+    dbus::Bus::system().call(kBlueZ, path, "org.bluez.Device1", "Pair", {}, [this, path](const dbus::Value&, const std::string& err) {
+        m_busy.erase(path);
+        if (!err.empty()) {
+            // "Already exists": paired before; just connect
+            if (err.find("AlreadyExists") == std::string::npos) {
+                // Cancelled or declined here: nothing to report
+                const bool ours = err.find("Rejected") != std::string::npos || err.find("Canceled") != std::string::npos;
+                m_error = ours ? "" : "Couldn't pair with " + nameOf(path) + ": " + readable(err);
+                clearRequest();
+                changed.emit();
+                return;
+            }
+        }
         // Remember it and use it right away
         dbus::Bus::system().setProperty(kBlueZ, path, "org.bluez.Device1", "Trusted", dbus::variant(true));
-        dbus::Bus::system().call(kBlueZ, path, "org.bluez.Device1", "Connect");
+        clearRequest();
+        connect(path);
     });
+}
+
+void Bluetooth::cancelPairing() {
+    for (const auto& [path, what] : m_busy)
+        if (what == "Pairing…") dbus::Bus::system().call(kBlueZ, path, "org.bluez.Device1", "CancelPairing");
+    reject();
+}
+
+Bluetooth::Lease Bluetooth::scan() {
+    if (m_scanLeases++ == 0 && m_powered) setDiscovering(true);
+    return Lease(nullptr, [this](void*) {
+        if (--m_scanLeases == 0 && m_discovering) setDiscovering(false);
+    });
+}
+
+Bluetooth::Lease Bluetooth::showRequests() {
+    ++m_requestViews;
+    return Lease(nullptr, [this](void*) { --m_requestViews; });
+}
+
+// ── Pairing agent ──
+
+void Bluetooth::registerAgent() {
+    auto& bus = dbus::Bus::system();
+    if (!bus.connected()) return;
+    m_agentRegistered = true; // one attempt at a time; reset on failure
+    if (!m_agentObject)
+        sd_bus_add_object(bus.raw(), &m_agentObject, kAgentPath,
+                          [](sd_bus_message* m, void* self, sd_bus_error*) { return static_cast<Bluetooth*>(self)->handleAgent(m); },
+                          this);
+    // KeyboardDisplay: we can both show codes and take them
+    bus.call(kBlueZ, "/org/bluez", "org.bluez.AgentManager1", "RegisterAgent",
+             dbus::args(dbus::ObjectPath{kAgentPath}, "KeyboardDisplay"), [this](const dbus::Value&, const std::string& err) {
+        if (!err.empty() && err.find("AlreadyExists") == std::string::npos) {
+            log::warn("bluetooth: agent not registered ({})", err);
+            m_agentRegistered = false;
+            return;
+        }
+        // Default: pairing started from the phone asks us too
+        dbus::Bus::system().call(kBlueZ, "/org/bluez", "org.bluez.AgentManager1", "RequestDefaultAgent",
+                                 dbus::args(dbus::ObjectPath{kAgentPath}));
+    });
+}
+
+void Bluetooth::ask(Request::Kind kind, sd_bus_message* m, const std::string& device, const std::string& code) {
+    reject(); // one question at a time
+    if (m) m_pending = sd_bus_message_ref(m);
+    m_request = {kind, device, nameOf(device), code};
+    changed.emit();
+    if (m_requestViews == 0) requested.emit();
+}
+
+void Bluetooth::clearRequest() {
+    if (m_pending) sd_bus_message_unref(m_pending);
+    m_pending = nullptr;
+    if (m_request.kind == Request::Kind::None) return;
+    m_request = {};
+    changed.emit();
+}
+
+void Bluetooth::accept(const std::string& entered) {
+    if (m_pending) {
+        switch (m_request.kind) {
+        case Request::Kind::EnterPin: sd_bus_reply_method_return(m_pending, "s", entered.c_str()); break;
+        case Request::Kind::EnterPasskey: {
+            char* end = nullptr;
+            const unsigned long key = std::strtoul(entered.c_str(), &end, 10);
+            if (entered.empty() || *end || key > 999999) return; // six digits, nothing else
+            sd_bus_reply_method_return(m_pending, "u", static_cast<uint32_t>(key));
+            break;
+        }
+        default: sd_bus_reply_method_return(m_pending, ""); break;
+        }
+    }
+    clearRequest();
+}
+
+void Bluetooth::reject() {
+    if (m_pending) sd_bus_reply_method_errorf(m_pending, "org.bluez.Error.Rejected", "Rejected by the user");
+    clearRequest();
+}
+
+int Bluetooth::handleAgent(sd_bus_message* m) {
+    if (!sd_bus_message_is_method_call(m, "org.bluez.Agent1", nullptr)) return 0;
+    const std::string member = sd_bus_message_get_member(m);
+    const char* device = nullptr;
+    if (member == "Release") {
+        m_agentRegistered = false;
+        clearRequest();
+        return sd_bus_reply_method_return(m, "");
+    }
+    if (member == "Cancel") {
+        clearRequest();
+        return sd_bus_reply_method_return(m, "");
+    }
+    if (member == "RequestPinCode" || member == "RequestPasskey" || member == "RequestAuthorization") {
+        sd_bus_message_read(m, "o", &device);
+        ask(member == "RequestPinCode" ? Request::Kind::EnterPin : member == "RequestPasskey" ? Request::Kind::EnterPasskey
+                                                                                              : Request::Kind::Authorize,
+            m, device ? device : "");
+        return 1; // answered when the user decides
+    }
+    if (member == "RequestConfirmation") {
+        uint32_t passkey = 0;
+        sd_bus_message_read(m, "ou", &device, &passkey);
+        ask(Request::Kind::Confirm, m, device ? device : "", std::format("{:06d}", passkey));
+        return 1;
+    }
+    if (member == "DisplayPinCode" || member == "DisplayPasskey") {
+        std::string code;
+        if (member == "DisplayPinCode") {
+            const char* pin = nullptr;
+            sd_bus_message_read(m, "os", &device, &pin);
+            code = pin ? pin : "";
+        } else {
+            uint32_t passkey = 0;
+            uint16_t entered = 0;
+            sd_bus_message_read(m, "ouq", &device, &passkey, &entered);
+            code = std::format("{:06d}", passkey);
+        }
+        // Shown, not answered: the other side types it
+        ask(Request::Kind::ShowCode, nullptr, device ? device : "", code);
+        return sd_bus_reply_method_return(m, "");
+    }
+    if (member == "AuthorizeService") {
+        const char* uuid = nullptr;
+        sd_bus_message_read(m, "os", &device, &uuid);
+        // Paired or trusted devices may use their services; others are asked
+        auto it = std::ranges::find(m_devices, std::string(device ? device : ""), &Device::path);
+        if (it != m_devices.end() && (it->paired || it->trusted)) return sd_bus_reply_method_return(m, "");
+        ask(Request::Kind::Authorize, m, device ? device : "");
+        return 1;
+    }
+    return 0;
 }
 
 void Bluetooth::forget(const std::string& path) {

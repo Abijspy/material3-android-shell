@@ -194,7 +194,7 @@ void wifiView(Flex* body, const std::function<void()>& back, bool details) {
 
 namespace {
 
-void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi) {
+void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, const std::function<void()>& showBluetooth) {
     body->clearChildren();
     auto* live = body->add<Live>();
 
@@ -256,6 +256,8 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi) {
     wifi->onDetails = showWifi;
     wifi->onClicked = [](uint32_t) { Network::get().setWifiEnabled(!Network::get().wifiEnabled()); };
     bt->onClicked = [](uint32_t) { Bluetooth::get().setPowered(!Bluetooth::get().powered()); };
+    bt->enableDetails();
+    bt->onDetails = showBluetooth;
     dnd->onClicked = [](uint32_t) { Notifications::get().setDoNotDisturb(!Notifications::get().doNotDisturb()); };
     caffeine->onClicked = [](uint32_t) { Idle::get().setInhibited(!Idle::get().inhibited()); };
     night->onClicked = [live](uint32_t) {
@@ -380,11 +382,16 @@ void quickSettings(Flex* card, Popup& popup, const std::string& view) {
     auto showMain = std::make_shared<std::function<void()>>();
     // Switching views destroys the button that asked for it: defer
     auto showWifi = [body, showMain] { EventLoop::get().defer([body, showMain] { wifiView(body, *showMain); }); };
-    *showMain = [body, &popup, showWifi] { EventLoop::get().defer([body, &popup, showWifi] { mainView(body, popup, showWifi); }); };
+    auto showBluetooth = [body, showMain] { EventLoop::get().defer([body, showMain] { bluetoothView(body, *showMain); }); };
+    *showMain = [body, &popup, showWifi, showBluetooth] {
+        EventLoop::get().defer([body, &popup, showWifi, showBluetooth] { mainView(body, popup, showWifi, showBluetooth); });
+    };
     if (view == "wifi")
         wifiView(body, *showMain);
+    else if (view == "bluetooth")
+        bluetoothView(body, *showMain);
     else
-        mainView(body, popup, showWifi);
+        mainView(body, popup, showWifi, showBluetooth);
     // Night light state from the running processes
     m3::run({"pgrep", "-x", "hyprsunset"}, [](int code, const std::string&) { g_nightLight = code == 0; });
 }

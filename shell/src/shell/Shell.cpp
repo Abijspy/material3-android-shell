@@ -85,6 +85,10 @@ bool Shell::start() {
         if (m_popup && m_popup->name() == "polkit:" + std::to_string(id)) m_popup->close();
     });
     if (Config::get().value<bool>("/polkit/enabled", true)) Polkit::get().start();
+    // A device asks to pair (from its side) while no Bluetooth list is open
+    Bluetooth::get().requested.connectForever([this] {
+        if (!m_popup || m_popup->name() != "btpair") togglePopup("btpair", focusedOutput(), -1);
+    });
 
     // "settings dock" opens a panel with an argument (here, a Settings page)
     panels::open = [this](const std::string& what) {
@@ -177,6 +181,11 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
     } else if (name == "bluetooth") {
         opts.width = 340;
         build = panels::bluetooth;
+    } else if (name == "btpair") {
+        opts.width = 420;
+        opts.anchorX = -1;
+        opts.centredVertically = true;
+        build = panels::bluetoothPair;
     } else if (name == "battery") {
         opts.width = 380;
         build = panels::battery;

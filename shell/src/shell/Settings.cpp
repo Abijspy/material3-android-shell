@@ -377,35 +377,58 @@ void bluetoothPage(Flex* page, Popup&) {
     auto power = row(g, "bluetooth", "Bluetooth");
     auto* powerSw = power.row->add<Switch>();
     powerSw->onToggled = [](bool on) { Bluetooth::get().setPowered(on); };
-    auto discover = row(g, "bluetooth_searching", "Discover nearby devices", "Makes new devices show up below");
-    auto* discoverSw = discover.row->add<Switch>();
-    discoverSw->onToggled = [](bool on) { Bluetooth::get().setDiscovering(on); };
-    auto* list = group(live, "Devices");
+    auto search = row(g, "bluetooth_searching", "Find devices", "Searches while this page is open");
+    pillButton(search.row, "Search again", false, [] { Bluetooth::get().setDiscovering(true); }, "refresh");
+    // The pairing question and errors, above the lists
+    auto* prompt = live->add<Flex>(Flex::Direction::Column);
+    prompt->setAlignItems(Align::Stretch);
+    auto* error = live->add<Label>();
+    error->setSize(13)->setColor("error", false)->setMaxWidth(640)->setMaxLines(2);
+    auto* lists = live->add<Flex>(Flex::Direction::Column);
+    lists->setAlignItems(Align::Stretch)->setSpacing(6);
 
+    auto leases = std::make_shared<std::pair<Bluetooth::Lease, Bluetooth::Lease>>(Bluetooth::get().scan(), Bluetooth::get().showRequests());
     live->sync = [=] {
+        (void)leases;
         auto& b = Bluetooth::get();
         powerSw->setChecked(b.powered());
-        discoverSw->setChecked(b.discovering());
         power.subtitle->setText(!b.available() ? "No Bluetooth adapter" : b.powered() ? "On" : "Off");
         power.subtitle->setVisible(true);
-        list->clearChildren();
-        if (b.devices().empty()) {
-            auto r = row(list, "", b.powered() ? "No devices yet. Turn on discovery to find some." : "Bluetooth is off");
-            r.title->setColor("on_surface_variant", false);
-            return;
-        }
-        for (const auto& d : b.devices()) {
-            const std::string glyph = d.icon.find("headset") != std::string::npos || d.icon.find("headphone") != std::string::npos ? "headphones"
-                                    : d.icon.find("audio") != std::string::npos ? "speaker"
-                                    : d.icon.find("phone") != std::string::npos ? "smartphone"
-                                    : d.icon.find("keyboard") != std::string::npos ? "keyboard"
-                                    : d.icon.find("mouse") != std::string::npos ? "mouse" : "bluetooth";
-            auto r = row(list, glyph, d.name, d.connected ? "Connected" : d.paired ? "Paired" : "Available");
+        search.subtitle->setText(b.discovering() ? "Searching… put the device in pairing mode" : "Searches while this page is open");
+        prompt->clearChildren();
+        bluetoothPrompt(prompt);
+        error->setText(b.lastError());
+        error->setVisible(!b.lastError().empty());
+        lists->clearChildren();
+        if (!b.powered()) return;
+
+        auto add = [](Node* list, const Bluetooth::Device& d) {
+            const std::string busy = Bluetooth::get().busy(d.path);
+            auto r = row(list, bluetoothGlyph(d.icon), d.name,
+                         !busy.empty() ? busy : d.connected ? "Connected" : d.paired ? "Paired" : "Available");
             const std::string path = d.path;
+            if (!busy.empty()) {
+                if (busy == "Pairing…") pillButton(r.row, "Cancel", false, [] { Bluetooth::get().cancelPairing(); });
+                return;
+            }
             if (d.connected) pillButton(r.row, "Disconnect", false, [path] { Bluetooth::get().disconnect(path); });
             else if (d.paired) pillButton(r.row, "Connect", true, [path] { Bluetooth::get().connect(path); });
-            else pillButton(r.row, "Pair", true, [path] { Bluetooth::get().pair(path); });
+            else pillButton(r.row, "Pair", true, [path] { Bluetooth::get().pair(path); }, "link");
             if (d.paired) iconButton(r.row, "delete", [path] { Bluetooth::get().forget(path); });
+        };
+        Node* mine = nullptr;
+        for (const auto& d : b.devices())
+            if (d.paired) add(mine ? mine : (mine = group(lists, "My devices")), d);
+        auto* nearby = group(lists, "Nearby devices", "Devices in pairing mode show up here; unnamed ones are hidden");
+        bool any = false;
+        for (const auto& d : b.devices())
+            if (!d.paired && d.named) {
+                any = true;
+                add(nearby, d);
+            }
+        if (!any) {
+            auto r = row(nearby, "", b.discovering() ? "Searching…" : "Nothing found yet");
+            r.title->setColor("on_surface_variant", false);
         }
     };
     live->watch(Bluetooth::get().changed);

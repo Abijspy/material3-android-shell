@@ -107,7 +107,7 @@ void StatusIcons::sync() {
 // ── BatteryStatus ──
 
 BatteryStatus::BatteryStatus(OpenPopup open) : Button(Direction::Row) {
-    pill(this)->setPadding({8, 0})->setSpacing(4);
+    pill(this)->setPadding({10, 0})->setSpacing(4);
     fixedHeight = 28;
     onClicked = [this, open = std::move(open)](uint32_t button) {
         if (button == BTN_LEFT) open("battery", rect().x + rect().w / 2);

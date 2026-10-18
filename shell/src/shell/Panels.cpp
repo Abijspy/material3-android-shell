@@ -21,6 +21,7 @@ namespace {
 using kit::Live;
 using kit::caption;
 using kit::header;
+using kit::iconButton;
 
 std::string percent(float v) {
     return std::format("{}%", static_cast<int>(std::lround(v * 100)));
@@ -212,31 +213,175 @@ void network(Flex* card, Popup&) {
 // ── Bluetooth ──
 
 void bluetooth(Flex* card, Popup&) {
+    bluetoothView(card, {});
+}
+
+std::string bluetoothGlyph(const std::string& icon) {
+    if (icon.find("headset") != std::string::npos || icon.find("headphone") != std::string::npos) return "headphones";
+    if (icon.find("audio") != std::string::npos) return "speaker";
+    if (icon.find("phone") != std::string::npos) return "smartphone";
+    if (icon.find("keyboard") != std::string::npos) return "keyboard";
+    if (icon.find("mouse") != std::string::npos) return "mouse";
+    if (icon.find("gaming") != std::string::npos) return "sports_esports";
+    if (icon.find("computer") != std::string::npos) return "computer";
+    if (icon.find("watch") != std::string::npos) return "watch";
+    return "bluetooth";
+}
+
+namespace {
+
+Button* actionButton(Node* parent, const std::string& label, bool primary, std::function<void()> fn) {
+    auto* b = parent->add<Button>();
+    pill(b->setBackground(primary ? "primary" : "surface_container_highest", false))->setPadding({18, 10});
+    b->pressedRadius = 10;
+    b->add<Label>(label)->setSize(14)->setWeight(500)->setColor(primary ? "on_primary" : "on_surface", false);
+    b->onClicked = [fn = std::move(fn)](uint32_t button) {
+        if (button == BTN_LEFT) fn();
+    };
+    return b;
+}
+
+// "123456" → "123 456", easier to compare at a glance
+std::string spaced(const std::string& code) {
+    return code.size() == 6 ? code.substr(0, 3) + " " + code.substr(3) : code;
+}
+
+} // namespace
+
+void bluetoothPrompt(Flex* parent) {
+    using Kind = Bluetooth::Request::Kind;
+    const auto r = Bluetooth::get().request(); // a copy: answering clears it
+    if (r.kind == Kind::None) return;
+    auto* box = parent->add<Flex>(Flex::Direction::Column);
+    box->setPadding({18, 16})->setSpacing(10)->setRadius(Radii(24))->setAlignItems(Align::Stretch);
+    box->setBackground("secondary_container", false);
+    auto* top = box->add<Flex>(Flex::Direction::Row);
+    top->setSpacing(10);
+    top->add<Icon>(r.kind == Kind::Authorize ? "bluetooth_connected" : "bluetooth_searching", 22)->setColor("on_secondary_container", false);
+    top->add<Label>(r.kind == Kind::Authorize ? r.name + " wants to connect" : "Pair with " + r.name)
+        ->setSize(16)->setWeight(600)->setColor("on_secondary_container", false)->setMaxWidth(320);
+    const std::string hint = r.kind == Kind::Confirm      ? "Check that " + r.name + " shows the same code, then pair"
+                           : r.kind == Kind::ShowCode     ? "Type this code on " + r.name + ", then press Enter there"
+                           : r.kind == Kind::EnterPin     ? "Enter the PIN shown on " + r.name + " (often 0000 or 1234)"
+                           : r.kind == Kind::EnterPasskey ? "Enter the 6-digit code shown on " + r.name
+                                                          : "Allow it to use this computer?";
+    box->add<Label>(hint)->setSize(13)->setColor("on_secondary_container", false)->setMaxWidth(340)->setMaxLines(2);
+
+    if (r.kind == Kind::Confirm || r.kind == Kind::ShowCode) {
+        auto* code = box->add<Label>(spaced(r.code));
+        code->setSize(40)->setWeight(600)->setColor("on_secondary_container", false);
+        code->alignSelf = Align::Center;
+    }
+    TextField* field = nullptr;
+    if (r.kind == Kind::EnterPin || r.kind == Kind::EnterPasskey) {
+        field = box->add<TextField>();
+        field->setPlaceholder(r.kind == Kind::EnterPasskey ? "6-digit code" : "PIN");
+        field->onSubmit = [](const std::string& t) { Bluetooth::get().accept(t); };
+        field->focus();
+    }
+
+    auto* buttons = box->add<Flex>(Flex::Direction::Row);
+    buttons->setSpacing(8)->setJustify(Align::End);
+    actionButton(buttons, r.kind == Kind::Authorize ? "Deny" : "Cancel", false, [] { Bluetooth::get().cancelPairing(); });
+    if (r.kind == Kind::Confirm) actionButton(buttons, "Pair", true, [] { Bluetooth::get().accept(); });
+    if (r.kind == Kind::Authorize) actionButton(buttons, "Allow", true, [] { Bluetooth::get().accept(); });
+    if (field) actionButton(buttons, "Pair", true, [field] { Bluetooth::get().accept(field->text()); });
+}
+
+void bluetoothPair(Flex* card, Popup& popup) {
     auto* live = card->add<Live>();
-    auto* head = header(live, "bluetooth", "Bluetooth");
+    auto shown = Bluetooth::get().showRequests();
+    live->sync = [live, &popup, shown] {
+        live->clearChildren();
+        // Answered or cancelled: nothing left to ask
+        if (Bluetooth::get().request().kind == Bluetooth::Request::Kind::None) return popup.close();
+        bluetoothPrompt(live);
+    };
+    live->watch(Bluetooth::get().changed);
+    live->sync();
+}
+
+void bluetoothView(Flex* body, const std::function<void()>& back) {
+    body->clearChildren();
+    auto* live = body->add<Live>();
+    live->setSpacing(8);
+    auto* head = live->add<Flex>(Flex::Direction::Row);
+    head->setSpacing(8);
+    if (back) iconButton(head, "arrow_back", back);
+    auto* title = head->add<Label>("Bluetooth");
+    title->setSize(20)->setWeight(500);
+    title->grow = true;
+    iconButton(head, "refresh", [] { Bluetooth::get().setDiscovering(true); });
     auto* sw = head->add<Switch>();
     sw->onToggled = [](bool on) { Bluetooth::get().setPowered(on); };
-    auto* list = live->add<Flex>(Flex::Direction::Column);
+
+    auto* prompt = live->add<Flex>(Flex::Direction::Column);
+    prompt->setAlignItems(Align::Stretch);
+    auto* error = live->add<Label>();
+    error->setSize(13)->setColor("error", false)->setMaxWidth(380)->setMaxLines(2);
+    auto* scroll = live->add<ScrollView>();
+    scroll->maxHeight = 340;
+    auto* list = scroll->add<Flex>(Flex::Direction::Column);
     list->setAlignItems(Align::Stretch)->setSpacing(2);
 
+    // Scanning and answering pairing questions last as long as the view
+    auto leases = std::make_shared<std::pair<Bluetooth::Lease, Bluetooth::Lease>>(Bluetooth::get().scan(), Bluetooth::get().showRequests());
     live->sync = [=] {
+        (void)leases;
         auto& b = Bluetooth::get();
         sw->setChecked(b.powered());
+        prompt->clearChildren();
+        bluetoothPrompt(prompt);
+        error->setText(b.lastError());
+        error->setVisible(!b.lastError().empty());
         list->clearChildren();
-        if (!b.available()) {
-            caption(list, "No Bluetooth adapter");
-            return;
-        }
-        if (b.connected().empty()) {
-            caption(list, b.powered() ? "No devices connected" : "Bluetooth is off");
-            return;
-        }
-        for (const auto& name : b.connected()) {
-            auto* row = list->add<Flex>(Flex::Direction::Row);
-            row->setPadding({14, 10})->setSpacing(12)->setRadius(Radii(16))->setBackground("surface_container_high", false);
-            row->add<Icon>("bluetooth_connected", 20)->setColor("primary");
-            row->add<Label>(name)->setSize(14)->setMaxWidth(260);
-        }
+        if (!b.available()) return (void)caption(list, "No Bluetooth adapter");
+        if (!b.powered()) return (void)caption(list, "Bluetooth is off");
+
+        auto section = [&](const std::string& text) {
+            list->add<Label>(text)->setSize(13)->setWeight(600)->setColor("primary", false);
+        };
+        auto entry = [&](const Bluetooth::Device& d) {
+            auto* e = list->add<Button>(Flex::Direction::Row);
+            e->setPadding({14, 10})->setSpacing(12)->setRadius(Radii(16));
+            e->pressedRadius = 10;
+            if (d.connected) e->setBackground("secondary_container", false);
+            const char* fg = d.connected ? "on_secondary_container" : "on_surface";
+            e->add<Icon>(bluetoothGlyph(d.icon), 20)->setColor(d.connected ? fg : "on_surface_variant", false);
+            auto* texts = e->add<Flex>(Flex::Direction::Column);
+            texts->setAlignItems(Align::Start);
+            texts->grow = true;
+            texts->add<Label>(d.name)->setSize(14)->setMaxWidth(240)->setColor(fg, false);
+            const std::string busy = b.busy(d.path);
+            const std::string state = !busy.empty() ? busy : d.connected ? "Connected · tap to disconnect"
+                                    : d.paired ? "Paired · tap to connect" : "Tap to pair";
+            texts->add<Label>(state)->setSize(12)->setColor(d.connected ? fg : "on_surface_variant", false);
+            const std::string path = d.path;
+            const bool connected = d.connected, paired = d.paired;
+            e->onClicked = [path, connected, paired](uint32_t button) {
+                if (button != BTN_LEFT || !Bluetooth::get().busy(path).empty()) return;
+                if (connected) Bluetooth::get().disconnect(path);
+                else if (paired) Bluetooth::get().connect(path);
+                else Bluetooth::get().pair(path);
+            };
+        };
+
+        bool any = false;
+        for (const auto& d : b.devices())
+            if (d.paired) {
+                if (!any) section("My devices");
+                any = true;
+                entry(d);
+            }
+        section("Nearby");
+        bool nearby = false;
+        // Unnamed devices are mostly beacons nobody wants to pair with
+        for (const auto& d : b.devices())
+            if (!d.paired && d.named) {
+                nearby = true;
+                entry(d);
+            }
+        if (!nearby) caption(list, b.discovering() ? "Searching… put the device in pairing mode" : "Nothing found. Tap refresh to look again.");
     };
     live->watch(Bluetooth::get().changed);
     live->sync();
