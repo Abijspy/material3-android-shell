@@ -5,7 +5,8 @@ FROM docker.io/library/archlinux:latest
 RUN pacman -Syu --noconfirm --needed \
         base-devel meson ninja cmake pkgconf git \
         wayland wayland-protocols wlr-protocols mesa libglvnd pango cairo libxkbcommon nlohmann-json \
-        pipewire libpulse polkit glib2 \
+        pipewire pipewire-pulse wireplumber libpulse librsvg polkit glib2 dbus \
+        python-dbus python-gobject wtype adwaita-icon-theme \
         sway swaybg grim gdb noto-fonts ttf-jetbrains-mono-nerd curl \
     && pacman -Scc --noconfirm
 

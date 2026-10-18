@@ -5,9 +5,12 @@
 #include "render/Renderer.h"
 #include "render/Text.h"
 #include "wayland/Display.h"
-
 #include "wayland/LayerShellProtocol.h"
 
+#include "fractional-scale-v1-client-protocol.h"
+#include "viewporter-client-protocol.h"
+
+#include <cmath>
 #include <cstdlib>
 #include <wayland-client.h>
 #include <wayland-egl.h>
@@ -31,15 +34,26 @@ const wl_surface_listener kSurface = {
     .enter = [](void*, wl_surface*, wl_output*) {},
     .leave = [](void*, wl_surface*, wl_output*) {},
     .preferred_buffer_scale = [](void* data, wl_surface*, int32_t scale) {
-        static_cast<LayerSurface*>(data)->preferredScale(scale);
+        static_cast<LayerSurface*>(data)->preferredScale(static_cast<float>(scale), false);
     },
     .preferred_buffer_transform = [](void*, wl_surface*, uint32_t) {},
 };
 
+const wp_fractional_scale_v1_listener kFractional = {
+    .preferred_scale = [](void* data, wp_fractional_scale_v1*, uint32_t scale120) {
+        static_cast<LayerSurface*>(data)->preferredScale(static_cast<float>(scale120) / 120.0f, true);
+    },
+};
+
+bool debugFrames() {
+    static const bool on = std::getenv("M3_DEBUG_FRAMES") != nullptr;
+    return on;
+}
+
 } // namespace
 
 LayerSurface::LayerSurface(Output* output, Options options) : m_output(output), m_options(std::move(options)) {
-    m_scale = output ? output->scale : 1;
+    m_scale = output ? static_cast<float>(output->scale) : 1.0f;
     create();
 }
 
@@ -53,26 +67,38 @@ void LayerSurface::create() {
     auto& d = Display::get();
     m_surface = wl_compositor_create_surface(d.compositor());
     wl_surface_add_listener(m_surface, &kSurface, this);
+    // Fractional scale needs a viewport to map the buffer to logical size
+    if (d.fractionalScale() && d.viewporter()) {
+        m_fractional = wp_fractional_scale_manager_v1_get_fractional_scale(d.fractionalScale(), m_surface);
+        wp_fractional_scale_v1_add_listener(m_fractional, &kFractional, this);
+        m_viewport = wp_viewporter_get_viewport(d.viewporter(), m_surface);
+    }
     m_layer = zwlr_layer_shell_v1_get_layer_surface(d.layerShell(), m_surface, m_output ? m_output->handle : nullptr,
                                                     static_cast<uint32_t>(m_options.layer), m_options.ns.c_str());
     zwlr_layer_surface_v1_add_listener(m_layer, &kLayer, this);
     zwlr_layer_surface_v1_set_anchor(m_layer, m_options.anchor);
     zwlr_layer_surface_v1_set_size(m_layer, m_options.width, m_options.height);
     zwlr_layer_surface_v1_set_exclusive_zone(m_layer, m_options.exclusiveZone);
-    zwlr_layer_surface_v1_set_keyboard_interactivity(m_layer, m_options.keyboard ? 1 : 0);
+    zwlr_layer_surface_v1_set_keyboard_interactivity(m_layer, static_cast<uint32_t>(m_options.keyboard));
     // The first commit carries no buffer; the compositor answers with configure
     wl_surface_commit(m_surface);
     m_configured = false;
 }
 
 void LayerSurface::destroy() {
+    Display::get().forget(this);
     m_hovered = m_pressed = nullptr;
+    m_hasKeyboard = false;
     if (m_frame) wl_callback_destroy(m_frame);
     m_frame = nullptr;
     if (m_eglSurface != EGL_NO_SURFACE) Renderer::get().destroySurface(m_eglSurface);
     m_eglSurface = EGL_NO_SURFACE;
     if (m_eglWindow) wl_egl_window_destroy(m_eglWindow);
     m_eglWindow = nullptr;
+    if (m_viewport) wp_viewport_destroy(m_viewport);
+    m_viewport = nullptr;
+    if (m_fractional) wp_fractional_scale_v1_destroy(m_fractional);
+    m_fractional = nullptr;
     if (m_layer) zwlr_layer_surface_v1_destroy(m_layer);
     m_layer = nullptr;
     if (m_surface) wl_surface_destroy(m_surface);
@@ -80,6 +106,7 @@ void LayerSurface::destroy() {
 }
 
 void LayerSurface::setRoot(std::unique_ptr<ui::Node> root) {
+    m_hovered = m_pressed = m_focus = nullptr;
     m_root = std::move(root);
     m_root->setHost(this);
     requestLayout();
@@ -106,11 +133,25 @@ void LayerSurface::setVisible(bool visible) {
     if (visible == m_visible) return;
     m_visible = visible;
     // Unmapping a layer surface means destroying it; it is cheap to recreate
-    if (visible) {
+    if (visible)
         create();
-    } else {
+    else
         destroy();
-    }
+}
+
+int LayerSurface::bufferWidth() const {
+    return std::max(1, static_cast<int>(std::lround(m_width * m_scale)));
+}
+
+int LayerSurface::bufferHeight() const {
+    return std::max(1, static_cast<int>(std::lround(m_height * m_scale)));
+}
+
+void LayerSurface::resizeBuffer() {
+    // Nothing to size before the first configure (and 0×0 is a protocol error)
+    if (m_width <= 0 || m_height <= 0) return;
+    if (m_eglWindow) wl_egl_window_resize(m_eglWindow, bufferWidth(), bufferHeight(), 0, 0);
+    if (m_viewport) wp_viewport_set_destination(m_viewport, m_width, m_height);
 }
 
 void LayerSurface::configure(uint32_t serial, uint32_t width, uint32_t height) {
@@ -118,14 +159,13 @@ void LayerSurface::configure(uint32_t serial, uint32_t width, uint32_t height) {
     m_width = width ? static_cast<int>(width) : m_options.width;
     m_height = height ? static_cast<int>(height) : m_options.height;
     if (!m_eglWindow) {
-        m_eglWindow = wl_egl_window_create(m_surface, m_width * m_scale, m_height * m_scale);
+        m_eglWindow = wl_egl_window_create(m_surface, bufferWidth(), bufferHeight());
         m_eglSurface = Renderer::get().createSurface(m_eglWindow);
-    } else {
-        wl_egl_window_resize(m_eglWindow, m_width * m_scale, m_height * m_scale, 0, 0);
     }
+    resizeBuffer();
     m_configured = true;
     m_needsLayout = m_dirty = true;
-    // Render now: a configured surface must commit a buffer to be shown
+    // A configured surface must commit a buffer to be shown
     render();
 }
 
@@ -134,11 +174,12 @@ void LayerSurface::closed() {
     destroy();
 }
 
-void LayerSurface::preferredScale(int32_t scale) {
-    if (scale == m_scale || scale < 1) return;
+void LayerSurface::preferredScale(float scale, bool fractional) {
+    // Fractional-capable compositors also send the integer hint; ignore it
+    if (m_fractional && !fractional) return;
+    if (scale <= 0 || scale == m_scale) return;
     m_scale = scale;
-    if (m_eglWindow) wl_egl_window_resize(m_eglWindow, m_width * m_scale, m_height * m_scale, 0, 0);
-    TextEngine::get().clear();
+    resizeBuffer();
     requestLayout();
 }
 
@@ -155,6 +196,7 @@ void LayerSurface::requestRedraw() {
 void LayerSurface::nodeDestroyed(ui::Node* node) {
     if (m_hovered == node) m_hovered = nullptr;
     if (m_pressed == node) m_pressed = nullptr;
+    if (m_focus == node) m_focus = nullptr;
 }
 
 void LayerSurface::schedule() {
@@ -171,7 +213,6 @@ void LayerSurface::schedule() {
 void LayerSurface::frameDone() {
     wl_callback_destroy(m_frame);
     m_frame = nullptr;
-    if (std::getenv("M3_DEBUG_FRAMES")) log::info("done dirty={} anim={}", m_dirty, m_root && m_root->animating());
     if (m_dirty || (m_root && m_root->animating())) render();
 }
 
@@ -194,15 +235,15 @@ void LayerSurface::render() {
     m_dirty = false;
 
     auto& r = Renderer::get();
-    r.begin(m_eglSurface, m_width * m_scale, m_height * m_scale, static_cast<float>(m_scale));
+    r.begin(m_eglSurface, bufferWidth(), bufferHeight(), m_scale);
     if (m_root) m_root->paint(r);
     // Painting may flag more work (running animations); that becomes the next frame
     m_dirty = m_dirty || (m_root && m_root->animating());
-    if (std::getenv("M3_DEBUG_FRAMES")) log::info("frame {} {}x{} dirty={}", m_options.ns, m_width, m_height, m_dirty);
+    if (debugFrames()) log::info("frame {} {}x{}@{} dirty={}", m_options.ns, m_width, m_height, m_scale, m_dirty);
 
     m_frame = wl_surface_frame(m_surface);
     wl_callback_add_listener(m_frame, &kFrame, this);
-    wl_surface_set_buffer_scale(m_surface, m_scale);
+    if (!m_viewport) wl_surface_set_buffer_scale(m_surface, static_cast<int>(m_scale));
     r.end(m_eglSurface); // eglSwapBuffers commits the surface
     TextEngine::get().collect();
 }
@@ -210,32 +251,67 @@ void LayerSurface::render() {
 // ── Input ──
 
 void LayerSurface::pointerMotion(double x, double y) {
-    ui::Node* hit = m_root ? m_root->hitTest(static_cast<float>(x), static_cast<float>(y)) : nullptr;
-    if (hit == m_hovered) return;
-    if (m_hovered) m_hovered->onHover(false);
-    m_hovered = hit;
-    if (m_hovered) m_hovered->onHover(true);
+    m_pointerX = static_cast<float>(x);
+    m_pointerY = static_cast<float>(y);
+    ui::Node* hit = m_root ? m_root->hitTest(m_pointerX, m_pointerY) : nullptr;
+    if (hit != m_hovered) {
+        if (m_hovered) m_hovered->onHover(false);
+        m_hovered = hit;
+        if (m_hovered) m_hovered->onHover(true);
+    }
+    // A pressed node keeps receiving motion (slider drags)
+    if (m_pressed) m_pressed->onDrag(m_pointerX, m_pointerY);
 }
 
 void LayerSurface::pointerLeave() {
     if (m_hovered) m_hovered->onHover(false);
+    if (m_pressed) m_pressed->onRelease();
     m_hovered = m_pressed = nullptr;
 }
 
 void LayerSurface::pointerButton(uint32_t button, bool pressed) {
     if (pressed) {
         m_pressed = m_hovered;
-        if (m_pressed) m_pressed->onPress(button);
+        if (m_pressed) {
+            if (m_pressed->focusable()) setFocus(m_pressed);
+            m_pressed->onPress(button, m_pointerX, m_pointerY);
+        } else if (onEmptyClick) {
+            onEmptyClick(m_pointerX, m_pointerY);
+        }
     } else {
         // A click is press and release on the same node
-        ui::Node* target = m_pressed == m_hovered ? m_pressed : nullptr;
+        ui::Node* target = m_pressed;
         m_pressed = nullptr;
-        if (target) target->onClick(button);
+        if (!target) return;
+        target->onRelease();
+        if (target == m_hovered) target->onClick(button);
     }
 }
 
 void LayerSurface::pointerScroll(int direction) {
-    if (m_hovered) m_hovered->onScroll(direction);
+    // The deepest node under the pointer that takes scrolling, else its ancestors
+    for (ui::Node* n = m_hovered ? m_hovered : (m_root ? m_root->hitTest(m_pointerX, m_pointerY, true) : nullptr); n;
+         n = n->parentNode())
+        if (n->onScroll(direction)) return;
+}
+
+void LayerSurface::setFocus(ui::Node* node) {
+    if (node == m_focus) return;
+    if (m_focus) m_focus->onFocus(false);
+    m_focus = node;
+    if (m_focus) m_focus->onFocus(true);
+}
+
+void LayerSurface::keyboardFocus(bool focused) {
+    if (std::getenv("M3_DEBUG_FOCUS")) log::info("keyboard {} {}", m_options.ns, focused);
+    m_hasKeyboard = focused;
+    if (m_focus) m_focus->onFocus(focused);
+}
+
+void LayerSurface::key(const ui::KeyEvent& event) {
+    for (ui::Node* n = m_focus; n; n = n->parentNode())
+        if (n->onKey(event)) return;
+    if (onKey) onKey(event);
 }
 
 } // namespace m3::wl

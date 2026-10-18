@@ -8,8 +8,6 @@
 #include <cmath>
 #include <chrono>
 #include <ctime>
-#include <filesystem>
-#include <fstream>
 #include <linux/input-event-codes.h>
 
 namespace m3::shell {
@@ -183,48 +181,6 @@ WindowTitle::WindowTitle() {
 void WindowTitle::sync() {
     setText(Hyprland::get().activeWindowTitle());
     setVisible(!text().empty());
-}
-
-// ── Battery ──
-
-Battery::Battery() : Flex(Direction::Row) {
-    setSpacing(4);
-    namespace fs = std::filesystem;
-    std::error_code ec;
-    for (const auto& e : fs::directory_iterator("/sys/class/power_supply", ec)) {
-        std::ifstream type(e.path() / "type");
-        std::string t;
-        if (type >> t && t == "Battery") {
-            m_path = e.path();
-            break;
-        }
-    }
-    m_icon = add<Icon>("battery_full", 18);
-    m_label = add<Label>();
-    m_label->setSize(13)->setWeight(500);
-    if (m_path.empty()) {
-        setVisible(false);
-        return;
-    }
-    sync();
-    m_timer = EventLoop::get().addTimer(30000, [this] { sync(); }, true);
-}
-
-Battery::~Battery() {
-    if (m_timer) EventLoop::get().cancel(m_timer);
-}
-
-void Battery::sync() {
-    int capacity = 0;
-    std::string status;
-    std::ifstream(m_path + "/capacity") >> capacity;
-    std::ifstream(m_path + "/status") >> status;
-    const bool charging = status == "Charging" || status == "Full";
-    // Material Symbols has battery_0_bar … battery_6_bar and battery_full
-    const int bars = std::clamp(capacity * 7 / 100, 0, 6);
-    m_icon->setText(charging ? "battery_charging_full" : capacity >= 95 ? "battery_full" : "battery_" + std::to_string(bars) + "_bar");
-    m_icon->setColor(capacity <= 15 && !charging ? ColorRef("error") : ColorRef("on_surface"));
-    m_label->setText(std::to_string(capacity) + "%");
 }
 
 } // namespace m3::shell

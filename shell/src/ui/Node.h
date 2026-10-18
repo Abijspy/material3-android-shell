@@ -5,6 +5,7 @@
 #include "ui/Animation.h"
 #include "ui/Color.h"
 #include "ui/Geometry.h"
+#include "ui/Input.h"
 
 #include <functional>
 #include <memory>
@@ -21,8 +22,9 @@ public:
     virtual ~Host() = default;
     virtual void requestLayout() = 0;
     virtual void requestRedraw() = 0;
-    // A node is going away; drop any pointer to it (hover, press)
+    // A node is going away; drop any pointer to it (hover, press, focus)
     virtual void nodeDestroyed(class Node*) {}
+    virtual void requestFocus(class Node*) {}
 };
 
 enum class Align { Start, Center, End, Stretch };
@@ -52,13 +54,25 @@ public:
 
     void paint(Renderer& r);
 
-    // Input
-    Node* hitTest(float x, float y);
+    // Input. hitTest returns the deepest interactive node (or, with `any`,
+    // the deepest node of any kind).
+    Node* hitTest(float x, float y, bool any = false);
     virtual bool interactive() const { return false; }
+    virtual bool focusable() const { return false; }
     virtual void onHover(bool) {}
-    virtual void onPress(uint32_t) {}
+    virtual void onPress(uint32_t /*button*/, float /*x*/, float /*y*/) {}
+    virtual void onDrag(float /*x*/, float /*y*/) {}
+    virtual void onRelease() {}
     virtual void onClick(uint32_t) {}
-    virtual void onScroll(int) {}
+    virtual bool onScroll(int) { return false; } // true: handled
+    virtual bool onKey(const KeyEvent&) { return false; }
+    virtual void onFocus(bool) {}
+    void focus();
+    Node* parentNode() const { return m_parent; }
+
+    // Visual-only transforms for transitions; layout and hit testing ignore them
+    void setOpacity(float o, bool animate = true);
+    void setTranslateY(float dy, bool animate = true);
 
     // Animations still running in this subtree
     bool animating() const;
@@ -84,10 +98,13 @@ protected:
     virtual void doArrange();
     virtual void doPaint(Renderer&) {}
     virtual bool doAnimating() const { return false; }
+    virtual bool clipsChildren() const { return false; }
 
     Node* parent() const { return m_parent; }
 
 private:
+    Tween m_opacity{1, motion::mediumMs, Easing::emphasizedDecelerate()};
+    Tween m_translateY{0, motion::mediumMs, Easing::emphasizedDecelerate()};
     Host* host() const;
 
     Node* m_parent = nullptr;
@@ -185,9 +202,9 @@ public:
 
     bool interactive() const override { return true; }
     void onHover(bool hovered) override;
-    void onPress(uint32_t) override;
+    void onPress(uint32_t button, float x, float y) override;
     void onClick(uint32_t button) override;
-    void onScroll(int d) override;
+    bool onScroll(int d) override;
 
 protected:
     void doPaint(Renderer& r) override;

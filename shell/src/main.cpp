@@ -57,6 +57,9 @@ int main(int argc, char** argv) {
         return args[0] == "--help" || args[0] == "-h" ? 0 : 2;
     }
 
+    // Launched apps are reaped by the kernel; we never wait on them
+    std::signal(SIGCHLD, SIG_IGN);
+
     SignalSource signals;
     m3::EventLoop::get().add(&signals);
 

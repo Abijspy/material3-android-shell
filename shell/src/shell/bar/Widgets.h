@@ -60,17 +60,4 @@ private:
     Connection m_conn;
 };
 
-class Battery : public ui::Flex {
-public:
-    Battery();
-    ~Battery() override;
-    void sync();
-
-private:
-    std::string m_path; // /sys/class/power_supply/BATx
-    ui::Icon* m_icon = nullptr;
-    ui::Label* m_label = nullptr;
-    unsigned long long m_timer = 0;
-};
-
 } // namespace m3::shell

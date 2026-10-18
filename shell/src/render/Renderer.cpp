@@ -76,6 +76,22 @@ void main() {
 }
 )";
 
+const char* kImageFragment = R"(
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform vec4 u_rect;
+uniform float u_opacity;
+uniform sampler2D u_tex;
+varying vec2 v_local;
+void main() {
+    // Cairo stores premultiplied ARGB32 as BGRA bytes on little-endian
+    gl_FragColor = texture2D(u_tex, v_local / u_rect.zw).bgra * u_opacity;
+}
+)";
+
 GLuint compile(GLenum type, const char* src) {
     GLuint s = glCreateShader(type);
     glShaderSource(s, 1, &src, nullptr);
@@ -151,7 +167,14 @@ bool Renderer::init(wl_display* display) {
 bool Renderer::buildPrograms() {
     m_rectProg.id = link(kVertex, kRectFragment);
     m_maskProg.id = link(kVertex, kMaskFragment);
-    if (!m_rectProg.id || !m_maskProg.id) return false;
+    m_imageProg.id = link(kVertex, kImageFragment);
+    if (!m_rectProg.id || !m_maskProg.id || !m_imageProg.id) return false;
+
+    auto& im = m_imageProg;
+    im.viewport = glGetUniformLocation(im.id, "u_viewport");
+    im.rect = glGetUniformLocation(im.id, "u_rect");
+    im.opacity = glGetUniformLocation(im.id, "u_opacity");
+    im.tex = glGetUniformLocation(im.id, "u_tex");
 
     auto& r = m_rectProg;
     r.viewport = glGetUniformLocation(r.id, "u_viewport");
@@ -193,6 +216,7 @@ void Renderer::begin(EGLSurface surface, int bufferWidth, int bufferHeight, floa
     m_scale = scale;
     m_opacity = {1.0f};
     m_clips.clear();
+    m_offsets = {{0.0f, 0.0f}};
 
     glViewport(0, 0, bufferWidth, bufferHeight);
     glDisable(GL_SCISSOR_TEST);
@@ -215,7 +239,8 @@ void Renderer::rect(const RectF& r, const Color& fill, Radii radii, float border
     auto& p = m_rectProg;
     glUseProgram(p.id);
     glUniform2f(p.viewport, m_bufferWidth / m_scale, m_bufferHeight / m_scale);
-    glUniform4f(p.rect, r.x, r.y, r.w, r.h);
+    const auto [ox, oy] = m_offsets.back();
+    glUniform4f(p.rect, r.x + ox, r.y + oy, r.w, r.h);
     glUniform4f(p.radii, radii.tl, radii.tr, radii.br, radii.bl);
     premultiplied(p.fill, fill, o);
     premultiplied(p.border, border, o);
@@ -230,8 +255,24 @@ void Renderer::mask(GLuint texture, const RectF& r, const Color& tint) {
     auto& p = m_maskProg;
     glUseProgram(p.id);
     glUniform2f(p.viewport, m_bufferWidth / m_scale, m_bufferHeight / m_scale);
-    glUniform4f(p.rect, r.x, r.y, r.w, r.h);
+    const auto [ox, oy] = m_offsets.back();
+    glUniform4f(p.rect, r.x + ox, r.y + oy, r.w, r.h);
     premultiplied(p.tint, tint, o);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glUniform1i(p.tex, 0);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+}
+
+void Renderer::image(GLuint texture, const RectF& r, float opacity) {
+    const float o = m_opacity.back() * opacity;
+    if (!texture || o <= 0) return;
+    auto& p = m_imageProg;
+    glUseProgram(p.id);
+    glUniform2f(p.viewport, m_bufferWidth / m_scale, m_bufferHeight / m_scale);
+    const auto [ox, oy] = m_offsets.back();
+    glUniform4f(p.rect, r.x + ox, r.y + oy, r.w, r.h);
+    glUniform1f(p.opacity, o);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
     glUniform1i(p.tex, 0);
@@ -246,7 +287,19 @@ void Renderer::popOpacity() {
     if (m_opacity.size() > 1) m_opacity.pop_back();
 }
 
-void Renderer::pushClip(const RectF& r) {
+void Renderer::pushTranslate(float dx, float dy) {
+    const auto [ox, oy] = m_offsets.back();
+    m_offsets.emplace_back(ox + dx, oy + dy);
+}
+
+void Renderer::popTranslate() {
+    if (m_offsets.size() > 1) m_offsets.pop_back();
+}
+
+void Renderer::pushClip(const RectF& rect) {
+    // Clips are given in layout coordinates; apply the current offset
+    const auto [ox, oy] = m_offsets.back();
+    const RectF r{rect.x + ox, rect.y + oy, rect.w, rect.h};
     m_clips.push_back(m_clips.empty() ? r : m_clips.back().intersected(r));
     applyClip();
 }

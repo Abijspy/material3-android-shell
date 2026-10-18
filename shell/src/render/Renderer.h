@@ -38,10 +38,16 @@ public:
 
     void rect(const RectF& r, const Color& fill, Radii radii = {}, float borderWidth = 0, Color border = {});
     void mask(GLuint texture, const RectF& r, const Color& tint);
+    // Full-colour premultiplied BGRA texture (Cairo's ARGB32 layout)
+    void image(GLuint texture, const RectF& r, float opacity = 1);
 
     // Multiplies every colour drawn until popped (fades, disabled states)
     void pushOpacity(float o);
     void popOpacity();
+
+    // Offsets everything drawn until popped (slide transitions, scrolling)
+    void pushTranslate(float dx, float dy);
+    void popTranslate();
 
     void pushClip(const RectF& r);
     void popClip();
@@ -65,12 +71,17 @@ private:
         GLuint id = 0;
         GLint viewport, rect, tint, tex;
     } m_maskProg;
+    struct ImageProgram {
+        GLuint id = 0;
+        GLint viewport, rect, opacity, tex;
+    } m_imageProg;
     GLuint m_quad = 0;
 
     int m_bufferWidth = 0, m_bufferHeight = 0;
     float m_scale = 1;
     std::vector<float> m_opacity{1.0f};
     std::vector<RectF> m_clips;
+    std::vector<std::pair<float, float>> m_offsets{{0.0f, 0.0f}};
 };
 
 } // namespace m3

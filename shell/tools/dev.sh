@@ -7,7 +7,7 @@ here="$(cd "$(dirname "$0")/.." && pwd)"
 image=material3ui-dev
 podman image exists "$image" || podman build -t "$image" -f "$here/tools/Containerfile" "$here/tools"
 
-run() { podman run --rm -e M3_FAKE_HYPR -e M3_SCRIPT -e M3_WAIT -e M3_DEBUG_FRAMES -e M3_GDB -v "$here:/src:Z" -w /src "$image" "$@"; }
+run() { podman run --rm -e M3_FAKE_HYPR -e M3_SCRIPT -e M3_WAIT -e M3_DEBUG_FRAMES -e M3_GDB -e M3_SERVICES -e M3_DEBUG_FOCUS -e M3_SCALE -v "$here:/src:Z" -w /src "$image" "$@"; }
 
 case "${1:-build}" in
 build) run bash -c '[ -d build ] || meson setup build >/dev/null; meson compile -C build' ;;

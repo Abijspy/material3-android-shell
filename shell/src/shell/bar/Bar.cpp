@@ -9,7 +9,7 @@ namespace m3::shell {
 using namespace m3::ui;
 using wl::LayerSurface;
 
-Bar::Bar(wl::Output* output) : m_output(output) {
+Bar::Bar(wl::Output* output, OpenPopup openPopup) : m_output(output), m_openPopup(std::move(openPopup)) {
     LayerSurface::Options opts;
     opts.ns = "material3ui-bar";
     opts.layer = LayerSurface::Layer::Top;
@@ -38,12 +38,22 @@ void Bar::rebuild() {
     if (floating) pill(ws->setBackground("surface_container_high", false));
     auto* titleCap = capsule(start, floating);
     titleCap->add<WindowTitle>();
+    auto* mediaCap = capsule(start, floating);
+    mediaCap->setPadding({2, 0});
+    mediaCap->add<Media>();
 
     auto* centre = capsule(bg, floating);
     centre->add<Clock>();
 
-    auto* end = capsule(bg, floating);
-    end->add<Battery>();
+    auto* end = bg->add<Flex>(Flex::Direction::Row);
+    end->setSpacing(8);
+    auto* trayCap = capsule(end, floating);
+    trayCap->setPadding({4, 0});
+    trayCap->add<TrayIcons>();
+    auto* statusCap = capsule(end, floating);
+    statusCap->setPadding({4, 0});
+    statusCap->add<StatusIcons>(m_openPopup);
+    capsule(end, floating)->add<BatteryStatus>();
 
     auto* surface = m_surface.get();
     if (!floating) {

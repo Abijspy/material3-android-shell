@@ -1,0 +1,293 @@
+#include "services/Network.h"
+
+#include <algorithm>
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+
+namespace m3 {
+
+namespace {
+const char* kNM = "org.freedesktop.NetworkManager";
+const char* kNMPath = "/org/freedesktop/NetworkManager";
+const char* kBlueZ = "org.bluez";
+
+std::string str(const dbus::Value& props, const char* key) {
+    auto it = props.find(key);
+    return it != props.end() && it->is_string() ? it->get<std::string>() : "";
+}
+
+template <typename T>
+T num(const dbus::Value& props, const char* key, T fallback = {}) {
+    auto it = props.find(key);
+    return it != props.end() && it->is_number() ? it->get<T>() : fallback;
+}
+
+bool flag(const dbus::Value& props, const char* key) {
+    auto it = props.find(key);
+    return it != props.end() && it->is_boolean() && it->get<bool>();
+}
+
+int readInt(const std::string& path) {
+    int v = 0;
+    std::ifstream(path) >> v;
+    return v;
+}
+
+} // namespace
+
+// ── Network ──
+
+Network& Network::get() {
+    static Network instance;
+    return instance;
+}
+
+Network::Network() {
+    auto& bus = dbus::Bus::system();
+    m_nmChanged = bus.onPropertiesChanged(kNM, kNMPath, [this](const dbus::Value&, const std::string&) { refresh(); });
+    m_owner = bus.subscribe("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameOwnerChanged",
+                            [this](const dbus::Value& a, auto*) {
+                                if (!a.empty() && a[0] == kNM) refresh();
+                            });
+    refresh();
+}
+
+void Network::refresh() {
+    dbus::Bus::system().getAll(kNM, kNMPath, kNM, [this](const dbus::Value& p, bool ok) {
+        m_available = ok;
+        if (!ok) {
+            m_kind = Kind::None;
+            changed.emit();
+            return;
+        }
+        m_wifiEnabled = flag(p, "WirelessEnabled");
+        const auto state = num<uint32_t>(p, "State");
+        m_connecting = state == 40;
+        loadPrimary(str(p, "PrimaryConnection"));
+    });
+}
+
+void Network::loadPrimary(const std::string& path) {
+    if (path.empty() || path == "/") {
+        m_kind = Kind::None;
+        m_name.clear();
+        m_apChanged = {};
+        changed.emit();
+        return;
+    }
+    dbus::Bus::system().getAll(kNM, path, "org.freedesktop.NetworkManager.Connection.Active",
+                               [this](const dbus::Value& p, bool ok) {
+        if (!ok) return;
+        const std::string type = str(p, "Type");
+        m_name = str(p, "Id");
+        if (type == "802-11-wireless") {
+            m_kind = Kind::Wifi;
+            const auto devices = p.value("Devices", dbus::Value::array());
+            if (devices.empty()) return changed.emit();
+            dbus::Bus::system().getAll(kNM, devices[0].get<std::string>(), "org.freedesktop.NetworkManager.Device.Wireless",
+                                       [this](const dbus::Value& d, bool) { loadAccessPoint(str(d, "ActiveAccessPoint")); });
+            return;
+        }
+        m_kind = type == "802-3-ethernet" ? Kind::Ethernet : Kind::Other;
+        m_apChanged = {};
+        changed.emit();
+    });
+}
+
+void Network::loadAccessPoint(const std::string& path) {
+    if (path.empty() || path == "/") return changed.emit();
+    if (path != m_apPath) {
+        m_apPath = path;
+        // Signal strength changes arrive on the access point object
+        m_apChanged = dbus::Bus::system().onPropertiesChanged(kNM, path, [this](const dbus::Value& c, const std::string&) {
+            if (c.contains("Strength")) {
+                m_strength = c["Strength"].get<int>();
+                changed.emit();
+            }
+        });
+    }
+    dbus::Bus::system().getAll(kNM, path, "org.freedesktop.NetworkManager.AccessPoint", [this](const dbus::Value& p, bool) {
+        m_strength = num<int>(p, "Strength");
+        if (auto it = p.find("Ssid"); it != p.end() && it->is_binary()) {
+            const auto& bytes = it->get_binary();
+            m_name.assign(bytes.begin(), bytes.end());
+        }
+        changed.emit();
+    });
+}
+
+void Network::setWifiEnabled(bool on) {
+    dbus::Bus::system().setProperty(kNM, kNMPath, kNM, "WirelessEnabled", dbus::variant(on));
+}
+
+std::string Network::icon() const {
+    switch (m_kind) {
+    case Kind::Ethernet: return "lan";
+    case Kind::Other: return "vpn_key";
+    case Kind::Wifi:
+        if (m_strength >= 80) return "signal_wifi_4_bar";
+        if (m_strength >= 55) return "network_wifi_3_bar";
+        if (m_strength >= 30) return "network_wifi_2_bar";
+        return "network_wifi_1_bar";
+    case Kind::None: break;
+    }
+    if (!m_available) return "signal_disconnected";
+    return m_wifiEnabled ? "signal_wifi_0_bar" : "signal_wifi_off";
+}
+
+// ── Bluetooth ──
+
+Bluetooth& Bluetooth::get() {
+    static Bluetooth instance;
+    return instance;
+}
+
+Bluetooth::Bluetooth() {
+    auto& bus = dbus::Bus::system();
+    auto later = [this](const dbus::Value&, auto*) {
+        EventLoop::get().debounce(m_debounce, 100, [this] { refresh(); });
+    };
+    m_props = bus.subscribe(kBlueZ, "", "org.freedesktop.DBus.Properties", "PropertiesChanged", later);
+    m_added = bus.subscribe(kBlueZ, "/", "org.freedesktop.DBus.ObjectManager", "InterfacesAdded", later);
+    m_removed = bus.subscribe(kBlueZ, "/", "org.freedesktop.DBus.ObjectManager", "InterfacesRemoved", later);
+    refresh();
+}
+
+void Bluetooth::refresh() {
+    dbus::Bus::system().call(kBlueZ, "/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects", {},
+                             [this](const dbus::Value& a, const std::string& err) {
+        m_available = false;
+        m_powered = false;
+        m_connected.clear();
+        if (err.empty() && !a.empty() && a[0].is_object()) {
+            for (const auto& [path, ifaces] : a[0].items()) {
+                if (auto ad = ifaces.find("org.bluez.Adapter1"); ad != ifaces.end() && !m_available) {
+                    m_available = true;
+                    m_adapter = path;
+                    m_powered = flag(*ad, "Powered");
+                }
+                if (auto dev = ifaces.find("org.bluez.Device1"); dev != ifaces.end() && flag(*dev, "Connected"))
+                    m_connected.push_back(str(*dev, "Alias"));
+            }
+        }
+        changed.emit();
+    });
+}
+
+void Bluetooth::setPowered(bool on) {
+    if (m_available) dbus::Bus::system().setProperty(kBlueZ, m_adapter, "org.bluez.Adapter1", "Powered", dbus::variant(on));
+}
+
+std::string Bluetooth::icon() const {
+    if (!m_powered) return "bluetooth_disabled";
+    return m_connected.empty() ? "bluetooth" : "bluetooth_connected";
+}
+
+// ── Power ──
+
+Power& Power::get() {
+    static Power instance;
+    return instance;
+}
+
+Power::Power() {
+    const std::string dev = "/org/freedesktop/UPower/devices/DisplayDevice";
+    auto load = [this, dev] {
+        dbus::Bus::system().getAll("org.freedesktop.UPower", dev, "org.freedesktop.UPower.Device",
+                                   [this](const dbus::Value& p, bool ok) {
+            if (ok) {
+                fromUPower(p);
+            } else if (!m_poll) {
+                pollSysfs();
+                m_poll = EventLoop::get().addTimer(30000, [this] { pollSysfs(); }, true);
+            }
+        });
+    };
+    m_sub = dbus::Bus::system().onPropertiesChanged("org.freedesktop.UPower", dev,
+                                                    [load](const dbus::Value&, const std::string&) { load(); });
+    load();
+}
+
+void Power::fromUPower(const dbus::Value& p) {
+    // DisplayDevice type 2 is a battery; desktops report 0 with IsPresent false
+    m_present = flag(p, "IsPresent") && num<uint32_t>(p, "Type") == 2;
+    m_percent = static_cast<int>(std::lround(num<double>(p, "Percentage")));
+    const auto state = num<uint32_t>(p, "State");
+    m_charging = state == 1 || state == 5;
+    m_full = state == 4;
+    m_seconds = m_charging ? num<long long>(p, "TimeToFull") : num<long long>(p, "TimeToEmpty");
+    changed.emit();
+}
+
+void Power::pollSysfs() {
+    namespace fs = std::filesystem;
+    if (m_sysfs.empty()) {
+        std::error_code ec;
+        for (const auto& e : fs::directory_iterator("/sys/class/power_supply", ec)) {
+            std::string type;
+            std::ifstream(e.path() / "type") >> type;
+            if (type == "Battery") {
+                m_sysfs = e.path();
+                break;
+            }
+        }
+    }
+    m_present = !m_sysfs.empty();
+    if (m_present) {
+        m_percent = readInt(m_sysfs + "/capacity");
+        std::string status;
+        std::ifstream(m_sysfs + "/status") >> status;
+        m_charging = status == "Charging";
+        m_full = status == "Full";
+        m_seconds = 0;
+    }
+    changed.emit();
+}
+
+std::string Power::icon() const {
+    if (m_charging) return "battery_charging_full";
+    if (m_full || m_percent >= 95) return "battery_full";
+    // Material Symbols has battery_0_bar … battery_6_bar
+    return "battery_" + std::to_string(std::clamp(m_percent * 7 / 100, 0, 6)) + "_bar";
+}
+
+// ── Brightness ──
+
+Brightness& Brightness::get() {
+    static Brightness instance;
+    return instance;
+}
+
+Brightness::Brightness() {
+    std::error_code ec;
+    for (const auto& e : std::filesystem::directory_iterator("/sys/class/backlight", ec)) {
+        m_device = e.path().filename();
+        m_max = std::max(1, readInt(e.path() / "max_brightness"));
+        m_current = readInt(e.path() / "brightness");
+        break;
+    }
+}
+
+float Brightness::value() const {
+    return static_cast<float>(m_current) / static_cast<float>(m_max);
+}
+
+void Brightness::set(float v) {
+    if (m_device.empty()) return;
+    // Never fully dark: 1% floor so the screen stays usable
+    m_current = std::clamp(static_cast<int>(std::lround(v * static_cast<float>(m_max))), std::max(1, m_max / 100), m_max);
+    dbus::Bus::system().call("org.freedesktop.login1", "/org/freedesktop/login1/session/auto",
+                             "org.freedesktop.login1.Session", "SetBrightness",
+                             dbus::args("backlight", m_device, static_cast<uint32_t>(m_current)));
+    changed.emit();
+}
+
+void Brightness::step(float delta) {
+    if (m_device.empty()) return;
+    // Something else may have changed it (keys handled by the firmware)
+    m_current = readInt("/sys/class/backlight/" + m_device + "/brightness");
+    set(value() + delta);
+}
+
+} // namespace m3

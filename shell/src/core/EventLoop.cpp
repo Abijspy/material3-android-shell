@@ -5,12 +5,36 @@
 #include <cstring>
 #include <iostream>
 #include <poll.h>
+#include <sys/eventfd.h>
+#include <unistd.h>
 
 namespace m3 {
 
 EventLoop& EventLoop::get() {
     static EventLoop instance;
     return instance;
+}
+
+EventLoop::EventLoop() : m_wakeFd(eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC)) {}
+
+void EventLoop::post(std::function<void()> fn) {
+    {
+        std::lock_guard lock(m_postMutex);
+        m_posted.push_back(std::move(fn));
+    }
+    const uint64_t one = 1;
+    [[maybe_unused]] auto n = ::write(m_wakeFd, &one, sizeof one);
+}
+
+void EventLoop::drainPosted() {
+    uint64_t count;
+    [[maybe_unused]] auto n = ::read(m_wakeFd, &count, sizeof count);
+    std::vector<std::function<void()>> posted;
+    {
+        std::lock_guard lock(m_postMutex);
+        posted.swap(m_posted);
+    }
+    for (auto& fn : posted) fn();
 }
 
 void EventLoop::add(EventSource* source) {
@@ -82,22 +106,29 @@ int EventLoop::run() {
         std::erase(m_sources, nullptr);
         fds.clear();
         polled.clear();
+        fds.push_back(pollfd{m_wakeFd, POLLIN, 0});
         for (auto* s : m_sources) {
             s->prepare();
             fds.push_back(pollfd{s->fd(), s->events(), 0});
             polled.push_back(s);
         }
 
-        if (::poll(fds.data(), fds.size(), nextTimeoutMs()) < 0 && errno != EINTR) {
+        int timeout = nextTimeoutMs();
+        for (auto* s : polled) {
+            const int t = s->timeoutMs();
+            if (t >= 0 && (timeout < 0 || t < timeout)) timeout = t;
+        }
+        if (::poll(fds.data(), fds.size(), timeout) < 0 && errno != EINTR) {
             std::cerr << "material3ui: poll: " << std::strerror(errno) << '\n';
             return 1;
         }
 
+        if (fds[0].revents) drainPosted();
         for (size_t i = 0; i < polled.size(); ++i) {
             // Skip sources removed by an earlier dispatch this iteration
             if (std::find(m_sources.begin(), m_sources.end(), polled[i]) == m_sources.end()) continue;
             // Always called: sources like Wayland must finish a prepared read
-            polled[i]->dispatch(fds[i].revents);
+            polled[i]->dispatch(fds[i + 1].revents);
         }
         runTimers();
     }

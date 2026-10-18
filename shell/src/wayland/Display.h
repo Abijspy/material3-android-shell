@@ -12,6 +12,12 @@ struct wl_registry;
 struct wl_compositor;
 struct wl_seat;
 struct wl_pointer;
+struct wl_keyboard;
+struct xkb_context;
+struct xkb_keymap;
+struct xkb_state;
+struct wp_fractional_scale_manager_v1;
+struct wp_viewporter;
 struct wl_output;
 struct wl_surface;
 struct zwlr_layer_shell_v1;
@@ -39,11 +45,16 @@ class Display : public EventSource {
 public:
     static Display& get();
 
+    // A surface going away must not keep pointer or keyboard focus
+    void forget(LayerSurface* surface);
+
     bool connect();
 
     wl_display* display() const { return m_display; }
     wl_compositor* compositor() const { return m_compositor; }
     zwlr_layer_shell_v1* layerShell() const { return m_layerShell; }
+    wp_fractional_scale_manager_v1* fractionalScale() const { return m_fractionalScale; }
+    wp_viewporter* viewporter() const { return m_viewporter; }
 
     const std::vector<std::unique_ptr<Output>>& outputs() const { return m_outputs; }
     std::function<void(Output*)> onOutputReady;
@@ -65,6 +76,12 @@ public:
     void pointerButton(uint32_t button, bool pressed);
     void pointerAxis(uint32_t axis, double value);
     void pointerFrame();
+    void keymap(int fd, uint32_t size);
+    void keyboardEnter(wl_surface* surface);
+    void keyboardLeave(wl_surface* surface);
+    void key(uint32_t key, bool pressed);
+    void modifiers(uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group);
+    void repeatInfo(int32_t rate, int32_t delay);
 
 private:
     Display() = default;
@@ -77,6 +94,18 @@ private:
     wl_pointer* m_pointer = nullptr;
     wp_cursor_shape_manager_v1* m_cursorShapeManager = nullptr;
     wp_cursor_shape_device_v1* m_cursorShape = nullptr;
+    wp_fractional_scale_manager_v1* m_fractionalScale = nullptr;
+    wp_viewporter* m_viewporter = nullptr;
+    wl_keyboard* m_keyboard = nullptr;
+
+    xkb_context* m_xkb = nullptr;
+    xkb_keymap* m_keymap = nullptr;
+    xkb_state* m_xkbState = nullptr;
+    LayerSurface* m_keyboardFocus = nullptr;
+    int m_repeatRate = 25, m_repeatDelay = 600;
+    uint32_t m_repeatKey = 0;
+    EventLoop::TimerId m_repeatTimer = 0;
+    void sendKey(uint32_t key, bool repeat);
     std::vector<std::unique_ptr<Output>> m_outputs;
     bool m_reading = false;
 

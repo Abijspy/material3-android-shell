@@ -4,18 +4,29 @@
 #include "wayland/LayerSurface.h"
 
 #include "cursor-shape-v1-client-protocol.h"
+#include "fractional-scale-v1-client-protocol.h"
+#include "viewporter-client-protocol.h"
 #include "wayland/LayerShellProtocol.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <linux/input-event-codes.h>
 #include <poll.h>
+#include <sys/mman.h>
+#include <unistd.h>
 #include <wayland-client.h>
+#include <xkbcommon/xkbcommon.h>
 
 namespace m3::wl {
 
 namespace {
+
+bool debugFocus() {
+    static const bool on = std::getenv("M3_DEBUG_FOCUS") != nullptr;
+    return on;
+}
 
 const wl_registry_listener kRegistry = {
     .global = [](void* data, wl_registry* r, uint32_t name, const char* iface, uint32_t version) {
@@ -63,6 +74,28 @@ const wl_pointer_listener kPointer = {
     .axis_value120 = [](void*, wl_pointer*, uint32_t, int32_t) {},
     .axis_relative_direction = [](void*, wl_pointer*, uint32_t, uint32_t) {},
 };
+
+const wl_keyboard_listener kKeyboard = {
+    .keymap = [](void* data, wl_keyboard*, uint32_t format, int32_t fd, uint32_t size) {
+        if (format == WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1)
+            static_cast<Display*>(data)->keymap(fd, size);
+        else
+            close(fd);
+    },
+    .enter = [](void* data, wl_keyboard*, uint32_t, wl_surface* s, wl_array*) {
+        static_cast<Display*>(data)->keyboardEnter(s);
+    },
+    .leave = [](void* data, wl_keyboard*, uint32_t, wl_surface* s) { static_cast<Display*>(data)->keyboardLeave(s); },
+    .key = [](void* data, wl_keyboard*, uint32_t, uint32_t, uint32_t key, uint32_t state) {
+        static_cast<Display*>(data)->key(key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
+    },
+    .modifiers = [](void* data, wl_keyboard*, uint32_t, uint32_t dep, uint32_t lat, uint32_t lock, uint32_t group) {
+        static_cast<Display*>(data)->modifiers(dep, lat, lock, group);
+    },
+    .repeat_info = [](void* data, wl_keyboard*, int32_t rate, int32_t delay) {
+        static_cast<Display*>(data)->repeatInfo(rate, delay);
+    },
+};
 #pragma GCC diagnostic pop
 
 } // namespace
@@ -103,6 +136,11 @@ void Display::addGlobal(wl_registry* r, uint32_t name, const char* iface, uint32
     } else if (i == wp_cursor_shape_manager_v1_interface.name) {
         m_cursorShapeManager = static_cast<wp_cursor_shape_manager_v1*>(
             wl_registry_bind(r, name, &wp_cursor_shape_manager_v1_interface, 1));
+    } else if (i == wp_fractional_scale_manager_v1_interface.name) {
+        m_fractionalScale = static_cast<wp_fractional_scale_manager_v1*>(
+            wl_registry_bind(r, name, &wp_fractional_scale_manager_v1_interface, 1));
+    } else if (i == wp_viewporter_interface.name) {
+        m_viewporter = static_cast<wp_viewporter*>(wl_registry_bind(r, name, &wp_viewporter_interface, 1));
     } else if (i == wl_output_interface.name && version >= 4) {
         auto out = std::make_unique<Output>();
         out->globalName = name;
@@ -127,6 +165,16 @@ void Display::outputDone(Output* output) {
 }
 
 void Display::seatCapabilities(uint32_t caps) {
+    const bool hasKeyboard = caps & WL_SEAT_CAPABILITY_KEYBOARD;
+    if (hasKeyboard && !m_keyboard) {
+        if (!m_xkb) m_xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+        m_keyboard = wl_seat_get_keyboard(m_seat);
+        wl_keyboard_add_listener(m_keyboard, &kKeyboard, this);
+    } else if (!hasKeyboard && m_keyboard) {
+        wl_keyboard_release(m_keyboard);
+        m_keyboard = nullptr;
+    }
+
     const bool hasPointer = caps & WL_SEAT_CAPABILITY_POINTER;
     if (hasPointer && !m_pointer) {
         m_pointer = wl_seat_get_pointer(m_seat);
@@ -174,6 +222,96 @@ void Display::pointerFrame() {
         m_pointerFocus->pointerScroll(m_scrollAccum > 0 ? 1 : -1);
         m_scrollAccum = 0;
     }
+}
+
+void Display::forget(LayerSurface* surface) {
+    if (m_pointerFocus == surface) m_pointerFocus = nullptr;
+    if (m_keyboardFocus == surface) {
+        m_keyboardFocus = nullptr;
+        if (m_repeatTimer) EventLoop::get().cancel(m_repeatTimer);
+        m_repeatTimer = 0;
+    }
+}
+
+// ── Keyboard ──
+
+void Display::keymap(int fd, uint32_t size) {
+    if (debugFocus()) log::info("wl_keyboard.keymap {}", size);
+    void* map = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
+    if (map == MAP_FAILED) return;
+    xkb_keymap* keymap = xkb_keymap_new_from_string(m_xkb, static_cast<const char*>(map),
+                                                   XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
+    munmap(map, size);
+    if (!keymap) return;
+    if (m_xkbState) xkb_state_unref(m_xkbState);
+    if (m_keymap) xkb_keymap_unref(m_keymap);
+    m_keymap = keymap;
+    m_xkbState = xkb_state_new(keymap);
+}
+
+void Display::keyboardEnter(wl_surface* surface) {
+    if (debugFocus()) log::info("wl_keyboard.enter {}", static_cast<void*>(surface));
+    m_keyboardFocus = LayerSurface::fromSurface(surface);
+    if (m_keyboardFocus) m_keyboardFocus->keyboardFocus(true);
+}
+
+void Display::keyboardLeave(wl_surface* surface) {
+    if (debugFocus()) log::info("wl_keyboard.leave {}", static_cast<void*>(surface));
+    if (auto* s = LayerSurface::fromSurface(surface)) s->keyboardFocus(false);
+    m_keyboardFocus = nullptr;
+    if (m_repeatTimer) EventLoop::get().cancel(m_repeatTimer);
+    m_repeatTimer = 0;
+}
+
+void Display::modifiers(uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group) {
+    if (m_xkbState) xkb_state_update_mask(m_xkbState, depressed, latched, locked, 0, 0, group);
+}
+
+void Display::repeatInfo(int32_t rate, int32_t delay) {
+    m_repeatRate = rate;
+    m_repeatDelay = delay;
+}
+
+void Display::sendKey(uint32_t key, bool repeat) {
+    if (!m_xkbState || !m_keyboardFocus) return;
+    const xkb_keycode_t code = key + 8; // evdev → xkb
+    ui::KeyEvent ev;
+    ev.sym = xkb_state_key_get_one_sym(m_xkbState, code);
+    char buf[64];
+    if (xkb_state_key_get_utf8(m_xkbState, code, buf, sizeof buf) > 0) ev.text = buf;
+    auto active = [&](const char* mod) {
+        return xkb_state_mod_name_is_active(m_xkbState, mod, XKB_STATE_MODS_EFFECTIVE) > 0;
+    };
+    if (active(XKB_MOD_NAME_SHIFT)) ev.mods |= ui::ModShift;
+    if (active(XKB_MOD_NAME_CTRL)) ev.mods |= ui::ModCtrl;
+    if (active(XKB_MOD_NAME_ALT)) ev.mods |= ui::ModAlt;
+    if (active(XKB_MOD_NAME_LOGO)) ev.mods |= ui::ModSuper;
+    // Control characters are not text
+    if (!ev.text.empty() && static_cast<unsigned char>(ev.text[0]) < 0x20) ev.text.clear();
+    if (ev.text == "\x7f") ev.text.clear();
+    ev.repeat = repeat;
+    m_keyboardFocus->key(ev);
+}
+
+void Display::key(uint32_t key, bool pressed) {
+    if (debugFocus()) log::info("wl_keyboard.key {} {} focus={}", key, pressed, static_cast<void*>(m_keyboardFocus));
+    if (!pressed) {
+        if (key == m_repeatKey && m_repeatTimer) {
+            EventLoop::get().cancel(m_repeatTimer);
+            m_repeatTimer = 0;
+        }
+        return;
+    }
+    sendKey(key, false);
+    if (m_repeatTimer) EventLoop::get().cancel(m_repeatTimer);
+    m_repeatTimer = 0;
+    if (m_repeatRate <= 0 || !m_keymap || !xkb_keymap_key_repeats(m_keymap, key + 8)) return;
+    m_repeatKey = key;
+    m_repeatTimer = EventLoop::get().addTimer(m_repeatDelay, [this, key] {
+        sendKey(key, true);
+        m_repeatTimer = EventLoop::get().addTimer(1000 / m_repeatRate, [this, key] { sendKey(key, true); }, true);
+    });
 }
 
 LayerSurface* LayerSurface::fromSurface(wl_surface* surface) {

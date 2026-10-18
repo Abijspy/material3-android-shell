@@ -61,20 +61,43 @@ void Node::doArrange() {
 
 void Node::paint(Renderer& r) {
     if (!shown()) return;
+    const float o = m_opacity.value(), dy = m_translateY.value();
+    if (o <= 0.001f) return;
+    if (o < 1) r.pushOpacity(o);
+    if (dy != 0) r.pushTranslate(0, dy);
     doPaint(r);
+    if (clipsChildren()) r.pushClip(m_rect);
     for (auto& c : m_children) c->paint(r);
+    if (clipsChildren()) r.popClip();
+    if (dy != 0) r.popTranslate();
+    if (o < 1) r.popOpacity();
+    if (m_opacity.running() || m_translateY.running()) requestRedraw();
 }
 
-Node* Node::hitTest(float x, float y) {
-    if (!shown() || !m_rect.contains(x, y)) return nullptr;
+Node* Node::hitTest(float x, float y, bool any) {
+    if (!shown() || !m_rect.contains(x, y) || m_opacity.target() <= 0) return nullptr;
     for (auto it = m_children.rbegin(); it != m_children.rend(); ++it)
-        if (Node* hit = (*it)->hitTest(x, y)) return hit;
-    return interactive() ? this : nullptr;
+        if (Node* hit = (*it)->hitTest(x, y, any)) return hit;
+    return (any || interactive()) ? this : nullptr;
+}
+
+void Node::focus() {
+    if (auto* h = host()) h->requestFocus(this);
+}
+
+void Node::setOpacity(float o, bool animate) {
+    m_opacity.set(o, animate);
+    requestRedraw();
+}
+
+void Node::setTranslateY(float dy, bool animate) {
+    m_translateY.set(dy, animate);
+    requestRedraw();
 }
 
 bool Node::animating() const {
     if (!shown()) return false;
-    if (doAnimating()) return true;
+    if (doAnimating() || m_opacity.running() || m_translateY.running()) return true;
     return std::any_of(m_children.begin(), m_children.end(), [](auto& c) { return c->animating(); });
 }
 
@@ -320,7 +343,7 @@ void Button::onHover(bool hovered) {
     requestRedraw();
 }
 
-void Button::onPress(uint32_t) {
+void Button::onPress(uint32_t, float, float) {
     m_state.set(0.12f);
     requestRedraw();
 }
@@ -331,8 +354,10 @@ void Button::onClick(uint32_t button) {
     if (onClicked) onClicked(button);
 }
 
-void Button::onScroll(int d) {
-    if (onScrolled) onScrolled(d);
+bool Button::onScroll(int d) {
+    if (!onScrolled) return false;
+    onScrolled(d);
+    return true;
 }
 
 void Button::doPaint(Renderer& r) {

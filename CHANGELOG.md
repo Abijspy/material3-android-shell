@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **Native C++ shell, phases 2 and 3** (`shell/`):
+  - Input:
+    - Keyboard through xkbcommon, with key repeat and focus routing.
+    - Fractional scaling (wp-fractional-scale + viewporter).
+  - Popups:
+    - Anchored under the bar, closed by Esc or a click outside, with Material enter and exit motion.
+    - New controls: slider (with a centred balance mode), switch, scroll view and text field.
+  - Services:
+    - sd-bus on the event loop.
+    - Audio through libpulse on PipeWire: volume, left/right balance, per-channel levels and device switching.
+    - NetworkManager, BlueZ, UPower (with a sysfs fallback), brightness via logind, MPRIS, and a StatusNotifier tray that is both watcher and host, with theme, PNG, SVG and pixmap icons.
+  - Bar:
+    - New widgets: now playing, tray, network/Bluetooth/volume icons and UPower battery.
+    - New popups: Sound (with balance and channels), Wi-Fi, Bluetooth and Run.
+  - IPC: `status`, `popup`, `volume`, `brightness`, `media` and `tray`.
+  - Testing: headless tests can start real D-Bus buses, PipeWire with null sinks, and mock system services.
 - **Native C++ shell, phase 1** (`shell/`). A Wayland shell drawn directly with EGL/GLES2 and Pango, with no Qt, QML or Quickshell, following Noctalia's architecture with original code:
   - Core: a poll event loop, layer-shell surfaces with frame pacing, an SDF rounded-rect renderer, a scene graph with flex layout, and Material 3 motion.
   - Shared with the QML shell: it reads the same `config.json` and Matugen palette, and recolours live when either changes.
