@@ -30,7 +30,7 @@ std::string readAll(const std::string& path) {
 }
 
 // The blurred layers; the wallpaper and lock never are
-const char* kLayers[] = {"bar", "popup", "toasts", "osd"};
+const char* kLayers[] = {"bar", "popup", "toasts", "osd", "dock"};
 
 } // namespace
 

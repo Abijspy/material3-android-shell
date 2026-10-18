@@ -16,14 +16,14 @@
 | `keybinds.lua` | Apps, window management, workspaces, audio and media keys |
 | `shell.lua` | Starts the shell, panel shortcuts, region tools, layer rules — the only module `inject` mode needs |
 | `user_persistence.lua` | Written by the shell (monitor layouts, game mode) |
-| `keybinds_custom.lua` | Written by Settings → System → Keybinds (remaps, disabled binds, custom commands); not shipped, so updates never touch it |
+| `keybinds_custom.lua` | Written by Settings → Keybinds (remaps, disabled binds, custom commands); not shipped, so updates never touch it |
 | `user.lua` | **Your overrides** — loaded last, never overwritten |
 
 Personal settings belong in `~/.config/hypr/material3ui/user.lua`; updates never overwrite `apps.lua`, `user.lua`, `user_persistence.lua` or the generated `colors.lua`.
 
 ## Keybind editor
 
-Settings → System → Keybinds lists every Material3UI bind, live from `hyprctl binds -j`, grouped by Shell, Apps, Windows, Workspaces, Tools and Media.
+Settings → Keybinds lists every Material3UI bind, live from `hyprctl binds -j`, grouped by Shell, Apps, Windows, Workspaces, Tools and Media.
 
 - **Remap:** click a bind, pick modifiers with the chips, click the key field and press a key, then Save. The modifiers are chips because Hyprland catches combos it already knows before the shell sees them.
 - **Disable / Reset:** disabled binds move to their own list, where you can turn them back on. "Reset all to defaults" undoes every remap.

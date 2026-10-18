@@ -6,7 +6,9 @@
 #include "core/Process.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <filesystem>
+#include <unistd.h>
 
 namespace fs = std::filesystem;
 
@@ -44,10 +46,16 @@ Wallpaper::Wallpaper() {
 }
 
 std::string Wallpaper::path() const {
-    return stripUrl(Config::get().value<std::string>("/background/wallpaperPath", ""));
+    auto p = stripUrl(Config::get().value<std::string>("/background/wallpaperPath", ""));
+    // v3 (Quickshell) kept it under appearance.background
+    if (p.empty()) p = stripUrl(Config::get().value<std::string>("/appearance/background/wallpaperPath", ""));
+    // A fresh install starts on the shipped wallpaper
+    return p.empty() ? paths::dataFile("wallpapers/default_wallpaper.png") : p;
 }
 
 std::string Wallpaper::lockPath() const {
+    // The greeter shows the wallpaper synced for it
+    if (const char* forced = std::getenv("M3_WALLPAPER"); forced && *forced) return forced;
     const auto& c = Config::get();
     if (c.value<bool>("/lock/useSeparateWallpaper", false)) {
         const auto p = stripUrl(c.value<std::string>("/lock/wallpaperPath", ""));
@@ -90,7 +98,13 @@ void Wallpaper::recolour() {
     else return;
     cmd.insert(cmd.end(), {"--mode", dark ? "dark" : "light", "--type", scheme});
     run(cmd, [](int code, const std::string&) {
-        if (code != 0) log::warn("matugen failed ({}); the palette is unchanged", code);
+        if (code != 0) {
+            log::warn("matugen failed ({}); the palette is unchanged", code);
+            return;
+        }
+        // The login screen follows: copy the new wallpaper and palette to it
+        if (Config::get().value<bool>("/lock/syncGreeter", true) && access("/var/lib/material3ui-greeter", W_OK) == 0)
+            run({"material3ui-greeter", "sync", "--quiet"}, nullptr);
     });
 }
 

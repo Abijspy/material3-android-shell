@@ -29,6 +29,10 @@ std::string configFile() {
 }
 
 std::string colorsFile() {
+    // M3_COLORS_FILE: the greeter reads the palette synced for it. The state
+    // directory keeps the name Matugen's templates have always written to.
+    const std::string forced = env("M3_COLORS_FILE", "");
+    if (!forced.empty()) return forced;
     return env("XDG_STATE_HOME", home() + "/.local/state") + "/quickshell/user/generated/colors.json";
 }
 
@@ -52,9 +56,7 @@ std::string dataFile(const std::string& name) {
         env("M3_DATA_DIR", ""),
         exe / "../share/material3ui",
         exe / "../data", // shell/data, running from shell/build
-        exe / "../../dotfiles/.config/quickshell/material3ui/data", // running from shell/build
         "/usr/share/material3ui",
-        configDir() + "/../quickshell/material3ui/data",
     };
     for (const auto& dir : candidates) {
         if (dir.empty()) continue;

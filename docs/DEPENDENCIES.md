@@ -7,8 +7,8 @@ The installer reads `data/dependencies.json`, checks what is missing with `pacma
 | Component | Package | Description |
 | :--- | :--- | :--- |
 | **Compositor** | `hyprland` | The tiling Wayland compositor hosting the shell. |
-| **Framework** | `quickshell` | The engine (0.5.0+) used to build and run the shell. |
-| **Monitor** | bundled | `material3ui-sysmon`: CPU, RAM, temperature, disks, GPU and processes from `/proc` and `/sys` (needs only `python3`). |
+| **Shell** | built from `shell/` | The native C++ shell (`material3ui`), built with `meson` and `ninja` (`base-devel`) by the installer. |
+| **Shell libraries** | `wayland` `wayland-protocols` `wlr-protocols` `mesa` `pango` `cairo` `librsvg` `gdk-pixbuf2` `libxkbcommon` `nlohmann-json` `libpulse` `polkit` `pam` | Wayland and layer shell, OpenGL ES, text, icons and wallpapers, keyboard, JSON, audio, the polkit agent and the lock screen. |
 | **Theme** | `matugen` | Material 3 theme generation from wallpapers. |
 | **GTK Theme** | `adw-gtk-theme` | Libadwaita-like theme for GTK3 applications. |
 | **Scripting** | `python3` | Used by terminal color scripts and utilities. |
@@ -18,11 +18,11 @@ The installer reads `data/dependencies.json`, checks what is missing with `pacma
 
 | Service | Command | Description |
 | :--- | :--- | :--- |
-| **Audio** | `pipewire` | Audio management via `wpctl`. |
-| **Network** | `networkmanager` | Wi-Fi and Ethernet controls via `nmcli`. |
-| **Bluetooth** | `bluez` | Bluetooth management via `bluetoothctl`. |
+| **Audio** | `pipewire` `pipewire-pulse` | Volume, devices and balance through the PulseAudio API. |
+| **Network** | `networkmanager` | Wi-Fi and Ethernet over D-Bus. |
+| **Bluetooth** | `bluez` | Bluetooth over D-Bus. |
 | **Notify** | `libnotify` | System notifications via `notify-send`. |
-| **Auth** | `polkit` | Privileged actions via `pkexec`. |
+| **Auth** | `polkit` | The shell is the polkit agent. |
 | **Session** | `systemd` | Power management and session locking. |
 | **Portal (H)** | `xdg-desktop-portal-hyprland` | Screen sharing and desktop integration. |
 | **Portal (G)** | `xdg-desktop-portal-gtk` | File picker and standard desktop integration. |

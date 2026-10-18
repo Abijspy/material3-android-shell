@@ -16,10 +16,11 @@ When you move to Material3UI Shell, you are only replacing the "shell" portion o
 | Quick settings or control center | The Quick Settings panel |
 | App launcher or menu | The App Launcher paired with Spotlight Search |
 | Volume and brightness popups | Custom on screen display (OSD) overlays |
-| Lock screen | Hyprlock infused with Material3UI customizations |
-| Display settings | Built-in Display Settings for resolution, scale, and arrangement |
+| Lock screen | The shell's own lock screen (ext-session-lock and PAM), with hyprlock as a fallback |
+| Display settings | Built-in Display settings for brightness and night light; monitor layout stays in `monitors.lua` |
 | Bluetooth and Wi-Fi settings | Built-in controls within the Quick Settings and main Settings panel |
-| System monitor | A built-in System Monitor powered by the bundled `material3ui-sysmon` |
+| System monitor | A built-in System Monitor (<kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd>) |
+| Dock | A dock with pinned and running apps |
 
 ### What Material3UI Does Not Replace
 
@@ -33,8 +34,8 @@ Material3UI relies on standard Linux portals and your own choice of apps for the
 | **Text editor or IDE** | Your existing favorite editor |
 | **GTK and Qt theming** | Matugen generates GTK CSS, but you might want `nwg-look` or `qt6ct` for fine tuning |
 | **Authentication prompts** | Material3UI includes its own Polkit agent |
-| **Clipboard manager** | Built into Spotlight, utilizing `wl-clipboard` |
-| **Screenshot tool** | Built-in functionality utilizing `grim` and `slurp` |
+| **Clipboard manager** | Built in (<kbd>Super</kbd><kbd>V</kbd>), using `cliphist` and `wl-clipboard` |
+| **Screenshot tool** | Built in (<kbd>Super</kbd><kbd>G</kbd>), using `grim` and `slurp` |
 
 ## Setting Up Your New Environment
 
@@ -74,20 +75,20 @@ Run the installation script to get everything set up:
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Abijspy/material3-android-shell/main/install.sh)"
 ```
 
-During the prompt, it is highly recommended to install the core dependencies, the required fonts, and the Material3UI CLI tool. If you want the shell to automatically launch with Hyprland, say yes to the configuration injection step.
+During the prompts, install the core dependencies and the fonts. The installer builds the shell and sets Hyprland to start it.
 
-### 4. Get Familiar with the Material3UI CLI
-Every panel is reachable through the unified `material3ui` IPC target. `material3uictl` wraps it:
+### 4. Drive the shell from a terminal
+Every panel and action is a `material3ui msg` command:
 
-| What You Want to Do | Raw IPC | CLI |
-| :--- | :--- | :--- |
-| **Toggle Launcher** | `qs -c material3ui ipc call material3ui launcher` | `material3uictl launcher` |
-| **Toggle Dashboard** | `qs -c material3ui ipc call material3ui dashboard` | `material3uictl dashboard` |
-| **Toggle Settings** | `qs -c material3ui ipc call material3ui settings` | `material3uictl settings` |
-| **Set Wallpaper** | `qs -c material3ui ipc call material3ui wallpaper <file>` | `material3uictl wallpaper <file>` |
-| **Reload Shell** | `~/.config/quickshell/material3ui/scripts/restartshell.sh` | `material3uictl reload` |
+| What You Want to Do | Command |
+| :--- | :--- |
+| **Toggle Spotlight** | `material3ui msg launcher` |
+| **Toggle the Dashboard** | `material3ui msg popup dashboard` |
+| **Open Settings** | `material3ui msg settings` |
+| **Set the wallpaper** | `material3ui msg wallpaper set <file>` |
+| **Restart the shell** | `pkill -x material3ui; material3ui &` |
 
-Per-panel targets (`launcher`, `dashboard`, `settings`, `lock`, `region`, …) remain available; run `material3uictl targets` to list them.
+`material3ui msg help` lists every command; see the [IPC reference](IPC.md).
 
 ### 5. Keybinds
 With the default `full` Hyprland mode you do not need to write any bindings: they live in `~/.config/hypr/material3ui/shell.lua` (shell panels) and `keybinds.lua` (apps, windows, media). Override or add your own in `~/.config/hypr/material3ui/user.lua`:
@@ -95,7 +96,7 @@ With the default `full` Hyprland mode you do not need to write any bindings: the
 ```lua
 -- user.lua: loaded last, never overwritten
 hl.bind("SUPER + C", hl.dsp.exec_cmd("code"))
-hl.bind("SUPER + M", hl.dsp.exec_cmd("material3uictl dashboard"))
+hl.bind("SUPER + M", hl.dsp.exec_cmd("material3ui msg popup dashboard"))
 ```
 
 If you keep your own `hyprland.lua` (`--hypr inject`), adding `require("material3ui.shell")` gives you the shell, its panel shortcuts and region tools without changing anything else.
@@ -117,16 +118,15 @@ If you are coming from GNOME:
 
 ## Updating Safely
 
-When an update for Material3UI drops, your personal configurations are always kept safe. You do not even need to use the terminal to update. Simply open **Material3UI Settings**, navigate to the **About** section, and use the built in **Shell Update** feature. From there, you can choose to update just the shell or everything at once.
+When an update for Material3UI drops, run `update.sh` from your checkout (`update.sh all`, or `update.sh shell` for the shell alone). It pulls, rebuilds and reinstalls the shell (asking for sudo), refreshes the configs and restarts the shell. Your personal Hyprland keybinds, terminal settings and custom scripts are never overwritten.
 
-If you prefer the terminal, running `update.sh all` or `update.sh shell` works exactly the same. Whichever method you choose, your personal Hyprland keybinds, terminal settings, and custom scripts are completely ignored and will never be overwritten.
+System packages are updated from **Settings → Packages & Updates**.
 
 ## Troubleshooting Migration Issues
 
-**Tip: Run a Dependency Check**
-Before diving into manual troubleshooting, check the **Onboarding Panel** (which opens automatically on first launch) or go to **Material3UI Settings > About > Dependency Check**. This will instantly highlight if your system is missing any crucial packages required for the shell to function properly.
+**Tip:** `material3ui msg status` summarises every service the shell talks to (audio, network, Bluetooth, battery, media), so it is the quickest way to see what is missing.
 
-If your dependencies are completely met but you still face hiccups, here are some common migration solutions:
+Common migration problems:
 
 | Symptom | The Likely Cause | How to Fix It |
 | :--- | :--- | :--- |
@@ -134,7 +134,14 @@ If your dependencies are completely met but you still face hiccups, here are som
 | Screen sharing only shows a black screen | A missing Hyprland portal | Install and enable `xdg-desktop-portal-hyprland` |
 | Your old KDE panel is still showing up | Plasma is still running in the background | Remove `plasmashell` from your autostart entries |
 | GTK apps look completely unstyled | No GTK theme has been applied | Matugen should auto-generate your GTK CSS, but you can also use `nwg-look` to force a theme |
-| The terminal context menu does not open | The required terminal is missing | Make sure `kitty` is installed, as it is the default terminal |
 | Icons are missing throughout the shell | The correct font is not installed | Install `ttf-material-symbols-variable-git` from the AUR |
-| Your clipboard history is empty | `cliphist` is not running | Ensure `cliphist` is installed and running as a background daemon |
-| The avatar picker refuses to open | `zenity` is missing | Install the `zenity` package |
+| Your clipboard history is empty | `cliphist` is missing | Install `cliphist` and `wl-clipboard`; the shell starts the watchers itself |
+
+## Coming from Material3UI v3
+
+v4 replaces the Quickshell (QML) shell with the native `material3ui` binary:
+- `install.sh` and `update.sh` build and install it, then back up and remove `~/.config/quickshell/material3ui`.
+- Hyprland now starts `material3ui`, and every bind goes through `material3ui msg`.
+- `material3uictl` and `material3ui-sysmon` are removed. Use `material3ui msg` (see the [IPC reference](IPC.md)); the system monitor reads `/proc` itself.
+- Your keybind edits, wallpaper and Matugen colours carry over. Settings pages start from their defaults wherever v3 stored a value under a different key.
+- Once the shell runs, you can uninstall `quickshell-git` and the `qt6-*` packages it pulled in, unless other apps need them.

@@ -2,8 +2,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #  Material3UI Shell updater
 #  Usage: update.sh [all|shell] [stable|canary] [--force]
-#  Called by Settings → About → Update, or by hand. Uses the choices recorded
-#  by install.sh in ~/.config/material3ui/install_state.json.
+#  Run by hand to pull, rebuild the native
+#  shell and refresh configs. Uses the choices recorded by install.sh in
+#  ~/.config/material3ui/install_state.json. Installing the shell needs sudo.
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -17,7 +18,6 @@ STATE_FILE="$CONFIG_HOME/material3ui/install_state.json"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOT="$PROJECT_ROOT/dotfiles/.config"
 HYPR="$CONFIG_HOME/hypr"
-SHELL_DIR="$CONFIG_HOME/quickshell/material3ui"
 HYPR_PRESERVE=(apps.lua user.lua user_persistence.lua colors.lua)
 
 [[ -f "$STATE_FILE" ]] || { echo "install_state.json not found; run install.sh first." >&2; exit 1; }
@@ -32,12 +32,10 @@ fi
 
 case "$MODE" in all|shell) ;; *) echo "Usage: $0 [all|shell] [stable|canary] [--force]" >&2; exit 2 ;; esac
 
-# A dev checkout symlinks the shell profile into the repo; copying over it
-# would replace the symlink with a plain directory.
-if [[ -L "$SHELL_DIR" && "$FORCE" == false ]]; then
-    echo "✗ $SHELL_DIR is a symlink -> $(readlink "$SHELL_DIR") (dev setup)."
-    echo "  Update aborted; pull manually with: git -C \"$INSTALL_DIR\" pull"
-    echo "  Or re-run with --force."
+# A checkout with local changes is a dev setup: don't move it under the user
+if [[ -n "$(git -C "$INSTALL_DIR" status --porcelain --untracked-files=no 2>/dev/null)" && "$FORCE" == false ]]; then
+    echo "✗ $INSTALL_DIR has local changes (dev setup)."
+    echo "  Update aborted; pull manually, or re-run with --force."
     exit 1
 fi
 
@@ -60,10 +58,15 @@ fi
 
 ours() { [[ ! -e "$1" ]] || grep -qs "# Material3UI Configuration" "$1"; }
 
-echo "Updating shell..."
-mkdir -p "$SHELL_DIR"
-cp -a "$DOT/quickshell/material3ui/." "$SHELL_DIR/"
-cp "$PROJECT_ROOT/data/dependencies.json" "$SHELL_DIR/data/dependencies.json"
+echo "Building the shell..."
+BUILD="$INSTALL_DIR/shell/build-release"
+[[ -d "$BUILD" ]] && setup_flags=(--reconfigure) || setup_flags=()
+meson setup "${setup_flags[@]}" "$BUILD" "$INSTALL_DIR/shell" --prefix=/usr --sysconfdir=/etc --buildtype=release >/dev/null
+meson compile -C "$BUILD" | tail -1
+sudo meson install -C "$BUILD" --no-rebuild --quiet
+mkdir -p "$HOME/.local/share/material3ui"
+rm -rf "$HOME/.local/share/material3ui/scripts"
+cp -a "$INSTALL_DIR/dotfiles/.local/share/material3ui/scripts" "$HOME/.local/share/material3ui/"
 
 if [[ "$MODE" == all ]]; then
     if ours "$CONFIG_HOME/matugen/config.toml"; then
@@ -93,14 +96,29 @@ if [[ "$MODE" == all ]]; then
     fi
 fi
 
-install -Dm755 "$PROJECT_ROOT/dotfiles/.local/bin/material3uictl" "$HOME/.local/bin/material3uictl"
-ln -sf "$SHELL_DIR/scripts/sysmon/material3ui-sysmon" "$HOME/.local/bin/material3ui-sysmon"
+rm -f "$HOME/.local/bin/material3uictl" "$HOME/.local/bin/material3ui-sysmon" # v3 helpers
+# v3's Quickshell shell: kept in the backups, out of the way
+if [[ -d "$CONFIG_HOME/quickshell/material3ui" ]]; then
+    backup="$CONFIG_HOME/material3ui/backups/$(date +%Y%m%d-%H%M%S)/.config/quickshell"
+    mkdir -p "$backup" && mv "$CONFIG_HOME/quickshell/material3ui" "$backup/"
+    pkill -x quickshell 2>/dev/null || true
+    echo "Moved the old Quickshell shell to $backup"
+fi
 if [[ -d /usr/share/material3ui-greeter ]]; then
     if sudo -n true 2>/dev/null; then
         "$PROJECT_ROOT/greeter/material3ui-greeter" install && echo "Login screen updated."
     else
         echo "Login screen: run '$PROJECT_ROOT/greeter/material3ui-greeter install' to update it (needs sudo)."
     fi
+fi
+
+# Swap the running shell for the new build
+if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+    hyprctl reload >/dev/null || true
+    pkill -x material3ui || true
+    sleep 0.3
+    hyprctl dispatch exec material3ui >/dev/null
+    echo "Shell restarted."
 fi
 
 echo "Update successful!"

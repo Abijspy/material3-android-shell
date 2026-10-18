@@ -13,6 +13,11 @@ cache and Hyprland module paths), a unified "material3ui" IPC target, the
 bundled material3uictl CLI, an original logo replacing the NAnDoroid artwork, wallpaper IPC functions, a Material3UI v1 migration
 path in the installer, and the Midnight Dunes wallpaper.
 
+From v4 the Quickshell (QML) shell is removed and replaced by the native C++
+shell in shell/. Parts of the repository that came from NAnDoroid-shell and
+remain (the Matugen templates and theme hooks, and the Hyprland configuration
+layout) keep the attribution above.
+
 Material3UI Shell is distributed under the MIT License, WITHOUT ANY WARRANTY;
 see the LICENSE file for details.
 

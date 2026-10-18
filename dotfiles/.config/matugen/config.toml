@@ -40,7 +40,7 @@ output_path = '~/.config/gtk-4.0/gtk.css'
 [templates.kde_colors]
 input_path = '~/.config/matugen/templates/kde/color.txt'
 output_path = '~/.local/state/quickshell/user/generated/color.txt'
-post_hook = '~/.config/quickshell/material3ui/scripts/colors/apply_system_theme.sh'
+post_hook = '~/.local/share/material3ui/scripts/colors/apply_system_theme.sh'
 
 [templates.wallpaper]
 input_path = '~/.config/matugen/templates/wallpaper.txt'
@@ -82,4 +82,4 @@ input_path = '~/.config/matugen/templates/obsidian_matugen.css'
 [templates.terminal]
 input_path = '~/.config/matugen/templates/terminal/sequences.txt'
 output_path = '~/.local/state/quickshell/user/generated/terminal/sequences.txt'
-post_hook = "~/.config/quickshell/material3ui/scripts/colors/apply_terminal_colors.sh"
+post_hook = "~/.local/share/material3ui/scripts/colors/apply_terminal_colors.sh"

@@ -6,26 +6,6 @@
       "description": "Wayland compositor (Base)"
     },
     {
-      "name": "quickshell-git",
-      "command": "quickshell",
-      "description": "Desktop shell framework"
-    },
-    {
-      "name": "qt6-declarative",
-      "command": "qml6",
-      "description": "Qt6 QML library"
-    },
-    {
-      "name": "qt6-svg",
-      "command": "qml6",
-      "description": "Qt6 SVG support"
-    },
-    {
-      "name": "qt6-wayland",
-      "command": "qml6",
-      "description": "Qt6 Wayland support"
-    },
-    {
       "name": "python3",
       "command": "python3",
       "description": "Theme generation backend"
@@ -39,6 +19,86 @@
       "name": "jq",
       "command": "jq",
       "description": "JSON processing engine"
+    },
+    {
+      "name": "base-devel",
+      "command": "make",
+      "description": "Compiler toolchain (builds the shell)"
+    },
+    {
+      "name": "meson",
+      "command": "meson",
+      "description": "Build system for the native shell"
+    },
+    {
+      "name": "ninja",
+      "command": "ninja",
+      "description": "Build backend for meson"
+    },
+    {
+      "name": "wayland",
+      "command": "wayland-scanner",
+      "description": "Wayland client library and scanner"
+    },
+    {
+      "name": "wayland-protocols",
+      "command": "",
+      "description": "Wayland protocol definitions"
+    },
+    {
+      "name": "wlr-protocols",
+      "command": "",
+      "description": "wlroots protocols (layer shell)"
+    },
+    {
+      "name": "mesa",
+      "command": "",
+      "description": "EGL and OpenGL ES"
+    },
+    {
+      "name": "pango",
+      "command": "",
+      "description": "Text layout"
+    },
+    {
+      "name": "cairo",
+      "command": "",
+      "description": "2D drawing for text and icons"
+    },
+    {
+      "name": "librsvg",
+      "command": "",
+      "description": "SVG icons"
+    },
+    {
+      "name": "gdk-pixbuf2",
+      "command": "",
+      "description": "JPEG, PNG and WebP wallpapers"
+    },
+    {
+      "name": "libxkbcommon",
+      "command": "",
+      "description": "Keyboard layouts"
+    },
+    {
+      "name": "nlohmann-json",
+      "command": "",
+      "description": "JSON (build only)"
+    },
+    {
+      "name": "libpulse",
+      "command": "pactl",
+      "description": "Audio (PipeWire through pipewire-pulse)"
+    },
+    {
+      "name": "polkit",
+      "command": "pkexec",
+      "description": "Polkit agent library"
+    },
+    {
+      "name": "pam",
+      "command": "",
+      "description": "Lock screen authentication"
     }
   ],
   "services": [
@@ -76,6 +136,11 @@
       "name": "playerctl",
       "command": "playerctl",
       "description": "Media controller"
+    },
+    {
+      "name": "pipewire-pulse",
+      "command": "",
+      "description": "PulseAudio API on PipeWire (volume, devices)"
     }
   ],
   "utilities": [
@@ -168,6 +233,16 @@
       "name": "pacman-contrib",
       "command": "checkupdates",
       "description": "Safe update checks for Packages & Updates"
+    },
+    {
+      "name": "tesseract",
+      "command": "tesseract",
+      "description": "Copy text from the screen (OCR)"
+    },
+    {
+      "name": "tesseract-data-eng",
+      "command": "",
+      "description": "English OCR data"
     }
   ],
   "theming": [

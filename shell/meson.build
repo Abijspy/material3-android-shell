@@ -1,5 +1,5 @@
 project('material3ui', 'cpp', 'c',
-  version: '0.1.0',
+  version: '4.0.0',
   license: 'MIT',
   meson_version: '>= 1.1',
   default_options: ['cpp_std=c++20', 'warning_level=2', 'buildtype=debugoptimized'])
@@ -118,11 +118,11 @@ install_data('data/pam/material3ui', install_dir: get_option('sysconfdir') / 'pa
 install_data('data/material3ui-settings.desktop', install_dir: get_option('datadir') / 'applications')
 install_data('data/icons/material3ui-settings.svg', install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps')
 install_data('data/icons/material3ui-settings.svg', install_dir: get_option('datadir') / 'material3ui/icons')
-# Shared with the QML shell; absent when only shell/ is checked out
-emojis = '../dotfiles/.config/quickshell/material3ui/data/emojis.txt'
-if import('fs').exists(emojis)
-  install_data(emojis, install_dir: get_option('datadir') / 'material3ui')
-endif
+# Shipped data: emoji list, logo, wallpapers
+install_data('data/emojis.txt', install_dir: get_option('datadir') / 'material3ui')
+install_data('data/icons/Material3UI.svg', install_dir: get_option('datadir') / 'material3ui/icons')
+install_data('data/wallpapers/default_wallpaper.png', 'data/wallpapers/midnight-dunes.png',
+  install_dir: get_option('datadir') / 'material3ui/wallpapers')
 
 executable('material3ui', sources, protocol_sources,
   include_directories: include_directories('src'),

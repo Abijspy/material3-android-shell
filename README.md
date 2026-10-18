@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="./dotfiles/.config/quickshell/material3ui/assets/icons/Material3UI.svg" alt="Material3UI logo" width="112"/>
+  <img src="./shell/data/icons/Material3UI.svg" alt="Material3UI logo" width="112"/>
 </p>
 
 <h1 align="center">Material3UI</h1>
 
 <p align="center">
   <b>One design language, from the login screen to the package manager.</b><br/>
-  A Material 3 desktop shell for Hyprland, written in Quickshell.
+  A Material 3 desktop shell for Hyprland, written in C++ for Wayland.
 </p>
 
 <p align="center">
@@ -29,7 +29,9 @@
 
 Most Linux desktops are a patchwork. The bar comes from one project, the lock screen from another, the login screen from a third, and updates run in a terminal. Each has its own fonts, colours and idea of what a button looks like.
 
-**Material3UI replaces the patchwork with one shell.** Your wallpaper sets the colours. The same palette, shapes and motion carry through the bar, panels, notifications, lock screen, login screen, password prompts and update manager, and out into GTK, KDE and terminal apps.
+**Material3UI replaces the patchwork with one shell.** Your wallpaper sets the colours. The same palette, shapes and motion carry through the bar, dock, panels, notifications, lock screen, login screen, password prompts and update manager, and out into GTK, KDE and terminal apps.
+
+**v4 is native.** The shell is one C++ program that talks to Wayland, D-Bus, PipeWire and PAM directly. It renders every pixel itself with OpenGL ES and leaves the blur to the compositor. Qt, QML and Quickshell are gone.
 
 ## Install in one line
 
@@ -64,16 +66,16 @@ From the moment the machine boots:
 
 **1 · Log in.** The login screen runs on greetd and uses the same clock, password pill and entrance animation as the lock screen. Pick a user and a session, or suspend and shut down from there. When you change your wallpaper or avatar, the login screen picks it up automatically. → [Login screen](docs/GREETER.md)
 
-**2 · The desktop.** The bar's centre holds a dynamic island. It grows to show the song that's playing, a pomodoro timer, a workspace switch or an incoming notification, then shrinks back.
+**2 · The desktop.** The bar's centre holds a dynamic island. It grows to show the song that's playing, a workspace switch or an incoming notification, then shrinks back. The bar and panels are translucent with the compositor's blur behind them. A dock on the bottom edge keeps your pinned and running apps, and slides away until you need it.
 
-**3 · Tap <kbd>Super</kbd>.** Spotlight opens. It finds apps, files and commands, does maths, and keeps your clipboard history and an emoji picker.
+**3 · Tap <kbd>Super</kbd>.** Spotlight opens. It finds apps, files and commands, does maths, and has an emoji picker. <kbd>Super</kbd><kbd>V</kbd> opens the clipboard history, images included.
 
-**4 · Swipe through the panels.**
-- **Quick Settings:** Wi-Fi, Bluetooth, audio, brightness, night light, VPN.
-- **Notification Centre** and **Dashboard:** clock, alarms, schedule and widgets.
+**4 · Open the panels.**
+- **Quick Settings:** volume, brightness, Wi-Fi, Bluetooth, Do Not Disturb, Caffeine, night light, and the connected network's live download and upload speed.
+- **Notification Centre** and **Dashboard:** notifications, the clock and a calendar.
 - **Overview:** every workspace at a glance.
 
-**5 · Change the wallpaper.** Use a static image, a video, an online collection or a Wallpaper Engine scene. Matugen builds a new Material 3 palette from it, and the whole desktop recolours, GTK, KDE, Alacritty, kitty and Hyprland's window borders included.
+**5 · Change the wallpaper.** Pick an image and Matugen builds a new Material 3 palette from it, or seed the palette from an accent colour you choose. The whole desktop recolours, GTK, KDE, Alacritty, kitty and Hyprland's window borders included.
 
 **6 · Something asks for your password.** The prompt comes from the shell's own polkit agent, so it looks like the rest of the desktop and not like a 2009 dialog box.
 
@@ -84,9 +86,9 @@ From the moment the machine boots:
 
 → [Packages & Updates](docs/PACKAGES.md)
 
-**8 · Something feels slow.** <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd> opens the system monitor: CPU, memory, temperatures, disks, GPU and processes. Its data comes from `material3ui-sysmon`, a small bundled backend that reads `/proc` and `/sys` and needs only Python. → [System monitor](docs/SYSMON.md)
+**8 · Something feels slow.** <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd> opens the system monitor: CPU, memory, disks and processes, read straight from `/proc`.
 
-**9 · Grab part of the screen.** <kbd>Super</kbd><kbd>Shift</kbd><kbd>S</kbd> takes a region screenshot. There are also tools to read text (OCR), scan QR codes, search an image visually and record the screen.
+**9 · Grab part of the screen.** <kbd>Super</kbd><kbd>G</kbd> opens the screenshot tool, which captures a region, a window or the whole screen, with a delay. Shots are copied to the clipboard and can open in an editor. <kbd>Super</kbd><kbd>Shift</kbd><kbd>S</kbd> grabs a region straight away. <kbd>Super</kbd><kbd>Shift</kbd><kbd>X</kbd> copies the text in a region (OCR), and <kbd>Super</kbd><kbd>Shift</kbd><kbd>R</kbd> starts or stops a screen recording.
 
 ## Keys worth learning
 
@@ -98,42 +100,50 @@ From the moment the machine boots:
 | <kbd>Super</kbd><kbd>A</kbd> | Notifications | <kbd>Super</kbd><kbd>V</kbd> | Clipboard history |
 | <kbd>Super</kbd><kbd>D</kbd> | Dashboard | <kbd>Super</kbd><kbd>.</kbd> | Emoji |
 | <kbd>Super</kbd><kbd>Tab</kbd> | Overview | <kbd>Super</kbd><kbd>Shift</kbd><kbd>S</kbd> | Screenshot a region |
-| <kbd>Super</kbd><kbd>G</kbd> | Quick actions | <kbd>Super</kbd><kbd>Shift</kbd><kbd>X</kbd> | Copy text from screen (OCR) |
+| <kbd>Super</kbd><kbd>G</kbd> | Screenshot tool | <kbd>Super</kbd><kbd>Shift</kbd><kbd>X</kbd> | Copy text from screen (OCR) |
 | <kbd>Super</kbd><kbd>I</kbd> | Settings | <kbd>Super</kbd><kbd>Shift</kbd><kbd>R</kbd> | Record a region |
 | <kbd>Ctrl</kbd><kbd>Super</kbd><kbd>T</kbd> | Wallpapers | <kbd>Super</kbd><kbd>L</kbd> | Lock |
 | <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd> | System monitor | <kbd>Super</kbd><kbd>Esc</kbd> | Power menu |
 
-Inside any panel, press <kbd>/</kbd> for the shortcut cheatsheet. Window and workspace binds (<kbd>Super</kbd><kbd>1…0</kbd>, <kbd>Super</kbd><kbd>Q</kbd>, <kbd>Super</kbd><kbd>F</kbd>, ...) are in [`keybinds.lua`](dotfiles/.config/hypr/material3ui/keybinds.lua). To change any of them, use **Settings → System → Keybinds** (see below).
+Window and workspace binds (<kbd>Super</kbd><kbd>1…0</kbd>, <kbd>Super</kbd><kbd>Q</kbd>, <kbd>Super</kbd><kbd>F</kbd>, ...) are in [`keybinds.lua`](dotfiles/.config/hypr/material3ui/keybinds.lua). To change any of them, use **Settings → Keybinds** (see below).
 
 ## Make it yours
 
-Most settings live in the built-in **Settings** app (<kbd>Super</kbd><kbd>I</kbd>): bar modules and layout, clock faces, lock screen style, fonts, UI scale, the update checker, login screen sync and more.
+Most settings live in the built-in **Settings** app (<kbd>Super</kbd><kbd>I</kbd>, or the gear in Quick Settings). It has pages for:
+- **Network:** Wi-Fi, with the connection's details and live speeds.
+- **Devices and sound:** Bluetooth, sound (with left/right balance), and display.
+- **Look:** wallpaper and colour, and Look & feel: blur, transparency, corner roundness and animation speed.
+- **Bar and dock:** the status bar (position, plus a layout editor for its modules) and the dock.
+- **Tools:** clipboard and screenshots.
+- **Session:** notifications, and lock & idle.
+- **Keybinds, Packages & Updates, and About.**
 
 For everything else, here is which file to edit. Updates never overwrite the files marked ✎.
 
 | I want to... | Edit |
 | :--- | :--- |
 | Use a different terminal, browser or file manager | ✎ `~/.config/hypr/material3ui/apps.lua` |
-| Remap, disable or add keybinds | **Settings → System → Keybinds** (saved to ✎ `keybinds_custom.lua`) |
-| Set left/right balance or per-channel volume | **Settings → Audio → Channels** |
+| Remap, disable or add keybinds | **Settings → Keybinds** (saved to ✎ `keybinds_custom.lua`) |
+| Rearrange the bar | **Settings → Status bar → Modules** |
+| Pin apps to the dock | **Settings → Dock**, or right-click an app in the dock |
 | Add my own rules, monitors or autostart | ✎ `~/.config/hypr/material3ui/user.lua` |
 | Understand the Hyprland setup | [docs/HYPRLAND.md](docs/HYPRLAND.md) |
-| Script the shell from a terminal or another program | `material3uictl` (below) |
+| Script the shell from a terminal or another program | `material3ui msg` (below) |
 
 ### Drive it from the terminal
 
-Every panel and action is exposed through one IPC target, and `material3uictl` wraps it:
+Every panel and action is a command on the shell's IPC socket, sent with `material3ui msg`:
 
 ```bash
-material3uictl dashboard              # toggle any panel by name
-material3uictl wallpaper ~/sunset.jpg # apply a wallpaper; "next" cycles
-material3uictl darkmode               # flip light / dark
-material3uictl updates count          # pending updates, ready for scripts
-material3uictl updates upgrade        # upgrade in a terminal
-material3uictl lock
+material3ui msg popup dashboard              # toggle a panel
+material3ui msg settings dock                # open Settings on a page
+material3ui msg wallpaper set ~/sunset.jpg   # apply a wallpaper; "next" cycles
+material3ui msg screenshot region            # or window, screen, ocr
+material3ui msg volume set 40
+material3ui msg lock
 ```
 
-`material3uictl help` lists every command. The raw IPC target and the per-panel targets are documented in the [IPC reference](docs/IPC.md).
+`material3ui msg help` lists every command, and the [IPC reference](docs/IPC.md) documents them.
 
 ## Safe by default
 
@@ -142,7 +152,7 @@ A desktop shell touches a lot of your system, so the installer and updater are b
 - **Nothing is overwritten silently.** Every replaced file is copied to `~/.config/material3ui/backups/<timestamp>/` first.
 - **Everything is logged** to `~/.cache/material3ui/install-*.log`.
 - **You review before it runs.** It lists missing packages (found with `pacman -T`) and every file it will write, and waits for your confirmation.
-- **Updates keep your changes.** `./update.sh` preserves `apps.lua`, `user.lua`, your keybind edits and your colours, and remembers which Hyprland mode you chose.
+- **Updates keep your changes.** `./update.sh` rebuilds the shell and preserves `apps.lua`, `user.lua`, your keybind edits and your colours, and remembers which Hyprland mode you chose.
 - **Upgrades stay interactive.** Package installs and upgrades run in your own terminal, where you can see and answer every pacman or sudo prompt.
 - **The login screen is optional** and installs separately. If its step fails, the rest of the install carries on.
 
@@ -151,22 +161,21 @@ A desktop shell touches a lot of your system, so the installer and updater are b
 ```mermaid
 flowchart LR
     W[Wallpaper] --> M[Matugen] --> P[Material 3 palette]
-    P --> S[Quickshell shell]
+    P --> S[material3ui: C++ shell]
     P --> A[GTK · KDE · terminals · Hyprland borders]
-    S -- auto sync --> G[greetd login screen]
-    S <-- IPC --> C[material3uictl · Hyprland binds]
-    S --- D[material3ui-sysmon]
+    S -- auto sync --> G[material3ui greeter on greetd]
+    S <-- IPC --> C[material3ui msg · Hyprland binds]
+    S --- X[Wayland · D-Bus · PipeWire · PAM]
     S --- U[pacman · AUR · Flatpak]
 ```
 
 | Path | Contents |
 | :--- | :--- |
-| [`dotfiles/.config/quickshell/material3ui/`](dotfiles/.config/quickshell/material3ui) | The shell: panels, services, widgets |
+| [`shell/`](shell) | The shell: Wayland, rendering, services and every panel, in C++ ([architecture](shell/README.md)) |
 | [`dotfiles/.config/hypr/`](dotfiles/.config/hypr) | Modular Hyprland Lua config |
 | [`dotfiles/.config/matugen/`](dotfiles/.config/matugen) | Colour templates for other apps |
-| [`greeter/`](greeter) | The greetd login screen and the `material3ui-greeter` tool |
-| [`scripts/sysmon/`](scripts/sysmon) | The system monitor backend |
-| [`shell/`](shell) | The native C++ shell, in progress: no Qt or QML ([roadmap](shell/README.md)) |
+| [`dotfiles/.local/share/material3ui/`](dotfiles/.local/share/material3ui) | Theme hooks Matugen runs (GTK, KDE, terminals) |
+| [`greeter/`](greeter) | The greetd session for the login screen and the `material3ui-greeter` tool |
 | [`data/dependencies.json`](data/dependencies.json) | What the installer installs ([readable list](docs/DEPENDENCIES.md)) |
 
 ## FAQ
@@ -180,7 +189,7 @@ No. Pick `--hypr inject` and the installer adds three `require` lines to your ex
 <details>
 <summary><b>Does it work on Fedora, Debian or NixOS?</b></summary>
 
-Not officially. The installer, the update checker and package search are built on pacman and the AUR. The shell itself is plain QML and may run elsewhere if you install the dependencies yourself, but that setup isn't supported.
+Not officially. The installer, the update checker and package search are built on pacman and the AUR. The shell itself builds with meson wherever its libraries exist, and its Hyprland features need Hyprland, but other setups aren't supported.
 </details>
 
 <details>
@@ -196,6 +205,12 @@ For installing, yes: the installer uses yay, and installs it if it's missing. AU
 </details>
 
 <details>
+<summary><b>I used v3. What happened to Quickshell?</b></summary>
+
+v4 replaces it. The installer and `update.sh` build the native shell, back up and remove `~/.config/quickshell/material3ui`, and switch Hyprland to start `material3ui`. Your keybinds, wallpaper and colours carry over. `material3uictl` is gone: use `material3ui msg` instead. You can uninstall `quickshell-git` afterwards.
+</details>
+
+<details>
 <summary><b>Can I see the login screen without logging out?</b></summary>
 
 Yes: run `material3ui-greeter preview`.
@@ -203,10 +218,10 @@ Yes: run `material3ui-greeter preview`.
 
 ## Credits
 
-Material3UI began as a fork of **[NAnDoroid-shell](https://github.com/na-ive/nandoroid-shell)** by [na-ive](https://github.com/na-ive), and is MIT-licensed with its authors' permission. Since the fork it has added its own installer, Hyprland setup, login screen, polkit agent, package manager, system monitor and logo. See [NOTICE](NOTICE) for what changed, and the [upstream changelog](docs/UPSTREAM_CHANGELOG.md) for NAnDoroid's history.
+Material3UI began as a fork of **[NAnDoroid-shell](https://github.com/na-ive/nandoroid-shell)** by [na-ive](https://github.com/na-ive), and is MIT-licensed with its authors' permission. Since the fork it has added its own installer, Hyprland setup, login screen, polkit agent, package manager and logo, and in v4 it was rewritten as a native C++ shell. Its architecture follows [Noctalia](https://github.com/noctalia-dev/noctalia), though none of Noctalia's code is used. See [NOTICE](NOTICE) for what changed, and the [upstream changelog](docs/UPSTREAM_CHANGELOG.md) for NAnDoroid's history.
 
 It also stands on the work of:
-- [Quickshell](https://quickshell.org) by outfoxxed: the framework.
+- [Quickshell](https://quickshell.org) by outfoxxed: the framework v1–v3 were built on.
 - [end-4/dots-hyprland](https://github.com/end-4/dots-hyprland): architecture.
 - [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell): installer flow, config layout and system monitor design.
 - [end4-pC](https://github.com/pctrade/end4-pC), [ii-p3drovfx](https://github.com/P3DROVFX/ii-p3drovfx), [ii-vynx](https://github.com/vaguesyntax/ii-vynx) and [Ambxst](https://github.com/Axenide/Ambxst): UI and dynamic island ideas.

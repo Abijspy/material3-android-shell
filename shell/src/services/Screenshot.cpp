@@ -16,6 +16,24 @@ namespace fs = std::filesystem;
 
 namespace m3 {
 
+namespace {
+
+std::string trimmed(std::string s) {
+    while (!s.empty() && (s.back() == '\n' || s.back() == ' ')) s.pop_back();
+    return s;
+}
+
+std::string stamp() {
+    const std::time_t t = std::time(nullptr);
+    std::tm tm{};
+    localtime_r(&t, &tm);
+    char buf[64];
+    std::strftime(buf, sizeof buf, "%Y-%m-%d_%H-%M-%S", &tm);
+    return buf;
+}
+
+} // namespace
+
 Screenshot& Screenshot::get() {
     static Screenshot instance;
     return instance;
@@ -63,8 +81,7 @@ void Screenshot::capture(Mode mode, int delayMs, const std::string& output) {
         }
         case Mode::Region:
             run({"slurp", "-d"}, [this](int code, const std::string& out) {
-                std::string geometry = out;
-                while (!geometry.empty() && (geometry.back() == '\n' || geometry.back() == ' ')) geometry.pop_back();
+                const std::string geometry = trimmed(out);
                 if (code != 0 || geometry.empty()) {
                     m_busy = false; // cancelled with Esc
                     return;
@@ -76,16 +93,62 @@ void Screenshot::capture(Mode mode, int delayMs, const std::string& output) {
     });
 }
 
+void Screenshot::ocr() {
+    run({"slurp", "-d"}, [](int code, const std::string& out) {
+        const std::string geometry = trimmed(out);
+        if (code != 0 || geometry.empty()) return;
+        run({"sh", "-c", "grim -g \"$1\" - | tesseract - - 2>/dev/null", "sh", geometry}, [](int, const std::string& text) {
+            if (trimmed(text).empty()) {
+                run({"notify-send", "-a", "Screenshot", "No text found", "Is tesseract installed?"}, nullptr);
+                return;
+            }
+            run({"wl-copy"}, nullptr, trimmed(text));
+            run({"notify-send", "-a", "Screenshot", "Text copied", trimmed(text).substr(0, 120)}, nullptr);
+        });
+    });
+}
+
+void Screenshot::toggleRecording(bool region, const std::string& output) {
+    if (m_recording) {
+        // SIGINT lets wf-recorder finish the file
+        run({"pkill", "-INT", "-x", "wf-recorder"}, nullptr);
+        return;
+    }
+    auto start = [this](const std::vector<std::string>& target) {
+        std::string dir = paths::home() + "/Videos/Recordings";
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        const std::string file = dir + "/Recording_" + stamp() + ".mp4";
+        std::vector<std::string> argv = {"wf-recorder"};
+        argv.insert(argv.end(), target.begin(), target.end());
+        argv.insert(argv.end(), {"-f", file});
+        m_recording = true;
+        recordingChanged.emit();
+        run(argv, [this, file](int code, const std::string&) {
+            m_recording = false;
+            recordingChanged.emit();
+            if (code < 0) {
+                run({"notify-send", "-a", "Screen recording", "Recording failed", "Is wf-recorder installed?"}, nullptr);
+                return;
+            }
+            run({"notify-send", "-a", "Screen recording", "Recording saved", fs::path(file).filename().string()}, nullptr);
+        });
+    };
+    if (!region) {
+        start(output.empty() ? std::vector<std::string>{} : std::vector<std::string>{"-o", output});
+        return;
+    }
+    run({"slurp", "-d"}, [start](int code, const std::string& out) {
+        const std::string geometry = trimmed(out);
+        if (code == 0 && !geometry.empty()) start({"-g", geometry});
+    });
+}
+
 void Screenshot::shoot(const std::vector<std::string>& target) {
     const std::string dir = directory();
     std::error_code ec;
     fs::create_directories(dir, ec);
-    const std::time_t t = std::time(nullptr);
-    std::tm tm{};
-    localtime_r(&t, &tm);
-    char stamp[64];
-    std::strftime(stamp, sizeof stamp, "%Y-%m-%d_%H-%M-%S", &tm);
-    const std::string file = dir + "/Screenshot_" + stamp + ".png";
+    const std::string file = dir + "/Screenshot_" + stamp() + ".png";
 
     std::vector<std::string> argv = {"grim"};
     argv.insert(argv.end(), target.begin(), target.end());

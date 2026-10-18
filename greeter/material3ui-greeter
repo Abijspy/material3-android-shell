@@ -35,18 +35,16 @@ cmd_install() {
     local enable=0
     [[ "${1:-}" == --enable ]] && enable=1
     command -v greetd >/dev/null 2>&1 || pacman -Qq greetd >/dev/null 2>&1 || die "greetd is not installed (sudo pacman -S greetd)."
-    command -v qs >/dev/null 2>&1 || command -v quickshell >/dev/null 2>&1 || die "Quickshell is not installed."
-    [[ -f "$SRC/shell.qml" ]] || die "Run this from the repository's greeter/ directory (missing $SRC/shell.qml)."
+    command -v material3ui >/dev/null 2>&1 || die "The material3ui shell is not installed (run install.sh)."
+    [[ -f "$SRC/greet-run.sh" ]] || die "Run this from the repository's greeter/ directory (missing $SRC/greet-run.sh)."
     getent passwd greeter >/dev/null || die "The 'greeter' user is missing; reinstall greetd."
 
     local user; user="$(target_user)"
     say "Installing greeter files to $SHARE"
     as_root rm -rf "$SHARE"
-    as_root install -d -m 755 "$SHARE" "$SHARE/core" "$SHARE/components"
-    as_root install -m 644 "$SRC"/shell.qml "$SRC"/GreeterSurface.qml "$SRC"/hyprland.lua "$SHARE/"
-    as_root install -m 644 "$SRC"/core/* "$SHARE/core/"
-    as_root install -m 644 "$SRC"/components/* "$SHARE/components/"
-    as_root install -m 755 "$SRC"/greet-hyprland.sh "$SHARE/greet-hyprland.sh"
+    as_root install -d -m 755 "$SHARE"
+    as_root install -m 644 "$SRC"/hyprland.lua "$SHARE/"
+    as_root install -m 755 "$SRC"/greet-hyprland.sh "$SRC"/greet-run.sh "$SHARE/"
     as_root install -m 755 "$SRC"/material3ui-greeter "$BIN"
     ok "Greeter installed"
 
@@ -203,15 +201,13 @@ PY
 
 # ── preview / status / uninstall ─────────────────────────────────────────────
 cmd_preview() {
-    local qml="$SHARE/shell.qml"
-    [[ -f "$SRC/shell.qml" ]] && qml="$SRC/shell.qml"
     [[ -n "${WAYLAND_DISPLAY:-}" ]] || die "Run the preview inside a Wayland session."
-    say "Previewing $qml (type \"fail\" to test an error, anything else to close)"
-    env -u GREETD_SOCK M3UI_GREETER_DATA="$DATA" qs -p "$qml"
+    say "Previewing the greeter (logins are disabled; Ctrl+C here closes it)"
+    env -u GREETD_SOCK sh "$SRC/greet-run.sh"
 }
 
 cmd_status() {
-    [[ -f "$SHARE/shell.qml" ]] && ok "Installed in $SHARE" || say "Not installed"
+    [[ -f "$SHARE/greet-run.sh" ]] && ok "Installed in $SHARE" || say "Not installed"
     grep -qs "material3ui-greeter" "$GREETD_CONF" && ok "greetd uses the Material3UI greeter" || say "greetd is not configured for it"
     systemctl is-enabled --quiet greetd.service 2>/dev/null && ok "greetd.service enabled" || say "greetd.service not enabled"
     [[ -w "$DATA" ]] && ok "$(id -un) can sync without sudo" || say "Sync needs sudo"

@@ -87,7 +87,7 @@ def symbolic_svg():
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
-        here, "..", "dotfiles/.config/quickshell/material3ui/assets/icons")
+        here, "..", "shell/data/icons")
     os.makedirs(out, exist_ok=True)
     for name, content in (("Material3UI.svg", full_svg()), ("material3ui-symbolic.svg", symbolic_svg())):
         with open(os.path.join(out, name), "w") as f:

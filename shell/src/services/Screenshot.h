@@ -20,14 +20,22 @@ public:
     // caller's popup has closed by then).
     void capture(Mode mode, int delayMs, const std::string& output);
     std::string directory() const;
+
+    // Text in a picked region, recognised by tesseract, onto the clipboard
+    void ocr();
+    // Screen recording with wf-recorder: the first call starts (a picked
+    // region, or the whole output), the next stops and saves
+    void toggleRecording(bool region, const std::string& output);
+    bool recording() const { return m_recording; }
     std::vector<std::string> recent(size_t count) const; // newest first
 
     Signal<const std::string&> taken; // the saved file
+    Signal<> recordingChanged;
 
 private:
     Screenshot() = default;
     void shoot(const std::vector<std::string>& target);
-    bool m_busy = false;
+    bool m_busy = false, m_recording = false;
 };
 
 } // namespace m3

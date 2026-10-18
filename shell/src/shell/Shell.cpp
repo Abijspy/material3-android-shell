@@ -259,7 +259,7 @@ void Shell::registerIpc() {
         for (auto& [_, bar] : m_bars) bar->setVisible(m_barsVisible);
         return std::string(m_barsVisible ? "shown" : "hidden");
     });
-    ipc.add("popup", "popup <quicksettings|notifications|audio|network|bluetooth|power|run>: toggle a panel",
+    ipc.add("popup", "popup <quicksettings [wifi]|notifications|dashboard|overview|sysmon|power|audio|network|bluetooth|run>: toggle a panel",
             [this](const IpcServer::Args& a) {
         if (a.empty()) return std::string("error: popup needs a name");
         // Status panels open under the right end of the bar; the dashboard
@@ -278,11 +278,15 @@ void Shell::registerIpc() {
         togglePopup("clipboard", focusedOutput(), -1);
         return std::string(m_popup && !m_popup->closing() ? "open" : "closed");
     });
-    ipc.add("screenshot", "screenshot [region|window|screen] [delay s]: the tool, or capture at once",
+    ipc.add("screenshot", "screenshot [region|window|screen [delay s]|ocr]: the tool, or capture at once",
             [this](const IpcServer::Args& a) {
         if (a.empty()) {
             togglePopup("screenshot", focusedOutput(), -1);
             return std::string(m_popup && !m_popup->closing() ? "open" : "closed");
+        }
+        if (a[0] == "ocr") {
+            Screenshot::get().ocr();
+            return std::string("pick a region");
         }
         const auto mode = a[0] == "window" ? Screenshot::Mode::Window : a[0] == "screen" ? Screenshot::Mode::Screen
                         : a[0] == "region" ? Screenshot::Mode::Region : static_cast<Screenshot::Mode>(-1);
@@ -295,6 +299,13 @@ void Shell::registerIpc() {
         auto* out = focusedOutput();
         Screenshot::get().capture(mode, delay * 1000, out ? out->name : "");
         return std::string("capturing");
+    });
+    ipc.add("record", "record [region|screen]: start screen recording, or stop it", [this](const IpcServer::Args& a) {
+        auto& s = Screenshot::get();
+        const bool was = s.recording();
+        auto* out = focusedOutput();
+        s.toggleRecording(a.empty() || a[0] != "screen", out ? out->name : "");
+        return std::string(was ? "stopping" : "recording");
     });
     ipc.add("notifications", "notifications [list|clear|dnd on|dnd off]", [](const IpcServer::Args& a) {
         auto& n = Notifications::get();

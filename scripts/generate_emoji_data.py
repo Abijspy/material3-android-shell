@@ -76,7 +76,7 @@ def parse(text: str):
 
 def main() -> None:
     out = sys.argv[1] if len(sys.argv) > 1 else (
-        "dotfiles/.config/quickshell/material3ui/data/emojis.txt"
+        "shell/data/emojis.txt"
     )
     order = {}
     try:

@@ -203,6 +203,9 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi) {
     auto* date = head->add<Label>(today());
     date->setSize(18)->setWeight(500);
     date->grow = true;
+    iconButton(head, "settings", [] {
+        if (open) open("settings");
+    });
     iconButton(head, "lock", [&popup] {
         popup.close();
         if (lock) lock();

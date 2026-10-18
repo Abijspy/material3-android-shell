@@ -42,7 +42,7 @@ The installer runs seven steps:
 3. **Dependency review** lists what is already installed and what is missing, and asks before installing anything.
 4. **Packages** are installed with `yay` (bootstrapped when it is missing), followed by Google Sans Flex and optional extras.
 5. **Configuration review** shows every file that will be written. Existing files are marked and backed up to `~/.config/material3ui/backups/<timestamp>/`. Configs without the `# Material3UI Configuration` marker (your own Matugen or Alacritty setup) are left alone.
-6. **Deploy** installs the shell, Matugen templates, Alacritty config, Hyprland modules and `material3uictl`, sets the XDG default file manager and browser, and removes Material3UI v1 helpers if present.
+6. **Deploy** builds the shell from `shell/` with meson and installs it to `/usr` (sudo: the lock screen's PAM file goes to `/etc/pam.d`). It then installs the Matugen templates and theme hooks, Alacritty config and Hyprland modules, and sets the XDG default file manager and browser. It also backs up and removes the v3 Quickshell shell and older helpers if present.
 7. **Summary** offers to reload Hyprland and start the shell when you are already in a Hyprland session.
 
 ### Unattended installs
@@ -62,10 +62,11 @@ The installer runs seven steps:
 ## Post-Installation Steps
 
 ### Starting the Shell
-If you allowed the installer to inject configurations, you can simply restart Hyprland. Otherwise, you can launch the shell manually:
+Hyprland starts the shell from `shell.lua`. To start or restart it by hand:
 
 ```bash
-quickshell -c material3ui
+pkill -x material3ui; material3ui &
+material3ui msg ping        # → pong
 ```
 
 ### Verifying Environment Portals
@@ -123,7 +124,6 @@ If all dependencies are met and you still face issues, check these common soluti
 | File picker popups do not appear | Make sure `xdg-desktop-portal-gtk` is running. |
 | Screen share dialogs do not appear | Make sure `xdg-desktop-portal-hyprland` is running. |
 | Terminal colors are not applying | Verify that `python3` is installed on your system. |
-| The terminal context menu does not open | Ensure `kitty` is installed, as it is the default terminal used. |
 | Audio effects are not working | Make sure `easyeffects --daemon` is running in the background. |
-| Do Not Disturb does not sync with events | Check if the "Focus" toggle is enabled for your event in the Dashboard. |
-| The shell refuses to start | Run `quickshell -c material3ui` from a terminal and check the output for errors. |
+| The shell refuses to start | Run `material3ui` from a terminal and check the output for errors. |
+| The shell does not build | Run `./install.sh` again without `--skip-deps`, or install the libraries in [DEPENDENCIES.md](DEPENDENCIES.md). |

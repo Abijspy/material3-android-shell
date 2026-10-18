@@ -1,6 +1,25 @@
 # Changelog
 
-## Unreleased
+## v4.0.0 — 2026-10-18
+
+**The native shell replaces Quickshell.** Material3UI is now one C++ program (`material3ui`) that talks to Wayland, D-Bus, PipeWire and PAM directly, and Qt, QML and Quickshell are no longer used.
+
+Breaking changes:
+- **The shell:** the QML shell (`~/.config/quickshell/material3ui`) is removed. `install.sh` and `update.sh` build the shell from `shell/` with meson, install it to `/usr` (with sudo, for the lock screen's PAM file), back up and remove the old profile, and start `material3ui`.
+- **IPC:** `material3ui msg <command>` replaces `qs -c material3ui ipc call …` and `material3uictl`, which is removed. Hyprland binds in `shell.lua` use the new commands, and `material3ui msg help` lists them all. See [docs/IPC.md](docs/IPC.md), which maps v3 calls to v4.
+- **Login screen:** the greeter runs `material3ui greeter`, and its QML files are gone. The shell syncs the wallpaper and colours to it after every recolour.
+- **Removed:**
+  - `material3ui-sysmon`: the system monitor reads `/proc` itself.
+  - v3-only extras: the pomodoro timer, alarms, online/video wallpapers, QR and image search.
+- **Dependencies:** `quickshell-git` and `qt6-*` are dropped. The shell's build tools and libraries are added: meson, ninja, wayland, mesa, pango, cairo, librsvg, gdk-pixbuf2, libxkbcommon, nlohmann-json, libpulse, polkit and pam. `tesseract` is added for OCR.
+- **Lock and idle:** hypridle now only routes `loginctl lock-session` to the shell and suspends after an hour. The shell itself does the locking and screen blanking.
+
+Also in this release:
+- Quick Settings has a Settings button.
+- Screenshot OCR (`msg screenshot ocr`) and screen recording (`msg record`).
+- The Matugen theme hooks moved to `~/.local/share/material3ui/scripts`.
+- The shipped wallpapers, logo and emoji list moved into `shell/data`.
+- The v3 wallpaper setting is picked up on first run.
 
 - **Native shell: blur and customisation.**
   - **Blur** behind the bar, panels, toasts and OSD. On Hyprland it comes from layer rules that the shell writes to `effects_custom.lua`, which `shell.lua` reads. On compositors with `ext-background-effect-v1`, each surface sends a blur region shaped to its rounded cards.

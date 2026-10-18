@@ -10,7 +10,7 @@ podman image exists "$image" || podman build -t "$image" -f "$here/tools/Contain
 # The repo root is mounted read-only for shared data (emojis.txt…)
 # gdk-pixbuf decodes in a bubblewrap sandbox (glycin), which needs seccomp and
 # SELinux confinement relaxed inside this dev container
-run() { podman run --rm --security-opt seccomp=unconfined --security-opt label=disable -v "$here/..:/repo:ro,Z" -e M3_DATA_DIR=/repo/dotfiles/.config/quickshell/material3ui/data -e M3_FAKE_HYPR -e M3_SCRIPT -e M3_WAIT -e M3_DEBUG_FRAMES -e M3_GDB -e M3_SERVICES -e M3_DEBUG_FOCUS -e M3_SCALE -e M3_SETUP -e M3_ARGS -e M3_USER -v "$here:/src:Z" -w /src "$image" "$@"; }
+run() { podman run --rm --security-opt seccomp=unconfined --security-opt label=disable -v "$here/..:/repo:ro,Z" -e M3_DATA_DIR=/src/data -e M3_FAKE_HYPR -e M3_SCRIPT -e M3_WAIT -e M3_DEBUG_FRAMES -e M3_GDB -e M3_SERVICES -e M3_DEBUG_FOCUS -e M3_SCALE -e M3_SETUP -e M3_ARGS -e M3_USER -v "$here:/src:Z" -w /src "$image" "$@"; }
 
 case "${1:-build}" in
 build) run bash -c '[ -d build ] || meson setup build >/dev/null; meson compile -C build' ;;

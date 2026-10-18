@@ -770,6 +770,8 @@ void lockPage(Flex* page, Popup&) {
     choiceRow<int>(g, "monitor", "Screen off after", "", "/idle/screenOffAfter", 900,
                    {{0, "Never"}, {120, "2 min"}, {600, "10 min"}, {900, "15 min"}, {3600, "1 hour"}});
     switchRow(g, "bedtime", "Lock before sleep", "", "/lock/lockBeforeSleep", true);
+    switchRow(g, "login", "Match the login screen", "Copies wallpaper and colours to the greeter when they change",
+              "/lock/syncGreeter", true);
     switchRow(g, "wallpaper", "Separate lock-screen wallpaper", "Uses lock.wallpaperPath", "/lock/useSeparateWallpaper", false);
     auto test = row(g, "lock", "Lock now");
     pillButton(test.row, "Lock", true, [] {
@@ -1092,7 +1094,7 @@ void packagesPage(Flex* page, Popup&) {
 void aboutPage(Flex* page, Popup&) {
     auto* hero = page->add<Flex>(Flex::Direction::Column);
     hero->setSpacing(10)->setPadding({0, 12});
-    const std::string logo = paths::dataFile("../assets/icons/Material3UI.svg");
+    const std::string logo = paths::dataFile("icons/Material3UI.svg");
     hero->add<ImageView>(112, [logo](float scale, int& w, int& h) -> GLuint {
         if (logo.empty()) return 0;
         auto* t = Images::get().icon(logo, static_cast<int>(std::lround(112 * scale)));
@@ -1124,7 +1126,7 @@ void aboutPage(Flex* page, Popup&) {
     row(sys, "grid_view", "Hyprland " + hypr, "Compositor");
 
     auto* credits = group(page, "Credits");
-    row(credits, "favorite", "NAnDoroid-shell by na-ive", "The project Material3UI grew from (AGPL-3.0)");
+    row(credits, "favorite", "NAnDoroid-shell by na-ive", "The project Material3UI grew from");
     row(credits, "architecture", "Noctalia", "The native shell follows its architecture (MIT); no code is shared");
     row(credits, "auto_awesome", "end-4, DankMaterialShell, Ambxst, pC, P3DROVFX, Vynx", "Design and interaction references");
 }

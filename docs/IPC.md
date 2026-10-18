@@ -1,88 +1,70 @@
-# IPC Reference
+# IPC
 
-The unified `material3ui` target (see the README) covers everyday use. This page lists the per-panel targets and global shortcuts underneath it.
-
-## Per-panel Targets
-
-Fine-grained control (e.g. `open` / `close` rather than toggle) remains available through the per-panel targets:
+The shell listens on `$XDG_RUNTIME_DIR/material3ui/ipc.sock`. `material3ui msg` sends one command and prints the reply:
 
 ```bash
-quickshell -c material3ui ipc call <target> <method>
+material3ui msg <command> [args]
+material3ui msg help        # every command, from the running shell
 ```
 
-## Sidebar & Panels
+Hyprland binds, scripts and other programs all use the same commands. The defaults live in [`shell.lua`](../dotfiles/.config/hypr/material3ui/shell.lua).
 
-Manage the visibility of all UI panels.
+## Panels
 
-| Feature                 | Target          | Method   | Terminal Command                                |
-| :---------------------- | :-------------- | :------- | :---------------------------------------------- |
-| **App Launcher**        | `launcher`      | `toggle` | `qs -c material3ui ipc call launcher toggle`      |
-| **Spotlight Search**    | `spotlight`     | `toggle` | `qs -c material3ui ipc call spotlight toggle`     |
-| **Notification Center** | `notifications` | `toggle` | `qs -c material3ui ipc call notifications toggle` |
-| **Quick Settings**      | `quicksettings` | `toggle` | `qs -c material3ui ipc call quicksettings toggle` |
-| **System Monitor**      | `systemmonitor` | `toggle` | `qs -c material3ui ipc call systemmonitor toggle` |
-| **Sys. Monitor (Direct)**| `systemmonitor` | `open_direct`| `qs -c material3ui ipc call systemmonitor open_direct`|
-| **Overview Panel**      | `overview`      | `toggle` | `qs -c material3ui ipc call overview toggle`      |
-| **Session (Power)**     | `session`       | `toggle` | `qs -c material3ui ipc call session toggle`       |
-| **Dashboard**           | `dashboard`     | `toggle` | `qs -c material3ui ipc call dashboard toggle`     |
-| **Quick Actions**       | `quickactions`  | `toggle` | `qs -c material3ui ipc call quickactions toggle`  |
-| **Material3UI Settings**  | `settings`      | `toggle` | `qs -c material3ui ipc call settings toggle`      |
-| **Settings (Direct)**   | `settings`      | `open_direct`| `qs -c material3ui ipc call settings open_direct` |
-
-## Region Tools (Screenshots & Recording)
-
-Trigger selection-based actions.
-
-| Action                | Target   | Method            | Terminal Command                                  |
-| :-------------------- | :------- | :---------------- | :------------------------------------------------ |
-| **Region Screenshot** | `region` | `screenshot`      | `qs -c material3ui ipc call region screenshot`      |
-| **Visual Search**     | `region` | `search`          | `qs -c material3ui ipc call region search`          |
-| **Text OCR**          | `region` | `ocr`             | `qs -c material3ui ipc call region ocr`             |
-| **QR Code Scan**      | `region` | `qrcode`          | `qs -c material3ui ipc call region qrcode`          |
-| **Record Region**     | `region` | `record`          | `qs -c material3ui ipc call region record`          |
-| **Record w/ Audio**   | `region` | `recordWithSound` | `qs -c material3ui ipc call region recordWithSound` |
-
-## Media & System
-
-Control specific system services.
-
-| Feature              | Target       | Method        | Terminal Command                                 |
-| :------------------- | :----------- | :------------ | :----------------------------------------------- |
-| **Brightness +**     | `brightness` | `increment`   | `qs -c material3ui ipc call brightness increment`  |
-| **Brightness -**     | `brightness` | `decrement`   | `qs -c material3ui ipc call brightness decrement`  |
-| **Pomodoro Start**   | `pomodoro`   | `start`       | `qs -c material3ui ipc call pomodoro start`        |
-| **Pomodoro Pause**   | `pomodoro`   | `pause`       | `qs -c material3ui ipc call pomodoro pause`        |
-| **Pomodoro Stop**    | `pomodoro`   | `stop`        | `qs -c material3ui ipc call pomodoro stop`         |
-| **Pomodoro Reset**   | `pomodoro`   | `reset`       | `qs -c material3ui ipc call pomodoro reset`        |
-| **Wallpaper (Home)** | `wallpaper`  | `openDesktop` | `qs -c material3ui ipc call wallpaper openDesktop` |
-| **Wallpaper (Lock)** | `wallpaper`  | `openLock`    | `qs -c material3ui ipc call wallpaper openLock`    |
-| **Wallpaper (Toggle)**| `wallpaper`  | `toggle`      | `qs -c material3ui ipc call wallpaper toggle`      |
-| **Change Avatar**    | `spotlight`  | `browse_avatar`| `qs -c material3ui ipc call spotlight browse_avatar`|
-
-## Global Shortcuts (Native Quickshell)
-
-Material3UI uses native Quickshell Global Shortcuts for specialized tool operations. These are triggered using the `global` dispatcher in Hyprland with the format `quickshell:<name>`.
-
-| Shortcut Name           | Description                      | Hyprland Lua Bind Example                                                                  |
-| :---------------------- | :------------------------------- | :----------------------------------------------------------------------------------------- |
-| `spotlightFiles`        | Open Spotlight in File search    | `hl.bind("SUPER + F", hl.dsp.global("quickshell:spotlightFiles"))`                         |
-| `spotlightCommand`      | Open Spotlight in Quick Commands | `hl.bind("SUPER + G", hl.dsp.global("quickshell:spotlightCommand"))`                       |
-| `spotlightTools`        | Open Spotlight in Tools mode     | `hl.bind("SUPER + T", hl.dsp.global("quickshell:spotlightTools"))`                         |
-| `spotlightClipboard`    | Open Spotlight in Clipboard mode | `hl.bind("SUPER + V", hl.dsp.global("quickshell:spotlightClipboard"))`                     |
-| `spotlightEmoji`        | Open Spotlight in Emoji mode     | `hl.bind("SUPER + E", hl.dsp.global("quickshell:spotlightEmoji"))`                         |
-| `quickActions`          | Toggle Quick Actions HUD         | `hl.bind("SUPER + X", hl.dsp.global("quickshell:quickActions"))`                           |
-| `regionScreenshot`      | Capture selected region          | `hl.bind("SUPER + S", hl.dsp.global("quickshell:regionScreenshot"))`                       |
-| `regionOcr`             | Extract text from region         | `hl.bind("SUPER + SHIFT + S", hl.dsp.global("quickshell:regionOcr"))`                      |
-| `regionSearch`          | Visual search from region        | `hl.bind("SUPER + Z", hl.dsp.global("quickshell:regionSearch"))`                           |
-| `regionQRCode`          | Scan QR code from region         | `hl.bind("SUPER + SHIFT + Z", hl.dsp.global("quickshell:regionQRCode"))`                   |
-| `regionRecord`          | Record selected region           | `hl.bind("SUPER + R", hl.dsp.global("quickshell:regionRecord"))`                           |
-| `regionRecordWithSound` | Record region with audio         | `hl.bind("SUPER + SHIFT + R", hl.dsp.global("quickshell:regionRecordWithSound"))`          |
-
-## Panel Shortcuts
-
-When any major Material3UI panel is open and focused, you can use built-in keyboard shortcuts to navigate efficiently:
-
-| Key | Action |
+| Command | Opens or toggles |
 | :--- | :--- |
-| `/` | Open the Keyboard Shortcuts Cheatsheet |
-| `Esc` | Close the current panel |
+| `launcher [text]` | Spotlight, optionally pre-filled: `=` maths, `:` emoji, `#` clipboard, `@` files, `>` run |
+| `popup quicksettings [wifi]` | Quick Settings, or straight to its Wi-Fi list |
+| `popup notifications` · `dashboard` · `overview` · `sysmon` · `power` | The notification centre, dashboard, workspace overview, system monitor and power menu |
+| `popup audio` · `network` · `bluetooth` · `run` | The small status panels and the run dialog |
+| `settings [page]` | Settings. Pages: `network`, `bluetooth`, `sound`, `display`, `appearance`, `style`, `bar`, `dock`, `tools`, `notifications`, `lock`, `keybinds`, `packages`, `about` |
+| `clipboard` | Clipboard history |
+| `screenshot` | The screenshot tool |
+| `wallpaper pick` | The wallpaper picker |
+
+Running a panel command again closes the panel.
+
+## Actions
+
+| Command | Does |
+| :--- | :--- |
+| `screenshot region\|window\|screen [delay]` | Captures at once (delay in seconds). It saves to `~/Pictures/Screenshots`, and copies to the clipboard, opens an editor or notifies, depending on Settings → Tools. |
+| `screenshot ocr` | Copies the text in a picked region (tesseract) |
+| `record [region\|screen]` | Starts a screen recording to `~/Videos/Recordings` (wf-recorder); runs again to stop |
+| `volume up\|down\|mute\|set <0-150>\|balance <-100..100>` | Output volume, with the OSD |
+| `brightness up\|down\|set <0-100>` | Backlight, with the OSD |
+| `media play-pause\|next\|previous\|status` | The active MPRIS player |
+| `wallpaper next\|prev\|set <path>` | Changes the wallpaper and recolours the desktop through Matugen |
+| `notifications [list\|clear\|dnd on\|dnd off]` | History, clearing and Do Not Disturb |
+| `lock` | Locks the session (ext-session-lock) |
+| `idle inhibit\|allow` | Caffeine: keeps the screen awake |
+| `bar toggle\|show\|hide` | Status bar visibility |
+| `reload` | Re-reads `config.json` and the palette |
+| `quit` | Exits the shell |
+
+## Inspection
+
+| Command | Prints |
+| :--- | :--- |
+| `ping` · `version` | `pong`, and the shell version |
+| `status` | A summary of every service (audio, network, Bluetooth, battery, media…) |
+| `outputs` · `workspaces` · `tray` | What the shell sees |
+| `debug` | Every surface's node tree with positions (used by the UI tests) |
+
+## From earlier versions
+
+v3 and earlier ran on Quickshell and used `qs -c material3ui ipc call material3ui <fn>` and `material3uictl`. Both are gone in v4. Map old calls like this:
+
+| v3 | v4 |
+| :--- | :--- |
+| `material3uictl spotlight` · `launcher` | `material3ui msg launcher` |
+| `material3uictl controlCenter` | `material3ui msg popup quicksettings` |
+| `material3uictl dashboard` · `overview` · `power` · `notifications` | `material3ui msg popup <name>` |
+| `material3uictl systemMonitor` | `material3ui msg popup sysmon` |
+| `material3uictl settings` | `material3ui msg settings` |
+| `material3uictl clipboard` · `emoji` | `material3ui msg clipboard` · `material3ui msg launcher :` |
+| `material3uictl wallpaper <file>` · `next` | `material3ui msg wallpaper set <file>` · `next` |
+| `material3uictl region screenshot\|ocr\|record` | `material3ui msg screenshot region` · `screenshot ocr` · `record region` |
+| `material3uictl brightness up` | `material3ui msg brightness up` |
+| `material3uictl lock` | `material3ui msg lock` |
+| `material3uictl reload` | `pkill -x material3ui; material3ui &` |

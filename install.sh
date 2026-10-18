@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
 #  Material3UI Shell installer (Arch Linux + Hyprland 0.55+)
+#  Builds the native shell (shell/, C++) and installs it to /usr.
 #
 #  Flow: preflight → choices → dependency review → packages → config review
 #        → deploy (with backups) → summary.
@@ -103,7 +104,7 @@ banner() {
     echo '  ██║╚██╔╝██║ ╚═══██╗██║   ██║██║'
     echo '  ██║ ╚═╝ ██║██████╔╝╚██████╔╝██║'
     echo '  ╚═╝     ╚═╝╚═════╝  ╚═════╝ ╚═╝'
-    echo -e "${C_RST}  ${C_BOLD}Material3UI Shell installer${C_RST} ${C_DIM}· Hyprland · Quickshell · Matugen${C_RST}"
+    echo -e "${C_RST}  ${C_BOLD}Material3UI Shell installer${C_RST} ${C_DIM}· Hyprland · native C++ shell · Matugen${C_RST}"
     [[ "$DRY_RUN" == 1 ]] && echo -e "  ${C_YELLOW}Dry run: nothing will be changed.${C_RST}"
     return 0
 }
@@ -206,7 +207,7 @@ MISSING=()
 
 # Locate the repository: use this checkout, or clone when run via curl.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo "")"
-if [[ -n "$SCRIPT_DIR" && -f "$SCRIPT_DIR/dotfiles/.config/quickshell/material3ui/shell.qml" ]]; then
+if [[ -n "$SCRIPT_DIR" && -f "$SCRIPT_DIR/shell/meson.build" ]]; then
     REPO="$SCRIPT_DIR"
 else
     [[ "$DRY_RUN" == 0 ]] || die "--dry-run needs a local checkout: git clone $REPO_URL && cd material3-android-shell"
@@ -311,6 +312,8 @@ if [[ "$SKIP_DEPS" == 1 ]]; then
     warn "Skipping packages (--skip-deps)."
 else
     command -v jq >/dev/null 2>&1 || { say "Installing jq to read the dependency list..."; run sudo pacman -S --needed --noconfirm jq; }
+    # Quickshell is no longer used (v4 ships a native shell); leave it installed
+    pacman -Qq quickshell-git >/dev/null 2>&1 && dim "quickshell-git is no longer needed; remove it with: yay -Rns quickshell-git"
     categories=(core services utilities theming)
     [[ "$OPT_FONTS" == 1 ]] && categories+=(fonts)
     [[ "$OPT_LIVEWP" == 1 ]] && categories+=(livewallpaper)
@@ -417,7 +420,9 @@ fi
 
 PLAN=()
 plan() { PLAN+=("$1|$2"); }
-plan "$CONFIG_HOME/quickshell/material3ui" "shell (replaced)"
+plan "/usr/bin/material3ui" "the shell, built from shell/ (needs sudo to install)"
+plan "$HOME/.local/share/material3ui/scripts" "theme hooks for Matugen"
+[[ -e "$CONFIG_HOME/quickshell/material3ui" ]] && plan "$CONFIG_HOME/quickshell/material3ui" "old Quickshell shell (backed up, then removed)"
 is_ours "$CONFIG_HOME/matugen/config.toml" && plan "$CONFIG_HOME/matugen" "theme templates" || warn "Keeping your own matugen config (no Material3UI marker)."
 is_ours "$CONFIG_HOME/starship.toml" && [[ "$OPT_FISH" == 1 ]] && plan "$CONFIG_HOME/starship.toml" "prompt"
 if [[ "$TERMINAL" == alacritty ]]; then
@@ -434,7 +439,6 @@ case "$HYPR_MODE" in
         plan "$HYPR/material3ui" "Hyprland modules"
         plan "$HYPR/hyprland.lua" "append require(\"material3ui.shell\")" ;;
 esac
-plan "$HOME/.local/bin/material3uictl" "CLI"
 [[ "$GREETER" == 1 ]] && plan "/etc/greetd/config.toml" "login screen (greetd); current display manager is replaced"
 
 for entry in "${PLAN[@]}"; do
@@ -453,14 +457,30 @@ done_ "Plan confirmed."
 step "Deploying"
 planned() { local e; for e in "${PLAN[@]}"; do [[ "${e%%|*}" == "$1" ]] && return 0; done; return 1; }
 
-# Shell: replace rather than merge, so stale files from older versions
-# (v1 kept QML at the profile root) cannot shadow current types.
-backup "$CONFIG_HOME/quickshell/material3ui"
-run rm -rf "$CONFIG_HOME/quickshell/material3ui"
-run mkdir -p "$CONFIG_HOME/quickshell"
-run cp -a "$DOT/quickshell/material3ui" "$CONFIG_HOME/quickshell/"
-run cp "$REPO/data/dependencies.json" "$CONFIG_HOME/quickshell/material3ui/data/dependencies.json"
-ok "Shell profile"
+# The shell: a release build next to the sources, installed to /usr (the lock
+# screen's PAM file goes to /etc/pam.d)
+BUILD="$REPO/shell/build-release"
+say "Building the shell (a minute or two the first time)..."
+BUILD_LOG="$LOG_DIR/build-$TS.log"
+[[ -d "$BUILD" ]] && setup_flags=(--reconfigure) || setup_flags=()
+run meson setup "${setup_flags[@]}" "$BUILD" "$REPO/shell" --prefix=/usr --sysconfdir=/etc --buildtype=release >>"$BUILD_LOG" 2>&1 \
+    || die "Configuring the shell failed (missing packages? re-run without --skip-deps). Details: $BUILD_LOG"
+run meson compile -C "$BUILD" >>"$BUILD_LOG" 2>&1 || die "Building the shell failed. Details: $BUILD_LOG"
+run sudo meson install -C "$BUILD" --no-rebuild --quiet || die "Installing the shell failed."
+ok "material3ui $(cat "$REPO/VERSION" 2>/dev/null) installed to /usr/bin"
+
+# Theme hooks Matugen runs after every recolour (GTK, KDE, terminals)
+run mkdir -p "$HOME/.local/share/material3ui"
+run rm -rf "$HOME/.local/share/material3ui/scripts"
+run cp -a "$REPO/dotfiles/.local/share/material3ui/scripts" "$HOME/.local/share/material3ui/"
+ok "Theme hooks"
+
+# Retire the Quickshell (QML) shell of v3 and earlier
+if [[ -e "$CONFIG_HOME/quickshell/material3ui" ]]; then
+    backup "$CONFIG_HOME/quickshell/material3ui"
+    run rm -rf "$CONFIG_HOME/quickshell/material3ui"
+    ok "Removed the old Quickshell shell (backed up)"
+fi
 
 if planned "$CONFIG_HOME/matugen"; then
     backup "$CONFIG_HOME/matugen"
@@ -531,12 +551,13 @@ case "$HYPR_MODE" in
     skip) dim "Hyprland config left untouched." ;;
 esac
 
-run mkdir -p "$HOME/.local/bin"
-run install -m 755 "$REPO/dotfiles/.local/bin/material3uictl" "$HOME/.local/bin/material3uictl"
-run ln -sf "$CONFIG_HOME/quickshell/material3ui/scripts/sysmon/material3ui-sysmon" "$HOME/.local/bin/material3ui-sysmon"
-ok "material3uictl and material3ui-sysmon"
+# v3 helpers: the old IPC client and sysmon backend. `material3ui msg` is the IPC now.
+if [[ -e "$HOME/.local/bin/material3uictl" || -e "$HOME/.local/bin/material3ui-sysmon" ]]; then
+    run rm -f "$HOME/.local/bin/material3uictl" "$HOME/.local/bin/material3ui-sysmon"
+    ok "Removed material3uictl (use: material3ui msg help)"
+fi
 
-# The shell is the polkit agent (Quickshell.Services.Polkit); only one agent
+# The shell is the polkit agent (libpolkit-agent); only one agent
 # can register per session, so stop agents that would win the race.
 for agent in hyprpolkitagent.service polkit-gnome-authentication-agent-1.service plasma-polkit-agent.service; do
     if systemctl --user is-enabled --quiet "$agent" 2>/dev/null; then
@@ -595,13 +616,16 @@ done_ "Configs deployed."
 step "Done"
 ok "Material3UI Shell $(cat "$REPO/VERSION" 2>/dev/null) installed"
 [[ ${#BACKED_UP[@]} -gt 0 ]] && dim "Backed up ${#BACKED_UP[@]} item(s) to ${BACKUP_DIR/#$HOME/\~}"
-case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) warn "Add ~/.local/bin to your PATH to use material3uictl." ;; esac
+say "Control it from a terminal: ${C_ACCENT}material3ui msg help${C_RST}"
 say "Personal Hyprland tweaks: ${C_ACCENT}~/.config/hypr/material3ui/user.lua${C_RST}"
 say "Keys: ${C_ACCENT}SUPER${C_RST} Spotlight · ${C_ACCENT}SUPER+Return${C_RST} $TERMINAL · ${C_ACCENT}SUPER+E${C_RST} $FILE_MANAGER · ${C_ACCENT}SUPER+B${C_RST} $BROWSER · ${C_ACCENT}SUPER+I${C_RST} settings"
 if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
     if confirm "Reload Hyprland and start the shell now?" Y; then
+        run pkill -x quickshell || true
+        run pkill -x qs || true
+        run pkill -x material3ui || true
         run hyprctl reload >/dev/null
-        run "$CONFIG_HOME/quickshell/material3ui/scripts/restartshell.sh"
+        run hyprctl dispatch exec material3ui >/dev/null
     fi
 else
     say "Log into Hyprland to start Material3UI Shell."

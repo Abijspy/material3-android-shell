@@ -1,14 +1,14 @@
 # material3ui (native C++ shell)
 
-The C++ rewrite of Material3UI: a Wayland shell drawn directly with EGL/OpenGL ES, with no Qt, QML, GTK or Quickshell underneath. It reads the same `~/.config/material3ui/config.json` and Matugen palette as the QML shell, so the two can be swapped while the port is in progress.
+Material3UI's shell: a Wayland shell drawn directly with EGL/OpenGL ES, with no Qt, QML, GTK or Quickshell underneath. It reads `~/.config/material3ui/config.json` and the Matugen palette.
 
-> **Status: phases 1–7 done.** The native shell covers the whole desktop, Settings included: Network, Bluetooth, Sound, Display, Appearance, Notifications, Lock & idle, Keybinds, Packages & Updates and About, all writing the same `config.json` (and keybind files) as the QML shell. What remains is switching the installer over (phase 8).
+> **Status: v4.0.0, the shell Material3UI ships.** It replaced the Quickshell (QML) shell: the installer builds it, Hyprland starts it, and `material3ui msg` is the IPC.
 
 ## Why native
 
-| Limitation of the QML shell | How the native shell handles it |
+| Limitation of the old QML shell | How the native shell handles it |
 | :--- | :--- |
-| System access goes through Quickshell's bindings, or shells out to `hyprctl`, `pacman`, Python | Direct Unix sockets, inotify, sysfs, D-Bus (sd-bus) and PipeWire (libpulse); PAM comes next |
+| System access goes through Quickshell's bindings, or shells out to `hyprctl`, `pacman`, Python | Direct Unix sockets, inotify, sysfs, D-Bus (sd-bus), PipeWire (libpulse) and PAM |
 | JavaScript inside QML is untyped and hard to refactor | C++20, compiled with warnings on |
 | Every Quickshell release can break the shell | Depends only on libwayland, EGL/GLES2, Pango/Cairo, xkbcommon, libsystemd, libpulse, librsvg, gdk-pixbuf, PAM, polkit-agent and nlohmann-json |
 
@@ -108,13 +108,14 @@ material3ui msg wallpaper [next|prev|set <path>|pick]
 material3ui msg settings [network|bluetooth|sound|display|appearance|style|bar|dock|tools
                          |notifications|lock|keybinds|packages|about]
 material3ui msg clipboard             # clipboard history (cliphist)
-material3ui msg screenshot [region|window|screen] [delay s]   # no argument: the tool
+material3ui msg screenshot [region|window|screen [delay s]|ocr]   # no argument: the tool
+material3ui msg record [region|screen]   # start, or stop, a screen recording
 material3ui msg tray | outputs | workspaces
 
 material3ui greeter                   # the greetd login screen
 ```
 
-## Roadmap to parity with the QML shell
+## How it got here
 
 | Phase | Scope |
 | :--- | :--- |
@@ -126,4 +127,4 @@ material3ui greeter                   # the greetd login screen
 | **6. Rich UI** ✅ | Dynamic island, dashboard, overview, wallpapers with transitions and a picker (Matugen), desktop clock, system monitor |
 | **7. Settings** ✅ | The Settings app: Network, Bluetooth (pair, connect, forget, discovery), Sound, Display (brightness, night light, monitors), Appearance (wallpaper, Matugen scheme, dark mode, bar, fonts, clock), Notifications, Lock & idle, Keybinds (same files as the QML editor), Packages & Updates (updates and search/install for official, AUR, Flatpak), About |
 | **7½. Look and tools** ✅ | Blur (Hyprland layer rules, ext-background-effect elsewhere), bar/panel opacity, roundness, animation speed, accent seed; M3 Expressive Settings (segmented lists, connected button groups, shape morph, scrollbars, close button, app icon); bar layout editor with new modules; dock; clipboard history; screenshot tool; Wi-Fi details and live speeds |
-| 8. Switch over | Installer and Hyprland config start `material3ui` instead of Quickshell; the QML shell is retired |
+| **8. Switch over** ✅ | The installer builds and installs `material3ui`, Hyprland starts it, binds use `material3ui msg`, the greeter runs `material3ui greeter`, and the QML shell is gone (v4.0.0) |

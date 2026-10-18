@@ -31,5 +31,5 @@ pcall(dofile, "/var/lib/material3ui-greeter/hyprland-local.lua")
 hl.layer_rule({ match = { namespace = "material3ui-greeter" }, no_anim = true })
 
 hl.on("hyprland.start", function()
-	hl.exec_cmd([[sh -c "qs -p /usr/share/material3ui-greeter/shell.qml; hyprctl dispatch 'hl.dsp.exit()'"]])
+	hl.exec_cmd([[sh -c "/usr/share/material3ui-greeter/greet-run.sh; hyprctl dispatch 'hl.dsp.exit()'"]])
 end)
