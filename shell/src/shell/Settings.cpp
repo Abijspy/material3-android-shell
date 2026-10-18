@@ -707,7 +707,7 @@ void barPage(Flex* page, Popup&) {
     sliderRow(layout, "height", "Height", "/statusBar/height", 40, 32, 56, 2, [](double v) { return std::format("{:.0f} px", v); });
 
     // Widgets: three columns, one per zone. Each widget's row carries its own
-    // select, group and delete buttons; "Add widget" drops down the rest.
+    // move, select, group and delete buttons; "Add widget" drops down the rest.
     auto* live = page->add<Live>();
     live->setSpacing(6);
     auto selected = std::make_shared<std::set<std::string>>();
@@ -784,13 +784,28 @@ void barPage(Flex* page, Popup&) {
                 if (free == 0) caption(menu, "Every widget is on the bar");
             }
 
-            // One row per widget: select, name, group, delete
+            // One row per widget: move, select, name, group, delete
             auto widgetRow = [&](Node* parent, const std::string& id, bool grouped) {
                 const auto m = meta(id);
                 const bool on = selected->contains(id);
                 auto* r = parent->add<Flex>(Flex::Direction::Row);
-                r->setPadding({4, 4})->setSpacing(2)->setRadius(Radii(14));
+                r->setPadding({2, 4, 4, 4})->setSpacing(2)->setRadius(Radii(14));
                 r->setBackground(on ? ColorRef("secondary_container") : ColorRef("surface_container_high"), false);
+                // Up and down, stacked to keep the row narrow: one step in
+                // the column, into the next column at either end, and out of
+                // a group (as the arrows on the bar's edit mode do)
+                auto* moves = r->add<Flex>(Flex::Direction::Column);
+                for (const auto& [glyph, dir] : {std::pair{"keyboard_arrow_up", -1}, {"keyboard_arrow_down", 1}}) {
+                    auto* mv = moves->add<Button>();
+                    pill(mv)->setPadding({3, 0});
+                    mv->pressedRadius = 4;
+                    mv->add<Icon>(glyph, 16)->setColor("on_surface_variant", false);
+                    mv->onClicked = [lay, id, dir, save](uint32_t button) mutable {
+                        if (button != BTN_LEFT) return;
+                        Bar::moveWidget(lay, id, dir);
+                        save(lay);
+                    };
+                }
                 auto* sel = r->add<Button>();
                 pill(sel)->setPadding(Insets(5));
                 sel->add<Icon>(on ? "check_box" : "check_box_outline_blank", 18)->setFill(on)->setColor(on ? "primary" : "on_surface_variant", false);
