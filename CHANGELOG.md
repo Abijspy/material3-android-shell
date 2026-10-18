@@ -1,5 +1,16 @@
 # Changelog
 
+## v4.1.2 — 2026-10-18
+
+- **Bar editor in Settings** (Settings → Status bar → Widgets): three columns, Left, Middle and Right.
+  - **Adding:** each column has an **Add widget ▾** dropdown listing the widgets not on the bar yet.
+  - **Widget rows:** each widget's row has its own buttons:
+    - **Select**, to act on several widgets at once.
+    - **Group**, which joins the selected widgets of the column (or the next widget, when none is selected) into one capsule on the bar. In a group the button splits it up again.
+    - **Delete**.
+  - **With a selection:** the column offers **Group n** and **Delete n**.
+- **Widget groups:** grouped widgets share one capsule on the bar. In `config.json` a zone lists ids, or arrays of ids for groups. The on-bar edit mode and the widget picker work with groups; moving a widget out of a group takes it out of the capsule.
+
 ## v4.1.1 — 2026-10-18
 
 - **Edit the bar in place:** Settings → Status bar → **Edit bar**, a right-click on the bar, or `material3ui msg bar edit` turns on edit mode.

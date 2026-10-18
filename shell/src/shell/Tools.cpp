@@ -272,9 +272,7 @@ void barWidgets(Flex* card, Popup& popup, const std::string& zone) {
     Flex* line = nullptr;
     size_t count = 0;
     for (const auto& m : Bar::modules()) {
-        bool used = false;
-        for (const auto& v : lay) used = used || std::ranges::find(v, std::string(m.id)) != v.end();
-        if (used) continue;
+        if (Bar::placed(lay, m.id)) continue;
         // Two tiles per line
         if (count++ % 2 == 0) {
             line = card->add<Flex>(Flex::Direction::Row);
@@ -294,7 +292,7 @@ void barWidgets(Flex* card, Popup& popup, const std::string& zone) {
         const std::string id = m.id;
         b->onClicked = [id, z, &popup](uint32_t) {
             auto l = Bar::layout();
-            l[z].push_back(id);
+            Bar::add(l, z, id);
             Bar::setLayout(l);
             popup.close();
         };

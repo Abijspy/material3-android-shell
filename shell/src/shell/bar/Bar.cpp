@@ -207,24 +207,112 @@ Bar::Layout Bar::layout() {
     if (j.is_object()) {
         for (int z = 0; z < 3; ++z)
             if (auto it = j.find(kZones[z]); it != j.end() && it->is_array())
-                for (const auto& id : *it)
-                    if (id.is_string()) out[static_cast<size_t>(z)].push_back(id.get<std::string>());
+                for (const auto& e : *it) {
+                    Group g;
+                    if (e.is_string()) g.push_back(e.get<std::string>());
+                    else if (e.is_array())
+                        for (const auto& id : e)
+                            if (id.is_string()) g.push_back(id.get<std::string>());
+                    if (!g.empty()) out[static_cast<size_t>(z)].push_back(g);
+                }
         return out;
     }
     // Default, minus anything switched off with the older per-module toggles
     auto on = [](const char* id) { return Config::get().value<bool>(std::string("/statusBar/modules/") + id, true); };
     for (const char* id : {"workspaces", "title"})
-        if (on(id)) out[0].push_back(id);
-    out[1] = {"island"};
+        if (on(id)) out[0].push_back({id});
+    out[1] = {{"island"}};
     for (const char* id : {"tray", "status", "battery"})
-        if (on(id) || std::string(id) == "status") out[2].push_back(id);
+        if (on(id) || std::string(id) == "status") out[2].push_back({id});
     return out;
 }
 
 void Bar::setLayout(const Layout& layout) {
     nlohmann::json j = nlohmann::json::object();
-    for (int z = 0; z < 3; ++z) j[kZones[z]] = layout[static_cast<size_t>(z)];
+    for (int z = 0; z < 3; ++z) {
+        auto zone = nlohmann::json::array();
+        for (const auto& g : layout[static_cast<size_t>(z)]) {
+            if (g.size() == 1) zone.push_back(g.front());
+            else if (!g.empty()) zone.push_back(g);
+        }
+        j[kZones[z]] = zone;
+    }
     Config::get().set("/statusBar/layout", j);
+}
+
+bool Bar::placed(const Layout& l, const std::string& id) {
+    for (const auto& zone : l)
+        for (const auto& g : zone)
+            if (std::ranges::find(g, id) != g.end()) return true;
+    return false;
+}
+
+void Bar::removeWidget(Layout& l, const std::string& id) {
+    for (auto& zone : l) {
+        for (auto& g : zone) std::erase(g, id);
+        std::erase_if(zone, [](const Group& g) { return g.empty(); });
+    }
+}
+
+void Bar::add(Layout& l, size_t zone, const std::string& id) {
+    removeWidget(l, id);
+    l[std::min<size_t>(zone, 2)].push_back({id});
+}
+
+void Bar::moveWidget(Layout& l, const std::string& id, int dir) {
+    // Where it is: zone, group
+    for (size_t z = 0; z < 3; ++z)
+        for (size_t gi = 0; gi < l[z].size(); ++gi) {
+            auto& g = l[z][gi];
+            const auto it = std::ranges::find(g, id);
+            if (it == g.end()) continue;
+            if (g.size() > 1) {
+                // Leave the group, landing just beside it
+                g.erase(it);
+                l[z].insert(l[z].begin() + static_cast<long>(dir < 0 ? gi : gi + 1), Group{id});
+                return;
+            }
+            l[z].erase(l[z].begin() + static_cast<long>(gi));
+            if (dir < 0) {
+                if (gi > 0) l[z].insert(l[z].begin() + static_cast<long>(gi - 1), Group{id});
+                else if (z > 0) l[z - 1].push_back({id});
+                else l[z].insert(l[z].begin(), Group{id});
+            } else {
+                if (gi < l[z].size()) l[z].insert(l[z].begin() + static_cast<long>(gi + 1), Group{id});
+                else if (z < 2) l[z + 1].insert(l[z + 1].begin(), Group{id});
+                else l[z].push_back({id});
+            }
+            return;
+        }
+}
+
+void Bar::groupWidgets(Layout& l, size_t zone, const std::vector<std::string>& ids) {
+    if (zone > 2 || ids.size() < 2) return;
+    // In the zone's order, from wherever they are in it
+    Group merged;
+    long at = -1;
+    for (size_t gi = 0; gi < l[zone].size(); ++gi)
+        for (const auto& id : l[zone][gi])
+            if (std::ranges::find(ids, id) != ids.end()) {
+                if (at < 0) at = static_cast<long>(gi);
+                merged.push_back(id);
+            }
+    if (merged.size() < 2) return;
+    for (auto& g : l[zone]) std::erase_if(g, [&](const std::string& id) { return std::ranges::find(merged, id) != merged.end(); });
+    // Keep the slot of the first one's group, even if it emptied
+    l[zone].insert(l[zone].begin() + at, merged);
+    std::erase_if(l[zone], [](const Group& g) { return g.empty(); });
+}
+
+void Bar::ungroup(Layout& l, const std::string& id) {
+    for (auto& zone : l)
+        for (size_t gi = 0; gi < zone.size(); ++gi)
+            if (std::ranges::find(zone[gi], id) != zone[gi].end()) {
+                const Group g = zone[gi];
+                zone.erase(zone.begin() + static_cast<long>(gi));
+                for (size_t k = 0; k < g.size(); ++k) zone.insert(zone.begin() + static_cast<long>(gi + k), Group{g[k]});
+                return;
+            }
 }
 
 void Bar::addModule(Flex* zone, const std::string& id, bool floating) {
@@ -303,17 +391,28 @@ void Bar::rebuild() {
         auto* zone = bg->add<Flex>(Flex::Direction::Row);
         zone->setSpacing(8);
         if (!editing) {
-            for (const auto& id : zones[z]) addModule(zone, id, floating);
+            for (const auto& g : zones[z]) {
+                if (g.size() == 1) {
+                    addModule(zone, g.front(), floating);
+                    continue;
+                }
+                // A group: one capsule around all of its widgets
+                auto* cap = capsule(zone, floating);
+                cap->setPadding({4, 0})->setSpacing(2);
+                for (const auto& id : g) addModule(cap, id, false);
+            }
             continue;
         }
         // Edit mode: the zone outlined, each widget with ◀ ✕ ▶, then "+"
         pill(zone->setBorder(1.5f, ColorRef("primary", 0.8f)))->setPadding({4, 2})->setSpacing(4);
         zone->setBackground(ColorRef("surface_container", 0.85f), false);
         zone->fixedHeight = static_cast<float>(height()) - 4;
-        for (size_t i = 0; i < zones[z].size(); ++i) {
+        Group flat;
+        for (const auto& g : zones[z]) flat.insert(flat.end(), g.begin(), g.end());
+        for (size_t i = 0; i < flat.size(); ++i) {
             auto* item = zone->add<Flex>(Flex::Direction::Row);
             pill(item->setBackground("surface_container_highest", false))->setPadding({2, 0})->setSpacing(0);
-            addModule(item, zones[z][i], false);
+            addModule(item, flat[i], false);
             auto control = [&](const char* icon, std::function<void(Layout&)> change) {
                 auto* b = item->add<Button>();
                 pill(b)->setPadding(Insets(3));
@@ -326,29 +425,10 @@ void Bar::rebuild() {
                     setLayout(l); // the bars rebuild when config.json changes
                 };
             };
-            const std::string id = zones[z][i];
-            // Left: earlier in the zone, else the end of the zone before
-            if (i > 0 || z > 0)
-                control("chevron_left", [z, id](Layout& l) {
-                    auto& v = l[z];
-                    const auto it = std::ranges::find(v, id);
-                    if (it == v.end()) return;
-                    const auto pos = static_cast<size_t>(it - v.begin());
-                    v.erase(it);
-                    if (pos > 0) v.insert(v.begin() + static_cast<long>(pos - 1), id);
-                    else l[z - 1].push_back(id);
-                });
-            control("close", [z, id](Layout& l) { std::erase(l[z], id); });
-            if (i + 1 < zones[z].size() || z < 2)
-                control("chevron_right", [z, id](Layout& l) {
-                    auto& v = l[z];
-                    const auto it = std::ranges::find(v, id);
-                    if (it == v.end()) return;
-                    const auto pos = static_cast<size_t>(it - v.begin());
-                    v.erase(it);
-                    if (pos < v.size()) v.insert(v.begin() + static_cast<long>(pos + 1), id);
-                    else l[z + 1].insert(l[z + 1].begin(), id);
-                });
+            const std::string id = flat[i];
+            if (i > 0 || z > 0) control("chevron_left", [id](Layout& l) { moveWidget(l, id, -1); });
+            control("close", [id](Layout& l) { removeWidget(l, id); });
+            if (i + 1 < flat.size() || z < 2) control("chevron_right", [id](Layout& l) { moveWidget(l, id, 1); });
         }
         auto* add = zone->add<Button>();
         pill(add->setBackground("primary_container", false))->setPadding({8, 4})->setSpacing(4);

@@ -29,6 +29,7 @@
 #include <fstream>
 #include <linux/input-event-codes.h>
 #include <memory>
+#include <set>
 #include <sstream>
 #include <sys/utsname.h>
 #include <unistd.h>
@@ -549,106 +550,191 @@ void barPage(Flex* page, Popup&) {
     choiceRow<int>(layout, "toolbar", "Style", "", "/statusBar/backgroundStyle", 0, {{0, "Floating"}, {1, "Full width"}});
     sliderRow(layout, "height", "Height", "/statusBar/height", 40, 32, 56, 2, [](double v) { return std::format("{:.0f} px", v); });
 
-    // Layout editor: each zone's modules as chips that move left and right
-    // (across zones at the ends) or come off; "+" adds one to a zone
+    // Widgets: three columns, one per zone. Each widget's row carries its own
+    // select, group and delete buttons; "Add widget" drops down the rest.
     auto* live = page->add<Live>();
     live->setSpacing(6);
-    auto adding = std::make_shared<int>(-1); // the zone showing its add list
-    live->sync = [live, adding] {
+    auto selected = std::make_shared<std::set<std::string>>();
+    auto dropdown = std::make_shared<int>(-1); // the column whose add menu is open
+    live->sync = [live, selected, dropdown] {
         live->clearChildren();
-        auto* g = group(live, "Widgets", "Add, remove and move widgets here, or on the bar itself");
-        auto onBar = row(g, "edit", "Edit on the bar", "Move and remove widgets in place; right-click the bar does this too");
-        pillButton(onBar.row, "Edit bar", true, [] {
+        using shell::Bar;
+        auto* g = group(live, "Widgets", "Select widgets to group them into one capsule, or edit on the bar itself");
+        auto onBar = row(g, "edit", "Edit on the bar", "Move and remove widgets in place; right-clicking the bar does this too");
+        pillButton(onBar.row, "Edit bar", false, [] {
             if (editBar) editBar(true);
         }, "edit");
-        auto lay = shell::Bar::layout();
-        const char* zoneNames[] = {"Left", "Centre", "Right"};
-        auto save = [live, adding](const shell::Bar::Layout& l) {
-            shell::Bar::setLayout(l);
+        auto* cols = g->add<Flex>(Flex::Direction::Row);
+        cols->setSpacing(10)->setPadding({12, 12})->setAlignItems(Align::Start);
+
+        auto lay = Bar::layout(); // each handler edits its own copy
+        auto meta = [](const std::string& id) {
+            for (const auto& m : Bar::modules())
+                if (id == m.id) return m;
+            return Bar::Module{"", "extension", "Unknown"};
+        };
+        auto save = [live](const Bar::Layout& l) {
+            Bar::setLayout(l);
             live->syncSoon();
         };
-        auto meta = [](const std::string& id) {
-            for (const auto& m : shell::Bar::modules())
-                if (id == m.id) return m;
-            return shell::Bar::Module{"", "extension", "Unknown"};
-        };
+        const char* names[] = {"Left", "Middle", "Right"};
         for (size_t z = 0; z < 3; ++z) {
-            auto* seg = g->add<Flex>(Flex::Direction::Column);
-            seg->setAlignItems(Align::Stretch)->setSpacing(10)->setPadding({20, 14});
-            auto* head = seg->add<Flex>(Flex::Direction::Row);
-            head->setSpacing(10);
-            auto* name = head->add<Label>(zoneNames[z]);
-            name->setSize(15)->setWeight(600);
-            name->grow = true;
-            auto* add = head->add<Button>();
-            pill(add->setBackground(*adding == static_cast<int>(z) ? "primary" : "secondary_container", false))
-                ->setPadding({12, 6})->setSpacing(4);
-            add->pressedRadius = 6;
-            const char* fg = *adding == static_cast<int>(z) ? "on_primary" : "on_secondary_container";
-            add->add<Icon>(*adding == static_cast<int>(z) ? "close" : "add", 16)->setColor(fg, false);
-            add->add<Label>(*adding == static_cast<int>(z) ? "Done" : "Add")->setSize(13)->setWeight(500)->setColor(fg, false);
-            add->onClicked = [adding, live, z](uint32_t) {
-                *adding = *adding == static_cast<int>(z) ? -1 : static_cast<int>(z);
+            auto* col = cols->add<Flex>(Flex::Direction::Column);
+            col->setAlignItems(Align::Stretch)->setSpacing(6)->setPadding({10, 10})->setRadius(Radii(20));
+            col->setBackground("surface_container_highest", false);
+            col->fixedWidth = 222; // three columns fill the group
+            size_t count = 0;
+            for (const auto& gr : lay[z]) count += gr.size();
+            auto* head = col->add<Flex>(Flex::Direction::Row);
+            head->setPadding({4, 2});
+            auto* title = head->add<Label>(names[z]);
+            title->setSize(15)->setWeight(600)->setColor("primary", false);
+            title->grow = true;
+            head->add<Label>(std::to_string(count))->setSize(13)->setColor("on_surface_variant", false);
+
+            // Add widget ▾: the widgets not on the bar yet
+            const bool open = *dropdown == static_cast<int>(z);
+            auto* add = col->add<Button>(Flex::Direction::Row);
+            pill(add->setBackground(open ? "primary" : "secondary_container", false))->setPadding({12, 8})->setSpacing(6);
+            add->pressedRadius = 10;
+            add->add<Icon>("add", 18)->setColor(open ? "on_primary" : "on_secondary_container", false);
+            auto* addLabel = add->add<Label>("Add widget");
+            addLabel->setSize(13)->setWeight(500)->setColor(open ? "on_primary" : "on_secondary_container", false);
+            addLabel->grow = true;
+            add->add<Icon>(open ? "arrow_drop_up" : "arrow_drop_down", 20)->setColor(open ? "on_primary" : "on_secondary_container", false);
+            add->onClicked = [dropdown, live, z](uint32_t) {
+                *dropdown = *dropdown == static_cast<int>(z) ? -1 : static_cast<int>(z);
                 live->syncSoon();
             };
+            if (open) {
+                auto* menu = col->add<Flex>(Flex::Direction::Column);
+                menu->setAlignItems(Align::Stretch)->setSpacing(0)->setPadding({0, 6})->setRadius(Radii(16));
+                menu->setBackground("surface_container", false);
+                size_t free = 0;
+                for (const auto& m : Bar::modules()) {
+                    if (Bar::placed(lay, m.id)) continue;
+                    ++free;
+                    auto* item = menu->add<Button>(Flex::Direction::Row);
+                    item->setPadding({12, 8})->setSpacing(10);
+                    item->add<Icon>(m.icon, 18)->setColor("on_surface_variant", false);
+                    item->add<Label>(m.name)->setSize(13)->setMaxWidth(130);
+                    const std::string id = m.id;
+                    item->onClicked = [lay, z, id, dropdown, save](uint32_t) mutable {
+                        *dropdown = -1;
+                        Bar::add(lay, z, id);
+                        save(lay);
+                    };
+                }
+                if (free == 0) caption(menu, "Every widget is on the bar");
+            }
 
-            auto* chips = seg->add<Flow>();
-            if (lay[z].empty()) caption(chips, "Empty");
-            for (size_t i = 0; i < lay[z].size(); ++i) {
-                const auto m = meta(lay[z][i]);
-                auto* chip = chips->add<Flex>(Flex::Direction::Row);
-                pill(chip->setBackground("surface_container_highest", false))->setPadding({10, 4, 4, 4})->setSpacing(2);
-                chip->add<Icon>(m.icon, 18)->setColor("primary", false);
-                chip->add<Label>(m.name)->setSize(13)->setWeight(500)->setMaxWidth(110);
-                // Left: earlier in the zone, else the end of the zone before
-                const bool canLeft = i > 0 || z > 0, canRight = i + 1 < lay[z].size() || z < 2;
-                auto move = [lay, z, i, save](int dir) mutable {
-                    const std::string id = lay[z][i];
-                    lay[z].erase(lay[z].begin() + static_cast<long>(i));
-                    if (dir < 0 && i > 0) lay[z].insert(lay[z].begin() + static_cast<long>(i - 1), id);
-                    else if (dir < 0) lay[z - 1].push_back(id);
-                    else if (i < lay[z].size()) lay[z].insert(lay[z].begin() + static_cast<long>(i + 1), id);
-                    else lay[z + 1].insert(lay[z + 1].begin(), id);
+            // One row per widget: select, name, group, delete
+            auto widgetRow = [&](Node* parent, const std::string& id, bool grouped) {
+                const auto m = meta(id);
+                const bool on = selected->contains(id);
+                auto* r = parent->add<Flex>(Flex::Direction::Row);
+                r->setPadding({4, 4})->setSpacing(2)->setRadius(Radii(14));
+                r->setBackground(on ? ColorRef("secondary_container") : ColorRef("surface_container_high"), false);
+                auto* sel = r->add<Button>();
+                pill(sel)->setPadding(Insets(5));
+                sel->add<Icon>(on ? "check_box" : "check_box_outline_blank", 18)->setFill(on)->setColor(on ? "primary" : "on_surface_variant", false);
+                sel->onClicked = [selected, id, live](uint32_t) {
+                    if (!selected->erase(id)) selected->insert(id);
+                    live->syncSoon();
+                };
+                r->add<Icon>(m.icon, 16)->setColor("on_surface_variant", false);
+                auto* name = r->add<Label>(m.name);
+                name->setSize(13)->setWeight(500)->setMaxWidth(92);
+                name->grow = true;
+                // Group: joins the selected widgets of this column (and this
+                // one), or the next widget when nothing else is selected;
+                // in a group it splits the group up again
+                auto* grp = r->add<Button>();
+                pill(grp)->setPadding(Insets(5));
+                grp->add<Icon>(grouped ? "link_off" : "link", 18)->setColor(grouped ? "primary" : "on_surface_variant", false);
+                grp->onClicked = [lay, z, id, grouped, selected, save](uint32_t) mutable {
+                    if (grouped) {
+                        Bar::ungroup(lay, id);
+                    } else {
+                        std::vector<std::string> ids = {id};
+                        for (const auto& gr : lay[z])
+                            for (const auto& other : gr)
+                                if (other != id && selected->contains(other)) ids.push_back(other);
+                        if (ids.size() == 1) {
+                            // Nothing selected: the widget after this one
+                            bool next = false;
+                            for (const auto& gr : lay[z])
+                                for (const auto& other : gr) {
+                                    if (next && ids.size() == 1) ids.push_back(other);
+                                    if (other == id) next = true;
+                                }
+                        }
+                        Bar::groupWidgets(lay, z, ids);
+                    }
+                    selected->clear();
                     save(lay);
                 };
-                if (canLeft) iconButton(chip, "chevron_left", [move]() mutable { move(-1); }, 16);
-                if (canRight) iconButton(chip, "chevron_right", [move]() mutable { move(1); }, 16);
-                iconButton(chip, "close", [lay, z, i, save]() mutable {
-                    lay[z].erase(lay[z].begin() + static_cast<long>(i));
+                auto* del = r->add<Button>();
+                pill(del)->setPadding(Insets(5));
+                del->add<Icon>("delete", 18)->setColor("error", false);
+                del->onClicked = [lay, id, selected, save](uint32_t) mutable {
+                    selected->erase(id);
+                    Bar::removeWidget(lay, id);
                     save(lay);
-                }, 16);
+                };
+            };
+            if (count == 0) caption(col, "No widgets");
+            for (const auto& gr : lay[z]) {
+                if (gr.size() == 1) {
+                    widgetRow(col, gr.front(), false);
+                    continue;
+                }
+                // A group: its rows inside one outlined box, like the capsule on the bar
+                auto* box = col->add<Flex>(Flex::Direction::Column);
+                box->setAlignItems(Align::Stretch)->setSpacing(4)->setPadding({4, 6})->setRadius(Radii(16));
+                box->setBorder(1.5f, ColorRef("primary", 0.7f));
+                auto* label = box->add<Label>("Group");
+                label->setSize(11)->setWeight(600)->setColor("primary", false);
+                label->alignSelf = Align::Start;
+                for (const auto& id : gr) widgetRow(box, id, true);
             }
-            if (*adding != static_cast<int>(z)) continue;
-            // Modules not on the bar yet
-            auto* avail = seg->add<Flow>();
-            size_t unused = 0;
-            for (const auto& m : shell::Bar::modules()) {
-                bool used = false;
-                for (const auto& zone : lay) used = used || std::ranges::find(zone, std::string(m.id)) != zone.end();
-                if (used) continue;
-                ++unused;
-                // Gallery tile: icon, name and what it does
-                auto* b = avail->add<Button>(Flex::Direction::Column);
-                b->setBackground("tertiary_container", false)->setRadius(Radii(20))->setPadding({14, 12})->setSpacing(4);
-                b->setAlignItems(Align::Start);
-                b->pressedRadius = 12;
-                b->fixedWidth = 204;
-                auto* top = b->add<Flex>(Flex::Direction::Row);
-                top->setSpacing(8);
-                top->add<Icon>(m.icon, 20)->setColor("on_tertiary_container", false);
-                top->add<Label>(m.name)->setSize(14)->setWeight(600)->setColor("on_tertiary_container", false);
-                b->add<Label>(m.about)->setSize(12)->setMaxWidth(176)->setMaxLines(2)->setColor("on_tertiary_container", false);
-                const std::string id = m.id;
-                b->onClicked = [lay, z, id, save](uint32_t) mutable {
-                    lay[z].push_back(id);
+
+            // With a selection: act on all of it
+            size_t inZone = 0;
+            for (const auto& gr : lay[z])
+                for (const auto& id : gr) inZone += selected->contains(id) ? 1 : 0;
+            if (inZone > 0) {
+                auto* bulk = col->add<Flex>(Flex::Direction::Row);
+                bulk->setSpacing(6)->setJustify(Align::Center);
+                if (inZone > 1) {
+                    auto* b = bulk->add<Button>(Flex::Direction::Row);
+                    pill(b->setBackground("primary", false))->setPadding({10, 6})->setSpacing(4);
+                    b->add<Icon>("link", 16)->setColor("on_primary", false);
+                    b->add<Label>(std::format("Group {}", inZone))->setSize(12)->setWeight(600)->setColor("on_primary", false);
+                    b->onClicked = [lay, z, selected, save](uint32_t) mutable {
+                        Bar::groupWidgets(lay, z, std::vector<std::string>(selected->begin(), selected->end()));
+                        selected->clear();
+                        save(lay);
+                    };
+                }
+                auto* d = bulk->add<Button>(Flex::Direction::Row);
+                pill(d->setBackground("error_container", false))->setPadding({10, 6})->setSpacing(4);
+                d->add<Icon>("delete", 16)->setColor("on_error_container", false);
+                d->add<Label>(std::format("Delete {}", inZone))->setSize(12)->setWeight(600)->setColor("on_error_container", false);
+                d->onClicked = [lay, z, selected, save](uint32_t) mutable {
+                    const auto zone = lay[z];
+                    for (const auto& gr : zone)
+                        for (const auto& id : gr)
+                            if (selected->contains(id)) Bar::removeWidget(lay, id);
+                    selected->clear();
                     save(lay);
                 };
             }
-            if (unused == 0) caption(avail, "Every widget is on the bar");
         }
         auto* reset = live->add<Flex>(Flex::Direction::Row);
         reset->setJustify(Align::End);
-        pillButton(reset, "Default layout", false, [live] {
+        pillButton(reset, "Default layout", false, [live, selected] {
+            selected->clear();
             Config::get().set("/statusBar/layout", nullptr);
             live->syncSoon();
         }, "restart_alt");
