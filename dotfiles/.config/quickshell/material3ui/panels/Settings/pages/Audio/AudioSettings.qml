@@ -125,6 +125,13 @@ Flickable {
                             onMoved: Audio.setMicrophoneVolume(value)
                         }
 
+                        // Per-channel levels (stereo mics only)
+                        AudioChannels {
+                            Layout.fillWidth: true
+                            node: Audio.source
+                            isSink: false
+                        }
+
                         // Devices
                         StyledText {
                             text: I18nService.tr("Devices")
@@ -294,6 +301,13 @@ Flickable {
                             value: Audio.volume
                             stopIndicatorValues: []
                             onMoved: Audio.setVolume(value)
+                        }
+
+                        // Left / right balance and per-channel levels
+                        AudioChannels {
+                            Layout.fillWidth: true
+                            node: Audio.sink
+                            isSink: true
                         }
 
                         // Devices

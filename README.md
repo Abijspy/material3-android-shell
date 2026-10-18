@@ -103,7 +103,7 @@ From the moment the machine boots:
 | <kbd>Ctrl</kbd><kbd>Super</kbd><kbd>T</kbd> | Wallpapers | <kbd>Super</kbd><kbd>L</kbd> | Lock |
 | <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd> | System monitor | <kbd>Super</kbd><kbd>Esc</kbd> | Power menu |
 
-Inside any panel, press <kbd>/</kbd> for the shortcut cheatsheet. Window and workspace binds (<kbd>Super</kbd><kbd>1…0</kbd>, <kbd>Super</kbd><kbd>Q</kbd>, <kbd>Super</kbd><kbd>F</kbd>, ...) are in [`keybinds.lua`](dotfiles/.config/hypr/material3ui/keybinds.lua).
+Inside any panel, press <kbd>/</kbd> for the shortcut cheatsheet. Window and workspace binds (<kbd>Super</kbd><kbd>1…0</kbd>, <kbd>Super</kbd><kbd>Q</kbd>, <kbd>Super</kbd><kbd>F</kbd>, ...) are in [`keybinds.lua`](dotfiles/.config/hypr/material3ui/keybinds.lua). To change any of them, use **Settings → System → Keybinds** (see below).
 
 ## Make it yours
 
@@ -114,7 +114,9 @@ For everything else, here is which file to edit. Updates never overwrite the fil
 | I want to... | Edit |
 | :--- | :--- |
 | Use a different terminal, browser or file manager | ✎ `~/.config/hypr/material3ui/apps.lua` |
-| Add my own binds, rules, monitors or autostart | ✎ `~/.config/hypr/material3ui/user.lua` |
+| Remap, disable or add keybinds | **Settings → System → Keybinds** (saved to ✎ `keybinds_custom.lua`) |
+| Set left/right balance or per-channel volume | **Settings → Audio → Channels** |
+| Add my own rules, monitors or autostart | ✎ `~/.config/hypr/material3ui/user.lua` |
 | Understand the Hyprland setup | [docs/HYPRLAND.md](docs/HYPRLAND.md) |
 | Script the shell from a terminal or another program | `material3uictl` (below) |
 
@@ -140,7 +142,7 @@ A desktop shell touches a lot of your system, so the installer and updater are b
 - **Nothing is overwritten silently.** Every replaced file is copied to `~/.config/material3ui/backups/<timestamp>/` first.
 - **Everything is logged** to `~/.cache/material3ui/install-*.log`.
 - **You review before it runs.** It lists missing packages (found with `pacman -T`) and every file it will write, and waits for your confirmation.
-- **Updates keep your changes.** `./update.sh` preserves `apps.lua`, `user.lua` and your colours, and remembers which Hyprland mode you chose.
+- **Updates keep your changes.** `./update.sh` preserves `apps.lua`, `user.lua`, your keybind edits and your colours, and remembers which Hyprland mode you chose.
 - **Upgrades stay interactive.** Package installs and upgrades run in your own terminal, where you can see and answer every pacman or sudo prompt.
 - **The login screen is optional** and installs separately. If its step fails, the rest of the install carries on.
 

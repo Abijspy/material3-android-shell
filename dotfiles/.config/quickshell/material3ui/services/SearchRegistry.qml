@@ -37,6 +37,7 @@ Item {
             { file: "panels/Settings/pages/Bluetooth/BluetoothSettings.qml", pageIndex: 1 },
             { file: "panels/Settings/pages/Audio/AudioSettings.qml", pageIndex: 2 },
 { file: "panels/Settings/pages/Audio/SysSounds.qml", pageIndex: 2 },
+            { file: "panels/Settings/pages/Audio/AudioChannels.qml", pageIndex: 2 },
             { file: "panels/Settings/pages/Display/DisplaySettings.qml", pageIndex: 3 },
             { file: "panels/Settings/pages/Display/DisplayEyeCare.qml", pageIndex: 3 },
             { file: "panels/Settings/pages/WallpaperStyle/WsWallpaperCycle.qml", pageIndex: 4 },
@@ -71,6 +72,7 @@ Item {
             { file: "panels/Settings/pages/System/SysPower.qml", pageIndex: 6 },
             { file: "panels/Settings/pages/System/SysDisk.qml", pageIndex: 6 },
             { file: "panels/Settings/pages/System/SysSystemInterface.qml", pageIndex: 6 },
+            { file: "panels/Settings/pages/System/SysKeybinds.qml", pageIndex: 6 },
             // Services Page components (pageIndex: 7)
             { file: "panels/Settings/pages/Services/ServicesSettings.qml", pageIndex: 7 },
             { file: "panels/Settings/pages/Services/ServicesWeather.qml", pageIndex: 7 },

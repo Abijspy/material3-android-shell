@@ -55,6 +55,9 @@ Flickable {
         // ── Language ── (second, like Android)
         SysLanguage { Layout.fillWidth: true }
 
+        // ── Keybinds ──
+        SysKeybinds { Layout.fillWidth: true }
+
         // ── Screenshot & Screen Record ──
         SysScreenshot { Layout.fillWidth: true }
 

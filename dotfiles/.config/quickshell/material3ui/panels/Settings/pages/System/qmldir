@@ -7,3 +7,4 @@ SysGameMode 1.0 SysGameMode.qml
 SysPower 1.0 SysPower.qml
 SysDisk 1.0 SysDisk.qml
 SysSystemInterface 1.0 SysSystemInterface.qml
+SysKeybinds 1.0 SysKeybinds.qml

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **Keybind editor** in Settings → System → Keybinds. It lists the shell's Hyprland binds live, grouped and searchable. Click a bind to remap it (modifier chips plus press-a-key capture), disable it or reset it. You can also add custom command binds, and conflicts are flagged. Binds from `user.lua` are listed read-only.
+  - The default binds in `shell.lua` and `keybinds.lua` now go through a new `bindings.lua` registry, which applies the edits from the shell-written `keybinds_custom.lua` before binding. Updates never overwrite that file.
+- **Channels** in Settings → Audio for the default output (and for stereo microphones):
+  - A left/right balance slider that snaps to centre.
+  - A volume slider per channel, surround included.
+  - A "Centre" reset.
+  - Speaker test buttons that play the freedesktop "front left/right" voice on one side only.
+
 ## v3.0.0 — 2026-10-18
 
 Material3UI gets its own identity, and a home for system packages.
