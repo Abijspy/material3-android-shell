@@ -1,5 +1,6 @@
 #include "services/Search.h"
 
+#include "core/FileWatcher.h"
 #include "core/Paths.h"
 #include "core/Process.h"
 
@@ -68,6 +69,8 @@ Apps& Apps::get() {
 
 Apps::Apps() {
     reload();
+    // Apps installed or removed while the shell runs show up without a restart
+    for (const auto& dir : applicationDirs()) FileWatcher::get().watchDir(dir, [this] { reload(); });
     std::ifstream in(countsFile());
     try {
         if (in) {

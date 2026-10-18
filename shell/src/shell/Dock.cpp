@@ -259,7 +259,8 @@ void Dock::refresh() {
                 return;
             }
             if (button == BTN_MIDDLE || copy.windows.empty()) {
-                if (copy.app) Apps::get().launch(*copy.app);
+                // Look it up again: the app list reloads when apps are (un)installed
+                if (const auto* app = copy.app ? findApp(copy.id) : nullptr) Apps::get().launch(*app);
                 return;
             }
             // Focus its window; when it already has focus, the next one

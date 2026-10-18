@@ -19,16 +19,29 @@ FileWatcher::~FileWatcher() {
     if (m_fd >= 0) close(m_fd);
 }
 
+namespace {
+constexpr uint32_t kWritten = IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE;
+constexpr uint32_t kRemoved = IN_DELETE | IN_MOVED_FROM;
+} // namespace
+
 void FileWatcher::watch(const std::string& path, std::function<void()> onChange) {
-    if (m_fd < 0) return;
     const std::filesystem::path p(path);
-    const std::string dir = p.parent_path();
+    add(p.parent_path(), p.filename(), std::move(onChange));
+}
+
+void FileWatcher::watchDir(const std::string& dir, std::function<void()> onChange) {
+    add(dir, "", std::move(onChange));
+}
+
+void FileWatcher::add(const std::string& dir, std::string name, std::function<void()> onChange) {
+    if (m_fd < 0) return;
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
-    const int wd = inotify_add_watch(m_fd, dir.c_str(), IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE);
+    // One mask per directory (re-adding replaces it), so always ask for both
+    const int wd = inotify_add_watch(m_fd, dir.c_str(), kWritten | kRemoved);
     if (wd < 0) return;
     m_dirs[wd] = dir;
-    m_files.emplace(dir, Entry{p.filename(), std::move(onChange)});
+    m_files.emplace(dir, Entry{std::move(name), std::move(onChange)});
 }
 
 void FileWatcher::dispatch(short) {
@@ -43,7 +56,8 @@ void FileWatcher::dispatch(short) {
             if (dir == m_dirs.end() || !ev->len) continue;
             const auto range = m_files.equal_range(dir->second);
             for (auto it = range.first; it != range.second; ++it) {
-                if (it->second.name != ev->name) continue;
+                // Single files only care about new contents; directories about any change
+                if (!it->second.name.empty() && (it->second.name != ev->name || !(ev->mask & kWritten))) continue;
                 // Writers save in bursts; act once they settle
                 auto& entry = it->second;
                 EventLoop::get().debounce(entry.debounce, 120, entry.fn);

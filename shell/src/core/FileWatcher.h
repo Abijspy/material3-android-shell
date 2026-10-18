@@ -16,15 +16,18 @@ public:
     ~FileWatcher() override;
 
     void watch(const std::string& path, std::function<void()> onChange);
+    // Any file created, changed, moved or removed directly in `dir`
+    void watchDir(const std::string& dir, std::function<void()> onChange);
 
     int fd() const override { return m_fd; }
     void dispatch(short revents) override;
 
 private:
     FileWatcher();
+    void add(const std::string& dir, std::string name, std::function<void()> onChange);
 
     struct Entry {
-        std::string name;
+        std::string name; // empty: the whole directory
         std::function<void()> fn;
         EventLoop::TimerId debounce = 0;
     };
