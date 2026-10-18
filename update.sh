@@ -1,0 +1,138 @@
+#!/bin/bash
+
+# Material3UI Shell State-Aware OTA Update Script
+set -e
+
+# Get the directory where the script is located to use as project root
+PROJECT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+MODE=$1
+CHANNEL=$2
+
+STATE_FILE="$HOME/.config/material3ui/install_state.json"
+
+if [ ! -f "$STATE_FILE" ]; then
+    echo "Error: install_state.json not found. Please run the install script first."
+    exit 1
+fi
+
+# Use regular expressions to extract values, since jq might not be installed
+# We still read INSTALL_DIR but will prefer PROJECT_ROOT for file operations
+INSTALL_DIR=$(grep -oP '"install_dir": "\K[^"]*' "$STATE_FILE" || echo "")
+JSON_CHANNEL=$(grep -oP '"channel": "\K[^"]*' "$STATE_FILE" || echo "")
+
+if [ -z "$INSTALL_DIR" ]; then
+    INSTALL_DIR="$PROJECT_ROOT"
+fi
+
+if [ -z "$CHANNEL" ]; then
+    CHANNEL=$JSON_CHANNEL
+fi
+if [ -z "$CHANNEL" ]; then
+    CHANNEL="stable"
+fi
+
+# ── Dev symlink guard ─────────────────────────────────────────────
+# A dev checkout is symlinked (e.g. ~/.config/quickshell/material3ui ->
+# ~/src/material3ui/dotfiles/...). A normal "cp -r" update would replace
+# the symlink with a real directory and silently break the dev setup.
+# Abort early with a clear message; pass --force as 3rd arg to override.
+ALLOW_FORCE=false
+for arg in "$@"; do
+    [ "$arg" = "--force" ] && ALLOW_FORCE=true
+done
+
+SHELL_LINK="$HOME/.config/quickshell/material3ui"
+if [ -L "$SHELL_LINK" ] && [ "$ALLOW_FORCE" = false ]; then
+    TARGET=$(readlink "$SHELL_LINK")
+    echo "✗ Dev setup detected: $SHELL_LINK is a symlink -> $TARGET"
+    echo "  Update aborted to protect your dev setup."
+    echo "  Your symlink was NOT touched."
+    echo ""
+    echo "  To update a dev checkout, pull manually:"
+    echo "    git -C \"$INSTALL_DIR\" pull   # or: git pull (inside $INSTALL_DIR)"
+    echo "  Or re-run with --force to override (not recommended):"
+    echo "    $0 $MODE $CHANNEL --force"
+    exit 1
+fi
+
+cd "$INSTALL_DIR" || exit 1
+
+echo "Fetching latest updates..."
+git fetch origin
+
+if [ "$CHANNEL" == "stable" ]; then
+    echo "Switching to Release channel (latest tag)..."
+    LATEST_TAG=$(git describe --tags $(git rev-list --tags --max-count=1))
+    if [ -n "$LATEST_TAG" ]; then
+        git checkout "$LATEST_TAG"
+    else
+        echo "No tags found. Falling back to main branch."
+        git checkout main
+        git pull origin main
+    fi
+else
+    echo "Switching to Latest channel (latest commit)..."
+    git checkout main
+    git pull origin main
+fi
+
+# Copying files based on mode
+CONFIG_PATH="$HOME/.config/quickshell/material3ui/core/Config.qml"
+if [ -f "$CONFIG_PATH" ]; then
+    BACKUP_NAME="Config_$(date +%Y%m%d_%H%M%S).bak"
+    echo "Backing up existing configuration to $BACKUP_NAME..."
+    cp "$CONFIG_PATH" "$(dirname "$CONFIG_PATH")/$BACKUP_NAME"
+fi
+
+if [ "$MODE" == "all" ]; then
+    echo "Updating all configs..."
+    
+    for item in "$PROJECT_ROOT/dotfiles/.config/"*; do
+        item_name=$(basename "$item")
+        
+        if [[ "$item_name" == "matugen" ]] && [ -e "$HOME/.config/matugen" ]; then
+            if [ -f "$HOME/.config/matugen/config.toml" ] && grep -q "# Material3UI Configuration" "$HOME/.config/matugen/config.toml"; then
+                : # It's ours, let it update
+            else
+                echo "Warning: You already have your own matugen configuration. Skipping update for matugen."
+                continue
+            fi
+        fi
+        
+        if [[ "$item_name" == "starship.toml" ]] && [ -e "$HOME/.config/starship.toml" ]; then
+            if grep -q "# Material3UI Configuration" "$HOME/.config/starship.toml"; then
+                : # It's ours, let it update
+            else
+                echo "Warning: You already have your own starship configuration. Skipping update for starship."
+                continue
+            fi
+        fi
+        
+        cp -r "$item" "$HOME/.config/"
+    done
+elif [ "$MODE" == "shell" ]; then
+    echo "Updating shell only..."
+    mkdir -p "$HOME/.config/quickshell/material3ui"
+    cp -r "$PROJECT_ROOT/dotfiles/.config/quickshell/material3ui/"* "$HOME/.config/quickshell/material3ui/"
+else
+    echo "Usage: $0 [all|shell] [stable|canary]"
+    exit 1
+fi
+
+# Ensure dependencies.json is always copied as real file from project root
+echo "Updating shell metadata (dependencies)..."
+mkdir -p "$HOME/.config/quickshell/material3ui/data"
+cp "$PROJECT_ROOT/data/dependencies.json" "$HOME/.config/quickshell/material3ui/data/dependencies.json"
+
+# Migration / Config Injection
+HYPR_CONF="$HOME/.config/hypr/hyprland.lua"
+if [ -f "$HYPR_CONF" ]; then
+    if ! grep -q 'require("material3ui/user_persistence")' "$HYPR_CONF"; then
+        echo "Injecting user_persistence.lua into hyprland.lua..."
+        echo 'require("material3ui/user_persistence")' >> "$HYPR_CONF"
+    fi
+fi
+mkdir -p "$HOME/.config/hypr/material3ui"
+touch "$HOME/.config/hypr/material3ui/user_persistence.lua"
+
+echo "Update successful!"

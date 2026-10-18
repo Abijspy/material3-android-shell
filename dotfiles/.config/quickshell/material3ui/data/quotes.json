@@ -1,0 +1,137 @@
+{
+  "greetings": {
+    "morning": [
+      "Good morning",
+      "Rise and shine",
+      "Hello there",
+      "A fresh start",
+      "Here's to today"
+    ],
+    "afternoon": [
+      "Good afternoon",
+      "Keep going",
+      "Halfway there",
+      "Still going"
+    ],
+    "evening": [
+      "Good evening",
+      "Wind down",
+      "Take it easy",
+      "Almost there"
+    ],
+    "night": [
+      "Good night",
+      "Still up?",
+      "Late night",
+      "Quiet hours",
+      "Quiet night"
+    ],
+    "midnight": [
+      "Solemn midnight",
+      "Deep night",
+      "Still awake?",
+      "Past midnight",
+      "Midnight"
+    ]
+  },
+  "morning": [
+    "A glass of water before the coffee goes a long way. Your body just went hours without any.",
+    "Fresh air first thing tends to wake you up better than caffeine, if you can crack a window.",
+    "If you had to pick one thing that mattered today, what would it be?",
+    "A minute of stretching can feel surprisingly good, especially if you've been sitting a while.",
+    "Even a small breakfast tends to sharpen focus more than skipping it.",
+    "Morning sunlight is weirdly powerful, it helps you sleep better tonight too.",
+    "Slow mornings usually beat rushed ones, when life allows.",
+    "Worth checking in: how are you actually feeling today?",
+    "Rest isn't something you have to earn. A small break early on helps more than you'd think.",
+    "Putting the phone aside for a few minutes changes how the morning feels. The day comes to you instead.",
+    "Coffee tastes better when you're not rushing it.",
+    "Morning light on your face is a small free gift, if you're near a window.",
+    "Birds are up and they don't even have alarms. Respect.",
+    "Easier said than done on the groggy days, but today's got potential.",
+    "Two minutes of doing nothing still counts as a good start."
+  ],
+  "afternoon": [
+    "Sitting for too long has a way of catching up with you. A little movement helps.",
+    "Your eyes probably need a break. Twenty seconds on something far away does wonders.",
+    "When the afternoon dip hits, a short walk often beats another coffee.",
+    "A snack with some protein in it tends to last longer than just sugar.",
+    "It's okay to step away from a hard problem. Answers often come when you stop forcing them.",
+    "Worth a thought: thirst often shows up as tiredness before hunger does.",
+    "Posture is one of those things you only notice once it hurts. Worth a quick reset.",
+    "If you're stuck, try explaining the problem out loud.",
+    "The midday slump is real. A short rest is usually more useful than pushing through.",
+    "One task at a time. Multitasking mostly just feels productive.",
+    "That 3pm feeling? Universal. You're not alone in it.",
+    "Snack break. You've earned it.",
+    "The afternoon is long. Pace yourself.",
+    "A song you love can reset the whole mood. Give it a shot.",
+    "Blink. Seriously. We forget when staring at screens."
+  ],
+  "evening": [
+    "Good work today. Even the small things count.",
+    "Dimming the lights a little later on signals to your body that the day is easing off.",
+    "Less screen time as the night goes on tends to make sleep deeper, when you can help it.",
+    "If nothing else, one thing probably went right today. Worth holding onto.",
+    "A short walk in the evening tends to help with both sleep and digestion.",
+    "Whatever didn't get done today, tomorrow gets another go at it.",
+    "Warm shower, cool room, that combo somehow makes falling asleep easier.",
+    "If your mind won't settle, getting it down on paper can take the weight off.",
+    "Heavy meals late tend to mess with sleep more than you'd expect.",
+    "A few slow breaths can quiet a busy head.",
+    "Evenings are for small joys. A cup of tea, a song, nothing big.",
+    "The sky does its best work around now. Worth a look if you're near a window.",
+    "You did enough today. Even if it doesn't feel like it.",
+    "Comfort food and a soft chair. That's the schedule now."
+  ],
+  "night": [
+    "Quiet hours. Nice time to think, or to wind down, your call.",
+    "Just a reminder to save your work. Future you will appreciate it.",
+    "Late night browsing feels good now, sleep feels better tomorrow.",
+    "Dim the brightness a touch? Easier on the eyes around now.",
+    "No pressure, but sleep does make tomorrow kinder.",
+    "If you're mulling something over, it'll keep until morning.",
+    "The calm around now is kind of nice. The day's noise has finally settled.",
+    "Winding down counts as doing something, by the way.",
+    "Late night thoughts hit different. Mostly weirder.",
+    "The internet will still be here tomorrow. Probably.",
+    "Nothing on TV at this hour, but here we are.",
+    "Midnight snacks are a personality trait at this point."
+  ],
+  "midnight": [
+    "It's past midnight. Whatever this is, it's not worth your sleep.",
+    "Your brain does most of its repair work while you sleep. Easy thing to shortchange without noticing.",
+    "Nothing you do right now will be as good as after a full night's rest.",
+    "The light from your screen is the main thing telling your body to stay awake right now.",
+    "You can't fix today by staying up late. Tomorrow starts with sleep.",
+    "Lack of sleep catches up quietly, then all at once. Worth heading off before it lands.",
+    "Your future self would probably really appreciate it if you called it a night soon.",
+    "The world's gone quiet around you. A good sign it's time to do the same.",
+    "Decisions made after midnight are rarely the good ones. Morning usually has better ideas.",
+    "Your body heals when you rest. Please give it the chance.",
+    "Whatever you're worrying about will still be there in the morning, and clearer after sleep.",
+    "You've done enough for today. Let yourself rest, you've earned it.",
+    "Even the night shift eventually gets to go home. You're long overdue.",
+    "Bed is calling. It's been calling for an hour now.",
+    "This will all still be here in the morning. You won't be much use without sleep.",
+    "Everything can wait until morning, including whatever's on your mind right now."
+  ],
+  "general": [
+    "Stay curious. There's always more to learn.",
+    "Your mental health matters as much as your physical health.",
+    "Slow progress is still progress. Don't be too hard on yourself for the pace.",
+    "It's easy to compare your rough draft to someone else's finished work. They rarely show the rough bits.",
+    "Chances are you're being harder on yourself today than you'd be on a friend.",
+    "A small step now beats a perfect plan never started.",
+    "It's okay to ask for help. No one does it alone.",
+    "Rest is part of the work, not a reward for it.",
+    "The good things, however small, tend to add up more than they look at the time.",
+    "You're allowed to change your mind.",
+    "The basics carry a lot of the weight: sleep, water, food. Everything else tends to follow.",
+    "Some days just getting through is enough. That counts.",
+    "Cats sleep sixteen hours a day and seem fine. Just saying.",
+    "A good stretch is wildly underrated.",
+    "Music fixes more moods than it gets credit for.",
+    "Plants on a desk make the screen time feel slightly less grim."
+  ]
+}

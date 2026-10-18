@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.0.0 — 2026-10-18
+
+Material3UI Shell is rebuilt on [NAnDoroid-shell](https://github.com/na-ive/nandoroid-shell) and is now licensed under AGPL-3.0.
+
+- Replace the v1 QML shell with the full NAnDoroid feature set: Dynamic Island, status bar, dock, overview, Spotlight, Quick Settings/Actions, dashboard, notification centre, lock screen, Polkit agent, region tools (screenshot, OCR, QR, search, recording), system monitor, wallpaper browser (local, Wallhaven, live), desktop widgets, lyrics, music recognition, onboarding, translations and OTA updates.
+- Add the unified `material3ui` IPC target and rewrite `material3uictl` around it; per-panel targets stay available.
+- Add `wallpaper set|next|toggleDarkMode` IPC functions.
+- Ship modular Hyprland Lua configs (`hypr/material3ui/` plus `extras/hypr/`), Matugen templates for GTK, KDE, terminals and apps, and the Midnight Dunes wallpaper.
+- Installer migrates v1 installs: backs up and replaces the shell profile and v1 `hyprland.lua`, and removes `material3ui-system`, `material3ui-polkit` and the update timer.
+- Fix a duplicate `SUPER+V` binding that passed an unsupported argument to `spotlight toggle`.
+- Upstream history is kept in `docs/UPSTREAM_CHANGELOG.md`.
+
 ## v1.0.1 — 2026-10-02
 
 - Rewrite the Arch installer with safe upgrades, backups, unattended flags, and optional AUR setup.

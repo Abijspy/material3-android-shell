@@ -1,33 +1,59 @@
 #!/usr/bin/env sh
-# Stable client for the Material3UI Shell IPC target.
+# Terminal client for the Material3UI Shell IPC target ("material3ui").
 set -eu
 
-case "${1:-}" in
-  launcher|controlCenter|notifications|clipboard|power|close)
-    quickshell -c material3ui ipc call material3ui "$1"
-    ;;
-  settings)
-    shift
-    quickshell -c material3ui ipc call material3ui settings "${1:-}"
-    ;;
-  wifi|bluetooth)
-    [ "$#" -eq 2 ] || { echo "usage: material3uictl $1 <value>" >&2; exit 2; }
-    material3ui-system "$1" "$2"
-    quickshell -c material3ui ipc call material3ui "$1" "$2"
-    ;;
-  volume|brightness)
-    [ "$#" -eq 2 ] || { echo "usage: material3uictl $1 <value>" >&2; exit 2; }
-    quickshell -c material3ui ipc call material3ui "$1" "$2"
-    ;;
-  screenshot|record|battery|about)
-    material3ui-system "$1"
-    ;;
+m3() { quickshell -c material3ui ipc call material3ui "$@"; }
+
+usage() {
+  cat >&2 <<'EOF'
+usage: material3uictl <command> [args]
+
+Panels (toggle):
+  launcher spotlight controlCenter quickActions notifications
+  dashboard overview power settings systemMonitor
+
+Commands:
+  clipboard | emoji          Open Spotlight in clipboard or emoji mode
+  lock                       Lock the session
+  close                      Close all open panels
+  wallpaper [path|next]      Open the wallpaper picker, apply an image, or cycle
+  darkmode                   Toggle light/dark colour scheme
+  brightness up|down         Step screen brightness
+  region screenshot|ocr|search|record|qrcode
+  pomodoro start|pause|stop|reset
+  reload                     Restart the shell
+  ipc <target> <fn> [args]   Raw IPC call (e.g. ipc launcher open)
+  targets                    List IPC targets exposed by the running shell
+EOF
+  exit 2
+}
+
+[ "$#" -ge 1 ] || usage
+cmd="$1"; shift
+
+case "$cmd" in
+  launcher|spotlight|clipboard|emoji|controlCenter|quickActions|notifications|dashboard|overview|power|settings|systemMonitor|lock|close)
+    m3 "$cmd" ;;
+  quicksettings) m3 controlCenter ;;
   wallpaper)
-    [ "$#" -eq 2 ] || { echo 'usage: material3uictl wallpaper /path/to/image' >&2; exit 2; }
-    material3ui-system wallpaper "$2"
-    ;;
-  *)
-    echo 'usage: material3uictl {launcher|controlCenter|notifications|clipboard|power|close|settings [section]|wifi on|off|bluetooth on|off|volume 0-100|brightness 0-100}' >&2
-    exit 2
-    ;;
+    case "${1:-}" in
+      "") m3 wallpaperPicker ;;
+      next) m3 nextWallpaper ;;
+      *) [ -f "$1" ] || { echo "material3uictl: no such file: $1" >&2; exit 1; }
+         m3 wallpaper "$(realpath "$1")" ;;
+    esac ;;
+  darkmode) m3 darkMode ;;
+  brightness)
+    case "${1:-}" in
+      up|increment) quickshell -c material3ui ipc call brightness increment ;;
+      down|decrement) quickshell -c material3ui ipc call brightness decrement ;;
+      *) usage ;;
+    esac ;;
+  region) quickshell -c material3ui ipc call region "${1:-screenshot}" ;;
+  pomodoro) quickshell -c material3ui ipc call pomodoro "${1:-start}" ;;
+  reload) "$HOME/.config/quickshell/material3ui/scripts/restartshell.sh" ;;
+  ipc) [ "$#" -ge 2 ] || usage; quickshell -c material3ui ipc call "$@" ;;
+  targets) quickshell -c material3ui ipc show ;;
+  -h|--help|help) usage ;;
+  *) echo "material3uictl: unknown command: $cmd" >&2; usage ;;
 esac

@@ -1,7 +1,0 @@
-[Unit]
-Description=Check for a Material3UI Shell update
-After=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=%h/.local/bin/material3ui-update-check

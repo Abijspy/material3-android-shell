@@ -1,0 +1,385 @@
+import "../core"
+import "../services"
+import "."
+import "./visualizer"
+import "../core/functions" as Functions
+import QtQuick
+import QtQuick.Layouts
+import Qt5Compat.GraphicalEffects
+import Quickshell
+
+/**
+ * M3-styled media player card — Compact horizontal layout matching ii style.
+ * Art (left) | Info & Progress (center) | Play/Pause (right).
+ * Uses persistent data from MprisController.
+ */
+Rectangle {
+    id: root
+    implicitHeight: 118 * Appearance.effectiveScale
+    radius: Appearance.rounding.card
+    color: Functions.ColorUtils.applyAlpha(root.effectiveLayer0, 1)
+    visible: MprisController.activePlayer !== null
+    clip: true
+
+    property bool showVisualizer: true
+    property bool isLockscreen: false
+    // When on lockscreen, wavy is only enabled if the big lockWave visualizer is active
+    // (LockSurface.shouldVisualize). Otherwise flat cheap path like DesktopMediaWidget art style.
+    // Also flat when GameMode is active (notification center etc).
+    property bool isLockWaveActive: false
+    readonly property bool _useFlat: GameMode.active || (isLockscreen && !isLockWaveActive)
+    readonly property bool _flatLockscreen: _useFlat
+    // Effective shown-state for the wavy progress bar. When false, the WavyLine
+    // Canvas + its 60fps FrameAnimation are destroyed (no off-screen repaint).
+    // Defaults to `visible` (correct for hosts that actually toggle visibility),
+    // but hosts that collapse this card via opacity should bind this to their
+    // real open-state.
+    property bool wavyVisible: visible
+    readonly property var player: MprisController.activePlayer
+    readonly property bool hasArt: MprisController.displayedArtFilePath.toString() !== ""
+
+    // Exposed controls so hosts can drive/position keyboard navigation.
+    readonly property Item kbPrevButton: prevBtn
+    readonly property Item kbPlayButton: playPauseButton
+    readonly property Item kbNextButton: nextBtn
+    readonly property Item kbLyricsButton: lyricsBtn
+    readonly property Item kbSeekSlider: progressSlider
+
+    // When on lockscreen with no art, use lockscreen palette instead of desktop-based dyn* colors
+    readonly property var m3: isLockscreen ? Appearance.lockM3colors : Appearance.m3colors
+    readonly property color effectiveLayer0:    (!hasArt && isLockscreen) ? m3.m3surfaceContainerHigh : MprisController.dynLayer0
+    readonly property color effectiveOnLayer0:  (!hasArt && isLockscreen) ? m3.m3onSurface           : MprisController.dynOnLayer0
+    readonly property color effectiveSubtext:   (!hasArt && isLockscreen) ? m3.m3onSurfaceVariant    : MprisController.dynSubtext
+    readonly property color effectivePrimary:   (!hasArt && isLockscreen) ? m3.m3primary             : MprisController.dynPrimary
+    readonly property color effectivePrimaryHover: (!hasArt && isLockscreen) ? Qt.lighter(m3.m3primary, 1.1) : MprisController.dynPrimaryHover
+    readonly property color effectivePrimaryActive: (!hasArt && isLockscreen) ? Qt.darker(m3.m3primary, 1.1) : MprisController.dynPrimaryActive
+    readonly property color effectiveSecondaryContainer:       (!hasArt && isLockscreen) ? m3.m3secondaryContainer       : MprisController.dynSecondaryContainer
+    readonly property color effectiveSecondaryContainerHover:  (!hasArt && isLockscreen) ? Qt.lighter(m3.m3secondaryContainer, 1.1) : MprisController.dynSecondaryContainerHover
+    readonly property color effectiveSecondaryContainerActive: (!hasArt && isLockscreen) ? Qt.darker(m3.m3secondaryContainer, 1.1) : MprisController.dynSecondaryContainerActive
+    readonly property color effectiveOnSecondaryContainer: (!hasArt && isLockscreen) ? m3.m3onSecondaryContainer : MprisController.dynOnSecondaryContainer
+    readonly property color effectiveOnPrimary: (!hasArt && isLockscreen) ? m3.m3onPrimary : MprisController.dynOnPrimary
+
+    // --- Cava Lifecycle Management ---
+    property bool _cavaActive: false
+    readonly property bool shouldVisualize: root.visible && MprisController.isPlaying && root.showVisualizer && !GameMode.active
+    onShouldVisualizeChanged: {
+        if (shouldVisualize && !_cavaActive) {
+            CavaService.refCount++;
+            _cavaActive = true;
+        } else if (!shouldVisualize && _cavaActive) {
+            CavaService.refCount--;
+            _cavaActive = false;
+        }
+    }
+    Component.onDestruction: {
+        if (_cavaActive) CavaService.refCount--;
+    }
+
+    // Background Art (Blurred)
+    Item {
+        id: backgroundWrapper
+        anchors.fill: parent
+        layer.enabled: true
+        layer.effect: OpacityMask {
+            maskSource: Rectangle {
+                width: backgroundWrapper.width
+                height: backgroundWrapper.height
+                radius: root.radius
+            }
+        }
+
+        Image {
+            id: blurredArt
+            anchors.fill: parent
+            source: MprisController.displayedArtFilePath
+            visible: source.toString() !== ""
+            fillMode: Image.PreserveAspectCrop
+            asynchronous: true
+            cache: false
+            
+            layer.enabled: true
+            layer.effect: GaussianBlur {
+                radius: 64 * Appearance.effectiveScale
+                samples: Math.round(48 * Appearance.effectiveScale)
+                cached: true
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                color: Functions.ColorUtils.transparentize(root.effectiveLayer0, 0.3)
+            }
+        }
+
+        WaveView {
+            anchors.fill: parent
+            anchors.topMargin: parent.height * 0.4
+            color: MprisController.dynPrimary
+            alpha: 0.2
+            visible: root.shouldVisualize
+        }
+    }
+
+    // Layout Container
+    Item {
+        anchors.fill: parent
+        anchors.margins: 12 * Appearance.effectiveScale
+
+        // Left: Album art
+        MaterialShape {
+            id: artShape
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            width: 86 * Appearance.effectiveScale
+            height: 86 * Appearance.effectiveScale
+            image: MprisController.displayedArtFilePath
+            shape: MaterialShape.Shape.Square
+            color: root.effectiveLayer0
+            
+            MaterialSymbol {
+                anchors.centerIn: parent
+                text: "music_note"
+                iconSize: 32 * Appearance.effectiveScale
+                fill: 1
+                color: root.effectiveSubtext
+                visible: !parent.image || parent.image.toString() === ""
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                onClicked: (mouse) => {
+                    if (mouse.button === Qt.RightButton) {
+                        MprisController.cyclePlayer()
+                    } else {
+                        MprisController.raisePlayer()
+                    }
+                }
+            }
+        }
+
+        // Main Content Area (Right of Art)
+        ColumnLayout {
+            anchors.left: artShape.right
+            anchors.right: parent.right
+            anchors.top: artShape.top
+            anchors.bottom: artShape.bottom
+            anchors.leftMargin: 16 * Appearance.effectiveScale
+            spacing: 0
+
+            // Top Row: Track Info + Play/Pause
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 52 * Appearance.effectiveScale
+                spacing: 8 * Appearance.effectiveScale
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignTop
+                    spacing: 0
+
+                    MouseArea {
+                        Layout.fillWidth: true
+                        implicitHeight: trackTitleText.implicitHeight + trackArtistText.implicitHeight
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onClicked: (mouse) => {
+                            if (mouse.button === Qt.RightButton) {
+                                MprisController.cyclePlayer()
+                            } else {
+                                MprisController.raisePlayer()
+                            }
+                        }
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            spacing: 0
+                            StyledText {
+                                id: trackTitleText
+                                Layout.fillWidth: true
+                                text: Functions.StringUtils.cleanMusicTitle(MprisController.trackTitle) || I18nService.tr("No media")
+                                font.pixelSize: Appearance.font.pixelSize.normal
+                                font.weight: Font.DemiBold
+                                color: root.effectiveOnLayer0
+                                elide: Text.ElideRight
+                                verticalAlignment: Text.AlignTop
+                            }
+                            StyledText {
+                                id: trackArtistText
+                                Layout.fillWidth: true
+                                text: MprisController.trackArtist || I18nService.tr("Unknown Artist")
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                color: root.effectiveSubtext
+                                elide: Text.ElideRight
+                                verticalAlignment: Text.AlignTop
+                            }
+                        }
+                    }
+                }
+
+                // Play/Pause Button
+                RippleButton {
+                    id: playPauseButton
+                    padding: 0
+                    implicitWidth: 52 * Appearance.effectiveScale
+                    implicitHeight: 52 * Appearance.effectiveScale
+                    Layout.preferredWidth: 52 * Appearance.effectiveScale
+                    Layout.preferredHeight: 52 * Appearance.effectiveScale
+                    Layout.alignment: Qt.AlignTop
+                    buttonRadius: MprisController.isPlaying ? Appearance.rounding.large : Appearance.rounding.normal
+                    
+                    colBackground: MprisController.isPlaying ? root.effectivePrimary : root.effectiveSecondaryContainer
+                    colBackgroundHover: MprisController.isPlaying ? root.effectivePrimaryHover : root.effectiveSecondaryContainerHover
+                    colRipple: MprisController.isPlaying ? root.effectivePrimaryActive : root.effectiveSecondaryContainerActive
+                    
+                    onClicked: MprisController.togglePlaying()
+                    
+                    MaterialSymbol {
+                        anchors.centerIn: parent
+                        text: MprisController.isPlaying ? "pause" : "play_arrow"
+                        iconSize: 28 * Appearance.effectiveScale
+                        fill: 1
+                        color: MprisController.isPlaying ? root.effectiveOnPrimary : root.effectiveOnSecondaryContainer
+                    }
+                }
+            }
+
+            // Fill space between top and bottom
+            Item { Layout.fillHeight: true }
+
+            // Bottom Row: Full Width Playback Controls
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 24 * Appearance.effectiveScale
+                spacing: 0 // Experimental: Remove base spacing
+
+                // Skip Previous
+                RippleButton {
+                    id: prevBtn
+                    padding: 0
+                    implicitWidth: 24 * Appearance.effectiveScale; implicitHeight: 24 * Appearance.effectiveScale; buttonRadius: 12 * Appearance.effectiveScale
+                    colBackground: "transparent"
+                    colBackgroundHover: "transparent"
+                    colText: "transparent"
+                    rippleEnabled: false
+                    enabled: MprisController.canGoPrevious
+                    onClicked: MprisController.previous()
+                    
+                    MaterialSymbol {
+                        anchors.centerIn: parent
+                        text: "skip_previous"; iconSize: 18 * Appearance.effectiveScale; fill: 1
+                        color: prevBtn.hovered ? root.effectivePrimary : root.effectiveOnSecondaryContainer
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                    }
+                }
+
+                // Current Time
+                StyledText {
+                    id: currentTimeText
+                    text: Functions.StringUtils.friendlyTimeForSeconds(MprisController.position)
+                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    font.family: Appearance.font.family.numbers
+                    font.features: { "tnum": 1 }
+                    font.weight: Font.Medium
+                    color: root.effectiveSubtext
+                    Layout.alignment: Qt.AlignVCenter
+                    verticalAlignment: Text.AlignVCenter
+                    Layout.leftMargin: 0
+                    Layout.rightMargin: 6 * Appearance.effectiveScale
+                    renderType: Text.QtRendering
+                }
+
+                // Slider — flat when lockscreen + big wave off (cheap), wavy when lockWave on or desktop
+                StyledSlider {
+                    id: progressSlider
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 14 * Appearance.effectiveScale
+                    handleMargins: 0
+                    configuration: root._flatLockscreen ? StyledSlider.Configuration.X0 : StyledSlider.Configuration.Wavy
+                    stopIndicatorValues: []
+                    animateValue: false
+                    wavyVisible: root.wavyVisible
+                    value: (MprisController.length > 0 ? (MprisController.position / MprisController.length) : 0) || 0
+                    wavy: root._flatLockscreen ? false : MprisController.isPlaying
+                    highlightColor: root.effectivePrimary
+                    trackColor: root.effectiveSecondaryContainer
+                    handleColor: root.effectivePrimary
+                    showTrailingDot: !root._flatLockscreen
+                    // Art style is handle-less (DesktopMediaWidget art: handle: Item {})
+                    handleWidth: root._flatLockscreen ? 0 : 3 * Appearance.effectiveScale
+                    
+                    onMoved: {
+                        if (player && player.canSeek) {
+                            player.position = value * player.length;
+                        }
+                    }
+
+                    Connections {
+                        target: MprisController
+                        function onPositionChanged() {
+                            if (!progressSlider.pressed) {
+                                progressSlider.value = (MprisController.length > 0 ? (MprisController.position / MprisController.length) : 0) || 0;
+                            }
+                        }
+                    }
+                }
+
+                // Total Time
+                StyledText {
+                    id: totalTimeText
+                    text: Functions.StringUtils.friendlyTimeForSeconds(MprisController.length)
+                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    font.family: Appearance.font.family.numbers
+                    font.features: { "tnum": 1 }
+                    font.weight: Font.Medium
+                    color: root.effectiveSubtext
+                    Layout.alignment: Qt.AlignVCenter
+                    verticalAlignment: Text.AlignVCenter
+                    Layout.leftMargin: 6 * Appearance.effectiveScale
+                    Layout.rightMargin: 0
+                    renderType: Text.QtRendering
+                }
+
+                // Skip Next
+                RippleButton {
+                    id: nextBtn
+                    padding: 0
+                    implicitWidth: 24 * Appearance.effectiveScale; implicitHeight: 24 * Appearance.effectiveScale; buttonRadius: 12 * Appearance.effectiveScale
+                    colBackground: "transparent"
+                    colBackgroundHover: "transparent"
+                    colText: "transparent"
+                    rippleEnabled: false
+                    enabled: MprisController.canGoNext
+                    onClicked: MprisController.next()
+
+                    MaterialSymbol {
+                        anchors.centerIn: parent
+                        text: "skip_next"; iconSize: 18 * Appearance.effectiveScale; fill: 1
+                        color: nextBtn.hovered ? root.effectivePrimary : root.effectiveOnSecondaryContainer
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                    }
+                }
+
+                // Lyrics Toggle
+                RippleButton {
+                    id: lyricsBtn
+                    padding: 0
+                    implicitWidth: 24 * Appearance.effectiveScale; implicitHeight: 24 * Appearance.effectiveScale; buttonRadius: 12 * Appearance.effectiveScale
+                    colBackground: "transparent"
+                    colBackgroundHover: "transparent"
+                    colText: "transparent"
+                    rippleEnabled: false
+                    visible: !GlobalStates.screenLocked
+                    onClicked: {
+                        Config.options.appearance.lyrics.showFloatingLyrics = !Config.options.appearance.lyrics.showFloatingLyrics
+                    }
+
+                    MaterialSymbol {
+                        anchors.centerIn: parent
+                        text: "lyrics"; iconSize: 18 * Appearance.effectiveScale; fill: Config.options.appearance.lyrics.showFloatingLyrics ? 1 : 0
+                        color: (lyricsBtn.hovered || Config.options.appearance.lyrics.showFloatingLyrics) ? root.effectivePrimary : root.effectiveOnSecondaryContainer
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                    }
+                }
+            }
+        }
+    }
+}

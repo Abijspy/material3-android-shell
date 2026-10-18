@@ -1,0 +1,46 @@
+import QtQuick
+import QtQuick.Layouts
+import "../../core"
+
+Item {
+    id: root
+    default property alias content: row.data
+    
+    property color m3Color: Appearance.m3colors.m3surfaceContainerHigh
+    property color m3ContentColor: Appearance.m3colors.m3onSurface
+    
+    // Smooth transition properties
+    property bool show: true
+    visible: opacity > 0 || Layout.preferredWidth > 0
+    opacity: show ? 1 : 0
+    Behavior on opacity { NumberAnimation { duration: 250; easing.type: Easing.InOutQuad } }
+    
+    // Exported colors for children to use
+    readonly property color contentColor: m3ContentColor
+    readonly property color subtextColor: Qt.rgba(m3ContentColor.r, m3ContentColor.g, m3ContentColor.b, 0.7)
+    
+    implicitWidth: row.implicitWidth + (24 * Appearance.effectiveScale)
+    implicitHeight: Math.max(32 * Appearance.effectiveScale, row.implicitHeight + (8 * Appearance.effectiveScale))
+    
+    Layout.preferredWidth: show ? (Layout.maximumWidth ? Math.min(Layout.maximumWidth, implicitWidth) : implicitWidth) : 0
+    Behavior on Layout.preferredWidth { NumberAnimation { duration: 250; easing.type: Easing.InOutQuad } }
+    
+    clip: true
+    
+    Rectangle {
+        anchors.centerIn: parent
+        width: parent.width
+        height: parent.height
+        color: root.m3Color
+        radius: height / 2
+        Behavior on color { ColorAnimation { duration: 250 } }
+    }
+    
+    RowLayout {
+        id: row
+        anchors.verticalCenter: parent.verticalCenter
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: parent.width - (24 * Appearance.effectiveScale)
+        spacing: 8 * Appearance.effectiveScale
+    }
+}

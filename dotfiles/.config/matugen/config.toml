@@ -1,6 +1,81 @@
+# Material3UI Configuration
+# Do not delete the comment above if you want to receive Material3UI configuration updates.
+# Delete it if you want to use your own configuration and avoid it getting overridden.
 [config]
-version = "3.0.0"
+# Matugen v4 Configuration
+# Using import_json_files if custom variables were needed, but keeping it simple for now.
 
-[templates.quickshell]
-input_path = "~/.config/matugen/templates/GeneratedColors.qml"
-output_path = "~/.config/quickshell/material3ui/GeneratedColors.qml"
+[templates.m3colors]
+input_path = '~/.config/matugen/templates/colors.json'
+output_path = '~/.local/state/quickshell/user/generated/colors.json'
+
+[templates.hyprland]
+input_path = '~/.config/matugen/templates/hyprland/colors.conf'
+output_path = '~/.config/hypr/hyprland/colors.conf'
+
+[templates.hyprlock]
+input_path = '~/.config/matugen/templates/hyprland/hyprlock-colors.conf'
+output_path = '~/.config/hypr/hyprlock/colors.conf'
+
+[templates.fuzzel]
+input_path = '~/.config/matugen/templates/fuzzel/fuzzel_theme.ini'
+output_path = '~/.config/fuzzel/fuzzel_theme.ini'
+
+[templates.kitty]
+input_path = '~/.config/matugen/templates/kitty_theme.conf'
+output_path = '~/.config/kitty/current-theme.conf'
+
+[templates.gtk3]
+input_path = '~/.config/matugen/templates/gtk-3.0/gtk.css'
+output_path = '~/.config/gtk-3.0/gtk.css'
+
+[templates.gtk4]
+input_path = '~/.config/matugen/templates/gtk-4.0/gtk.css'
+output_path = '~/.config/gtk-4.0/gtk.css'
+
+[templates.kde_colors]
+input_path = '~/.config/matugen/templates/kde/color.txt'
+output_path = '~/.local/state/quickshell/user/generated/color.txt'
+post_hook = '~/.config/quickshell/material3ui/scripts/colors/apply_system_theme.sh'
+
+[templates.wallpaper]
+input_path = '~/.config/matugen/templates/wallpaper.txt'
+output_path = '~/.local/state/quickshell/user/generated/wallpaper/path.txt'
+
+[templates.discord]
+input_path = "~/.config/matugen/templates/midnight.theme.css"
+output_path = "~/.config/vesktop/themes/midnight.theme.css"
+
+[templates.vscode]
+input_path = "~/.config/matugen/templates/hyprlunavsc.json"
+output_path = "~/.vscode/extensions/hyprluna.hyprluna-theme-1.0.2/themes/hyprluna.json"
+
+[templates.antigravity]
+input_path = "~/.config/matugen/templates/hyprlunavsc.json"
+output_path = "~/.antigravity/extensions/hyprluna.hyprluna-theme-1.0.2/themes/hyprluna.json"
+
+[templates.zeditor]
+input_path = "~/.config/matugen/templates/zed_theme.json"
+output_path = "~/.local/share/zed/extensions/installed/material-dark/themes/zed_material_theme.json"
+
+#[templates.spicetify]
+#input_path = "~/.config/matugen/templates/spicetify-color.ini"
+#output_path = "~/.config/spicetify/Themes/caelestia/color.ini"
+
+[templates.cava]
+input_path = '~/.config/matugen/templates/cava_color.ini'
+output_path = '~/.config/cava/config'
+post_hook = "pkill -USR1 cava"
+
+[templates.btop]
+input_path = '~/.config/matugen/templates/btop.theme'
+output_path = '~/.config/btop/themes/matugen.theme'
+
+[templates.obsidian]
+input_path = '~/.config/matugen/templates/obsidian_matugen.css'
+# output_path = '~/Documents/Obsidian-Vault/.obsidian/snippets/matugen.css' # Example: path to your obsidian vault snippet
+
+[templates.terminal]
+input_path = '~/.config/matugen/templates/terminal/sequences.txt'
+output_path = '~/.local/state/quickshell/user/generated/terminal/sequences.txt'
+post_hook = "~/.config/quickshell/material3ui/scripts/colors/apply_terminal_colors.sh"

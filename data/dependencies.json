@@ -1,0 +1,65 @@
+{
+  "core": [
+    { "name": "hyprland", "command": "hyprctl", "description": "Wayland compositor (Base)" },
+    { "name": "quickshell-git", "command": "quickshell", "description": "Desktop shell framework" },
+    { "name": "qt6-declarative", "command": "qml6", "description": "Qt6 QML library" },
+    { "name": "qt6-svg", "command": "qml6", "description": "Qt6 SVG support" },
+    { "name": "qt6-wayland", "command": "qml6", "description": "Qt6 Wayland support" },
+    { "name": "python3", "command": "python3", "description": "Theme generation backend" },
+    { "name": "matugen-bin", "command": "matugen", "description": "Material theme generator" },
+    { "name": "jq", "command": "jq", "description": "JSON processing engine" }
+  ],
+  "services": [
+    { "name": "pipewire", "command": "pipewire", "description": "Audio & Video server" },
+    { "name": "networkmanager", "command": "nmcli", "description": "Network connectivity" },
+    { "name": "bluez", "command": "bluetoothctl", "description": "Bluetooth service" },
+    { "name": "libnotify", "command": "notify-send", "description": "Desktop notifications" },
+    { "name": "polkit", "command": "pkexec", "description": "Authentication agent" },
+    { "name": "brightnessctl", "command": "brightnessctl", "description": "Backlight control" },
+    { "name": "playerctl", "command": "playerctl", "description": "Media controller" }
+  ],
+  "utilities": [
+    { "name": "xdg-desktop-portal-hyprland", "command": "/usr/lib/xdg-desktop-portal-hyprland", "description": "Screen sharing support" },
+    { "name": "xdg-desktop-portal-gtk", "command": "/usr/lib/xdg-desktop-portal-gtk", "description": "File picker support" },
+    { "name": "grim", "command": "grim", "description": "Screenshot tool" },
+    { "name": "slurp", "command": "slurp", "description": "Region selector" },
+    { "name": "wf-recorder", "command": "wf-recorder", "description": "Screen recording" },
+    { "name": "imagemagick", "command": "magick", "description": "Image processing" },
+    { "name": "ffmpeg", "command": "ffmpeg", "description": "Multimedia framework" },
+    { "name": "songrec", "command": "songrec", "description": "Music recognition" },
+    { "name": "cava", "command": "cava", "description": "Audio visualizer" },
+    { "name": "hyprpicker", "command": "hyprpicker", "description": "Color picker" },
+    { "name": "hyprlock", "command": "hyprlock", "description": "System locker" },
+    { "name": "hyprsunset", "command": "hyprsunset", "description": "Blue light filter" },
+    { "name": "wl-clipboard", "command": "wl-copy", "description": "Wayland clipboard" },
+    { "name": "cliphist", "command": "cliphist", "description": "Clipboard history" },
+    { "name": "zenity", "command": "zenity", "description": "System dialogs" },
+    { "name": "translate-shell", "command": "trans", "description": "CLI translation tool" }
+  ],
+  "theming": [
+    { "name": "nwg-look", "command": "nwg-look", "description": "GTK theme manager (External apps)" },
+    { "name": "qt5ct", "command": "qt5ct", "description": "Qt5 theme manager (External apps)" },
+    { "name": "qt6ct", "command": "qt6ct", "description": "Qt6 theme manager (External apps)" },
+    { "name": "adw-gtk-theme", "command": "gsettings", "description": "Modern GTK theme" },
+    { "name": "breeze", "command": "kwin_wayland", "description": "KDE theme engine" },
+    { "name": "breeze-icons", "command": "kwin_wayland", "description": "KDE icon set" }
+  ],
+  "fonts": [
+    { "name": "ttf-material-symbols-variable-git", "command": "fc-list", "description": "Material Symbols Icons" },
+    { "name": "ttf-jetbrains-mono-nerd", "command": "fc-list", "description": "JetBrains Mono Nerd Font" },
+    { "name": "noto-fonts-emoji", "command": "fc-list", "description": "Noto Emoji" },
+    { "name": "noto-fonts-cjk", "command": "fc-list", "description": "CJK Font (Japanese, Chinese, Korean)" }
+  ],
+  "livewallpaper": [
+    { "name": "mpvpaper", "command": "mpvpaper", "description": "Video wallpaper support (mpv)" },
+    { "name": "socat", "command": "socat", "description": "mpv IPC control for video wallpapers" },
+    { "name": "linux-wallpaperengine-git", "command": "linux-wallpaperengine", "description": "Steam Wallpaper Engine support", "deprecated": true, "replacement": "mpvpaper" }
+  ],
+  "optional": [
+    { "name": "kitty", "command": "kitty", "description": "Terminal emulator" },
+    { "name": "fish", "command": "fish", "description": "Interactive shell" },
+    { "name": "starship", "command": "starship", "description": "Shell prompt" },
+    { "name": "easyeffects", "command": "easyeffects", "description": "Audio enhancement" },
+    { "name": "warp-cli", "command": "warp-cli", "description": "Cloudflare WARP client" }
+  ]
+}

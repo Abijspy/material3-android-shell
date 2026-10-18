@@ -1,0 +1,4 @@
+BluetoothSettings 1.0 BluetoothSettings.qml
+BluetoothMainView 1.0 BluetoothMainView.qml
+BluetoothPairView 1.0 BluetoothPairView.qml
+BluetoothDeviceDetailsSidebar 1.0 BluetoothDeviceDetailsSidebar.qml

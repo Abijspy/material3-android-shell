@@ -1,138 +1,494 @@
-#!/usr/bin/env bash
-# Material3UI Shell installer for current Arch Linux and Hyprland Lua configs.
-set -Eeuo pipefail
+#!/bin/bash
 
-readonly PROJECT_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-readonly CONFIG_ROOT="${XDG_CONFIG_HOME:-$HOME/.config}"
-readonly DATA_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}"
-readonly BIN_ROOT="$HOME/.local/bin"
-ASSUME_YES=false
-ENABLE_SERVICES=true
-INSTALL_AUR=true
+# Material3UI Shell Smart Installation Script
+set -e
 
-usage() {
-  cat <<'USAGE'
-Usage: ./install.sh [--yes] [--no-enable-services] [--skip-aur]
-
-  --yes                 Accept optional installation prompts.
-  --no-enable-services  Do not enable NetworkManager, Bluetooth, or the update timer.
-  --skip-aur            Do not offer the optional HyprMod AUR package.
-USAGE
-}
-
-log()  { printf '\n==> %s\n' "$*"; }
-warn() { printf '\nWarning: %s\n' "$*" >&2; }
-die()  { printf '\nError: %s\n' "$*" >&2; exit 1; }
-
-ask() {
-  local prompt=$1 answer
-  "$ASSUME_YES" && return 0
-  read -r -p "$prompt [Y/n] " answer
-  [[ -z "$answer" || "$answer" =~ ^[Yy]$ ]]
-}
-
-backup_path() {
-  local source=$1 backup_root=$2 target
-  [[ -e "$source" ]] || return 0
-  target="$backup_root/${source#"$HOME/"}"
-  mkdir -p "$(dirname -- "$target")"
-  cp -a -- "$source" "$target"
-}
-
-install_official() {
-  sudo pacman -S --needed --noconfirm "$@"
-}
-
-ensure_yay() {
-  command -v yay >/dev/null 2>&1 && return 0
-  log 'Installing Yay for the optional HyprMod package'
-  install_official base-devel git
-  local build_dir
-  build_dir=$(mktemp -d)
-  trap 'rm -rf -- "$build_dir"' RETURN
-  git clone --depth=1 https://aur.archlinux.org/yay.git "$build_dir/yay"
-  (cd "$build_dir/yay" && makepkg -si --needed --noconfirm)
-  trap - RETURN
-  rm -rf -- "$build_dir"
-}
-
-deploy_dotfiles() {
-  local backup_root="$CONFIG_ROOT/material3ui/backup-$(date +%Y%m%d-%H%M%S)"
-  local wallpaper_file="$CONFIG_ROOT/material3ui/wallpaper"
-
-  mkdir -p "$CONFIG_ROOT" "$DATA_ROOT" "$BIN_ROOT" "$CONFIG_ROOT/material3ui"
-  backup_path "$CONFIG_ROOT/hypr/hyprland.lua" "$backup_root"
-  backup_path "$CONFIG_ROOT/hypr/hyprland.conf" "$backup_root"
-  backup_path "$CONFIG_ROOT/hypr/hyprlock.conf" "$backup_root"
-  backup_path "$CONFIG_ROOT/quickshell/material3ui" "$backup_root"
-  [[ -d "$backup_root" ]] && log "Existing configuration backed up to $backup_root"
-
-  cp -a -- "$PROJECT_ROOT/dotfiles/.config/." "$CONFIG_ROOT/"
-  cp -a -- "$PROJECT_ROOT/dotfiles/.local/share/." "$DATA_ROOT/"
-  install -Dm755 "$PROJECT_ROOT/dotfiles/.local/bin/material3uictl" "$BIN_ROOT/material3uictl"
-  install -Dm755 "$PROJECT_ROOT/dotfiles/.local/bin/material3ui-system" "$BIN_ROOT/material3ui-system"
-  install -Dm755 "$PROJECT_ROOT/dotfiles/.local/bin/material3ui-polkit" "$BIN_ROOT/material3ui-polkit"
-  install -Dm755 "$PROJECT_ROOT/dotfiles/.local/bin/material3ui-update-check" "$BIN_ROOT/material3ui-update-check"
-  install -Dm644 "$PROJECT_ROOT/VERSION" "$CONFIG_ROOT/material3ui/version"
-
-  if [[ ! -s "$wallpaper_file" ]]; then
-    printf '%s\n' "$DATA_ROOT/material3ui/wallpapers/midnight-dunes.png" > "$wallpaper_file"
-  fi
-
-  if "$ENABLE_SERVICES"; then
-    if systemctl --user daemon-reload && systemctl --user enable --now material3ui-update.timer; then
-      :
-    else
-      warn "Could not enable the user update timer. Run systemctl --user enable --now material3ui-update.timer after logging in."
-    fi
-  fi
-}
-
-while (($#)); do
-  case $1 in
-    --yes) ASSUME_YES=true ;;
-    --no-enable-services) ENABLE_SERVICES=false ;;
-    --skip-aur) INSTALL_AUR=false ;;
-    --help|-h) usage; exit 0 ;;
-    *) die "Unknown option: $1" ;;
-  esac
-  shift
+# Flags: --dry-run walks all prompts but only prints what WOULD change.
+DRY_RUN=0
+for arg in "$@"; do
+    case "$arg" in
+        -n|--dry-run) DRY_RUN=1 ;;
+    esac
 done
 
-[[ -f /etc/arch-release ]] || die 'Material3UI Shell supports Arch Linux only.'
-[[ -f "$PROJECT_ROOT/VERSION" ]] || die 'Run this script from a complete Material3UI Shell checkout.'
-[[ -f "$PROJECT_ROOT/dotfiles/.config/hypr/hyprland.lua" ]] || die 'Missing Hyprland Lua configuration.'
+# Wrapper: announce in dry-run mode, execute otherwise.
+run() {
+    if [[ "$DRY_RUN" == "1" ]]; then
+        substep "[dry-run] would run: $*"
+    else
+        "$@"
+    fi
+}
 
-printf '%s\n' '╭──────────────────────────────────────╮'
-printf '%s\n' '│ Material3UI Shell · Arch installer    │'
-printf '%s\n' '╰──────────────────────────────────────╯'
-ask 'Install or update Material3UI Shell?' || exit 0
+# Append helper (plain >> cannot go through run() — the redirection would
+# still execute in dry-run mode).
+add_line() {
+    if [[ "$DRY_RUN" == "1" ]]; then
+        substep "[dry-run] would append to $1: $2"
+    else
+        printf '%s\n' "$2" >> "$1"
+    fi
+}
 
-sudo -v
-log 'Updating the system and installing Material3UI runtime dependencies'
-sudo pacman -Syu --needed --noconfirm \
-  hyprland hyprlock xdg-desktop-portal-hyprland xdg-desktop-portal-gtk \
-  quickshell matugen networkmanager bluez bluez-utils wireplumber pipewire pipewire-pulse \
-  jq git curl brightnessctl playerctl wl-clipboard cliphist grim slurp swappy wf-recorder \
-  polkit hyprpolkitagent foot libnotify upower swww mako power-profiles-daemon pulseaudio-utils
+# Reset terminal colors on exit or crash
+trap 'echo -ne "\033[0m"' EXIT
 
-if ask 'Install preferred applications (Thunar, LibreWolf, file utilities)?'; then
-  install_official thunar thunar-archive-plugin gvfs tumbler file-roller librewolf
-fi
-if ask 'Install desktop control applications (pavucontrol, blueman, nwg-look)?'; then
-  install_official pavucontrol blueman nwg-look qt5ct qt6ct
-fi
-if ask 'Install recommended fonts and emoji support?'; then
-  install_official noto-fonts noto-fonts-emoji ttf-jetbrains-mono-nerd
-fi
-if "$INSTALL_AUR" && ask 'Install HyprMod from the AUR?'; then
-  ensure_yay
-  yay -S --needed --noconfirm hyprmod
-fi
-if "$ENABLE_SERVICES" && ask 'Enable NetworkManager and Bluetooth now?'; then
-  sudo systemctl enable --now NetworkManager.service bluetooth.service
+# ─────────────────────────────────────────────────────────────────────────────
+#  Color Palette (RGB for premium pastel look)
+# ─────────────────────────────────────────────────────────────────────────────
+
+C_MAIN='\033[38;2;202;169;224m'
+C_ACCENT='\033[38;2;145;177;240m'
+C_DIM='\033[38;2;129;122;150m'
+C_GREEN='\033[38;2;166;209;137m'
+C_YELLOW='\033[38;2;229;200;144m'
+C_RED='\033[38;2;231;130;132m'
+C_WHITE='\033[38;2;205;214;244m'
+C_BOLD='\033[1m'
+C_RST='\033[0m'
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  UI Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+banner() {
+    # "M3UI" in block letters, baked in so the installer has no runtime deps.
+    echo -e "${C_MAIN}${C_BOLD}"
+    echo '  ███╗   ███╗██████╗ ██╗   ██╗██╗'
+    echo '  ████╗ ████║╚════██╗██║   ██║██║'
+    echo '  ██╔████╔██║ █████╔╝██║   ██║██║'
+    echo '  ██║╚██╔╝██║ ╚═══██╗██║   ██║██║'
+    echo '  ██║ ╚═╝ ██║██████╔╝╚██████╔╝██║'
+    echo '  ╚═╝     ╚═╝╚═════╝  ╚═════╝ ╚═╝'
+    echo '        Material3UI Shell'
+    echo -e "${C_RST}"
+    echo -e " ${C_MAIN}${C_BOLD}╭──────────────────────────────────────────╮${C_RST}"
+    echo -e " ${C_MAIN}${C_BOLD}│            * SHELL INSTALLER *           │${C_RST}"
+    echo -e " ${C_MAIN}${C_BOLD}╰──────────────────────────────────────────╯${C_RST}"
+    echo ""
+}
+
+finished() {
+    echo ""
+    echo -e " ${C_GREEN}${C_BOLD}╭──────────────────────────────────────────╮${C_RST}"
+    echo -e " ${C_GREEN}${C_BOLD}│         INSTALLATION COMPLETE!           │${C_RST}"
+    echo -e " ${C_GREEN}${C_BOLD}╰──────────────────────────────────────────╯${C_RST}"
+    echo ""
+}
+
+info() {
+    echo -e "${C_MAIN}${C_BOLD} ╭─ $1${C_RST}"
+}
+
+substep() {
+    echo -e "${C_MAIN}${C_BOLD} │  ${C_DIM}> ${C_RST}$1"
+}
+
+success() {
+    echo -e "${C_MAIN}${C_BOLD} ╰─ ${C_GREEN}+ ${C_RST}$1"
+    echo ""
+}
+
+error() {
+    echo -e "${C_MAIN}${C_BOLD} ╰─ ${C_RED}x ${C_RST}$1"
+    echo ""
+}
+
+ask() {
+    echo -ne "${C_MAIN}${C_BOLD} ╰─ ${C_YELLOW}? ${C_RST}$1 "
+}
+
+choice() {
+    echo -e "${C_MAIN}${C_BOLD} │  ${C_ACCENT}$1 ${C_DIM}> ${C_RST}$2"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Main Script
+# ─────────────────────────────────────────────────────────────────────────────
+
+banner
+
+if [[ "$DRY_RUN" == "1" ]]; then
+    substep "${C_YELLOW}DRY-RUN MODE: answering prompts only, no changes will be made.${C_RST}"
 fi
 
-deploy_dotfiles
-log 'Installation complete'
-printf '%s\n' 'Log out, select Hyprland, and sign in. The shell starts from hyprland.lua.'
+# 1. Installation path
+info "Installation path..."
+ask "Where to clone? (default: ~/.local/src/material3ui)"
+echo ""
+read -rp "     > " INSTALL_DIR < /dev/tty
+INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/src/material3ui}"
+INSTALL_DIR="${INSTALL_DIR/#\~/$HOME}"
+substep "Target: ${C_ACCENT}$INSTALL_DIR${C_RST}"
+
+# 2. Clone or Update
+if [ -d "$INSTALL_DIR" ]; then
+    info "Repository already exists."
+    ask "Update it now? (Y/n)"
+    read -r UPDATE_CHOICE < /dev/tty
+    UPDATE_CHOICE="${UPDATE_CHOICE:-y}"
+    if [[ "$UPDATE_CHOICE" =~ ^[Yy] ]]; then
+        substep "Pulling latest changes..."
+        cd "$INSTALL_DIR"
+        run git pull origin main
+        success "Repository updated."
+    else
+        success "Skipped."
+    fi
+else
+    info "Cloning repository..."
+    run git clone https://github.com/Abijspy/material3-android-shell.git "$INSTALL_DIR"
+    success "Repository cloned."
+fi
+
+if ! cd "$INSTALL_DIR" 2>/dev/null; then
+    if [[ "$DRY_RUN" == "1" ]]; then
+        substep "${C_YELLOW}Target dir missing, staying put (repo-relative steps will show placeholders).${C_RST}"
+    else
+        exit 1
+    fi
+fi
+
+# 3. Dependencies
+info "Dependency installation..."
+ask "Install required dependencies? (y/N)"
+read -r DEP_CHOICE < /dev/tty
+if [[ "$DEP_CHOICE" =~ ^[Yy] ]]; then
+    # Material3UI is Arch-based only; fail soft with a clear message instead of
+    # dying halfway through sudo pacman on other distros.
+    if ! command -v pacman >/dev/null 2>&1; then
+        substep "${C_YELLOW}pacman not found — material3ui supports Arch-based systems only.${C_RST}"
+        substep "Skipping dependency installation; install packages manually."
+        DEP_CHOICE="n"
+    fi
+fi
+if [[ "$DEP_CHOICE" =~ ^[Yy] ]]; then
+
+    # Confirm mode
+    CONFIRM_FLAG=""
+    info "Installation mode..."
+    choice "1" "Manual confirm  ${C_DIM}(review each package, resolve conflicts)${C_RST}"
+    choice "2" "Auto confirm    ${C_DIM}(faster, no prompts)${C_RST}"
+    ask "Choose mode (1/2, default: 1)"
+    read -r CONFIRM_MODE < /dev/tty
+    CONFIRM_MODE="${CONFIRM_MODE:-1}"
+    if [[ "$CONFIRM_MODE" == "2" ]]; then
+        CONFIRM_FLAG="--noconfirm"
+        substep "${C_YELLOW}Auto confirm enabled. Conflicts will be skipped automatically.${C_RST}"
+    else
+        substep "Manual confirm. You will be prompted for each action."
+    fi
+
+    # paru check
+    if ! command -v paru >/dev/null 2>&1; then
+        info "Installing paru (AUR helper)..."
+        run sudo pacman -S --needed $CONFIRM_FLAG base-devel git
+        run git clone https://aur.archlinux.org/paru.git /tmp/paru
+        if [[ "$DRY_RUN" == "1" ]]; then
+            substep "[dry-run] would build paru in /tmp/paru."
+        else
+            cd /tmp/paru
+        fi
+        run makepkg -si $CONFIRM_FLAG
+        cd "$INSTALL_DIR" 2>/dev/null || [[ "$DRY_RUN" == "1" ]]
+        run rm -rf /tmp/paru
+        success "paru installed."
+    else
+        substep "paru already available."
+    fi
+
+    # 3a. Core, Services, Utilities, and Theming
+    info "Mandatory shell dependencies..."
+    substep "Required for the shell and system to function."
+    run ./scripts/install_deps.sh core "$CONFIRM_FLAG"
+    run ./scripts/install_deps.sh services "$CONFIRM_FLAG"
+    run ./scripts/install_deps.sh utilities "$CONFIRM_FLAG"
+    run ./scripts/install_deps.sh theming "$CONFIRM_FLAG"
+    success "Mandatory dependencies installed."
+
+    # 3b. KDE Material You Venv (Optional but recommended)
+    info "KDE Material You integration..."
+    ask "Setup Python venv for KDE theming? (y/N)"
+    read -r VENV_CHOICE < /dev/tty
+    if [[ "$VENV_CHOICE" =~ ^[Yy] ]]; then
+        VENV_PATH="$HOME/.local/share/material3ui/venv"
+        substep "Creating venv in ${C_ACCENT}$VENV_PATH${C_RST}..."
+        run mkdir -p "$(dirname "$VENV_PATH")"
+        run python3 -m venv "$VENV_PATH"
+        substep "Installing kde-material-you-colors..."
+        run "$VENV_PATH/bin/pip" install --upgrade pip
+        run "$VENV_PATH/bin/pip" install "materialyoucolor<3.0.0"
+        run "$VENV_PATH/bin/pip" install kde-material-you-colors
+        run "$VENV_PATH/bin/pip" install pykakasi korean_romanizer
+        success "KDE theming venv ready."
+    else
+        success "Skipped."
+    fi
+
+    # 3c. Fonts
+    info "Font installation..."
+    choice "1" "Google Sans Flex   ${C_DIM}(UI font, from GitHub)${C_RST}"
+    choice "2" "Material Symbols   ${C_DIM}(icon font, from AUR)${C_RST}"
+    choice "3" "JetBrains Mono NF  ${C_DIM}(monospace, from AUR)${C_RST}"
+    ask "Install required fonts? (Y/n)"
+    read -r FONT_CHOICE < /dev/tty
+    FONT_CHOICE="${FONT_CHOICE:-y}"
+    if [[ "$FONT_CHOICE" =~ ^[Yy] ]]; then
+        # Google Sans Flex from GitHub
+        if ! fc-list | grep -qi "Google Sans Flex"; then
+            substep "Cloning Google Sans Flex from GitHub..."
+            FONT_SRC="/tmp/google-sans-flex"
+            FONT_TARGET="$HOME/.local/share/fonts/material3ui-google-sans-flex"
+            run rm -rf "$FONT_SRC"
+            run git clone --depth 1 https://github.com/end-4/google-sans-flex.git "$FONT_SRC"
+            run mkdir -p "$FONT_TARGET"
+            run cp -r "$FONT_SRC"/* "$FONT_TARGET"/
+            run rm -rf "$FONT_SRC"
+            run fc-cache -fv
+        else
+            substep "Google Sans Flex already installed."
+        fi
+
+        # Official & AUR fonts
+        run ./scripts/install_deps.sh fonts "$CONFIRM_FLAG"
+        success "All fonts installed."
+    else
+        success "Skipped."
+    fi
+
+    # 3c. Optional terminal tools
+    info "Terminal aesthetic (optional)..."
+    choice "1" "kitty     ${C_DIM}- terminal with theme injection${C_RST}"
+    choice "2" "fish      ${C_DIM}- interactive shell${C_RST}"
+    choice "3" "starship  ${C_DIM}- cross-shell prompt${C_RST}"
+    ask "Install optional tools? (y/N)"
+    read -r TERM_CHOICE < /dev/tty
+    if [[ "$TERM_CHOICE" =~ ^[Yy] ]]; then
+        run ./scripts/install_deps.sh optional "$CONFIRM_FLAG"
+        success "Optional tools installed."
+    else
+        success "Skipped."
+    fi
+else
+    success "Skipped."
+fi
+
+# 4. Copy dotfiles
+info "Copying configuration files..."
+choice "1" "All configs  ${C_DIM}(quickshell + hypr + matugen + starship)${C_RST}"
+choice "2" "Shell only   ${C_DIM}(quickshell/material3ui, for power users)${C_RST}"
+choice "3" "Skip         ${C_DIM}(copy nothing)${C_RST}"
+ask "Copy scope? (1/2/3, default: 1)"
+read -r SCOPE_CHOICE < /dev/tty
+SCOPE_CHOICE="${SCOPE_CHOICE:-1}"
+run mkdir -p "$HOME/.config"
+
+# Timestamped backup so user tweaks survive updates (e.g. edits directly
+# under ~/.config/quickshell/material3ui would otherwise be silently lost).
+backup_target() {
+    local name="$1"
+    if [ -e "$HOME/.config/$name" ]; then
+        local dest="$HOME/.config/material3ui/backups/$(date +%Y%m%d-%H%M%S)/$name"
+        if [[ "$DRY_RUN" == "1" ]]; then
+            substep "[dry-run] would back up ${C_ACCENT}$name${C_RST} to ${C_DIM}$dest${C_RST}"
+        else
+            mkdir -p "$(dirname "$dest")"
+            cp -r "$HOME/.config/$name" "$dest"
+            substep "Backed up existing ${C_ACCENT}$name${C_RST} to ${C_DIM}$dest${C_RST}"
+        fi
+    fi
+}
+
+COPY_GLOB=(dotfiles/.config/*)
+if [[ "$SCOPE_CHOICE" == "2" ]]; then
+    if [ -e "dotfiles/.config/quickshell" ]; then
+        COPY_GLOB=(dotfiles/.config/quickshell)
+    else
+        substep "${C_YELLOW}quickshell config not found in repo, nothing to copy.${C_RST}"
+        COPY_GLOB=()
+    fi
+elif [[ "$SCOPE_CHOICE" == "3" ]]; then
+    COPY_GLOB=()
+fi
+
+if [ ${#COPY_GLOB[@]} -eq 0 ]; then
+    success "Skipped."
+else
+for item in "${COPY_GLOB[@]}"; do
+    item_name=$(basename "$item")
+    
+    if [[ "$item_name" == "matugen" ]] && [ -e "$HOME/.config/matugen" ]; then
+        if [ -f "$HOME/.config/matugen/config.toml" ] && grep -q "# Material3UI Configuration" "$HOME/.config/matugen/config.toml"; then
+            : # It's ours, let it copy (replace)
+        elif [ -f "$HOME/.config/matugen/config.toml" ] && grep -q "templates/GeneratedColors.qml" "$HOME/.config/matugen/config.toml"; then
+            : # Material3UI v1 config (no marker), replace it
+        else
+            substep "${C_YELLOW}Warning: You already have your own matugen configuration.${C_RST}"
+            substep "To use material3ui config, you can copy from: ${C_ACCENT}$INSTALL_DIR/dotfiles/.config/matugen${C_RST}"
+            continue
+        fi
+    fi
+    
+    if [[ "$item_name" == "starship.toml" ]] && [ -e "$HOME/.config/starship.toml" ]; then
+        if grep -q "# Material3UI Configuration" "$HOME/.config/starship.toml"; then
+            : # It's ours, let it copy
+        else
+            substep "${C_YELLOW}Warning: You already have your own starship configuration.${C_RST}"
+            substep "To use material3ui config, you can copy from: ${C_ACCENT}$INSTALL_DIR/dotfiles/.config/starship.toml${C_RST}"
+            continue
+        fi
+    fi
+    
+    backup_target "$item_name"
+    # Material3UI v1 kept its QML files at the profile root; they would
+    # shadow v2 types of the same name, so replace the profile instead of merging.
+    if [[ "$item_name" == "quickshell" ]] && [ -d "$HOME/.config/quickshell/material3ui" ]; then
+        run rm -rf "$HOME/.config/quickshell/material3ui"
+    fi
+    run cp -r "$item" "$HOME/.config/"
+done
+success "Configuration files copied."
+fi
+
+# Ensure shell config directory exists
+substep "Setting up config directory..."
+run mkdir -p "$HOME/.config/material3ui"
+
+# 4b. Retire Material3UI v1 helpers (v2 ships its own polkit agent, clipboard,
+# wallpaper and update services inside the shell).
+if [ -e "$HOME/.local/bin/material3ui-system" ] || [ -e "$HOME/.config/systemd/user/material3ui-update.timer" ]; then
+    info "Removing Material3UI v1 helpers..."
+    if command -v systemctl >/dev/null 2>&1; then
+        run systemctl --user disable --now material3ui-update.timer 2>/dev/null || true
+    fi
+    run rm -f "$HOME/.local/bin/material3ui-system" "$HOME/.local/bin/material3ui-polkit" \
+        "$HOME/.local/bin/material3ui-update-check" \
+        "$HOME/.config/systemd/user/material3ui-update.service" \
+        "$HOME/.config/systemd/user/material3ui-update.timer"
+    success "v1 helpers removed."
+fi
+
+# 5. Material3UI CLI (material3uictl)
+info "Material3UI CLI installation..."
+ask "Install material3uictl to ~/.local/bin for terminal control? (Y/n)"
+read -r CLI_CHOICE < /dev/tty
+CLI_CHOICE="${CLI_CHOICE:-y}"
+if [[ "$CLI_CHOICE" =~ ^[Yy] ]]; then
+    run mkdir -p "$HOME/.local/bin"
+    run install -m 755 dotfiles/.local/bin/material3uictl "$HOME/.local/bin/material3uictl"
+    success "material3uictl installed. Run ${C_ACCENT}material3uictl help${C_RST} for usage."
+else
+    success "Skipped CLI installation."
+fi
+
+# 6. Injection
+info "Configuration injection..."
+substep "Appends settings into your existing configs."
+substep "Will ${C_WHITE}${C_BOLD}NOT${C_RST} overwrite existing configurations."
+ask "Inject Material3UI into existing configs? (y/N)"
+read -r INJECT_CHOICE < /dev/tty
+INJECT=false
+if [[ "$INJECT_CHOICE" =~ ^[Yy] ]]; then
+    INJECT=true
+
+    # Kitty
+    run mkdir -p "$HOME/.config/kitty"
+    run touch "$HOME/.config/kitty/kitty.conf"
+    if ! grep -q "include current-theme.conf" "$HOME/.config/kitty/kitty.conf"; then
+        add_line "$HOME/.config/kitty/kitty.conf" ""
+        add_line "$HOME/.config/kitty/kitty.conf" "include current-theme.conf"
+        substep "Injected kitty theme include."
+    else
+        substep "Kitty already injected."
+    fi
+
+    # Fish
+    run mkdir -p "$HOME/.config/fish"
+    run touch "$HOME/.config/fish/config.fish"
+    if ! grep -q "starship init fish" "$HOME/.config/fish/config.fish"; then
+        add_line "$HOME/.config/fish/config.fish" ""
+        add_line "$HOME/.config/fish/config.fish" 'starship init fish | source'
+        substep "Injected starship prompt into fish."
+    else
+        substep "Fish already injected."
+    fi
+
+    # Hyprland (needs hypr/material3ui from step 4; in dry-run it would exist
+    # unless the user chose Copy: skip).
+    HYPR_MOD_PRESENT=false
+    if [ -d "$HOME/.config/hypr/material3ui" ]; then
+        HYPR_MOD_PRESENT=true
+    elif [[ "$DRY_RUN" == "1" && "$SCOPE_CHOICE" != "3" ]]; then
+        HYPR_MOD_PRESENT=true
+    fi
+    if [[ "$HYPR_MOD_PRESENT" == "true" ]]; then
+        run mkdir -p "$HOME/.config/hypr"
+        run touch "$HOME/.config/hypr/hyprland.lua"
+        if grep -q "^-- Material3UI Shell — Hyprland" "$HOME/.config/hypr/hyprland.lua" 2>/dev/null; then
+            substep "Replacing Material3UI v1 hyprland.lua (backed up) with the modular v2 config."
+            backup_target "hypr/hyprland.lua"
+            run cp -r extras/hypr/configs "$HOME/.config/hypr/"
+            run cp extras/hypr/hyprland.lua "$HOME/.config/hypr/hyprland.lua"
+        fi
+        if ! grep -q 'require("material3ui/material3ui")' "$HOME/.config/hypr/hyprland.lua"; then
+            add_line "$HOME/.config/hypr/hyprland.lua" ""
+            add_line "$HOME/.config/hypr/hyprland.lua" 'require("material3ui/material3ui")'
+            substep "Injected material3ui config into hyprland."
+        fi
+
+        if ! grep -q 'require("material3ui/user_persistence")' "$HOME/.config/hypr/hyprland.lua"; then
+            add_line "$HOME/.config/hypr/hyprland.lua" 'require("material3ui/user_persistence")'
+            substep "Injected user persistence config into hyprland."
+        fi
+
+        # Ensure persistence directory and file exist
+        run mkdir -p "$HOME/.config/hypr/material3ui"
+        run touch "$HOME/.config/hypr/material3ui/user_persistence.lua"
+    else
+        substep "${C_YELLOW}Skipping hypr injection (hypr/material3ui not installed).${C_RST}"
+    fi
+
+    success "Injection complete."
+else
+    success "Skipped."
+fi
+
+# 7. Update Channel
+info "Update channel..."
+choice "1" "latest  ${C_DIM}- (Recommended) rolling updates, fastest bug fixes${C_RST}"
+choice "2" "release ${C_DIM}- milestone updates only, based on git tags${C_RST}"
+ask "Preferred channel? [latest/release] (default: latest)"
+read -r CHANNEL_CHOICE < /dev/tty
+CHANNEL="canary"
+if [[ "$CHANNEL_CHOICE" =~ ^[Rr] ]]; then
+    CHANNEL="stable"
+fi
+substep "Selected: ${C_ACCENT}${C_BOLD}$CHANNEL${C_RST}"
+
+# 8. Save State
+substep "Saving installation state..."
+run mkdir -p "$HOME/.config/material3ui"
+STATE_FILE="$HOME/.config/material3ui/install_state.json"
+if [[ "$DRY_RUN" == "1" ]]; then
+    substep "[dry-run] would write $STATE_FILE"
+else
+cat > "$STATE_FILE" << EOF
+{
+  "inject": $INJECT,
+  "install_dir": "$INSTALL_DIR",
+  "channel": "$CHANNEL"
+}
+EOF
+fi
+success "State saved."
+
+# Done
+finished
+substep "Material3UI Shell is a ${C_WHITE}${C_BOLD}shell${C_RST}, not full dotfiles."
+substep "Check ${C_ACCENT}extras/${C_RST} for clean, modular Hyprland and Fish configs."
+substep "File pickers / screen sharing require XDG portals."
+substep "Make sure ${C_ACCENT}xdg-desktop-portal-hyprland${C_RST} and"
+substep "${C_ACCENT}xdg-desktop-portal-gtk${C_RST} are installed."
+echo ""
+echo -e " ${C_GREEN}${C_BOLD} > ${C_RST}Run ${C_WHITE}${C_BOLD}quickshell -c material3ui${C_RST} or restart Hyprland."
+echo ""

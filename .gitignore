@@ -1,0 +1,17 @@
+# System trash
+.DS_Store
+Thumbs.db
+*~
+*.bak
+.vscode
+
+# Cache
+**/cache/
+**/.cache/
+*.tmp
+
+# Personal data
+app_usage.json
+emoji_recent.json
+agent_log/
+todo.md

@@ -1,0 +1,137 @@
+{
+  "greetings": {
+    "morning": [
+      "Selamat pagi",
+      "Semangat pagi",
+      "Halo di sana",
+      "Awal yang baru",
+      "Semoga harimu menyenangkan"
+    ],
+    "afternoon": [
+      "Selamat siang",
+      "Tetap semangat",
+      "Sudah separuh jalan",
+      "Terus melangkah"
+    ],
+    "evening": [
+      "Selamat sore",
+      "Waktunya bersantai",
+      "Santai sejenak",
+      "Hampir selesai"
+    ],
+    "night": [
+      "Selamat malam",
+      "Belum tidur?",
+      "Larut malam",
+      "Waktu yang tenang",
+      "Malam yang hening"
+    ],
+    "midnight": [
+      "Tengah malam yang hening",
+      "Malam semakin larut",
+      "Masih terbangun?",
+      "Lewat tengah malam",
+      "Tengah malam"
+    ]
+  },
+  "morning": [
+    "Segelas air sebelum minum kopi sangat membantu. Tubuhmu baru saja berpuasa cairan berjam-jam.",
+    "Udara segar di pagi hari biasanya membangunkanmu lebih baik daripada kafein, cobalah buka jendela.",
+    "Jika kamu harus memilih satu hal yang paling penting hari ini, apa itu?",
+    "Peregangan singkat semenit terasa sangat nyaman, terutama jika kamu sudah duduk cukup lama.",
+    "Sarapan ringan sekalipun dapat mempertajam fokus dibandingkan melewatkannya.",
+    "Sinar matahari pagi sangat bermanfaat, ini juga membantumu tidur lebih nyenyak nanti malam.",
+    "Pagi yang tenang biasanya lebih baik daripada pagi yang terburu-buru.",
+    "Coba periksa diri: bagaimana perasaanmu yang sebenarnya hari ini?",
+    "Istirahat bukanlah sesuatu yang harus kamu perjuangkan. Istirahat sejenak di awal hari sangat membantu.",
+    "Menyingkirkan ponsel beberapa menit mengubah suasana pagi. Hari akan menyambutmu dengan lebih baik.",
+    "Kopi terasa lebih nikmat saat kamu tidak meminumnya secara terburu-buru.",
+    "Cahaya pagi di wajahmu adalah hadiah kecil yang gratis, cobalah mendekat ke jendela.",
+    "Burung-burung sudah bangun padahal mereka tidak punya alarm. Salut.",
+    "Memang tak mudah di hari yang lesu, tapi hari ini punya banyak potensi.",
+    "Dua menit tidak melakukan apa-apa tetap dihitung sebagai permulaan yang baik."
+  ],
+  "afternoon": [
+    "Duduk terlalu lama akan membuat tubuh terasa pegal. Sedikit bergerak akan sangat membantu.",
+    "Matamu mungkin perlu istirahat. Istirahatkan pandangan selama 20 detik ke objek yang jauh.",
+    "Saat rasa kantuk siang menyerang, jalan santai sebentar sering kali lebih ampuh dari segelas kopi lagi.",
+    "Camilan berprotein biasanya bertahan lebih lama dalam menjaga energi daripada sekadar gula.",
+    "Tidak apa-apa menjauh sejenak dari masalah yang rumit. Jawaban sering datang saat kamu berhenti memaksakannya.",
+    "Perlu diingat: rasa haus sering kali muncul sebagai rasa lelah sebelum kamu merasa lapar.",
+    "Postur tubuh adalah hal yang baru disadari saat mulai terasa sakit. Waktunya perbaiki posisi duduk.",
+    "Jika kamu merasa jalan buntu, cobalah jelaskan masalahnya keras-keras kepada diri sendiri.",
+    "Rasa lelah di tengah hari itu nyata. Istirahat sejenak lebih berguna daripada memaksakan diri.",
+    "Selesaikan satu tugas dalam satu waktu. Multitasking sering kali hanya terasa produktif.",
+    "Rasa lelah jam 3 sore? Itu hal yang wajar. Kamu tidak sendirian merasakannya.",
+    "Waktunya camilan. Kamu pantas mendapatkannya.",
+    "Siang hari masih panjang. Atur ritme kerja dan energimu.",
+    "Lagu favoritmu bisa menyegarkan suasana hati. Cobalah putar satu lagu.",
+    "Berkediplah. Serius. Kita sering lupa berkedip saat menatap layar."
+  ],
+  "evening": [
+    "Kerja bagus hari ini. Hal-hal kecil pun tetap berarti.",
+    "Meredupkan lampu saat malam mendekat memberi sinyal pada tubuhmu bahwa hari mulai tenang.",
+    "Mengurangi waktu layar saat malam tiba membuat tidurmu lebih nyenyak.",
+    "Setidaknya ada satu hal yang berjalan baik hari ini. Patut untuk disyukuri.",
+    "Jalan santai di sore hari membantu kualitas tidur dan pencernaanmu.",
+    "Apa pun yang belum selesai hari ini, besok masih ada kesempatan baru.",
+    "Mandi air hangat dan kamar yang sejuk membuat tidur jadi jauh lebih mudah.",
+    "Jika pikiranmu tidak tenang, menuliskannya di kertas bisa mengurangi beban pikiran.",
+    "Makan makanan berat terlalu malam cenderung mengganggu kualitas tidurmu.",
+    "Beberapa tarikan napas dalam bisa menenangkan pikiran yang sedang sibuk.",
+    "Malam hari adalah untuk menikmati kebahagiaan kecil. Segelas teh, sebuah lagu, hal sederhana.",
+    "Langit menampilkan pemandangan indahnya saat ini. Patut dilihat jika kamu dekat jendela.",
+    "Kamu sudah melakukan yang terbaik hari ini. Meskipun terkadang terasa belum cukup.",
+    "Makanan nyaman dan kursi empuk. Itulah jadwalmu sekarang."
+  ],
+  "night": [
+    "Jam-jam yang tenang. Waktu yang tepat untuk berpikir atau bersantai, pilihanmu.",
+    "Sekadar mengingatkan untuk menyimpan pekerjaanmu. Dirimu di masa depan akan berterima kasih.",
+    "Browsing larut malam memang seru sekarang, tapi tidur nyenyak terasa lebih nikmat besok.",
+    "Turunkan kecerahan layar sedikit? Lebih nyaman untuk mata di jam seperti ini.",
+    "Tanpa paksaan, tapi tidur yang cukup akan membuat esok hari terasa lebih menyenangkan.",
+    "Jika ada hal yang membebanimu, simpan dulu hingga besok pagi.",
+    "Ketenangan di jam ini terasa menyenangkan. Kebisingan siang hari akhirnya mereda.",
+    "Melakukan relaksasi juga dihitung sebagai aktivitas yang bermanfaat.",
+    "Pikiran di larut malam memang terasa berbeda. Sering kali lebih unik.",
+    "Internet masih akan tetap ada besok. Kemungkinan besar.",
+    "Tidak ada yang menarik di TV jam segini, tapi di sinilah kita.",
+    "Camilan tengah malam sudah jadi ciri khas tersendiri sekarang."
+  ],
+  "midnight": [
+    "Sudah lewat tengah malam. Apa pun ini, tidak sebanding dengan waktu tidurmu.",
+    "Otakmu melakukan sebagian besar pemulihan saat kamu tidur. Jangan kurangi waktu tidurmu.",
+    "Tidak ada hal yang kamu kerjakan sekarang yang lebih baik daripada setelah istirahat cukup.",
+    "Cahaya dari layar adalah alasan utama tubuhmu merasa harus tetap terjaga sekarang.",
+    "Kamu tidak bisa memperbaiki hari ini dengan begadang. Hari esok dimulai dari tidurmu malam ini.",
+    "Kurang tidur menumpuk diam-diam, lalu terasa sekaligus. Lebih baik tidur sekarang.",
+    "Dirimu di masa depan akan sangat berterima kasih jika kamu segera beristirahat.",
+    "Dunia sudah tenang di sekitarmu. Tanda yang baik untuk melakukan hal yang sama.",
+    "Keputusan setelah tengah malam jarang ada yang bagus. Pagi hari biasanya punya ide lebih baik.",
+    "Tubuhmu menyembuhkan diri saat beristirahat. Berikan kesempatan itu.",
+    "Apa pun yang kamu khawatirkan akan tetap ada besok pagi, dan terasa lebih jelas setelah tidur.",
+    "Kamu sudah cukup bekerja hari ini. Biarkan dirimu beristirahat, kamu pantas mendapatkannya.",
+    "Bahkan pekerja sif malam pun akhirnya pulang. Kamu sudah sangat terlambat untuk tidur.",
+    "Kasur sudah memanggilmu. Sudah memanggil sejak satu jam yang lalu.",
+    "Semua ini masih ada besok pagi. Kamu tidak akan fokus tanpa tidur yang cukup.",
+    "Semuanya bisa menunggu hingga esok pagi, termasuk apa pun yang ada di pikiranmu saat ini."
+  ],
+  "general": [
+    "Tetaplah penasaran. Selalu ada hal baru untuk dipelajari.",
+    "Kesehatan mentalmu sama pentingnya dengan kesehatan fisikmu.",
+    "Kemajuan lambat tetaplah sebuah kemajuan. Jangan terlalu keras pada dirimu sendiri.",
+    "Mudah untuk membandingkan proses awalmu dengan hasil akhir orang lain.",
+    "Kemungkinan besar kamu lebih keras pada dirimu sendiri hari ini daripada kepada seorang teman.",
+    "Langkah kecil sekarang lebih baik daripada rencana sempurna yang tidak pernah dimulai.",
+    "Tidak apa-apa untuk meminta bantuan. Tidak ada orang yang berjuang sendirian.",
+    "Istirahat adalah bagian dari proses kerja, bukan sekadar hadiah setelah bekerja.",
+    "Hal-hal baik, sekecil apa pun, cenderung menumpuk lebih dari yang terlihat saat ini.",
+    "Kamu boleh mengubah pikiranmu.",
+    "Hal dasar memegang peranan penting: tidur, air, makanan. Hal lain akan mengikuti.",
+    "Beberapa hari, berhasil melewatinya saja sudah cukup. Itu tetap berarti.",
+    "Kucing tidur 16 jam sehari dan baik-baik saja. Sekadar menyampaikan.",
+    "Peregangan tubuh yang baik sangat sering diremehkan.",
+    "Musik memperbaiki lebih banyak suasana hati daripada yang kita sadari.",
+    "Tanaman di meja membuat waktu di depan layar terasa sedikit lebih segar."
+  ]
+}

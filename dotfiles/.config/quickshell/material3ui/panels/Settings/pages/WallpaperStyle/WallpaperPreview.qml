@@ -1,0 +1,114 @@
+import "../../../../core"
+import "../../../../services"
+import "../../../../widgets"
+import QtQuick
+import QtQuick.Layouts
+import Qt5Compat.GraphicalEffects
+
+ColumnLayout {
+    id: previewComp
+    property string title
+    property string source
+    property bool showCheckmark: false
+    property bool clickable: true
+    signal clicked()
+    spacing: 12 * Appearance.effectiveScale
+    Item {
+        id: previewWrapper
+        Layout.fillWidth: true
+        Layout.preferredHeight: width * 9/16
+
+        Rectangle {
+            id: imgContainer
+            anchors.fill: parent
+            radius: 20 * Appearance.effectiveScale;
+            color: Appearance.colors.colLayer1
+            
+            layer.enabled: true
+            layer.effect: OpacityMask {
+                maskSource: Rectangle {
+                    width: imgContainer.width
+                    height: imgContainer.height
+                    radius: imgContainer.radius
+                }
+            }
+
+            Image { 
+                anchors.fill: parent
+                source: previewComp.source
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                cache: false
+                opacity: status === Image.Ready ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 300 } }
+            }
+            // 1. Selection indicator (Primary tint) - Only when Synced/Selected
+            Rectangle {
+                anchors.fill: parent
+                color: Appearance.colors.colPrimary
+                opacity: previewComp.showCheckmark ? 0.3 : 0
+                Behavior on opacity { NumberAnimation { duration: 200 } }
+            }
+
+            // 2. Hover overlay (High contrast for text: 30% Dark Grey)
+            Rectangle {
+                anchors.fill: parent
+                color: "#1A1C1E"
+                opacity: (previewComp.clickable && mouseArea.containsMouse) ? 0.3 : 0
+                Behavior on opacity { NumberAnimation { duration: 200 } }
+            }
+
+            // 3. Hover Content (Icon + Text)
+            ColumnLayout {
+                anchors.centerIn: parent
+                spacing: 8 * Appearance.effectiveScale
+                visible: previewComp.clickable && mouseArea.containsMouse
+                
+                MaterialSymbol {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: "edit"
+                    iconSize: 32 * Appearance.effectiveScale
+                    color: "white"
+                }
+                StyledText {
+                    text: I18nService.tr("Change wallpaper")
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    font.weight: Font.DemiBold
+                    color: "white"
+                }
+            }
+            
+            // Selection Checkmark (top-right so it doesn't overlap the centered hover content)
+            Rectangle {
+                width: 42 * Appearance.effectiveScale; height: 42 * Appearance.effectiveScale; radius: 21 * Appearance.effectiveScale
+                anchors.top: parent.top; anchors.right: parent.right
+                anchors.topMargin: 12 * Appearance.effectiveScale; anchors.rightMargin: 12 * Appearance.effectiveScale
+                color: Appearance.colors.colPrimary
+                visible: previewComp.showCheckmark
+                MaterialSymbol { 
+                    anchors.centerIn: parent; 
+                    text: "check"; 
+                    color: Appearance.colors.colOnPrimary; 
+                    iconSize: 24 * Appearance.effectiveScale
+                }
+            }
+        }
+
+        MouseArea {
+            id: mouseArea
+            anchors.fill: parent
+            hoverEnabled: true
+            enabled: previewComp.clickable
+            preventStealing: true
+            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onClicked: previewComp.clicked()
+        }
+    }
+    
+    StyledText {
+        Layout.alignment: Qt.AlignHCenter
+        text: title
+        font.pixelSize: Appearance.font.pixelSize.smaller
+        color: Appearance.colors.colSubtext
+    }
+}
