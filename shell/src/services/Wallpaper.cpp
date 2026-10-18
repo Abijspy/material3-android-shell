@@ -97,6 +97,9 @@ void Wallpaper::recolour() {
     else if (!path().empty()) cmd.insert(cmd.end(), {"image", path()});
     else return;
     cmd.insert(cmd.end(), {"--mode", dark ? "dark" : "light", "--type", scheme});
+    // Matugen 4 asks which colour to use when an image offers several, and
+    // fails without a terminal to ask on: take the most colourful one
+    cmd.insert(cmd.end(), {"--prefer", "saturation"});
     run(cmd, [](int code, const std::string&) {
         if (code != 0) {
             log::warn("matugen failed ({}); the palette is unchanged", code);

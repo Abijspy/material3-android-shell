@@ -50,13 +50,47 @@ output_path = '~/.local/state/quickshell/user/generated/wallpaper/path.txt'
 input_path = "~/.config/matugen/templates/midnight.theme.css"
 output_path = "~/.config/vesktop/themes/midnight.theme.css"
 
-[templates.vscode]
-input_path = "~/.config/matugen/templates/hyprlunavsc.json"
-output_path = "~/.vscode/extensions/hyprluna.hyprluna-theme-1.0.2/themes/hyprluna.json"
+# App themes: generated here, then installed by apply_app_themes.sh into
+# the apps that are present (nothing is created for apps you do not use)
 
-[templates.antigravity]
-input_path = "~/.config/matugen/templates/hyprlunavsc.json"
-output_path = "~/.antigravity/extensions/hyprluna.hyprluna-theme-1.0.2/themes/hyprluna.json"
+# VS Code, Code - OSS / VSCodium, Cursor, Windsurf, Antigravity: pick
+# "Material3UI" in Preferences → Color Theme once
+[templates.vscode]
+input_path = "~/.config/matugen/templates/vscode-color-theme.json"
+output_path = "~/.local/state/quickshell/user/generated/apps/vscode-theme.json"
+post_hook = "~/.local/share/material3ui/scripts/colors/apply_app_themes.sh vscode"
+
+# Firefox, LibreWolf, Floorp, Zen: userChrome/userContent, on next start
+[templates.firefox_chrome]
+input_path = "~/.config/matugen/templates/apps/firefox-userChrome.css"
+output_path = "~/.local/state/quickshell/user/generated/apps/firefox-userChrome.css"
+post_hook = "~/.local/share/material3ui/scripts/colors/apply_app_themes.sh firefox"
+
+[templates.firefox]
+input_path = "~/.config/matugen/templates/apps/firefox-userContent.css"
+output_path = "~/.local/state/quickshell/user/generated/apps/firefox-userContent.css"
+post_hook = "~/.local/share/material3ui/scripts/colors/apply_app_themes.sh firefox"
+
+[templates.foot]
+input_path = "~/.config/matugen/templates/apps/foot.ini"
+output_path = "~/.local/state/quickshell/user/generated/apps/foot.ini"
+post_hook = "~/.local/share/material3ui/scripts/colors/apply_app_themes.sh foot"
+
+[templates.ghostty]
+input_path = "~/.config/matugen/templates/apps/ghostty"
+output_path = "~/.local/state/quickshell/user/generated/apps/ghostty"
+post_hook = "~/.local/share/material3ui/scripts/colors/apply_app_themes.sh ghostty"
+
+# WezTerm: config.color_scheme = "Material3UI"
+[templates.wezterm]
+input_path = "~/.config/matugen/templates/apps/wezterm.toml"
+output_path = "~/.local/state/quickshell/user/generated/apps/wezterm.toml"
+post_hook = "~/.local/share/material3ui/scripts/colors/apply_app_themes.sh wezterm"
+
+[templates.zathura]
+input_path = "~/.config/matugen/templates/apps/zathurarc"
+output_path = "~/.local/state/quickshell/user/generated/apps/zathurarc"
+post_hook = "~/.local/share/material3ui/scripts/colors/apply_app_themes.sh zathura"
 
 [templates.zeditor]
 input_path = "~/.config/matugen/templates/zed_theme.json"
