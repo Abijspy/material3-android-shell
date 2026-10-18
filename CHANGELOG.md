@@ -13,6 +13,8 @@
 
 
 
+## v4.1.0 — 2026-10-18
+
 - **Weather** (Settings → Weather) comes from Open-Meteo (no API key) and refreshes every 15 minutes.
   - **Location:** your IP finds it ("Use my location"), or you search for any city. Choose °C or °F.
   - **Settings page:** a live card with feels-like, humidity, wind and a 7-day forecast.
