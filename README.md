@@ -4,65 +4,57 @@
 
 # Material3UI Shell
 
+[![Last Commit](https://img.shields.io/github/last-commit/Abijspy/material3-android-shell?style=for-the-badge&logo=git&color=8bd5ca&logoColor=D9E0EE&labelColor=303446)](https://github.com/Abijspy/material3-android-shell/commits/main)
+[![Release](https://img.shields.io/github/v/release/Abijspy/material3-android-shell?style=for-the-badge&logo=github&color=c6a0f6&logoColor=D9E0EE&labelColor=303446)](https://github.com/Abijspy/material3-android-shell/releases/latest)
+[![Stars](https://img.shields.io/github/stars/Abijspy/material3-android-shell?style=for-the-badge&logo=github&color=f5bde6&logoColor=D9E0EE&labelColor=303446)](https://github.com/Abijspy/material3-android-shell/stargazers)
+[![Repo Size](https://img.shields.io/github/repo-size/Abijspy/material3-android-shell?style=for-the-badge&logo=folder&color=8caaee&logoColor=D9E0EE&labelColor=303446)](https://github.com/Abijspy/material3-android-shell)
+[![License](https://img.shields.io/github/license/Abijspy/material3-android-shell?style=for-the-badge&logo=gnu&color=a6da95&logoColor=D9E0EE&labelColor=303446)](LICENSE)
+
 A Quickshell-based Material 3 desktop shell for Hyprland, adopting Android 16 design elements.
 
 </div>
 
-> **Note**: This shell and its dependencies are designed for **Arch Linux based distributions** (Arch, CachyOS, EndeavourOS, etc.).
+> **Note**: This shell and its dependencies are designed strictly for **Arch Linux based distributions** (Arch, CachyOS, EndeavourOS, etc.).
+>
+> **Built on NAnDoroid**: Material3UI started as a fork of [NAnDoroid-shell](https://github.com/na-ive/nandoroid-shell) by na-ive and has grown its own identity, installer, Hyprland setup, login screen and package tools since. See [NOTICE](NOTICE).
 
 **Version:** v3.0.0
-**License:** AGPL-3.0 — Material3UI Shell is built on [NAnDoroid-shell](https://github.com/na-ive/nandoroid-shell) by na-ive and has its own identity since v3. See [NOTICE](NOTICE).
+**License:** AGPL-3.0
 
 ## Key Features
 
-- **Universal Dynamic Island:** Media playback, workspace switching, pomodoro timers, and notification popups inside a single central notch.
-- **Status bar, dock & overview:** Configurable status bar with tray overflow, taskbar dock, and a workspace overview.
-- **Spotlight & launcher:** App search, file search (`fd`), calculator (`qalc`), clipboard history (`cliphist`), emoji picker, quick commands, currency conversion and web search.
-- **Quick Settings & Quick Actions:** Editable tiles for Wi-Fi, Bluetooth, VPN/WARP, night light, caffeine, game mode, power profiles, EasyEffects and more.
-- **Dashboard:** Calendar, weather, media with lyrics, system info, timers, stopwatch, alarms and reminders.
-- **Notification centre** with persistent history and popups.
-- **Lock screen** with custom clocks, separate lock wallpaper and optional fingerprint (`fprintd`), and a matching **greetd login screen**.
-- **Built-in Polkit agent**: authentication dialogs are drawn by the shell itself (Quickshell's native polkit service), so no separate agent is needed.
-- **Region tools:** Screenshot, OCR (`tesseract`), visual search, QR scanning and screen recording with or without audio.
-- **System monitor** powered by the bundled `material3ui-sysmon` (processes with real-time CPU deltas, performance and system pages).
-- **Wallpapers:** Local, Wallhaven and online collections, live wallpapers (mpvpaper / Wallpaper Engine), auto-cycling and desktop widgets.
-- **Auto-generated colours:** The whole shell, GTK, KDE, terminals and apps are themed from the wallpaper with Matugen Material 3 tokens.
-- **Packages & Updates**: Arch, AUR and Flatpak updates with a status bar plugin, plus tabs to search and install packages from the official repositories, the AUR and Flatpak.
-- **Settings app** with onboarding, presets, translations, display, audio, network and Bluetooth dialogs, music recognition (`songrec`), floating lyrics and in-shell OTA updates.
+- **Universal Dynamic Island:** Media playback, workspace switching, pomodoro timers and notification popups inside a single central notch.
+- **Matching Lock & Login Screens:** A greetd login screen with the same clock, password pill and motion as the lock screen, kept in sync with your wallpaper, colours and avatar automatically.
+- **Packages & Updates:** Arch, AUR and Flatpak updates in one place, with tabs to search and install packages and a status bar plugin that shows what is pending.
+- **Auto-generated Colors:** The entire shell, GTK, KDE, Alacritty and Hyprland borders are themed from your wallpaper using Material 3 design tokens (via Matugen).
+- **Deep Customizability:** Clocks, status bar modules, lock screen visuals, UI sizing and more, all from the built-in Settings app.
+- **Built-in Tools:** Polkit agent, region screenshots, OCR, QR scanning and recording, Spotlight with clipboard, emoji and calculator, and a system monitor powered by the bundled `material3ui-sysmon`.
+- **...and So Much More:** Online wallpaper collections, live wallpapers, lyrics, music recognition, dashboard widgets and countless micro-interactions.
+
+## Screenshots
+
+<div align="center">
+
+Screenshots of v3 are on the way. Until then, try the shell live with `quickshell -c material3ui`, or preview the login screen with `material3ui-greeter preview`.
+
+</div>
 
 ## Installation
 
+> **Material3UI ships a shell _and_ a Hyprland setup.** It replaces your desktop panels, notifications, lock and login screens and system controls, and can manage your `hyprland.lua` (backed up first). It does not provide file pickers or screen sharing dialogs; install the XDG portals for those.
+
+### Quick Install
+
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Abijspy/material3-android-shell/main/install.sh)"
-# or from a checkout
-git clone https://github.com/Abijspy/material3-android-shell && cd material3-android-shell && ./install.sh
 ```
 
-The installer walks through seven steps: **preflight** (Arch, Hyprland ≥ 0.55, source checkout) → **choices** → **dependency review** (installed vs. missing, confirm) → **packages** (bootstraps `paru` if no AUR helper) → **configuration review** (every file it will write, and which are backed up) → **deploy** → **summary**. Every run is logged to `~/.cache/material3ui/install-*.log`, and replaced files are backed up to `~/.config/material3ui/backups/<timestamp>/`.
+The interactive installer runs a preflight check, lets you pick your apps (Alacritty, Nemo and LibreWolf by default) and how to handle Hyprland, reviews dependencies and every file it will write, then deploys with backups. Use `./install.sh --dry-run` to preview, `--yes` for unattended installs and `--greeter` for the login screen.
 
-| Choice | Default | Alternatives |
-| :--- | :--- | :--- |
-| Terminal | **Alacritty** (themed live from the wallpaper) | kitty, foot, ghostty |
-| File manager | **Nemo** | Thunar, Nautilus, Dolphin |
-| Browser | **LibreWolf** | Firefox, Chromium, Zen Browser |
-| Hyprland | **full** — Material3UI manages `hyprland.lua` | `inject` into your own config, `skip` |
-| Updates | **latest** (main) | release tags |
-
-Your choices are written to `~/.config/hypr/material3ui/apps.lua` and registered as XDG defaults. Unattended installs take the same options as flags:
-
-```bash
-./install.sh --yes                                   # all defaults
-./install.sh --yes --terminal kitty --browser firefox --hypr inject
-./install.sh --dry-run                               # show every step, change nothing
-./install.sh --help
-```
-
-**Upgrading from Material3UI v1** is automatic: the old shell profile, v1 `hyprland.lua` and Matugen config are backed up and replaced, and the retired `material3ui-system`, `material3ui-polkit` and update-timer helpers are removed.
-
-- **[Installation Guide (Clean Arch/CachyOS)](docs/INSTALL.md)**
-- **[Migration Guide (from KDE/GNOME)](docs/MIGRATION.md)**
-
-Update later from Settings → About, or run `update.sh all` in the checkout. Updates never touch `apps.lua`, `user.lua`, `user_persistence.lua` or the generated `colors.lua`.
+- **[Installation Guide (Clean Arch/CachyOS)](docs/INSTALL.md)**: Step-by-step from a fresh system, installer options and updating
+- **[Migration Guide (from KDE/GNOME)](docs/MIGRATION.md)**: What gets replaced, portal setup, keybind migration
+- **[Hyprland Configuration](docs/HYPRLAND.md)**: The modular Lua config and where your own settings go
+- **[Packages & Updates](docs/PACKAGES.md)** · **[Login Screen](docs/GREETER.md)** · **[System Monitor Backend](docs/SYSMON.md)**
 
 ## Requirements & Dependencies
 
@@ -116,12 +108,15 @@ Update later from Settings → About, or run `update.sh all` in the checkout. Up
 | **Lock** | `hyprlock` | The lock screen provider. |
 | **Night Light** | `hyprsunset` | Blue light filter functionality. |
 | **Search** | `fd` | Fast file search functionality in Spotlight. |
+| **Updates** | `pacman-contrib` | Safe update checks (`checkupdates`) for Packages & Updates. |
 | **Calculator** | `libqalculate` | Math calculator functionality in Spotlight (`qalc`). |
 | **Dialogs** | `zenity` | File and directory selection dialogs. |
 | **QR Scan** | `zbar` | QR code scanning functionality (`zbarimg`). |
 | **OCR (Opt.)** | `tesseract` | OCR functionality in region tools. |
 | **Biometric (Opt.)** | `fprintd` | Fingerprint sensor support on lockscreen. |
 | **VPN (Opt.)** | `warp-cli` | Cloudflare WARP client integration. |
+| **Flatpak (Opt.)** | `flatpak` | Flatpak updates, search and installs in Packages & Updates. |
+| **Login (Opt.)** | `greetd` | Hosts the Material3UI login screen. |
 
 ### Fonts
 
@@ -144,74 +139,21 @@ Update later from Settings → About, or run `update.sh all` in the checkout. Up
 
 ## Configuration
 
-- **`dotfiles/.config/quickshell/material3ui/`**: The shell itself.
-- **`dotfiles/.config/hypr/`**: Modular Hyprland Lua config (see below).
-- **`dotfiles/.config/matugen/`**: Material 3 templates for GTK, KDE, Alacritty, kitty, Hyprland borders, hyprlock and more.
-- **`dotfiles/.config/alacritty/alacritty.toml`**: Alacritty config importing the generated theme.
-- **`dotfiles/.config/starship.toml`**: Prompt configuration (with the fish option).
-- **`dotfiles/.local/bin/material3uictl`**: Terminal client for the shell's IPC.
+The `dotfiles/` directory distributed with this repository contains:
+
+- **`.config/quickshell/material3ui/`**: The shell itself.
+- **`.config/hypr/`**: Modular Hyprland Lua config ([details](docs/HYPRLAND.md)).
+- **`.config/matugen/`**: Material 3 templates for GTK, KDE, Alacritty, kitty, Hyprland borders, hyprlock and more.
+- **`.config/alacritty/`**: Alacritty config that imports the generated theme.
+- **`.config/starship.toml`**: Prompt configuration (requires starship).
+- **`.local/bin/material3uictl`**: Command-line client for the shell's IPC.
+- **`greeter/`**: The greetd login screen and its `material3ui-greeter` tool ([details](docs/GREETER.md)).
 - **`extras/`**: hypridle, hyprlock, kitty and fish configs.
 
-### Hyprland layout
+## IPC Commands
 
-`~/.config/hypr/hyprland.lua` only `require`s modules from `~/.config/hypr/material3ui/`:
-
-| Module | Purpose |
-| :--- | :--- |
-| `env.lua` | Wayland backends, portals, Qt/GTK theming, `$TERMINAL` / `$BROWSER` |
-| `apps.lua` | Preferred terminal, browser and file manager (written by the installer) |
-| `monitors.lua` | Fallback monitor rule |
-| `appearance.lua` | Gaps, rounding, blur, shadows, Material 3 motion curves |
-| `colors.lua` | Border and background colours, regenerated by Matugen from the wallpaper |
-| `input.lua` | Keyboard, touchpad and gestures |
-| `rules.lua` | Window rules (dialogs, portals, PiP, Nemo, Material3UI windows) |
-| `autostart.lua` | Session environment, keyring, hypridle, clipboard history |
-| `keybinds.lua` | Apps, window management, workspaces, audio and media keys |
-| `shell.lua` | Starts the shell, panel shortcuts, region tools, layer rules — the only module `inject` mode needs |
-| `user_persistence.lua` | Written by the shell (monitor layouts, game mode) |
-| `user.lua` | **Your overrides** — loaded last, never overwritten |
-
-## Packages & Updates
-
-Settings → About → **Packages & Updates** (or the status bar plugin, or `material3uictl packages`) has one tab per job:
-
-| Tab | What it does |
-| :--- | :--- |
-| **Updates** | Pending updates from the official repos (`checkupdates`, which never touches pacman's own databases), the AUR (`paru -Qua` / `yay -Qua`) and Flatpak, with **Check now** and **Update now** (runs `paru -Syu` / `yay -Syu` / `sudo pacman -Syu`, then `flatpak update`, in your terminal). Auto-check interval, AUR/Flatpak inclusion, notifications and the bar plugin are configured here. |
-| **Official** | Search the Arch repositories (`pacman -Ss`) and install with `sudo pacman -S`. |
-| **AUR** | Search the AUR through its web API (no helper needed to search) and install with your AUR helper. |
-| **Flatpak** | Search Flathub and your other remotes and install with `flatpak install`. |
-
-Installs and upgrades open in your terminal so password and confirmation prompts stay in your hands. The **Package Updates** status bar module (on by default for new configs, hidden when you are up to date) shows the count: left click opens the page, right click checks, middle click updates. From a terminal: `material3uictl updates check|upgrade|count`.
-
-## Login screen (greetd)
-
-`greeter/` is a Quickshell greeter for [greetd](https://sr.ht/~kennylevinsen/greetd/) with the same UI and motion as the lock screen: the same centred clock (your lock-screen clock style, fonts and time/date format), the same bottom password pill with Material-shape dots, shake and arrow button, and the same entrance animation. It adds a user chip (avatar + name, with a user picker), a session picker in the pill's leading slot, and suspend / reboot / power-off.
-
-```bash
-sudo pacman -S greetd
-greeter/material3ui-greeter install --enable   # or pick "login screen" in install.sh / pass --greeter
-material3ui-greeter preview                    # try it inside your session
-material3ui-greeter status
-material3ui-greeter uninstall                  # restores your previous greetd config
-```
-
-greetd runs a minimal Hyprland session (`/usr/share/material3ui-greeter/hyprland.lua`) that hosts the greeter and exits once you log in. Because the `greeter` user cannot read your home directory, `material3ui-greeter sync` copies your wallpaper, Material colours (the lock-screen palette when you use a separate lock wallpaper), avatar, clock settings, keyboard layout and monitor rules to `/var/lib/material3ui-greeter`. With **Settings → Wallpaper & Style → Lockscreen → Auto sync login screen** (on by default) the shell does this automatically whenever any of them change; "Sync now" and "Preview" are next to it.
-
-## System monitor backend
-
-`material3ui-sysmon` is Material3UI's own replacement for dgop. It lives in `scripts/sysmon/`, is pure Python 3 standard library, and reads `/proc` and `/sys` directly; the installer also links it to `~/.local/bin`.
-
-```bash
-material3ui-sysmon top                      # process table
-material3ui-sysmon meta --pretty            # JSON: cpu, memory, system, processes, diskmounts, gpu
-material3ui-sysmon meta --modules cpu,gpu
-material3ui-sysmon server --port 63490      # GET /meta?modules=processes,system&limit=150, GET /health
-```
-
-The shell starts the server only while the System Monitor's Processes tab is open, so CPU usage per process is a true delta between samples. Without `python3` it falls back to `ps`.
-
-## IPC
+<details>
+<summary>Click to view IPC commands & Keybinds</summary>
 
 Everything is reachable through the unified **`material3ui`** IPC target:
 
@@ -232,8 +174,7 @@ material3uictl <function> [args]
 | `lock` | Lock the session |
 | `close` | Close every open panel |
 
-<details>
-<summary>Per-panel IPC targets, global shortcuts & panel keys</summary>
+### Per-panel Targets
 
 Fine-grained control (e.g. `open` / `close` rather than toggle) remains available through the per-panel targets:
 
@@ -318,9 +259,7 @@ When any major Material3UI panel is open and focused, you can use built-in keybo
 | `/` | Open the Keyboard Shortcuts Cheatsheet |
 | `Esc` | Close the current panel |
 
-</details>
-
-## Default Keybinds
+### Default Keybinds
 
 | Keys | Action | Keys | Action |
 | :--- | :--- | :--- | :--- |
@@ -339,9 +278,21 @@ When any major Material3UI panel is open and focused, you can use built-in keybo
 
 Defined in [`shell.lua`](dotfiles/.config/hypr/material3ui/shell.lua) and [`keybinds.lua`](dotfiles/.config/hypr/material3ui/keybinds.lua); override them in `user.lua`.
 
+</details>
+
+## Contributing
+
+Pull requests are welcome! If you find bugs, want to fix issues or have improvements, feel free to contribute. For larger changes, please open an issue first so we can discuss the direction.
+
+If you want to take the shell somewhere else entirely, you are encouraged to **fork** it and make it your own, as Material3UI itself did with NAnDoroid.
+
 ## Credits
 
-- **[NAnDoroid-shell](https://github.com/na-ive/nandoroid-shell)** by **[na-ive](https://github.com/na-ive)** — the AGPL-3.0 codebase Material3UI Shell v2 is built on. Upstream history: [docs/UPSTREAM_CHANGELOG.md](docs/UPSTREAM_CHANGELOG.md).
+Material3UI builds on the work of several open-source Quickshell projects. Their ideas, architecture and design references shaped this project.
+
+### Upstream
+
+- **[NAnDoroid-shell](https://github.com/na-ive/nandoroid-shell)** by **[na-ive](https://github.com/na-ive)** - The AGPL-3.0 codebase Material3UI is built on. Upstream history: [docs/UPSTREAM_CHANGELOG.md](docs/UPSTREAM_CHANGELOG.md).
 
 ### Core Framework
 
@@ -361,7 +312,3 @@ This project is a personal creation inspired by the following open-source develo
 ### Assets
 
 - **Weather Icons:** Sourced from [mrdarrengriffin/google-weather-icons](https://github.com/mrdarrengriffin/google-weather-icons).
-
-## License
-
-Material3UI Shell is licensed under the [GNU Affero General Public License v3.0](LICENSE), the same licence as NAnDoroid-shell.
