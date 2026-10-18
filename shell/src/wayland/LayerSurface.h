@@ -33,6 +33,8 @@ public:
     void setVisible(bool visible);
     bool visible() const { return m_visible; }
 
+    std::string describe() const override;
+
     // Protocol callbacks
     void configure(uint32_t serial, uint32_t width, uint32_t height);
     void closed();

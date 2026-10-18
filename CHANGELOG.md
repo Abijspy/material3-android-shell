@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Native shell: verified end to end.**
+  - **Polkit:** real polkitd authenticates a `wheel` user through the shell's agent: wrong password and retry, then authorized.
+  - **Mouse:** pointer-driven tests use a `wlr-virtual-pointer` tool and a `msg debug` layout dump.
+  - **JPEG and WebP:** wallpapers decode through gdk-pixbuf's sandboxed loaders. The dev container now relaxes seccomp and SELinux confinement so the sandbox can run.
+- **Native shell: hover fix.** New `onHoverWithin` fixes hover over child buttons: the island collapsed as soon as the pointer reached its media buttons, and a toast's timeout restarted while hovering its action buttons.
 - **Native C++ shell, phases 4–6** (`shell/`):
   - **Notifications:** a full notification daemon, with toasts and a notification centre.
   - **Quick Settings:** sliders, tiles, now playing, and a Wi-Fi picker with password entry.

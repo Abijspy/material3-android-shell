@@ -70,6 +70,11 @@ public:
 
     static Surface* fromSurface(wl_surface* surface);
 
+    // Every live surface, and a text dump of its tree (for UI tests)
+    static const std::vector<Surface*>& all();
+    virtual std::string describe() const;
+    std::string dump() const;
+
     // Protocol callbacks
     void frameDone();
     void preferredScale(float scale, bool fractional);
@@ -120,6 +125,8 @@ private:
     ui::Node* m_focus = nullptr;
     float m_pointerX = 0, m_pointerY = 0;
     std::optional<std::vector<RectF>> m_input;
+    std::vector<ui::Node*> m_hoverChain; // nodes the pointer is within
+    void updateHoverWithin(ui::Node* hit);
     Connection m_imagesReady;
     bool m_inputDirty = false;
 };

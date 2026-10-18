@@ -195,6 +195,7 @@ void Display::seatCapabilities(uint32_t caps) {
 }
 
 void Display::pointerEnter(uint32_t serial, wl_surface* surface, double x, double y) {
+    if (debugFocus()) log::info("wl_pointer.enter {:.0f},{:.0f}", x, y);
     m_pointerFocus = Surface::fromSurface(surface);
     m_pointerX = x;
     m_pointerY = y;
@@ -215,6 +216,7 @@ void Display::pointerMotion(double x, double y) {
 }
 
 void Display::pointerButton(uint32_t button, bool pressed) {
+    if (debugFocus()) log::info("wl_pointer.button {} {} focus={}", button, pressed, static_cast<void*>(m_pointerFocus));
     if (m_pointerFocus) m_pointerFocus->pointerButton(button, pressed);
 }
 

@@ -133,8 +133,8 @@ NotificationCard::NotificationCard(const Notifications::Notification& n, bool to
     }
 }
 
-void NotificationCard::onHover(bool hovered) {
-    Button::onHover(hovered);
+void NotificationCard::onHoverWithin(bool hovered) {
+    // Over the Reply button still counts as over the card: keep it up
     if (onHoverChanged) onHoverChanged(hovered);
 }
 

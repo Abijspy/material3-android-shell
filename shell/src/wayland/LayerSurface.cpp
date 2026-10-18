@@ -5,6 +5,7 @@
 
 #include "ext-session-lock-v1-client-protocol.h"
 
+#include <format>
 #include <wayland-client.h>
 
 namespace m3::wl {
@@ -96,6 +97,12 @@ void LayerSurface::setVisible(bool visible) {
 void LayerSurface::configure(uint32_t serial, uint32_t width, uint32_t height) {
     zwlr_layer_surface_v1_ack_configure(m_layer, serial);
     configured(width ? static_cast<int>(width) : m_options.width, height ? static_cast<int>(height) : m_options.height);
+}
+
+std::string LayerSurface::describe() const {
+    const auto sz = size();
+    return std::format("surface {} {:.0f}x{:.0f} anchor={} margin={},{},{},{}", m_options.ns, sz.w, sz.h, m_options.anchor,
+                       m_options.marginTop, m_options.marginRight, m_options.marginBottom, m_options.marginLeft);
 }
 
 void LayerSurface::closed() {

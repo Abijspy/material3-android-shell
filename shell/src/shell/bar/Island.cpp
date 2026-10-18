@@ -49,8 +49,8 @@ Island::~Island() {
     if (m_noticeTimer) EventLoop::get().cancel(m_noticeTimer);
 }
 
-void Island::onHover(bool hovered) {
-    Button::onHover(hovered);
+void Island::onHoverWithin(bool hovered) {
+    // Within, not just on: the media buttons are children of the island
     m_hovered = hovered;
     if (m_mode == Mode::Notice) return;
     show(hovered && Mpris::get().active() ? Mode::Media : Mode::Clock);

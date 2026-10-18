@@ -1,5 +1,7 @@
 #include "services/Network.h"
 
+#include "core/Log.h"
+
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
@@ -145,6 +147,7 @@ void Network::connect(const AccessPoint& ap, const std::string& password) {
     if (m_wifiDevice.empty()) return;
     m_error.clear();
     auto done = [this](const dbus::Value&, const std::string& err) {
+        if (!err.empty()) log::warn("network: connecting failed: {}", err);
         m_error = err.empty() ? "" : "Could not connect";
         refresh();
         changed.emit();

@@ -77,6 +77,16 @@ No Arch box handy? `tools/dev.sh` builds in an Arch container, and `tools/dev.sh
 | `M3_SCALE=1.5` | Output scale, to check fractional scaling |
 | `M3_SETUP="…"` | Commands run before the shell starts (users, config, `tools/make-wallpapers.py`, `tools/fake-greetd.py`) |
 | `M3_ARGS=greeter` | Arguments for `material3ui` (test the greeter) |
+| `M3_USER=alice` | Run the shell as that (existing) user instead of root |
+
+Pointer tests drive a `wlr-virtual-pointer` device (`build/vpointer move X Y click left …`, built on first use) and find elements with `tools/ui.py find TEXT` / `ui.py at TYPE`, which read `material3ui msg debug`. Ready-made suites:
+
+```bash
+# Hover, clicks, drags, Wi-Fi taps, tray menus (mock services)
+M3_SERVICES=1 M3_FAKE_HYPR=1 M3_WAIT=4 M3_SCRIPT='bash tools/test-mouse.sh' tools/dev.sh shot
+# polkit end to end: real polkitd authenticates "alice" through the shell's agent
+M3_USER=alice M3_SETUP='source tools/polkit-setup.sh' M3_WAIT=3 M3_SCRIPT='bash tools/test-polkit.sh' tools/dev.sh shot
+```
 | `M3_DEBUG_FRAMES=1`, `M3_DEBUG_FOCUS=1` | Log frames, or keyboard focus and key events |
 
 ## IPC

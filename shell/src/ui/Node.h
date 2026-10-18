@@ -62,6 +62,8 @@ public:
     virtual bool interactive() const { return false; }
     virtual bool focusable() const { return false; }
     virtual void onHover(bool) {}
+    // The pointer entered or left this node or any of its descendants
+    virtual void onHoverWithin(bool) {}
     virtual void onPress(uint32_t /*button*/, float /*x*/, float /*y*/) {}
     virtual void onDrag(float /*x*/, float /*y*/) {}
     virtual void onRelease() {}

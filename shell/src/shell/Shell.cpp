@@ -25,6 +25,7 @@
 #include "shell/bar/Bar.h"
 #include "ui/Theme.h"
 #include "wayland/Display.h"
+#include "wayland/Surface.h"
 
 #include <cmath>
 #include <format>
@@ -296,6 +297,11 @@ void Shell::registerIpc() {
         else if (cmd == "set" && a.size() > 1) w.set(a[1]);
         else if (cmd == "pick") togglePopup("wallpapers", focusedOutput(), -1);
         return w.path().empty() ? std::string("no wallpaper") : w.path();
+    });
+    ipc.add("debug", "debug layout: every surface's node tree (for UI tests)", [](const IpcServer::Args&) {
+        std::string out;
+        for (const auto* s : wl::Surface::all()) out += s->dump();
+        return out;
     });
     ipc.add("lock", "Lock the session", [](const auto&) {
         LockScreen::get().lock();

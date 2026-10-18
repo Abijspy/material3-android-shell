@@ -15,7 +15,7 @@ public:
     explicit Island(OpenPopup open);
     ~Island() override;
 
-    void onHover(bool hovered) override;
+    void onHoverWithin(bool hovered) override;
 
 protected:
     SizeF doMeasure(SizeF available) override;

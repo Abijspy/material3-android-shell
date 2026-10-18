@@ -19,7 +19,7 @@ public:
     NotificationCard(const Notifications::Notification& n, bool toast);
     uint32_t id() const { return m_id; }
     std::function<void(bool hovered)> onHoverChanged;
-    void onHover(bool hovered) override;
+    void onHoverWithin(bool hovered) override;
 
 private:
     uint32_t m_id;

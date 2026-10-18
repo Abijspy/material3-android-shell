@@ -7,6 +7,14 @@ out="${1:-shot.png}"
 [ -d build ] || meson setup build >/dev/null
 build_log=$(meson compile -C build 2>&1) || { echo "$build_log" | grep -E "error|FAILED"; exit 1; }
 
+# The pointer driver for UI tests
+if [ ! -x build/vpointer ]; then
+    x=/usr/share/wlr-protocols/unstable/wlr-virtual-pointer-unstable-v1.xml
+    wayland-scanner client-header "$x" build/wlr-virtual-pointer-unstable-v1-client-protocol.h
+    wayland-scanner private-code "$x" build/wlr-virtual-pointer-protocol.c
+    cc -O1 -Ibuild tools/vpointer.c build/wlr-virtual-pointer-protocol.c -lwayland-client -o build/vpointer
+fi
+
 export XDG_RUNTIME_DIR=/tmp/xdg
 mkdir -p -m 700 "$XDG_RUNTIME_DIR"
 export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1
@@ -50,7 +58,15 @@ if [ -n "${M3_FAKE_HYPR:-}" ]; then
 fi
 
 [ -n "${M3_SETUP:-}" ] && eval "$M3_SETUP"
-if [ -n "${M3_GDB:-}" ]; then
+if [ -n "${M3_USER:-}" ]; then
+    # Run the shell as a normal user: its own runtime dir, the compositor's
+    # socket by absolute path
+    uid=$(id -u "$M3_USER")
+    mkdir -p -m 700 /tmp/xdg-$M3_USER && chown "$M3_USER" /tmp/xdg-$M3_USER
+    chmod 755 "$XDG_RUNTIME_DIR"; chmod 777 "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+    su "$M3_USER" -s /bin/bash -c "env XDG_RUNTIME_DIR=/tmp/xdg-$M3_USER WAYLAND_DISPLAY=$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY \
+        DBUS_SYSTEM_BUS_ADDRESS=${DBUS_SYSTEM_BUS_ADDRESS:-} M3_DEBUG_FOCUS=${M3_DEBUG_FOCUS:-} ./build/material3ui" >/tmp/m3.log 2>&1 &
+elif [ -n "${M3_GDB:-}" ]; then
     gdb -batch -ex run -ex "bt 30" ./build/material3ui >/tmp/m3.log 2>&1 &
 else
     ./build/material3ui ${M3_ARGS:-} >/tmp/m3.log 2>&1 &
@@ -59,7 +75,8 @@ if [ -n "${M3_SERVICES:-}" ]; then
     python3 tools/mock-services.py session 1 >/tmp/mock-session.log 2>&1 &
 fi
 sleep "${M3_WAIT:-2}"
-./build/material3ui msg ping
+if [ -n "${M3_USER:-}" ]; then su "$M3_USER" -s /bin/bash -c "XDG_RUNTIME_DIR=/tmp/xdg-$M3_USER ./build/material3ui msg ping"
+else ./build/material3ui msg ping; fi
 [ -n "${M3_SCRIPT:-}" ] && eval "$M3_SCRIPT"
 grim "/src/$out"
 grep -v MESA /tmp/m3.log

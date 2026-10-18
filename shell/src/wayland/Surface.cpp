@@ -10,7 +10,11 @@
 #include "fractional-scale-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cxxabi.h>
+#include <format>
+#include <typeinfo>
 #include <cstdlib>
 #include <wayland-client.h>
 #include <wayland-egl.h>
@@ -45,12 +49,49 @@ bool debugFrames() {
 
 } // namespace
 
+namespace {
+std::vector<Surface*>& registry() {
+    static std::vector<Surface*> list;
+    return list;
+}
+} // namespace
+
+const std::vector<Surface*>& Surface::all() {
+    return registry();
+}
+
+std::string Surface::describe() const {
+    return std::format("surface {} {}x{}", m_tag, m_width, m_height);
+}
+
+std::string Surface::dump() const {
+    std::string out = describe() + "\n";
+    std::function<void(const ui::Node*, int)> walk = [&](const ui::Node* n, int depth) {
+        if (!n->shown()) return;
+        int status = 0;
+        char* name = abi::__cxa_demangle(typeid(*n).name(), nullptr, nullptr, &status);
+        std::string type = status == 0 && name ? name : typeid(*n).name();
+        std::free(name);
+        if (auto pos = type.rfind("::"); pos != std::string::npos) type = type.substr(pos + 2);
+        const auto& r = n->rect();
+        std::string text;
+        if (auto* l = dynamic_cast<const ui::Label*>(n)) text = l->text();
+        out += std::format("{} {} {:.0f} {:.0f} {:.0f} {:.0f} {}{}\n", depth, type, r.x, r.y, r.w, r.h,
+                           n->interactive() ? "* " : "", text);
+        for (const auto& c : n->children()) walk(c.get(), depth + 1);
+    };
+    if (m_root) walk(m_root.get(), 0);
+    return out;
+}
+
 Surface::Surface(Output* output) : m_output(output) {
+    registry().push_back(this);
     m_scale = output ? static_cast<float>(output->scale) : 1.0f;
     m_imagesReady = Images::get().ready.connect([this] { requestRedraw(); });
 }
 
 Surface::~Surface() {
+    std::erase(registry(), this);
     *m_alive = false;
     // Subclasses call destroySurface() in their destructors (their role
     // must go first); this is the safety net.
@@ -153,6 +194,7 @@ void Surface::requestRedraw() {
 }
 
 void Surface::nodeDestroyed(ui::Node* node) {
+    std::erase(m_hoverChain, node);
     if (m_hovered == node) m_hovered = nullptr;
     if (m_pressed == node) m_pressed = nullptr;
     if (m_focus == node) m_focus = nullptr;
@@ -227,6 +269,8 @@ void Surface::pointerMotion(double x, double y) {
     m_pointerY = static_cast<float>(y);
     ui::Node* hit = m_root ? m_root->hitTest(m_pointerX, m_pointerY) : nullptr;
     if (hit != m_hovered) {
+        if (std::getenv("M3_DEBUG_FOCUS")) log::info("hover {} → {}", static_cast<void*>(m_hovered), static_cast<void*>(hit));
+        updateHoverWithin(hit);
         if (m_hovered) m_hovered->onHover(false);
         m_hovered = hit;
         if (m_hovered) m_hovered->onHover(true);
@@ -235,7 +279,19 @@ void Surface::pointerMotion(double x, double y) {
     if (m_pressed) m_pressed->onDrag(m_pointerX, m_pointerY);
 }
 
+void Surface::updateHoverWithin(ui::Node* hit) {
+    // Ancestors (and self) of the new target, outermost first
+    std::vector<ui::Node*> chain;
+    for (ui::Node* n = hit; n; n = n->parentNode()) chain.push_back(n);
+    for (ui::Node* n : m_hoverChain)
+        if (std::ranges::find(chain, n) == chain.end()) n->onHoverWithin(false);
+    for (ui::Node* n : chain)
+        if (std::ranges::find(m_hoverChain, n) == m_hoverChain.end()) n->onHoverWithin(true);
+    m_hoverChain = std::move(chain);
+}
+
 void Surface::pointerLeave() {
+    updateHoverWithin(nullptr);
     if (m_hovered) m_hovered->onHover(false);
     if (m_pressed) m_pressed->onRelease();
     m_hovered = m_pressed = nullptr;
