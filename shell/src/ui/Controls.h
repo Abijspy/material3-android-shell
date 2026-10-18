@@ -70,6 +70,8 @@ private:
 };
 
 // Vertical scrolling for one content node, clipped, with eased wheel steps.
+// When the content overflows, a scrollbar in a gutter on the right shows
+// where you are; its thumb can be dragged and the track clicked.
 class ScrollView : public Node {
 public:
     float maxHeight = 400;
@@ -78,16 +80,30 @@ public:
     void scrollTo(float y, bool animate = true);
     bool onScroll(int d) override;
 
+    // Interactive for the scrollbar; presses elsewhere do nothing
+    bool interactive() const override { return overflows(); }
+    void onHover(bool hovered) override;
+    void onPress(uint32_t button, float x, float y) override;
+    void onDrag(float x, float y) override;
+    void onRelease() override;
+
 protected:
     SizeF doMeasure(SizeF available) override;
     void doArrange() override;
+    void doPaint(Renderer& r) override;
     bool clipsChildren() const override { return true; }
-    bool doAnimating() const override { return m_offset.running(); }
+    bool doAnimating() const override { return m_offset.running() || m_bar.running(); }
 
 private:
+    static constexpr float kGutter = 14;
     float maxOffset() const;
+    bool overflows() const { return m_contentHeight > rect().h + 0.5f; }
+    RectF thumb() const;
     Tween m_offset{0, motion::shortMs, Easing::standard()};
+    Tween m_bar{0, motion::shortMs, Easing::standard()}; // 0 idle … 1 hovered/dragging
     float m_contentHeight = 0;
+    float m_grab = -1; // pointer offset within the thumb while dragging
+    bool m_hovered = false;
 };
 
 // Single-line text field: caret, placeholder, UTF-8 editing, horizontal

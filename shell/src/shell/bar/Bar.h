@@ -4,7 +4,14 @@
 #include "shell/bar/Status.h"
 #include "wayland/LayerSurface.h"
 
+namespace m3::ui {
+class Flex;
+}
+
+#include <array>
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace m3::wl {
 struct Output;
@@ -26,8 +33,21 @@ public:
     // Top or bottom edge, from statusBar.position
     static uint32_t anchor();
 
+    // Modules the bar can show, and where they are: statusBar.layout holds
+    // {"left": [ids], "center": [ids], "right": [ids]}
+    struct Module {
+        const char* id;
+        const char* icon;
+        const char* name;
+    };
+    static const std::vector<Module>& modules();
+    using Layout = std::array<std::vector<std::string>, 3>; // left, centre, right
+    static Layout layout();
+    static void setLayout(const Layout& layout);
+
 private:
     int height() const;
+    void addModule(ui::Flex* zone, const std::string& id, bool floating);
 
     wl::Output* m_output;
     OpenPopup m_openPopup;

@@ -166,9 +166,14 @@ void Switch::doPaint(Renderer& r) {
 
 SizeF ScrollView::doMeasure(SizeF available) {
     if (!content()) return {};
-    const SizeF c = content()->measure({available.w, 1e6f});
+    // Never taller than the room we are given: small screens scroll instead
+    // of cutting the content off
+    const float cap = available.h > 48 ? std::min(maxHeight, available.h) : maxHeight;
+    SizeF c = content()->measure({available.w, 1e6f});
+    // Overflowing: the content gives up a gutter for the scrollbar
+    if (c.h > cap) c = content()->measure({available.w - kGutter, 1e6f});
     m_contentHeight = c.h;
-    return {c.w, std::min(c.h, maxHeight)};
+    return {c.w + (c.h > cap ? kGutter : 0), std::min(c.h, cap)};
 }
 
 float ScrollView::maxOffset() const {
@@ -188,11 +193,65 @@ bool ScrollView::onScroll(int d) {
 
 void ScrollView::doArrange() {
     if (!content()) return;
-    const SizeF c = content()->measure({rect().w, 1e6f});
+    SizeF c = content()->measure({rect().w, 1e6f});
+    const bool over = c.h > rect().h + 0.5f;
+    if (over) c = content()->measure({rect().w - kGutter, 1e6f});
     m_contentHeight = c.h;
     const float off = std::clamp(m_offset.value(), 0.0f, maxOffset());
-    content()->arrange({rect().x, rect().y - off, rect().w, c.h});
+    content()->arrange({rect().x, rect().y - off, rect().w - (over ? kGutter : 0), c.h});
     if (m_offset.running()) requestLayout();
+}
+
+RectF ScrollView::thumb() const {
+    const RectF& r = rect();
+    const float track = r.h - 8;
+    const float h = std::max(32.0f, track * r.h / std::max(m_contentHeight, 1.0f));
+    const float max = maxOffset();
+    const float t = max > 0 ? std::clamp(m_offset.value(), 0.0f, max) / max : 0;
+    const float w = 4 + 4 * m_bar.value();
+    return {r.right() - 5 - w, r.y + 4 + (track - h) * t, w, h};
+}
+
+void ScrollView::doPaint(Renderer& r) {
+    if (!overflows()) return;
+    const float k = m_bar.value();
+    // Track only while engaged; the thumb always shows there is more
+    if (k > 0) {
+        const RectF& b = rect();
+        r.rect({b.right() - 13, b.y + 4, 12, b.h - 8}, ColorRef("on_surface", 0.06f * k).resolve(), Radii(6));
+    }
+    const RectF t = thumb();
+    r.rect(t, ColorRef(k > 0 ? "primary" : "on_surface_variant", 0.45f + 0.4f * k).resolve(), Radii(t.w / 2));
+    if (m_bar.running()) requestRedraw();
+}
+
+void ScrollView::onHover(bool hovered) {
+    m_hovered = hovered;
+    if (m_grab < 0) m_bar.set(hovered ? 1 : 0);
+    requestRedraw();
+}
+
+void ScrollView::onPress(uint32_t, float x, float y) {
+    if (x < rect().right() - kGutter) return;
+    const RectF t = thumb();
+    // On the thumb: drag from where it was grabbed; on the track: jump there
+    m_grab = (y >= t.y && y < t.bottom()) ? y - t.y : t.h / 2;
+    m_bar.set(1);
+    onDrag(x, y);
+}
+
+void ScrollView::onDrag(float, float y) {
+    if (m_grab < 0) return;
+    const float track = rect().h - 8;
+    const float h = thumb().h;
+    const float t = std::clamp((y - m_grab - rect().y - 4) / std::max(1.0f, track - h), 0.0f, 1.0f);
+    scrollTo(t * maxOffset(), false);
+}
+
+void ScrollView::onRelease() {
+    m_grab = -1;
+    m_bar.set(m_hovered ? 1 : 0);
+    requestRedraw();
 }
 
 // ── TextField ──

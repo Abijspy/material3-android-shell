@@ -51,6 +51,7 @@ std::string dataFile(const std::string& name) {
     const std::vector<fs::path> candidates = {
         env("M3_DATA_DIR", ""),
         exe / "../share/material3ui",
+        exe / "../data", // shell/data, running from shell/build
         exe / "../../dotfiles/.config/quickshell/material3ui/data", // running from shell/build
         "/usr/share/material3ui",
         configDir() + "/../quickshell/material3ui/data",

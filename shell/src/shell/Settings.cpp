@@ -6,15 +6,19 @@
 #include "core/Process.h"
 #include "render/Images.h"
 #include "services/Audio.h"
+#include "services/Clipboard.h"
 #include "services/Hyprland.h"
 #include "services/Keybinds.h"
 #include "services/Network.h"
 #include "services/Notifications.h"
 #include "services/Packages.h"
+#include "services/Search.h"
 #include "services/SystemStats.h"
 #include "services/Wallpaper.h"
+#include "shell/Dock.h"
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
+#include "shell/bar/Bar.h"
 #include "ui/Controls.h"
 #include "ui/Theme.h"
 
@@ -86,6 +90,35 @@ private:
     static Radii shape(size_t i, size_t n) {
         const float top = i == 0 ? kOuter : kInner, bottom = i + 1 == n ? kOuter : kInner;
         return {top, top, bottom, bottom};
+    }
+};
+
+// Children left to right, wrapping onto new lines (chips)
+class Flow : public Node {
+public:
+    float spacing = 6;
+
+protected:
+    SizeF doMeasure(SizeF available) override { return place(available.w, false); }
+    void doArrange() override { place(rect().w, true); }
+
+private:
+    SizeF place(float width, bool arrange) {
+        float x = 0, y = 0, line = 0, widest = 0;
+        for (auto& c : children()) {
+            if (!c->shown()) continue;
+            const SizeF s = c->measure({width, 1e6f});
+            if (x > 0 && x + s.w > width) {
+                x = 0;
+                y += line + spacing;
+                line = 0;
+            }
+            if (arrange) c->arrange({rect().x + x, rect().y + y, s.w, s.h});
+            x += s.w + spacing;
+            line = std::max(line, s.h);
+            widest = std::max(widest, x - spacing);
+        }
+        return {widest, y + line};
     }
 };
 
@@ -508,16 +541,213 @@ void barPage(Flex* page, Popup&) {
     choiceRow<int>(layout, "toolbar", "Style", "", "/statusBar/backgroundStyle", 0, {{0, "Floating"}, {1, "Full width"}});
     sliderRow(layout, "height", "Height", "/statusBar/height", 40, 32, 56, 2, [](double v) { return std::format("{:.0f} px", v); });
 
-    auto* modules = group(page, "Modules", "Status icons always stay: they open Quick Settings");
-    switchRow(modules, "view_week", "Workspaces", "", "/statusBar/modules/workspaces", true);
-    switchRow(modules, "title", "Window title", "", "/statusBar/modules/title", true);
-    switchRow(modules, "more_horiz", "System tray", "", "/statusBar/modules/tray", true);
-    switchRow(modules, "battery_full", "Battery", "Hidden anyway on desktops", "/statusBar/modules/battery", true);
+    // Layout editor: each zone's modules as chips that move left and right
+    // (across zones at the ends) or come off; "+" adds one to a zone
+    auto* live = page->add<Live>();
+    live->setSpacing(6);
+    auto adding = std::make_shared<int>(-1); // the zone showing its add list
+    live->sync = [live, adding] {
+        live->clearChildren();
+        auto* g = group(live, "Modules", "Arrange the bar: changes show on it at once");
+        auto lay = shell::Bar::layout();
+        const char* zoneNames[] = {"Left", "Centre", "Right"};
+        auto save = [live, adding](const shell::Bar::Layout& l) {
+            shell::Bar::setLayout(l);
+            live->syncSoon();
+        };
+        auto meta = [](const std::string& id) {
+            for (const auto& m : shell::Bar::modules())
+                if (id == m.id) return m;
+            return shell::Bar::Module{"", "extension", "Unknown"};
+        };
+        for (size_t z = 0; z < 3; ++z) {
+            auto* seg = g->add<Flex>(Flex::Direction::Column);
+            seg->setAlignItems(Align::Stretch)->setSpacing(10)->setPadding({20, 14});
+            auto* head = seg->add<Flex>(Flex::Direction::Row);
+            head->setSpacing(10);
+            auto* name = head->add<Label>(zoneNames[z]);
+            name->setSize(15)->setWeight(600);
+            name->grow = true;
+            auto* add = head->add<Button>();
+            pill(add->setBackground(*adding == static_cast<int>(z) ? "primary" : "secondary_container", false))
+                ->setPadding({12, 6})->setSpacing(4);
+            add->pressedRadius = 6;
+            const char* fg = *adding == static_cast<int>(z) ? "on_primary" : "on_secondary_container";
+            add->add<Icon>(*adding == static_cast<int>(z) ? "close" : "add", 16)->setColor(fg, false);
+            add->add<Label>(*adding == static_cast<int>(z) ? "Done" : "Add")->setSize(13)->setWeight(500)->setColor(fg, false);
+            add->onClicked = [adding, live, z](uint32_t) {
+                *adding = *adding == static_cast<int>(z) ? -1 : static_cast<int>(z);
+                live->syncSoon();
+            };
+
+            auto* chips = seg->add<Flow>();
+            if (lay[z].empty()) caption(chips, "Empty");
+            for (size_t i = 0; i < lay[z].size(); ++i) {
+                const auto m = meta(lay[z][i]);
+                auto* chip = chips->add<Flex>(Flex::Direction::Row);
+                pill(chip->setBackground("surface_container_highest", false))->setPadding({10, 4, 4, 4})->setSpacing(2);
+                chip->add<Icon>(m.icon, 18)->setColor("primary", false);
+                chip->add<Label>(m.name)->setSize(13)->setWeight(500)->setMaxWidth(110);
+                // Left: earlier in the zone, else the end of the zone before
+                const bool canLeft = i > 0 || z > 0, canRight = i + 1 < lay[z].size() || z < 2;
+                auto move = [lay, z, i, save](int dir) mutable {
+                    const std::string id = lay[z][i];
+                    lay[z].erase(lay[z].begin() + static_cast<long>(i));
+                    if (dir < 0 && i > 0) lay[z].insert(lay[z].begin() + static_cast<long>(i - 1), id);
+                    else if (dir < 0) lay[z - 1].push_back(id);
+                    else if (i < lay[z].size()) lay[z].insert(lay[z].begin() + static_cast<long>(i + 1), id);
+                    else lay[z + 1].insert(lay[z + 1].begin(), id);
+                    save(lay);
+                };
+                if (canLeft) iconButton(chip, "chevron_left", [move]() mutable { move(-1); }, 16);
+                if (canRight) iconButton(chip, "chevron_right", [move]() mutable { move(1); }, 16);
+                iconButton(chip, "close", [lay, z, i, save]() mutable {
+                    lay[z].erase(lay[z].begin() + static_cast<long>(i));
+                    save(lay);
+                }, 16);
+            }
+            if (*adding != static_cast<int>(z)) continue;
+            // Modules not on the bar yet
+            auto* avail = seg->add<Flow>();
+            size_t unused = 0;
+            for (const auto& m : shell::Bar::modules()) {
+                bool used = false;
+                for (const auto& zone : lay) used = used || std::ranges::find(zone, std::string(m.id)) != zone.end();
+                if (used) continue;
+                ++unused;
+                auto* b = avail->add<Button>();
+                pill(b->setBackground("tertiary_container", false))->setPadding({12, 7})->setSpacing(6);
+                b->pressedRadius = 8;
+                b->add<Icon>(m.icon, 18)->setColor("on_tertiary_container", false);
+                b->add<Label>(m.name)->setSize(13)->setWeight(500)->setColor("on_tertiary_container", false);
+                const std::string id = m.id;
+                b->onClicked = [lay, z, id, save](uint32_t) mutable {
+                    lay[z].push_back(id);
+                    save(lay);
+                };
+            }
+            if (unused == 0) caption(avail, "Every module is on the bar");
+        }
+        auto* reset = live->add<Flex>(Flex::Direction::Row);
+        reset->setJustify(Align::End);
+        pillButton(reset, "Default layout", false, [live] {
+            Config::get().set("/statusBar/layout", nullptr);
+            live->syncSoon();
+        }, "restart_alt");
+    };
+    live->sync();
 
     auto* island = group(page, "Island & clock");
     switchRow(island, "view_carousel", "Show workspace switches in the island", "", "/statusBar/islandWorkspace", true);
     choiceRow<std::string>(island, "schedule", "Clock", "", "/time/format", "hh:mm",
                            {{"hh:mm", "24-hour"}, {"h:mm AP", "12-hour"}, {"hh:mm:ss", "Seconds"}});
+}
+
+void dockPage(Flex* page, Popup&) {
+    auto* g = group(page, "Dock", "Pinned and running apps on the bottom edge");
+    choiceRow<std::string>(g, "dock_to_bottom", "Show", "", "/dock/mode", "autohide",
+                           {{"off", "Off"}, {"autohide", "Auto-hide"}, {"always", "Always"}});
+    sliderRow(g, "photo_size_select_small", "Icon size", "/dock/iconSize", 44, 32, 64, 2,
+              [](double v) { return std::format("{:.0f} px", v); });
+    switchRow(g, "apps", "Running apps", "Apps that are open but not pinned, after a divider", "/dock/showRunning", true);
+    row(g, "mouse", "Click to focus or open", "Middle click opens a new window · right click pins or unpins");
+
+    auto* live = page->add<Live>();
+    live->setSpacing(6);
+    auto query = std::make_shared<std::string>();
+    live->sync = [live, query] {
+        live->clearChildren();
+        auto* pins = group(live, "Pinned");
+        auto ids = Dock::pinned();
+        if (ids.empty()) row(pins, "push_pin", "Nothing pinned", "Search below, or right-click an app in the dock");
+        for (size_t i = 0; i < ids.size(); ++i) {
+            const Apps::App* app = nullptr;
+            for (const auto& a : Apps::get().all())
+                if (a.id == ids[i] || a.id == ids[i] + ".desktop") app = &a;
+            auto r = row(pins, "", app ? app->name : ids[i], app ? app->comment : "Not installed");
+            const std::string icon = app ? app->icon : ids[i];
+            r.row->adopt(std::make_unique<ImageView>(32, [icon](float scale, int& w, int& h) -> GLuint {
+                auto* t = Images::get().icon(icon, static_cast<int>(std::lround(32 * scale)));
+                if (!t) return 0;
+                w = t->width;
+                h = t->height;
+                return t->id;
+            }), 0);
+            auto move = [ids, i](int d) mutable {
+                const size_t j = static_cast<size_t>(static_cast<long>(i) + d);
+                if (j >= ids.size()) return;
+                std::swap(ids[i], ids[j]);
+                Dock::setPinned(ids);
+            };
+            if (i > 0) iconButton(r.row, "arrow_upward", [move]() mutable { move(-1); });
+            if (i + 1 < ids.size()) iconButton(r.row, "arrow_downward", [move]() mutable { move(1); });
+            iconButton(r.row, "close", [ids, i]() mutable {
+                ids.erase(ids.begin() + static_cast<long>(i));
+                Dock::setPinned(ids);
+            });
+        }
+
+        auto* add = group(live, "Pin an app");
+        auto* fieldRow = add->add<Flex>(Flex::Direction::Row);
+        fieldRow->setPadding({16, 12});
+        auto* field = fieldRow->add<TextField>();
+        field->grow = true;
+        field->setPlaceholder("Search apps");
+        field->setText(*query);
+        field->onChanged = [query, live](const std::string& t) {
+            *query = t;
+            live->syncSoon();
+        };
+        if (!query->empty()) field->focus();
+        std::vector<std::pair<double, const Apps::App*>> hits;
+        for (const auto& a : Apps::get().all()) {
+            const double sc = query->empty() ? 0 : fuzzyScore(*query, a.name);
+            if (sc > 0) hits.push_back({sc, &a});
+        }
+        std::ranges::sort(hits, std::greater{}, &std::pair<double, const Apps::App*>::first);
+        for (size_t k = 0; k < hits.size() && k < 6; ++k) {
+            const auto* a = hits[k].second;
+            std::string id = a->id;
+            if (id.ends_with(".desktop")) id.resize(id.size() - 8);
+            const bool pinnedAlready = std::ranges::find(ids, id) != ids.end();
+            auto r = row(add, "apps", a->name, a->comment);
+            if (pinnedAlready) r.row->add<Label>("Pinned")->setSize(13)->setColor("on_surface_variant", false);
+            else pillButton(r.row, "Pin", true, [id, query] {
+                auto now = Dock::pinned();
+                now.push_back(id);
+                query->clear();
+                Dock::setPinned(now);
+            }, "push_pin");
+        }
+    };
+    // Config writes come back through the watcher: rebuild then
+    live->conns.push_back(Config::get().changed.connect([live] { live->syncSoon(); }));
+    live->sync();
+}
+
+void toolsPage(Flex* page, Popup& popup) {
+    auto* clip = group(page, "Clipboard", "History through cliphist (and wl-clipboard)");
+    switchRow(clip, "history", "Keep history", "Starts the wl-paste watchers if nothing else runs them", "/clipboard/history", true,
+              [](bool on) {
+                  if (on) Clipboard::get().ensureWatchers();
+              });
+    auto r = row(clip, "content_paste", "Clipboard history");
+    pillButton(r.row, "Clear", false, [] { Clipboard::get().wipe(); }, "delete_sweep");
+    pillButton(r.row, "Open", true, [&popup] {
+        popup.close();
+        if (open) open("clipboard");
+    });
+
+    auto* shots = group(page, "Screenshots", "grim and slurp; edited in satty or swappy");
+    textRow(shots, "folder", "Save to", "/screenshot/directory", "~/Pictures/Screenshots");
+    switchRow(shots, "content_copy", "Copy to the clipboard", "", "/screenshot/copy", true);
+    switchRow(shots, "edit", "Open in the editor", "", "/screenshot/edit", false);
+    switchRow(shots, "notifications", "Notify when saved", "", "/screenshot/notify", true);
+    auto take = row(shots, "screenshot_region", "Take a screenshot", "Also: material3ui msg screenshot region|window|screen");
+    pillButton(take.row, "Open tool", true, [&popup] {
+        popup.close();
+        if (open) open("screenshot");
+    }, "photo_camera");
 }
 
 void notificationsPage(Flex* page, Popup&) {
@@ -915,6 +1145,8 @@ const PageDef kPages[] = {
     {"appearance", "palette", "Wallpaper & colour", "Wallpaper, Material You colours and fonts", appearancePage},
     {"style", "blur_on", "Look & feel", "Blur, transparency, corners and motion", stylePage},
     {"bar", "toolbar", "Status bar", "Position, modules and the island", barPage},
+    {"dock", "dock_to_bottom", "Dock", "Pinned apps, running apps and auto-hide", dockPage},
+    {"tools", "construction", "Tools", "Clipboard history and screenshots", toolsPage},
     {"notifications", "notifications", "Notifications", "Do not disturb and pop-ups", notificationsPage},
     {"lock", "lock", "Lock & idle", "When the screen locks and sleeps", lockPage},
     {"keybinds", "keyboard", "Keybinds", "Remap, disable and add shortcuts", keybindsPage},
@@ -929,20 +1161,62 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
     auto* columns = card->add<Flex>(Flex::Direction::Row);
     columns->setAlignItems(Align::Start)->setSpacing(12);
 
-    // Navigation drawer
-    auto* side = columns->add<Flex>(Flex::Direction::Column);
+    // Navigation drawer; scrolls too when the screen is short
+    auto* sideScroll = columns->add<ScrollView>();
+    sideScroll->maxHeight = 680;
+    sideScroll->fixedWidth = 244;
+    auto* side = sideScroll->add<Flex>(Flex::Direction::Column);
     side->setAlignItems(Align::Stretch)->setSpacing(2)->setPadding({4, 12, 4, 8});
-    side->fixedWidth = 244;
-    side->minHeight = 680;
-    auto* title = side->add<Label>("Settings");
-    title->setSize(30)->setWeight(600);
-    title->alignSelf = Align::Start;
+    auto* brand = side->add<Flex>(Flex::Direction::Row);
+    brand->setSpacing(12)->setPadding({4, 0});
+    brand->alignSelf = Align::Start;
+    // The app's icon: installed in the icon theme, or shipped beside the binary
+    brand->add<ImageView>(36, [](float scale, int& w, int& h) -> GLuint {
+        const int px = static_cast<int>(std::lround(36 * scale));
+        auto* t = Images::get().icon("material3ui-settings", px);
+        if (!t) {
+            const std::string file = paths::dataFile("icons/material3ui-settings.svg");
+            if (!file.empty()) t = Images::get().icon(file, px);
+        }
+        if (!t) return 0;
+        w = t->width;
+        h = t->height;
+        return t->id;
+    });
+    brand->add<Label>("Settings")->setSize(28)->setWeight(600);
     auto* gap = side->add<Node>();
     gap->minHeight = 14;
 
-    auto* scroll = columns->add<ScrollView>();
-    scroll->maxHeight = 680;
-    scroll->fixedWidth = 740;
+    // The page: a fixed header with the close button, then what scrolls
+    auto* right = columns->add<Flex>(Flex::Direction::Column);
+    right->setAlignItems(Align::Stretch)->setSpacing(4);
+    right->fixedWidth = 740;
+    auto* hero = right->add<Flex>(Flex::Direction::Row);
+    hero->setSpacing(16)->setPadding({8, 4, 0, 8})->setAlignItems(Align::Start);
+    auto* badge = hero->add<Flex>(Flex::Direction::Row);
+    badge->setJustify(Align::Center)->setRadius(Radii(18))->setBackground("primary_container", false);
+    badge->fixedWidth = 56;
+    badge->fixedHeight = 56;
+    auto* badgeIcon = badge->add<Icon>("settings", 28);
+    badgeIcon->setFill(true)->setColor("on_primary_container", false);
+    auto* heroTexts = hero->add<Flex>(Flex::Direction::Column);
+    heroTexts->setAlignItems(Align::Start)->setSpacing(2);
+    heroTexts->grow = true;
+    auto* heroTitle = heroTexts->add<Label>();
+    heroTitle->setSize(32)->setWeight(600);
+    auto* heroBlurb = heroTexts->add<Label>();
+    heroBlurb->setSize(14)->setColor("on_surface_variant", false);
+    // Close: a tonal round button in the corner
+    auto* close = hero->add<Button>();
+    pill(close->setBackground("surface_container_highest", false))->setPadding(Insets(10));
+    close->pressedRadius = 12;
+    close->add<Icon>("close", 22)->setColor("on_surface", false);
+    close->onClicked = [&popup](uint32_t button) {
+        if (button == BTN_LEFT) popup.close();
+    };
+
+    auto* scroll = right->add<ScrollView>();
+    scroll->maxHeight = 600;
     auto* content = scroll->add<Flex>(Flex::Direction::Column);
     content->setAlignItems(Align::Stretch)->setSpacing(6)->setPadding({4, 4, 12, 12});
 
@@ -953,21 +1227,13 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
     };
     auto items = std::make_shared<std::vector<NavItem>>();
     auto show = std::make_shared<std::function<void(size_t)>>();
-    *show = [content, scroll, items, &popup](size_t index) {
+    *show = [content, scroll, items, badgeIcon, heroTitle, heroBlurb, &popup](size_t index) {
         const auto& def = kPages[index];
         content->clearChildren();
         // Expressive header: the page's icon in a tonal shape, a large title
-        auto* hero = content->add<Flex>(Flex::Direction::Row);
-        hero->setSpacing(16)->setPadding({4, 4, 4, 12});
-        auto* badge = hero->add<Flex>(Flex::Direction::Row);
-        badge->setJustify(Align::Center)->setRadius(Radii(18))->setBackground("primary_container", false);
-        badge->fixedWidth = 56;
-        badge->fixedHeight = 56;
-        badge->add<Icon>(def.icon, 28)->setFill(true)->setColor("on_primary_container", false);
-        auto* texts = hero->add<Flex>(Flex::Direction::Column);
-        texts->setAlignItems(Align::Start)->setSpacing(2);
-        texts->add<Label>(def.title)->setSize(32)->setWeight(600);
-        texts->add<Label>(def.blurb)->setSize(14)->setColor("on_surface_variant", false);
+        badgeIcon->setText(def.icon);
+        heroTitle->setText(def.title);
+        heroBlurb->setText(def.blurb);
         def.build(content, popup);
         scroll->scrollTo(0, false);
         // New page: rises into place

@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- **Native shell: blur and customisation.**
+  - **Blur** behind the bar, panels, toasts and OSD. On Hyprland it comes from layer rules that the shell writes to `effects_custom.lua`, which `shell.lua` reads. On compositors with `ext-background-effect-v1`, each surface sends a blur region shaped to its rounded cards.
+  - **Look & feel page:** blur on/off and strength, bar and panel opacity, corner roundness (Sharp to Extra) and animation speed (Off to Relaxed). Changes apply live, even to the open Settings window.
+  - **Status bar page:** top or bottom position. A layout editor arranges modules across left, centre and right. New modules: launcher, clock, network speed, clipboard, screenshot and power.
+  - **Accent colour:** pick a Matugen seed colour instead of using the wallpaper's.
+- **Native shell: M3 Expressive Settings.**
+  - Segmented lists and connected button groups.
+  - Shape morph on press, filled icons for the active page, and a fixed page header with a close button.
+  - Scrollbars, and pages scroll instead of being cut off on short screens.
+  - An app icon and a `material3ui-settings.desktop` launcher entry.
+- **Native shell: Wi-Fi details.** The connected network's entry shows signal, band and channel, link rate, security, addresses and live download/upload speeds. This works in Quick Settings and in Settings → Network, which also lists gateway, DNS, IPv6, MAC and data used.
+- **Native shell: dock.** Pinned and running apps on the bottom edge, set to auto-hide (the default), always shown, or off.
+  - Click focuses an app's window or cycles through several; middle click opens a new window; right click pins or unpins.
+  - A Dock page in Settings sets pins, order, icon size and whether running apps show.
+- **Native shell: clipboard and screenshots.**
+  - **Clipboard history** (`msg clipboard`): search, image thumbnails, delete and clear. The shell starts the cliphist watchers itself when nothing else runs them.
+  - **Screenshot tool** (`msg screenshot`): region, window or screen, with a delay, copy to clipboard, editor (satty/swappy) and recent shots.
+  - Both have options in Settings → Tools.
+
 - **Native shell phase 7: Settings** (`msg settings [page]`):
   - **Network:** the Wi-Fi picker.
   - **Bluetooth:** power, discovery, and pair/connect/disconnect/forget.

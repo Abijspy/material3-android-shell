@@ -8,6 +8,7 @@
 #include "render/Text.h"
 #include "services/Hyprland.h"
 #include "services/Audio.h"
+#include "services/Clipboard.h"
 #include "services/Effects.h"
 #include "services/Mpris.h"
 #include "services/Network.h"
@@ -15,9 +16,11 @@
 #include "services/Tray.h"
 #include "services/Idle.h"
 #include "services/Polkit.h"
+#include "services/Screenshot.h"
 #include "services/Session.h"
 #include "services/Wallpaper.h"
 #include "shell/Desktop.h"
+#include "shell/Dock.h"
 #include "shell/LockScreen.h"
 #include "shell/Notify.h"
 #include "shell/Osd.h"
@@ -44,6 +47,7 @@ bool Shell::start() {
     // Outside Hyprland the bars still run; workspaces just stay empty
     Hyprland::get();
     Effects::get();
+    Clipboard::get().ensureWatchers();
 
     display.onOutputReady = [this](wl::Output* o) { addOutput(o); };
     display.onOutputRemoved = [this](wl::Output* o) { removeOutput(o); };
@@ -93,11 +97,20 @@ void Shell::addOutput(wl::Output* output) {
     if (!m_barsVisible) bar->setVisible(false);
     if (Config::get().value<bool>("/desktop/wallpaper", true)) m_desktops[output] = std::make_unique<Desktop>(output);
     m_bars[output] = std::move(bar);
+    syncDock(output);
+}
+
+void Shell::syncDock(wl::Output* output) {
+    // Created after the bar, so a bottom bar's zone is already taken
+    if (Config::get().value<std::string>("/dock/mode", "autohide") == "off") m_docks.erase(output);
+    else if (auto it = m_docks.find(output); it != m_docks.end()) it->second->rebuild();
+    else m_docks[output] = std::make_unique<Dock>(output);
 }
 
 void Shell::removeOutput(wl::Output* output) {
     LockScreen::get().removeOutput(output);
     m_desktops.erase(output);
+    m_docks.erase(output);
     if (m_popup && m_popup->output() == output) m_popup.reset();
     m_bars.erase(output);
 }
@@ -166,6 +179,16 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         opts.anchorX = -1;
         opts.centredVertically = true;
         build = panels::wallpapers;
+    } else if (name == "clipboard") {
+        opts.width = 560;
+        opts.anchorX = -1;
+        opts.centredVertically = true;
+        build = panels::clipboard;
+    } else if (name == "screenshot") {
+        opts.width = 460;
+        opts.anchorX = -1;
+        opts.centredVertically = true;
+        build = panels::screenshot;
     } else if (name == "settings") {
         opts.width = 1024;
         opts.anchorX = -1;
@@ -208,6 +231,7 @@ void Shell::restyle(bool relayout) {
         for (auto& [_, bar] : m_bars) bar->rebuild();
         // Desktop widgets follow settings too (desktop clock on/off)
         for (auto& [output, desktop] : m_desktops) desktop = std::make_unique<Desktop>(output);
+        for (auto& [output, _] : m_bars) syncDock(output);
     } else {
         for (auto& [_, bar] : m_bars) bar->redraw();
     }
@@ -249,6 +273,28 @@ void Shell::registerIpc() {
         for (const auto& w : a) text += (text.empty() ? "" : " ") + w;
         togglePopup("launcher", focusedOutput(), -1, text);
         return std::string(m_popup && !m_popup->closing() ? "open" : "closed");
+    });
+    ipc.add("clipboard", "clipboard: toggle the clipboard history", [this](const auto&) {
+        togglePopup("clipboard", focusedOutput(), -1);
+        return std::string(m_popup && !m_popup->closing() ? "open" : "closed");
+    });
+    ipc.add("screenshot", "screenshot [region|window|screen] [delay s]: the tool, or capture at once",
+            [this](const IpcServer::Args& a) {
+        if (a.empty()) {
+            togglePopup("screenshot", focusedOutput(), -1);
+            return std::string(m_popup && !m_popup->closing() ? "open" : "closed");
+        }
+        const auto mode = a[0] == "window" ? Screenshot::Mode::Window : a[0] == "screen" ? Screenshot::Mode::Screen
+                        : a[0] == "region" ? Screenshot::Mode::Region : static_cast<Screenshot::Mode>(-1);
+        if (static_cast<int>(mode) < 0) return std::string("error: screenshot takes region, window or screen");
+        int delay = 0;
+        try {
+            if (a.size() > 1) delay = std::stoi(a[1]);
+        } catch (...) {
+        }
+        auto* out = focusedOutput();
+        Screenshot::get().capture(mode, delay * 1000, out ? out->name : "");
+        return std::string("capturing");
     });
     ipc.add("notifications", "notifications [list|clear|dnd on|dnd off]", [](const IpcServer::Args& a) {
         auto& n = Notifications::get();
@@ -298,7 +344,7 @@ void Shell::registerIpc() {
         const auto* p = m.active();
         return p ? std::format("{}: {} — {} [{}]", p->identity, p->title, p->artist, p->status) : std::string("no player");
     });
-    ipc.add("settings", "settings [network|bluetooth|sound|display|appearance|style|bar|notifications|lock|keybinds|packages|about]",
+    ipc.add("settings", "settings [network|bluetooth|sound|display|appearance|style|bar|dock|tools|notifications|lock|keybinds|packages|about]",
             [this](const IpcServer::Args& a) {
         togglePopup("settings", focusedOutput(), -1, a.empty() ? "" : a[0]);
         return std::string(m_popup && !m_popup->closing() ? "open" : "closed");

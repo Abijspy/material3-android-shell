@@ -17,6 +17,7 @@ class Popup;
 class Toasts;
 class Osd;
 class Desktop;
+class Dock;
 
 // Owns every surface and wires services to them: one bar per output, kept in
 // step with hotplug, plus the IPC commands the shell itself answers.
@@ -38,6 +39,8 @@ private:
     std::map<wl::Output*, std::unique_ptr<Bar>> m_bars;
     std::unique_ptr<Popup> m_popup;
     std::map<wl::Output*, std::unique_ptr<Desktop>> m_desktops;
+    std::map<wl::Output*, std::unique_ptr<Dock>> m_docks;
+    void syncDock(wl::Output* output);
     std::unique_ptr<Toasts> m_toasts;
     std::unique_ptr<Osd> m_osd;
     bool m_barsVisible = true;

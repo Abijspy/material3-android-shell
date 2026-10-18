@@ -24,6 +24,8 @@ void systemMonitor(ui::Flex* card, Popup& popup);
 void wallpapers(ui::Flex* card, Popup& popup);
 void overview(ui::Flex* card, Popup& popup);
 void settings(ui::Flex* card, Popup& popup, const std::string& page);
+void clipboard(ui::Flex* card, Popup& popup);
+void screenshot(ui::Flex* card, Popup& popup);
 // The Wi-Fi network list (Quick Settings and Settings); back may be empty.
 // `details` adds the connected network's speeds and addresses above it.
 void wifiView(ui::Flex* body, const std::function<void()>& back, bool details = true);

@@ -105,7 +105,10 @@ material3ui msg brightness up|down|set <0-100>
 material3ui msg media play-pause|next|previous|status
 material3ui msg notifications [list|clear|dnd on|dnd off]
 material3ui msg wallpaper [next|prev|set <path>|pick]
-material3ui msg settings [network|bluetooth|sound|display|appearance|notifications|lock|keybinds|packages|about]
+material3ui msg settings [network|bluetooth|sound|display|appearance|style|bar|dock|tools
+                         |notifications|lock|keybinds|packages|about]
+material3ui msg clipboard             # clipboard history (cliphist)
+material3ui msg screenshot [region|window|screen] [delay s]   # no argument: the tool
 material3ui msg tray | outputs | workspaces
 
 material3ui greeter                   # the greetd login screen
@@ -122,4 +125,5 @@ material3ui greeter                   # the greetd login screen
 | **5. Session** ✅ | Lock screen (ext-session-lock + PAM), polkit agent, greetd greeter, idle (lock, DPMS, Caffeine), lock before sleep, loginctl lock-session |
 | **6. Rich UI** ✅ | Dynamic island, dashboard, overview, wallpapers with transitions and a picker (Matugen), desktop clock, system monitor |
 | **7. Settings** ✅ | The Settings app: Network, Bluetooth (pair, connect, forget, discovery), Sound, Display (brightness, night light, monitors), Appearance (wallpaper, Matugen scheme, dark mode, bar, fonts, clock), Notifications, Lock & idle, Keybinds (same files as the QML editor), Packages & Updates (updates and search/install for official, AUR, Flatpak), About |
+| **7½. Look and tools** ✅ | Blur (Hyprland layer rules, ext-background-effect elsewhere), bar/panel opacity, roundness, animation speed, accent seed; M3 Expressive Settings (segmented lists, connected button groups, shape morph, scrollbars, close button, app icon); bar layout editor with new modules; dock; clipboard history; screenshot tool; Wi-Fi details and live speeds |
 | 8. Switch over | Installer and Hyprland config start `material3ui` instead of Quickshell; the QML shell is retired |

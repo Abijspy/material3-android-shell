@@ -68,6 +68,7 @@ sources = files(
   'src/render/Text.cpp',
   'src/services/Audio.cpp',
   'src/services/Auth.cpp',
+  'src/services/Clipboard.cpp',
   'src/services/Effects.cpp',
   'src/services/Hyprland.cpp',
   'src/services/Idle.cpp',
@@ -78,11 +79,13 @@ sources = files(
   'src/services/Packages.cpp',
   'src/services/Polkit.cpp',
   'src/services/Search.cpp',
+  'src/services/Screenshot.cpp',
   'src/services/Session.cpp',
   'src/services/SystemStats.cpp',
   'src/services/Tray.cpp',
   'src/services/Wallpaper.cpp',
   'src/shell/Desktop.cpp',
+  'src/shell/Dock.cpp',
   'src/shell/Launcher.cpp',
   'src/shell/LockScreen.cpp',
   'src/shell/LockView.cpp',
@@ -94,6 +97,7 @@ sources = files(
   'src/shell/QuickSettings.cpp',
   'src/shell/Rich.cpp',
   'src/shell/Settings.cpp',
+  'src/shell/Tools.cpp',
   'src/shell/Popup.cpp',
   'src/shell/Shell.cpp',
   'src/shell/bar/Bar.cpp',
@@ -110,6 +114,10 @@ sources = files(
 )
 
 install_data('data/pam/material3ui', install_dir: get_option('sysconfdir') / 'pam.d')
+# The Settings app: a launcher entry and its icon
+install_data('data/material3ui-settings.desktop', install_dir: get_option('datadir') / 'applications')
+install_data('data/icons/material3ui-settings.svg', install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps')
+install_data('data/icons/material3ui-settings.svg', install_dir: get_option('datadir') / 'material3ui/icons')
 # Shared with the QML shell; absent when only shell/ is checked out
 emojis = '../dotfiles/.config/quickshell/material3ui/data/emojis.txt'
 if import('fs').exists(emojis)

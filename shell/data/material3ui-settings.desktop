@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Material3UI Settings
+GenericName=Settings
+Comment=Wi-Fi, sound, appearance, the bar, the dock and more
+Exec=material3ui msg settings
+Icon=material3ui-settings
+Categories=Settings;DesktopSettings;
+Keywords=preferences;configuration;wifi;bluetooth;sound;display;wallpaper;dock;bar;keybinds;
+StartupNotify=false
