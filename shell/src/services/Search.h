@@ -25,6 +25,7 @@ class Apps {
 public:
     struct App {
         std::string id, name, generic, comment, exec, icon, keywords, wmClass;
+        std::string mimeTypes, categories; // ';'-separated, as in the file
         bool terminal = false;
     };
 

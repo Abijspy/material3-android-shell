@@ -29,6 +29,7 @@
 #include <fstream>
 #include <linux/input-event-codes.h>
 #include <memory>
+#include <regex>
 #include <set>
 #include <sstream>
 #include <sys/utsname.h>
@@ -829,6 +830,200 @@ void dockPage(Flex* page, Popup&) {
     live->sync();
 }
 
+// ── Default apps ──
+//
+// File types go through xdg-mime (~/.config/mimeapps.list). The browser,
+// file manager and terminal are also the apps.lua entries Hyprland's binds
+// and $TERMINAL / $BROWSER use, so picking one rewrites that file too.
+
+struct DefaultKind {
+    const char* icon;
+    const char* title;
+    std::vector<std::string> mimes; // empty: the terminal, by category
+    const char* luaKey;             // apps.lua entry, or null
+};
+
+const std::vector<DefaultKind>& defaultKinds() {
+    static const std::vector<DefaultKind> kinds = {
+        {"language", "Web browser", {"x-scheme-handler/https", "x-scheme-handler/http", "text/html"}, "browser"},
+        {"folder", "Files", {"inode/directory"}, "file_manager"},
+        {"terminal", "Terminal", {}, "terminal"},
+        {"mail", "Email", {"x-scheme-handler/mailto"}, nullptr},
+        {"edit_note", "Text editor", {"text/plain"}, nullptr},
+        {"image", "Images", {"image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "image/bmp"}, nullptr},
+        {"movie", "Video", {"video/mp4", "video/x-matroska", "video/webm", "video/quicktime", "video/x-msvideo"}, nullptr},
+        {"music_note", "Music", {"audio/mpeg", "audio/flac", "audio/ogg", "audio/x-wav", "audio/mp4", "audio/aac"}, nullptr},
+        {"picture_as_pdf", "PDF documents", {"application/pdf"}, nullptr},
+        {"folder_zip", "Archives", {"application/zip", "application/x-tar", "application/x-7z-compressed", "application/vnd.rar"}, nullptr},
+    };
+    return kinds;
+}
+
+bool hasToken(const std::string& list, const std::string& token) {
+    return (";" + list + ";").find(";" + token + ";") != std::string::npos;
+}
+
+std::vector<const Apps::App*> candidates(const DefaultKind& kind) {
+    std::vector<const Apps::App*> out;
+    for (const auto& a : Apps::get().all()) {
+        const bool fits = kind.mimes.empty() ? hasToken(a.categories, "TerminalEmulator")
+                                             : std::ranges::any_of(kind.mimes, [&](const auto& m) { return hasToken(a.mimeTypes, m); });
+        if (fits) out.push_back(&a);
+    }
+    return out;
+}
+
+std::string appsLuaFile() {
+    const char* xdg = std::getenv("XDG_CONFIG_HOME");
+    return (xdg && *xdg ? std::string(xdg) : paths::home() + "/.config") + "/hypr/material3ui/apps.lua";
+}
+
+std::string appsLuaValue(const std::string& key) {
+    std::ifstream in(appsLuaFile());
+    const std::string text((std::istreambuf_iterator<char>(in)), {});
+    std::smatch m;
+    if (!std::regex_search(text, m, std::regex("\\b" + key + "\\s*=\\s*\"((?:[^\"\\\\]|\\\\.)*)\""))) return "";
+    // Unescape \\ and \"
+    std::string out;
+    const std::string raw = m[1].str();
+    for (size_t i = 0; i < raw.size(); ++i) out += raw[i] == '\\' && i + 1 < raw.size() ? raw[++i] : raw[i];
+    return out;
+}
+
+// Rewrites (or adds) one entry; false when apps.lua is not in use
+bool setAppsLuaValue(const std::string& key, const std::string& command) {
+    std::ifstream in(appsLuaFile());
+    if (!in) return false;
+    std::string text((std::istreambuf_iterator<char>(in)), {});
+    in.close();
+    std::string quoted;
+    for (char c : command) {
+        if (c == '\\' || c == '"') quoted += '\\';
+        quoted += c;
+    }
+    const std::regex entry("(\\b" + key + "\\s*=\\s*)\"(?:[^\"\\\\]|\\\\.)*\"");
+    if (std::regex_search(text, entry)) text = std::regex_replace(text, entry, "$1\"" + std::regex_replace(quoted, std::regex("\\$"), "$$$$") + "\"");
+    else if (const auto end = text.rfind('}'); end != std::string::npos) text.insert(end, "\t" + key + " = \"" + quoted + "\",\n");
+    else return false;
+    std::ofstream(appsLuaFile()) << text;
+    return true;
+}
+
+// The app an apps.lua command launches: by its Exec, or its id
+const Apps::App* appForCommand(const std::vector<const Apps::App*>& apps, const std::string& command) {
+    if (command.empty()) return nullptr;
+    const std::string bin = command.substr(0, command.find(' '));
+    const std::string base = bin.substr(bin.rfind('/') + 1);
+    for (const auto* a : apps) {
+        const std::string exec = a->exec.substr(0, a->exec.find(' '));
+        if (a->exec == command || exec == bin || exec.substr(exec.rfind('/') + 1) == base) return a;
+    }
+    for (const auto* a : apps)
+        if (a->id == base + ".desktop") return a;
+    return nullptr;
+}
+
+void defaultAppsPage(Flex* page, Popup&) {
+    struct State {
+        std::vector<std::string> current; // desktop id per kind ("" unknown)
+        int open = -1;                    // the kind whose choices are showing
+        Signal<> changed;
+    };
+    auto state = std::make_shared<State>();
+    const auto& kinds = defaultKinds();
+    state->current.resize(kinds.size());
+
+    auto query = [state](size_t i) {
+        const auto& kind = defaultKinds()[i];
+        if (kind.mimes.empty()) {
+            const auto* app = appForCommand(candidates(kind), appsLuaValue(kind.luaKey));
+            state->current[i] = app ? app->id : "";
+            return;
+        }
+        m3::run({"xdg-mime", "query", "default", kind.mimes.front()}, [state, i](int code, const std::string& out) {
+            std::string id = code == 0 ? out : "";
+            while (!id.empty() && std::isspace(static_cast<unsigned char>(id.back()))) id.pop_back();
+            state->current[i] = id;
+            state->changed.emit();
+        });
+    };
+    for (size_t i = 0; i < kinds.size(); ++i) query(i);
+
+    auto pick = [state, query](size_t i, const Apps::App& app) {
+        const auto& kind = defaultKinds()[i];
+        state->current[i] = app.id;
+        state->open = -1;
+        state->changed.emit();
+        if (!kind.mimes.empty()) {
+            std::vector<std::string> argv = {"xdg-mime", "default", app.id};
+            argv.insert(argv.end(), kind.mimes.begin(), kind.mimes.end());
+            m3::run(argv, [query, i](int, const std::string&) { query(i); });
+        }
+        if (kind.luaKey && setAppsLuaValue(kind.luaKey, app.exec)) {
+            // Our own launches follow at once; Hyprland's binds and env on reload
+            if (std::string(kind.luaKey) == "terminal") setenv("TERMINAL", app.exec.c_str(), 1);
+            if (std::string(kind.luaKey) == "browser") setenv("BROWSER", app.exec.c_str(), 1);
+            m3::run({"hyprctl", "reload"}, nullptr);
+        }
+    };
+
+    auto appIcon = [](const std::string& icon, float size) {
+        return std::make_unique<ImageView>(size, [icon, size](float scale, int& w, int& h) -> GLuint {
+            auto* t = Images::get().icon(icon, static_cast<int>(std::lround(size * scale)));
+            if (!t) return 0;
+            w = t->width;
+            h = t->height;
+            return t->id;
+        });
+    };
+
+    auto* live = page->add<Live>();
+    live->setSpacing(6);
+    live->watch(state->changed);
+    live->conns.push_back(Apps::get().changed.connect([live] { live->syncSoon(); }));
+    live->sync = [live, state, pick, appIcon] {
+        live->clearChildren();
+        auto* g = group(live, "Default apps", "What opens links, folders and files, and the apps behind Super+B, Super+E and Super+Return");
+        const auto& kinds = defaultKinds();
+        for (size_t i = 0; i < kinds.size(); ++i) {
+            const auto& kind = kinds[i];
+            const auto apps = candidates(kind);
+            const auto& id = state->current[i];
+            const auto found = std::ranges::find(apps, id, &Apps::App::id);
+            const Apps::App* current = found != apps.end() ? *found : nullptr;
+            if (!current && !id.empty())
+                for (const auto& a : Apps::get().all())
+                    if (a.id == id) current = &a;
+            // Hidden handlers (NoDisplay) are not in the list: their bare id
+            const std::string bare = id.ends_with(".desktop") ? id.substr(0, id.size() - 8) : id;
+            auto r = row(g, kind.icon, kind.title, current ? current->name : id.empty() ? "Not set" : bare);
+            r.subtitle->setVisible(true);
+            const bool open = state->open == static_cast<int>(i);
+            if (current) r.row->adopt(appIcon(current->icon, 28), 2);
+            pillButton(r.row, open ? "Done" : "Change", false, [live, state, i, open] {
+                state->open = open ? -1 : static_cast<int>(i);
+                live->syncSoon();
+            }, open ? "expand_less" : "expand_more");
+            if (!open) continue;
+            if (apps.empty()) row(g, "", "No installed app says it opens these", "");
+            for (const auto* a : apps) {
+                auto* b = g->add<Button>(Flex::Direction::Row);
+                b->setPadding({56, 10, 20, 10})->setSpacing(14);
+                b->adopt(appIcon(a->icon, 28));
+                auto* name = b->add<Label>(a->name);
+                name->setSize(14)->setWeight(a == current ? 600 : 400);
+                name->grow = true;
+                if (a == current) b->add<Icon>("check", 20)->setColor("primary", false);
+                b->onClicked = [pick, i, app = *a](uint32_t button) {
+                    // Rebuilding drops this button: not inside its own click
+                    if (button == BTN_LEFT) EventLoop::get().defer([pick, i, app] { pick(i, app); });
+                };
+            }
+        }
+    };
+    live->sync();
+}
+
 void toolsPage(Flex* page, Popup& popup) {
     auto* clip = group(page, "Clipboard", "History through cliphist (and wl-clipboard)");
     switchRow(clip, "history", "Keep history", "Starts the wl-paste watchers if nothing else runs them", "/clipboard/history", true,
@@ -1524,6 +1719,7 @@ const PageDef kPages[] = {
     {"style", "blur_on", "Look & feel", "Blur, transparency, corners and motion", stylePage},
     {"bar", "toolbar", "Status bar", "Position, modules and the island", barPage},
     {"dock", "dock_to_bottom", "Dock", "Pinned apps, running apps and auto-hide", dockPage},
+    {"defaults", "apps", "Default apps", "Browser, files, terminal and what opens each file type", defaultAppsPage},
     {"tools", "construction", "Tools", "Clipboard history and screenshots", toolsPage},
     {"weather", "partly_cloudy_day", "Weather", "Location, units and the forecast", weatherPage},
     {"notifications", "notifications", "Notifications", "Do not disturb and pop-ups", notificationsPage},

@@ -114,6 +114,8 @@ void Apps::reload() {
                 else if (key == "Icon") app.icon = val;
                 else if (key == "Keywords") app.keywords = val;
                 else if (key == "StartupWMClass") app.wmClass = val;
+                else if (key == "MimeType") app.mimeTypes = val;
+                else if (key == "Categories") app.categories = val;
                 else if (key == "Terminal") app.terminal = val == "true";
                 else if ((key == "NoDisplay" || key == "Hidden") && val == "true") hidden = true;
                 else if (key == "OnlyShowIn" && val.find(desktop) == std::string::npos) hidden = true;
