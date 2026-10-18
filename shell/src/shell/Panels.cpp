@@ -10,6 +10,7 @@
 
 #include <cmath>
 #include <format>
+#include <linux/input-event-codes.h>
 
 namespace m3::shell::panels {
 
@@ -238,6 +239,73 @@ void bluetooth(Flex* card, Popup&) {
         }
     };
     live->watch(Bluetooth::get().changed);
+    live->sync();
+}
+
+// ── Battery ──
+
+void battery(Flex* card, Popup& popup) {
+    auto* live = card->add<Live>();
+    live->setSpacing(10);
+    live->sync = [live, &popup] {
+        live->clearChildren();
+        auto& p = Power::get();
+        if (p.hasBattery()) {
+            const bool low = p.percent() <= 15 && !p.charging();
+            auto* top = live->add<Flex>(Flex::Direction::Row);
+            top->setSpacing(12);
+            top->add<Icon>(p.icon(), 32)->setFill(true)->setColor(low ? "error" : "primary", false);
+            auto* texts = top->add<Flex>(Flex::Direction::Column);
+            texts->setAlignItems(Align::Start);
+            texts->add<Label>(std::to_string(p.percent()) + "%")->setSize(28)->setWeight(600);
+            texts->add<Label>(p.status())->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(280);
+            live->add<kit::Meter>(static_cast<float>(p.percent()) / 100.0f,
+                                  ColorRef(low ? "error" : p.charging() ? "tertiary" : "primary"), 10);
+            // Draw and health, when the battery reports them
+            std::string facts;
+            if (p.watts() > 0) facts = std::format("{} {:.1f} W", p.charging() ? "Charging at" : "Using", p.watts());
+            if (p.health() > 0) facts += (facts.empty() ? "" : "  ·  ") + std::format("Health {}%", p.health());
+            if (!facts.empty()) caption(live, facts);
+        } else {
+            header(live, "power", "Power");
+        }
+
+        if (p.profiles().empty()) {
+            caption(live, "Power modes need power-profiles-daemon");
+        } else {
+            // One tonal button per mode, the active one filled
+            auto* modes = live->add<Flex>(Flex::Direction::Row);
+            modes->setSpacing(6)->setAlignItems(Align::Stretch);
+            const std::tuple<const char*, const char*, const char*> defs[] = {
+                {"power-saver", "eco", "Saver"}, {"balanced", "balance", "Balanced"}, {"performance", "bolt", "Performance"}};
+            for (const auto& [id, icon, label] : defs) {
+                if (std::ranges::find(p.profiles(), id) == p.profiles().end()) continue;
+                const bool on = p.profile() == id;
+                auto* b = modes->add<Button>(Flex::Direction::Column);
+                b->setPadding({8, 12})->setSpacing(4)->setRadius(Radii(on ? 20 : 14))->setJustify(Align::Center);
+                b->setBackground(on ? "primary" : "surface_container_high", false);
+                b->pressedRadius = 10;
+                b->grow = true;
+                b->add<Icon>(icon, 22)->setFill(on)->setColor(on ? "on_primary" : "on_surface_variant", false);
+                b->add<Label>(label)->setSize(13)->setWeight(on ? 600 : 500)->setColor(on ? "on_primary" : "on_surface", false);
+                b->onClicked = [profile = std::string(id)](uint32_t button) {
+                    if (button == BTN_LEFT) Power::get().setProfile(profile);
+                };
+            }
+        }
+
+        auto* more = live->add<Button>(Flex::Direction::Row);
+        pill(more)->setPadding({12, 8})->setSpacing(8);
+        more->alignSelf = Align::End;
+        more->add<Label>("Battery settings")->setSize(13)->setWeight(500)->setColor("primary", false);
+        more->add<Icon>("arrow_forward", 16)->setColor("primary", false);
+        more->onClicked = [&popup](uint32_t button) {
+            if (button != BTN_LEFT) return;
+            popup.close();
+            if (open) open("settings battery");
+        };
+    };
+    live->watch(Power::get().changed);
     live->sync();
 }
 

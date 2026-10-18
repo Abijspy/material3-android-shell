@@ -74,6 +74,14 @@ std::vector<std::string> Wallpaper::list() const {
     for (const auto& e : fs::directory_iterator(directory(), ec))
         if (e.is_regular_file(ec) && isImage(e.path())) out.push_back(e.path());
     std::ranges::sort(out);
+    // Then the ones the shell ships, so there is always something to pick
+    std::vector<std::string> shipped;
+    if (const auto dir = paths::dataFile("wallpapers"); !dir.empty())
+        for (const auto& e : fs::directory_iterator(dir, ec))
+            if (e.is_regular_file(ec) && isImage(e.path()) && std::ranges::find(out, e.path().string()) == out.end())
+                shipped.push_back(e.path());
+    std::ranges::sort(shipped);
+    out.insert(out.end(), shipped.begin(), shipped.end());
     return out;
 }
 

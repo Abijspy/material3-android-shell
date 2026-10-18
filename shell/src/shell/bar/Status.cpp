@@ -106,8 +106,12 @@ void StatusIcons::sync() {
 
 // ── BatteryStatus ──
 
-BatteryStatus::BatteryStatus() : Flex(Direction::Row) {
-    setSpacing(4);
+BatteryStatus::BatteryStatus(OpenPopup open) : Button(Direction::Row) {
+    pill(this)->setPadding({8, 0})->setSpacing(4);
+    fixedHeight = 28;
+    onClicked = [this, open = std::move(open)](uint32_t button) {
+        if (button == BTN_LEFT) open("battery", rect().x + rect().w / 2);
+    };
     m_icon = add<Icon>("battery_full", 18);
     m_label = add<Label>();
     m_label->setSize(13)->setWeight(500);

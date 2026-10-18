@@ -177,6 +177,9 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
     } else if (name == "bluetooth") {
         opts.width = 340;
         build = panels::bluetooth;
+    } else if (name == "battery") {
+        opts.width = 380;
+        build = panels::battery;
     } else if (name == "run") {
         opts.width = 560;
         opts.anchorX = -1;
@@ -301,7 +304,7 @@ void Shell::registerIpc() {
         for (auto& [_, bar] : m_bars) bar->setVisible(m_barsVisible);
         return std::string(m_barsVisible ? "shown" : "hidden");
     });
-    ipc.add("popup", "popup <quicksettings [wifi]|notifications|dashboard|overview|sysmon|power|audio|network|bluetooth|run>: toggle a panel",
+    ipc.add("popup", "popup <quicksettings [wifi]|notifications|dashboard|overview|sysmon|power|audio|network|bluetooth|battery|run>: toggle a panel",
             [this](const IpcServer::Args& a) {
         if (a.empty()) return std::string("error: popup needs a name");
         // Status panels open under the right end of the bar; the dashboard

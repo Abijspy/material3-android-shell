@@ -340,7 +340,7 @@ void Bar::addModule(Flex* zone, const std::string& id, bool floating) {
         c->setPadding({4, 0});
         c->add<StatusIcons>(m_openPopup);
     } else if (id == "battery") {
-        capsule(zone, floating)->add<BatteryStatus>();
+        capsule(zone, floating)->add<BatteryStatus>(m_openPopup);
     } else if (id == "media") {
         capsule(zone, floating)->add<Media>();
     } else if (id == "weather" || id == "calendar" || id == "notifications" || id == "sysmon") {

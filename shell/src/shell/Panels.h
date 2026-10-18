@@ -12,6 +12,7 @@ namespace m3::shell::panels {
 void audio(ui::Flex* card, Popup& popup);
 void network(ui::Flex* card, Popup& popup);
 void bluetooth(ui::Flex* card, Popup& popup);
+void battery(ui::Flex* card, Popup& popup);
 void run(ui::Flex* card, Popup& popup);
 void quickSettings(ui::Flex* card, Popup& popup, const std::string& view = {}); // view: "wifi"
 void notifications(ui::Flex* card, Popup& popup);

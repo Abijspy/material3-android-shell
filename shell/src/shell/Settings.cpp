@@ -2,6 +2,7 @@
 // written to config.json (shared with the QML shell) through Config.
 #include "build_config.h"
 #include "core/Config.h"
+#include "core/EventLoop.h"
 #include "core/Paths.h"
 #include "core/Process.h"
 #include "render/Images.h"
@@ -25,9 +26,11 @@
 #include "ui/Theme.h"
 
 #include <cmath>
+#include <filesystem>
 #include <format>
 #include <fstream>
 #include <linux/input-event-codes.h>
+#include <map>
 #include <memory>
 #include <regex>
 #include <set>
@@ -447,11 +450,102 @@ void displayPage(Flex* page, Popup&) {
     }
 }
 
+// Installed font families from fontconfig, read once (monospace or all)
+void fontFamilies(bool mono, std::function<void(const std::vector<std::string>&)> done) {
+    static std::map<bool, std::vector<std::string>> cache;
+    if (auto it = cache.find(mono); it != cache.end()) return done(it->second);
+    m3::run({"fc-list", "--format", "%{family[0]}\\n", mono ? ":spacing=mono" : ":"}, [mono, done](int, const std::string& out) {
+        std::set<std::string> names;
+        std::stringstream ss(out);
+        std::string line;
+        while (std::getline(ss, line))
+            if (!line.empty() && !line.starts_with("Material Symbols")) names.insert(line);
+        auto& list = cache[mono];
+        list.assign(names.begin(), names.end());
+        done(list);
+    });
+}
+
+// A dropdown of installed fonts: the button shows the current one in its
+// own face; the list below it can be searched and previews each font
+void fontRow(Node* g, const std::string& icon, const std::string& title, const std::string& pointer,
+             const std::string& fallback, bool mono) {
+    auto r = row(g, icon, title, "");
+    auto* drop = r.row->add<Button>(Flex::Direction::Row);
+    pill(drop->setBackground("surface_container_highest", false))->setPadding({18, 10})->setSpacing(8);
+    drop->pressedRadius = 10;
+    auto* name = drop->add<Label>(Config::get().value<std::string>(pointer, fallback));
+    name->setSize(14)->setMaxWidth(220)->setFamily(Config::get().value<std::string>(pointer, fallback));
+    auto* chevron = drop->add<Icon>("expand_more", 20);
+    chevron->setColor("on_surface_variant", false);
+
+    // The list, hidden until the button opens it
+    auto* panel = g->add<Flex>(Flex::Direction::Column);
+    panel->setPadding({20, 8, 20, 14})->setSpacing(8)->setAlignItems(Align::Stretch);
+    panel->setVisible(false);
+    auto* search = panel->add<TextField>();
+    search->setPlaceholder("Search fonts");
+    auto* scroll = panel->add<ScrollView>();
+    scroll->maxHeight = 260;
+    auto* list = scroll->add<Flex>(Flex::Direction::Column);
+    list->setAlignItems(Align::Stretch)->setSpacing(2);
+
+    auto fill = std::make_shared<std::function<void()>>();
+    *fill = [list, search, pointer, fallback, mono, name, panel, chevron, scroll] {
+        fontFamilies(mono, [=](const std::vector<std::string>& all) {
+            list->clearChildren();
+            const std::string current = Config::get().value<std::string>(pointer, fallback);
+            auto lower = [](std::string t) {
+                for (auto& c : t) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                return t;
+            };
+            const std::string q = lower(search->text());
+            size_t shown = 0;
+            for (const auto& family : all) {
+                if (!q.empty() && lower(family).find(q) == std::string::npos) continue;
+                // Previews load each font: keep the list short, search finds the rest
+                if (++shown > 60) break;
+                auto* item = list->add<Button>(Flex::Direction::Row);
+                pill(item)->setPadding({14, 8})->setSpacing(10);
+                if (family == current) item->setBackground("secondary_container", false);
+                auto* l = item->add<Label>(family);
+                l->setSize(15)->setFamily(family)->setMaxWidth(560);
+                l->grow = true;
+                if (family == current) item->add<Icon>("check", 18)->setColor("on_secondary_container", false);
+                item->onClicked = [=](uint32_t button) {
+                    if (button != BTN_LEFT) return;
+                    Config::get().set(pointer, family);
+                    name->setText(family);
+                    name->setFamily(family);
+                    panel->setVisible(false);
+                    chevron->setText("expand_more");
+                };
+            }
+            if (shown == 0) list->add<Label>("No font matches")->setSize(13)->setColor("on_surface_variant", false);
+            scroll->scrollTo(0, false);
+        });
+    };
+    search->onChanged = [fill](const std::string&) {
+        EventLoop::get().defer([fill] { (*fill)(); });
+    };
+    drop->onClicked = [panel, chevron, fill, search](uint32_t button) {
+        if (button != BTN_LEFT) return;
+        const bool show = !panel->shown();
+        panel->setVisible(show);
+        chevron->setText(show ? "expand_less" : "expand_more");
+        if (show) {
+            (*fill)();
+            search->focus();
+        }
+    };
+}
+
 void appearancePage(Flex* page, Popup& popup) {
     auto* wp = group(page, "Wallpaper");
-    auto current = row(wp, "", "Current wallpaper", Wallpaper::get().path().empty() ? "None" : Wallpaper::get().path());
-    // Thumbnail in front of the text
     const std::string path = Wallpaper::get().path();
+    // The file name: a full path pushes the buttons off the row
+    auto current = row(wp, "", "Current wallpaper", path.empty() ? "None" : std::filesystem::path(path).filename().string());
+    // Thumbnail in front of the text
     auto* thumb = std::make_unique<ImageView>(96, 54, [path](float scale, int& w, int& h) -> GLuint {
         if (path.empty()) return 0;
         auto* t = Images::get().picture(path, static_cast<int>(96 * scale), static_cast<int>(54 * scale), true);
@@ -462,11 +556,49 @@ void appearancePage(Flex* page, Popup& popup) {
     }).release();
     thumb->cover = true;
     current.row->adopt(std::unique_ptr<Node>(thumb), 0);
-    pillButton(current.row, "Choose…", true, [&popup] {
-        popup.close();
-        if (open) open("wallpapers");
-    }, "wallpaper");
-    pillButton(current.row, "Next", false, [] { Wallpaper::get().next(1); });
+    pillButton(current.row, "Next", false, [] { Wallpaper::get().next(1); }, "skip_next");
+
+    // Every wallpaper side by side; a click applies it
+    const auto files = Wallpaper::get().list();
+    if (!files.empty()) {
+        auto* gallery = wp->add<Flex>(Flex::Direction::Column);
+        gallery->setPadding({16, 14})->setSpacing(8)->setAlignItems(Align::Stretch);
+        auto* grid = gallery->add<Flow>();
+        grid->spacing = 10;
+        constexpr float kW = 152, kH = 86;
+        for (size_t i = 0; i < files.size() && i < 60; ++i) {
+            const std::string file = files[i];
+            auto* tile = grid->add<Button>();
+            tile->setPadding(Insets(3))->setRadius(Radii(14));
+            tile->pressedRadius = 8;
+            if (file == path) tile->setBorder(3, "primary");
+            auto* img = tile->add<ImageView>(kW, kH, [file](float scale, int& w, int& h) -> GLuint {
+                auto* t = Images::get().picture(file, static_cast<int>(kW * scale), static_cast<int>(kH * scale), true);
+                if (!t) return 0;
+                w = t->width;
+                h = t->height;
+                return t->id;
+            });
+            img->cover = true;
+            tile->onClicked = [file](uint32_t button) {
+                if (button != BTN_LEFT) return;
+                Wallpaper::get().set(file);
+                // The page shows the new current one (not inside this click)
+                EventLoop::get().defer([] {
+                    if (reshow) reshow("appearance");
+                });
+            };
+        }
+        auto* foot = gallery->add<Flex>(Flex::Direction::Row);
+        foot->setSpacing(8);
+        auto* where = foot->add<Label>(Wallpaper::get().directory());
+        where->setSize(12)->setColor("on_surface_variant", false)->setMaxWidth(420);
+        where->grow = true;
+        pillButton(foot, "Browse all…", false, [&popup] {
+            popup.close();
+            if (open) open("wallpapers");
+        }, "wallpaper");
+    }
     choiceRow<std::string>(wp, "animation", "Transition", "", "/background/wallpaperTransition", "random",
                            {{"random", "Random"}, {"fade", "Fade"}, {"wipe", "Wipe"}, {"grow", "Grow"}});
     switchRow(wp, "schedule", "Desktop clock", "A large clock on the wallpaper", "/desktop/clock", true);
@@ -511,8 +643,8 @@ void appearancePage(Flex* page, Popup& popup) {
     mark();
 
     auto* fonts = group(page, "Fonts");
-    textRow(fonts, "text_fields", "Interface", "/appearance/fonts/main", "Google Sans Flex");
-    textRow(fonts, "code", "Monospace", "/appearance/fonts/monospace", "JetBrains Mono NF");
+    fontRow(fonts, "text_fields", "Interface", "/appearance/fonts/main", "Google Sans Flex", false);
+    fontRow(fonts, "code", "Monospace", "/appearance/fonts/monospace", "JetBrains Mono NF", true);
 }
 
 void stylePage(Flex* page, Popup&) {
@@ -831,25 +963,6 @@ void dockPage(Flex* page, Popup&) {
 }
 
 // ── Battery ──
-
-// A level bar as wide as it is given
-class Meter : public Node {
-public:
-    Meter(float value, ColorRef color) : m_value(std::clamp(value, 0.0f, 1.0f)), m_color(std::move(color)) {}
-
-protected:
-    SizeF doMeasure(SizeF available) override { return {available.w, 12}; }
-    void doPaint(Renderer& r) override {
-        r.rect(rect(), ColorRef("surface_container_highest").resolve(), Radii(6));
-        RectF fill = rect();
-        fill.w *= m_value;
-        if (fill.w > 0) r.rect(fill, m_color.resolve(), Radii(6));
-    }
-
-private:
-    float m_value;
-    ColorRef m_color;
-};
 
 void batteryPage(Flex* page, Popup&) {
     auto* live = page->add<Live>();

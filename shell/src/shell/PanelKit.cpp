@@ -47,6 +47,17 @@ Label* caption(Node* parent, const std::string& text) {
     return l;
 }
 
+Meter::Meter(float value, ColorRef color, float height)
+    : m_value(std::clamp(value, 0.0f, 1.0f)), m_height(height), m_color(std::move(color)) {}
+
+void Meter::doPaint(Renderer& r) {
+    const Radii round(m_height / 2);
+    r.rect(rect(), ColorRef("surface_container_highest").resolve(), round);
+    RectF fill = rect();
+    fill.w *= m_value;
+    if (fill.w > 0) r.rect(fill, m_color.resolve(), round);
+}
+
 Button* iconButton(Node* parent, const std::string& icon, std::function<void()> onClick, float size) {
     auto* b = parent->add<Button>();
     pill(b)->setPadding(Insets(8));

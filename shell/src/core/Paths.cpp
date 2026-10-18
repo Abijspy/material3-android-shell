@@ -64,7 +64,7 @@ std::string dataFile(const std::string& name) {
     };
     for (const auto& dir : candidates) {
         if (dir.empty()) continue;
-        if (fs::exists(dir / name, ec)) return (dir / name).string();
+        if (fs::exists(dir / name, ec)) return (dir / name).lexically_normal().string();
     }
     return {};
 }

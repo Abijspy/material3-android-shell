@@ -27,9 +27,10 @@ private:
     Connection m_a, m_b, m_c, m_d;
 };
 
-class BatteryStatus : public ui::Flex {
+// Charge in the bar; opens the battery popup (status and power mode)
+class BatteryStatus : public ui::Button {
 public:
-    BatteryStatus();
+    explicit BatteryStatus(OpenPopup open);
 
 private:
     void sync();
