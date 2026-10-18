@@ -4,6 +4,8 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <memory>
+#include <systemd/sd-bus.h>
 
 namespace m3 {
 
@@ -51,6 +53,125 @@ Network::Network() {
                                 if (!a.empty() && a[0] == kNM) refresh();
                             });
     refresh();
+    findWifiDevice();
+}
+
+void Network::findWifiDevice() {
+    dbus::Bus::system().call(kNM, kNMPath, kNM, "GetDevices", {}, [this](const dbus::Value& a, const std::string& err) {
+        if (!err.empty() || a.empty()) return;
+        for (const auto& dev : a[0]) {
+            const std::string path = dev.get<std::string>();
+            dbus::Bus::system().getAll(kNM, path, "org.freedesktop.NetworkManager.Device", [this, path](const dbus::Value& p, bool ok) {
+                // DeviceType 2 is Wi-Fi
+                if (!ok || num<uint32_t>(p, "DeviceType") != 2 || !m_wifiDevice.empty()) return;
+                m_wifiDevice = path;
+                m_devSub = dbus::Bus::system().subscribe(kNM, path, "org.freedesktop.NetworkManager.Device.Wireless", "",
+                                                         [this](const dbus::Value&, auto*) { loadAccessPoints(); });
+                loadAccessPoints();
+            });
+        }
+    });
+}
+
+void Network::scan() {
+    if (m_wifiDevice.empty()) return;
+    dbus::Bus::system().call(kNM, m_wifiDevice, "org.freedesktop.NetworkManager.Device.Wireless", "RequestScan",
+                             [](sd_bus_message* m) { sd_bus_message_append(m, "a{sv}", 0); },
+                             [this](const dbus::Value&, const std::string&) { loadAccessPoints(); });
+}
+
+void Network::loadAccessPoints() {
+    if (m_wifiDevice.empty()) return;
+    auto& bus = dbus::Bus::system();
+    // Saved Wi-Fi connections, by SSID, so known networks connect without a password
+    bus.call(kNM, "/org/freedesktop/NetworkManager/Settings", "org.freedesktop.NetworkManager.Settings", "ListConnections", {},
+             [this](const dbus::Value& a, const std::string& err) {
+                 if (!err.empty() || a.empty()) return;
+                 for (const auto& c : a[0]) {
+                     const std::string path = c.get<std::string>();
+                     dbus::Bus::system().call(kNM, path, "org.freedesktop.NetworkManager.Settings.Connection", "GetSettings", {},
+                                              [this, path](const dbus::Value& r, const std::string& e) {
+                         if (!e.empty() || r.empty()) return;
+                         auto w = r[0].find("802-11-wireless");
+                         if (w == r[0].end()) return;
+                         if (auto ssid = w->find("ssid"); ssid != w->end() && ssid->is_binary()) {
+                             const auto& b = ssid->get_binary();
+                             m_savedBySsid[std::string(b.begin(), b.end())] = path;
+                             for (auto& ap : m_aps) ap.saved = m_savedBySsid.contains(ap.ssid);
+                             accessPointsChanged.emit();
+                         }
+                     });
+                 }
+             });
+    bus.call(kNM, m_wifiDevice, "org.freedesktop.NetworkManager.Device.Wireless", "GetAllAccessPoints", {},
+             [this](const dbus::Value& a, const std::string& err) {
+        if (!err.empty() || a.empty()) return;
+        auto list = std::make_shared<std::vector<AccessPoint>>();
+        auto remaining = std::make_shared<size_t>(a[0].size());
+        if (*remaining == 0) {
+            m_aps.clear();
+            accessPointsChanged.emit();
+        }
+        for (const auto& p : a[0]) {
+            const std::string path = p.get<std::string>();
+            dbus::Bus::system().getAll(kNM, path, "org.freedesktop.NetworkManager.AccessPoint",
+                                       [this, path, list, remaining](const dbus::Value& props, bool ok) {
+                if (ok) {
+                    AccessPoint ap;
+                    ap.path = path;
+                    if (auto it = props.find("Ssid"); it != props.end() && it->is_binary())
+                        ap.ssid.assign(it->get_binary().begin(), it->get_binary().end());
+                    ap.strength = num<int>(props, "Strength");
+                    ap.secured = (num<uint32_t>(props, "Flags") & 1) || num<uint32_t>(props, "WpaFlags") ||
+                                 num<uint32_t>(props, "RsnFlags");
+                    ap.active = path == m_apPath;
+                    ap.saved = m_savedBySsid.contains(ap.ssid);
+                    if (!ap.ssid.empty()) list->push_back(ap);
+                }
+                if (--*remaining > 0) return;
+                // One entry per SSID (several radios share one), strongest first
+                std::ranges::sort(*list, [](auto& x, auto& y) { return x.active != y.active ? x.active : x.strength > y.strength; });
+                std::vector<AccessPoint> unique;
+                for (auto& ap : *list)
+                    if (std::ranges::find(unique, ap.ssid, &AccessPoint::ssid) == unique.end()) unique.push_back(ap);
+                m_aps = std::move(unique);
+                accessPointsChanged.emit();
+            });
+        }
+    });
+}
+
+void Network::connect(const AccessPoint& ap, const std::string& password) {
+    if (m_wifiDevice.empty()) return;
+    m_error.clear();
+    auto done = [this](const dbus::Value&, const std::string& err) {
+        m_error = err.empty() ? "" : "Could not connect";
+        refresh();
+        changed.emit();
+    };
+    if (auto saved = m_savedBySsid.find(ap.ssid); saved != m_savedBySsid.end() && password.empty()) {
+        dbus::Bus::system().call(kNM, kNMPath, kNM, "ActivateConnection",
+                                 dbus::args(dbus::ObjectPath{saved->second}, dbus::ObjectPath{m_wifiDevice}, dbus::ObjectPath{ap.path}),
+                                 done);
+        return;
+    }
+    // A new network: NetworkManager fills in the rest from the access point
+    const std::string device = m_wifiDevice, apPath = ap.path;
+    dbus::Bus::system().call(kNM, kNMPath, kNM, "AddAndActivateConnection",
+                             [password, device, apPath](sd_bus_message* m) {
+                                 if (password.empty())
+                                     sd_bus_message_append(m, "a{sa{sv}}", 0);
+                                 else
+                                     sd_bus_message_append(m, "a{sa{sv}}", 1, "802-11-wireless-security", 2, "key-mgmt", "s",
+                                                           "wpa-psk", "psk", "s", password.c_str());
+                                 sd_bus_message_append(m, "oo", device.c_str(), apPath.c_str());
+                             },
+                             done);
+}
+
+void Network::disconnect() {
+    if (!m_wifiDevice.empty())
+        dbus::Bus::system().call(kNM, m_wifiDevice, "org.freedesktop.NetworkManager.Device", "Disconnect");
 }
 
 void Network::refresh() {

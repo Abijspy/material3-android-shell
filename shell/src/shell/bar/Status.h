@@ -22,8 +22,9 @@ private:
     ui::Button* m_net;
     ui::Button* m_bt;
     ui::Button* m_vol;
-    ui::Icon *m_netIcon, *m_btIcon, *m_volIcon;
-    Connection m_a, m_b, m_c;
+    ui::Button* m_bell;
+    ui::Icon *m_netIcon, *m_btIcon, *m_volIcon, *m_bellIcon;
+    Connection m_a, m_b, m_c, m_d;
 };
 
 class BatteryStatus : public ui::Flex {
@@ -52,10 +53,11 @@ private:
 // StatusNotifier items as icons.
 class TrayIcons : public ui::Flex {
 public:
-    TrayIcons();
+    explicit TrayIcons(OpenPopup open);
 
 private:
     void sync();
+    OpenPopup m_open;
     Connection m_conn;
 };
 

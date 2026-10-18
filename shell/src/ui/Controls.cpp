@@ -212,6 +212,20 @@ TextField* TextField::setText(const std::string& t) {
     return this;
 }
 
+TextField* TextField::setSecret(bool secret) {
+    m_secret = secret;
+    requestRedraw();
+    return this;
+}
+
+std::string TextField::shownText() const {
+    if (!m_secret) return m_text;
+    std::string dots;
+    for (unsigned char c : m_text)
+        if ((c & 0xC0) != 0x80) dots += "\u2022";
+    return dots;
+}
+
 TextField* TextField::setPlaceholder(const std::string& p) {
     m_placeholder = p;
     requestRedraw();
@@ -231,6 +245,14 @@ SizeF TextField::doMeasure(SizeF) {
 
 float TextField::caretX(size_t pos) const {
     if (pos == 0) return 0;
+    if (m_secret) {
+        size_t chars = 0;
+        for (size_t i = 0; i < pos; ++i)
+            if ((static_cast<unsigned char>(m_text[i]) & 0xC0) != 0x80) ++chars;
+        std::string dots;
+        for (size_t i = 0; i < chars; ++i) dots += "\u2022";
+        return TextEngine::get().measure(dots, style()).width;
+    }
     return TextEngine::get().measure(m_text.substr(0, pos), style()).width;
 }
 
@@ -378,7 +400,7 @@ void TextField::doPaint(Renderer& r) {
 
     r.pushClip(inner);
     const bool empty = m_text.empty();
-    const std::string& shown = empty ? m_placeholder : m_text;
+    const std::string shown = empty ? m_placeholder : shownText();
     if (!shown.empty()) {
         const auto& tex = TextEngine::get().texture(shown, style(), r.scale());
         const float s = r.scale();
@@ -389,6 +411,29 @@ void TextField::doPaint(Renderer& r) {
     }
     if (m_focused && m_caretOn) r.rect({inner.x + cx - m_scroll, b.y + 13, 2, b.h - 26}, Theme::get().color("primary"), Radii(1));
     r.popClip();
+}
+
+// ── ImageView ──
+
+ImageView::ImageView(float size, Provider provider) : m_size(size), m_provider(std::move(provider)) {}
+
+void ImageView::setProvider(Provider p) {
+    m_provider = std::move(p);
+    requestRedraw();
+}
+
+void ImageView::doPaint(Renderer& r) {
+    if (!m_provider) return;
+    int w = 0, h = 0;
+    const GLuint tex = m_provider(r.scale(), w, h);
+    if (!tex || w <= 0 || h <= 0) return;
+    const auto& b = rect();
+    const float sx = b.w / static_cast<float>(w), sy = b.h / static_cast<float>(h);
+    const float s = cover ? std::max(sx, sy) : std::min(sx, sy);
+    const float dw = static_cast<float>(w) * s, dh = static_cast<float>(h) * s;
+    if (cover) r.pushClip(b);
+    r.image(tex, {b.x + (b.w - dw) / 2, b.y + (b.h - dh) / 2, dw, dh});
+    if (cover) r.popClip();
 }
 
 } // namespace m3::ui

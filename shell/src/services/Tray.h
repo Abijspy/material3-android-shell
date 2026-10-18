@@ -3,6 +3,7 @@
 #include "core/Signal.h"
 #include "dbus/Bus.h"
 
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -22,6 +23,7 @@ public:
         std::string service; // bus name
         std::string path;
         std::string id, title, status, iconName, iconThemePath;
+        std::string menuPath; // DBusMenu object, if the item has one
         int pixmapW = 0, pixmapH = 0;
         std::vector<uint8_t> pixmap; // ARGB32, network order
         int revision = 0;            // bumps when the icon changes
@@ -34,6 +36,18 @@ public:
     void secondaryActivate(const std::string& key, int x, int y);
     void contextMenu(const std::string& key, int x, int y);
     void scroll(const std::string& key, int delta);
+
+    // DBusMenu (com.canonical.dbusmenu)
+    struct MenuItem {
+        int id = 0;
+        std::string label, iconName;
+        bool enabled = true, visible = true, separator = false;
+        std::string toggleType; // "checkmark", "radio" or empty
+        bool toggled = false;
+        std::vector<MenuItem> children;
+    };
+    void fetchMenu(const std::string& key, std::function<void(const MenuItem& root)> done);
+    void menuClicked(const std::string& key, int id);
 
     Signal<> changed;
 

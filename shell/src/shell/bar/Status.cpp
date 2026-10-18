@@ -4,6 +4,7 @@
 #include "services/Audio.h"
 #include "services/Mpris.h"
 #include "services/Network.h"
+#include "services/Notifications.h"
 #include "services/Tray.h"
 #include "ui/Theme.h"
 
@@ -27,14 +28,15 @@ std::string volumeIcon() {
 // surface scale
 class TrayIcon : public Button {
 public:
-    explicit TrayIcon(Tray::Item item) : m_item(std::move(item)) {
+    TrayIcon(Tray::Item item, OpenPopup open) : m_item(std::move(item)) {
         pill(this);
         fixedWidth = 28;
         fixedHeight = 28;
-        onClicked = [this](uint32_t b) {
+        onClicked = [this, open](uint32_t b) {
             const int x = static_cast<int>(rect().x), y = static_cast<int>(rect().bottom());
             if (b == BTN_LEFT) Tray::get().activate(m_item.key, x, y);
             else if (b == BTN_MIDDLE) Tray::get().secondaryActivate(m_item.key, x, y);
+            else if (b == BTN_RIGHT && !m_item.menuPath.empty()) open("traymenu:" + m_item.key, rect().x + rect().w / 2);
             else if (b == BTN_RIGHT) Tray::get().contextMenu(m_item.key, x, y);
         };
         onScrolled = [this](int d) { Tray::get().scroll(m_item.key, d * 120); };
@@ -74,9 +76,10 @@ StatusIcons::StatusIcons(OpenPopup open) : Flex(Direction::Row) {
         };
         return b;
     };
-    m_net = make("network", m_netIcon);
-    m_bt = make("bluetooth", m_btIcon);
+    m_net = make("quicksettings", m_netIcon);
+    m_bt = make("quicksettings", m_btIcon);
     m_vol = make("audio", m_volIcon);
+    m_bell = make("notifications", m_bellIcon);
     m_vol->onScrolled = [](int d) { Audio::get().stepVolume(-0.05f * static_cast<float>(d)); };
     m_vol->onClicked = [this, open](uint32_t button) {
         if (button == BTN_LEFT) open("audio", m_vol->rect().x + m_vol->rect().w / 2);
@@ -85,6 +88,7 @@ StatusIcons::StatusIcons(OpenPopup open) : Flex(Direction::Row) {
     m_a = Network::get().changed.connect([this] { sync(); });
     m_b = Bluetooth::get().changed.connect([this] { sync(); });
     m_c = Audio::get().changed.connect([this] { sync(); });
+    m_d = Notifications::get().changed.connect([this] { sync(); });
     sync();
 }
 
@@ -95,6 +99,9 @@ void StatusIcons::sync() {
     m_bt->setVisible(Bluetooth::get().available());
     m_volIcon->setText(volumeIcon());
     m_vol->setVisible(Audio::get().ready());
+    auto& n = Notifications::get();
+    m_bellIcon->setText(n.doNotDisturb() ? "notifications_off" : n.history().empty() ? "notifications" : "notifications_unread");
+    m_bellIcon->setFill(!n.history().empty());
 }
 
 // ── BatteryStatus ──
@@ -144,7 +151,7 @@ void Media::sync() {
 
 // ── TrayIcons ──
 
-TrayIcons::TrayIcons() : Flex(Direction::Row) {
+TrayIcons::TrayIcons(OpenPopup open) : Flex(Direction::Row), m_open(std::move(open)) {
     setSpacing(2);
     collapseWhenEmpty = true;
     m_conn = Tray::get().changed.connect([this] { sync(); });
@@ -154,7 +161,7 @@ TrayIcons::TrayIcons() : Flex(Direction::Row) {
 void TrayIcons::sync() {
     clearChildren();
     for (const auto& item : Tray::get().items())
-        if (item.status != "Passive") add<TrayIcon>(item);
+        if (item.status != "Passive") add<TrayIcon>(item, m_open);
 }
 
 } // namespace m3::shell

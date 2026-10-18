@@ -7,6 +7,7 @@ RUN pacman -Syu --noconfirm --needed \
         wayland wayland-protocols wlr-protocols mesa libglvnd pango cairo libxkbcommon nlohmann-json \
         pipewire pipewire-pulse wireplumber libpulse librsvg polkit glib2 dbus \
         python-dbus python-gobject wtype adwaita-icon-theme \
+        libnotify fd wl-clipboard cliphist foot gdk-pixbuf2 \
         sway swaybg grim gdb noto-fonts ttf-jetbrains-mono-nerd curl \
     && pacman -Scc --noconfirm
 

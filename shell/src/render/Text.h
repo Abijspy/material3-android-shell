@@ -13,7 +13,8 @@ struct TextStyle {
     std::string family;
     float size = 14;     // logical px
     int weight = 400;
-    float maxWidth = 0;  // > 0 ellipsizes at the end
+    float maxWidth = 0;  // > 0 ellipsizes at the end (or wraps, with maxLines > 1)
+    int maxLines = 1;
     // Material Symbols axes; used when the family is the icon font
     float fill = 0;
     bool icon = false;

@@ -28,6 +28,9 @@ public:
 
     Signal<> changed;
     void reload();
+    // Writes one value (creating parent objects) and saves config.json
+    // atomically; listeners run when the file watcher sees the change.
+    void set(const std::string& pointer, const nlohmann::json& value);
 
 private:
     Config();

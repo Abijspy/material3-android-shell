@@ -36,6 +36,8 @@ public:
     std::string request(const std::string& command) const;
     std::optional<nlohmann::json> requestJson(const std::string& command) const;
 
+    // Dispatch in the config's syntax: a Lua expression or a legacy command
+    void dispatch(const std::string& lua, const std::string& legacy);
     void focusWorkspace(int id);
     void focusWorkspaceRelative(int delta); // on the focused monitor, wrapping over existing ones
 

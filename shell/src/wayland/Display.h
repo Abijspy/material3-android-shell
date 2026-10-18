@@ -26,7 +26,7 @@ struct wp_cursor_shape_device_v1;
 
 namespace m3::wl {
 
-class LayerSurface;
+class Surface;
 
 // A connected monitor. `name` is the connector ("DP-1"), which is also what
 // Hyprland calls the monitor.
@@ -46,13 +46,16 @@ public:
     static Display& get();
 
     // A surface going away must not keep pointer or keyboard focus
-    void forget(LayerSurface* surface);
+    void forget(Surface* surface);
 
     bool connect();
 
     wl_display* display() const { return m_display; }
     wl_compositor* compositor() const { return m_compositor; }
     zwlr_layer_shell_v1* layerShell() const { return m_layerShell; }
+    void* sessionLockManager() const { return m_lockManager; } // ext_session_lock_manager_v1*
+    void* idleNotifier() const { return m_idleNotifier; }      // ext_idle_notifier_v1*
+    wl_seat* seat() const { return m_seat; }
     wp_fractional_scale_manager_v1* fractionalScale() const { return m_fractionalScale; }
     wp_viewporter* viewporter() const { return m_viewporter; }
 
@@ -97,11 +100,13 @@ private:
     wp_fractional_scale_manager_v1* m_fractionalScale = nullptr;
     wp_viewporter* m_viewporter = nullptr;
     wl_keyboard* m_keyboard = nullptr;
+    void* m_lockManager = nullptr;
+    void* m_idleNotifier = nullptr;
 
     xkb_context* m_xkb = nullptr;
     xkb_keymap* m_keymap = nullptr;
     xkb_state* m_xkbState = nullptr;
-    LayerSurface* m_keyboardFocus = nullptr;
+    Surface* m_keyboardFocus = nullptr;
     int m_repeatRate = 25, m_repeatDelay = 600;
     uint32_t m_repeatKey = 0;
     EventLoop::TimerId m_repeatTimer = 0;
@@ -109,7 +114,7 @@ private:
     std::vector<std::unique_ptr<Output>> m_outputs;
     bool m_reading = false;
 
-    LayerSurface* m_pointerFocus = nullptr;
+    Surface* m_pointerFocus = nullptr;
     double m_pointerX = 0, m_pointerY = 0;
     double m_scrollAccum = 0;
 };

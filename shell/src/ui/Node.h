@@ -43,6 +43,8 @@ public:
         return raw;
     }
     void adopt(std::unique_ptr<Node> child);
+    void adopt(std::unique_ptr<Node> child, size_t index);
+    void remove(Node* child);
     void clearChildren();
     const std::vector<std::unique_ptr<Node>>& children() const { return m_children; }
 
@@ -73,6 +75,7 @@ public:
     // Visual-only transforms for transitions; layout and hit testing ignore them
     void setOpacity(float o, bool animate = true);
     void setTranslateY(float dy, bool animate = true);
+    void setTranslateX(float dx, bool animate = true);
 
     // Animations still running in this subtree
     bool animating() const;
@@ -105,6 +108,7 @@ protected:
 private:
     Tween m_opacity{1, motion::mediumMs, Easing::emphasizedDecelerate()};
     Tween m_translateY{0, motion::mediumMs, Easing::emphasizedDecelerate()};
+    Tween m_translateX{0, motion::mediumMs, Easing::emphasizedDecelerate()};
     Host* host() const;
 
     Node* m_parent = nullptr;
@@ -165,6 +169,7 @@ public:
     Label* setColor(const ColorRef& c, bool animate = true);
     Label* setMaxWidth(float w);
     Label* setFamily(const std::string& family);
+    Label* setMaxLines(int lines); // wraps within maxWidth
     const std::string& text() const { return m_text; }
 
 protected:
@@ -178,6 +183,7 @@ protected:
     float m_size = 14;
     int m_weight = 400;
     float m_maxWidth = 0;
+    int m_maxLines = 1;
     bool m_icon = false;
     float m_fill = 0;
     ColorTween m_color{ColorRef("on_surface")};

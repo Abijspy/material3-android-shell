@@ -1,0 +1,3 @@
+#%PAM-1.0
+# Material3UI lock screen: authenticate like a console login
+auth include login

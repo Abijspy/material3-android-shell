@@ -1,5 +1,6 @@
 #include "render/Images.h"
 
+#include "core/EventLoop.h"
 #include "core/Paths.h"
 
 #include <algorithm>
@@ -8,7 +9,9 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <gdk-pixbuf/gdk-pixbuf.h>
 #include <librsvg/rsvg.h>
+#include <thread>
 #include <regex>
 #include <sstream>
 
@@ -191,6 +194,92 @@ const Images::Texture* Images::pixmap(const std::string& key, int w, int h, cons
     }
     t = Texture{upload(bgra.data(), w, h), w, h};
     return &t;
+}
+
+} // namespace m3
+
+namespace m3 {
+
+namespace {
+
+// RGB(A) rows → premultiplied BGRA, the image shader's layout
+std::vector<unsigned char> toBgra(const uint8_t* src, int w, int h, int rowstride, bool alpha) {
+    std::vector<unsigned char> out(static_cast<size_t>(w) * h * 4);
+    const int bpp = alpha ? 4 : 3;
+    for (int y = 0; y < h; ++y) {
+        const uint8_t* row = src + static_cast<size_t>(y) * rowstride;
+        unsigned char* o = out.data() + static_cast<size_t>(y) * w * 4;
+        for (int x = 0; x < w; ++x) {
+            const uint8_t* p = row + x * bpp;
+            const unsigned a = alpha ? p[3] : 255;
+            o[x * 4 + 0] = static_cast<unsigned char>(p[2] * a / 255);
+            o[x * 4 + 1] = static_cast<unsigned char>(p[1] * a / 255);
+            o[x * 4 + 2] = static_cast<unsigned char>(p[0] * a / 255);
+            o[x * 4 + 3] = static_cast<unsigned char>(a);
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+const Images::Texture* Images::raw(const std::string& key, int w, int h, int rowstride, bool alpha,
+                                   const std::vector<uint8_t>& data) {
+    if (w <= 0 || h <= 0 || data.size() < static_cast<size_t>(rowstride) * (h - 1) + static_cast<size_t>(w) * (alpha ? 4 : 3))
+        return nullptr;
+    auto& t = m_cache["raw:" + key];
+    if (t.id) return &t;
+    const auto bgra = toBgra(data.data(), w, h, rowstride, alpha);
+    t = Texture{upload(bgra.data(), w, h), w, h};
+    return &t;
+}
+
+const Images::Texture* Images::picture(const std::string& path, int w, int h, bool cover, std::function<void()> ready) {
+    const std::string key = "pic:" + path + '|' + std::to_string(w) + 'x' + std::to_string(h) + (cover ? "c" : "f");
+    if (auto it = m_cache.find(key); it != m_cache.end()) return it->second.id ? &it->second : nullptr;
+    auto [pending, first] = m_pending.try_emplace(key);
+    if (ready) pending->second.push_back(std::move(ready));
+    if (!first) return nullptr; // already decoding
+    {
+        // Decode off the event loop: a 4K JPEG takes long enough to drop frames
+        std::thread([this, key, path, w, h, cover] {
+            int iw = 0, ih = 0;
+            gdk_pixbuf_get_file_info(path.c_str(), &iw, &ih);
+            GdkPixbuf* pb = nullptr;
+            if (iw > 0 && ih > 0) {
+                const double sx = static_cast<double>(w) / iw, sy = static_cast<double>(h) / ih;
+                const double s = cover ? std::max(sx, sy) : std::min(sx, sy);
+                // Never upscale while decoding; the GPU stretches if it must
+                const double f = std::min(s, 1.0);
+                const int tw = std::max(1, static_cast<int>(iw * f + 0.5));
+                const int th = std::max(1, static_cast<int>(ih * f + 0.5));
+                pb = gdk_pixbuf_new_from_file_at_scale(path.c_str(), tw, th, FALSE, nullptr);
+                if (pb) {
+                    // Honour camera orientation
+                    GdkPixbuf* rotated = gdk_pixbuf_apply_embedded_orientation(pb);
+                    g_object_unref(pb);
+                    pb = rotated;
+                }
+            }
+            std::vector<unsigned char> bgra;
+            int pw = 0, ph = 0;
+            if (pb) {
+                pw = gdk_pixbuf_get_width(pb);
+                ph = gdk_pixbuf_get_height(pb);
+                bgra = toBgra(gdk_pixbuf_get_pixels(pb), pw, ph, gdk_pixbuf_get_rowstride(pb), gdk_pixbuf_get_has_alpha(pb));
+                g_object_unref(pb);
+            }
+            EventLoop::get().post([this, key, bgra = std::move(bgra), pw, ph] {
+                auto& t = m_cache[key];
+                if (!bgra.empty()) t = Texture{upload(bgra.data(), pw, ph), pw, ph};
+                auto waiters = std::move(m_pending[key]);
+                m_pending.erase(key);
+                for (auto& fn : waiters)
+                    if (fn) fn();
+            });
+        }).detach();
+    }
+    return nullptr;
 }
 
 } // namespace m3

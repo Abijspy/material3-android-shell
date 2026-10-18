@@ -123,13 +123,15 @@ int EventLoop::run() {
             return 1;
         }
 
-        if (fds[0].revents) drainPosted();
         for (size_t i = 0; i < polled.size(); ++i) {
             // Skip sources removed by an earlier dispatch this iteration
             if (std::find(m_sources.begin(), m_sources.end(), polled[i]) == m_sources.end()) continue;
             // Always called: sources like Wayland must finish a prepared read
             polled[i]->dispatch(fds[i + 1].revents);
         }
+        // Worker-thread results run once every source (Wayland's prepared
+        // read included) has been dispatched
+        if (fds[0].revents) drainPosted();
         runTimers();
     }
     return m_exitCode;

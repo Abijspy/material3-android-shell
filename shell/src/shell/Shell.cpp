@@ -10,7 +10,14 @@
 #include "services/Audio.h"
 #include "services/Mpris.h"
 #include "services/Network.h"
+#include "services/Notifications.h"
 #include "services/Tray.h"
+#include "services/Idle.h"
+#include "services/Polkit.h"
+#include "services/Session.h"
+#include "shell/LockScreen.h"
+#include "shell/Notify.h"
+#include "shell/Osd.h"
 #include "shell/Panels.h"
 #include "shell/Popup.h"
 #include "shell/bar/Bar.h"
@@ -42,11 +49,38 @@ bool Shell::start() {
     Theme::get().changed.connectForever([this] { restyle(false); });
     Config::get().changed.connectForever([this] { restyle(true); });
 
+    // Transient surfaces follow the focused output
+    auto focused = [this] { return focusedOutput(); };
+    m_toasts = std::make_unique<Toasts>(focused);
+    m_osd = std::make_unique<Osd>(focused);
+    // Locking: IPC, loginctl lock-session, idle timeout, before suspend
+    panels::lock = [] { EventLoop::get().defer([] { LockScreen::get().lock(); }); };
+    Session::get().lockRequested.connectForever([] { LockScreen::get().lock(); });
+    Idle::get().lockRequested.connectForever([] { LockScreen::get().lock(); });
+    Idle::get().start();
+    LockScreen::get().lockedChanged.connectForever([this] {
+        if (LockScreen::get().locked()) m_popup.reset();
+    });
+
+    // Polkit: a dialog per request, closed when polkitd is done with it
+    Polkit::get().requested.connectForever([this](int id) {
+        togglePopup("polkit:" + std::to_string(id), focusedOutput(), -1);
+    });
+    Polkit::get().finished.connectForever([this](int id) {
+        if (m_popup && m_popup->name() == "polkit:" + std::to_string(id)) m_popup->close();
+    });
+    if (Config::get().value<bool>("/polkit/enabled", true)) Polkit::get().start();
+
+    panels::open = [this](const std::string& name) {
+        EventLoop::get().defer([this, name] { togglePopup(name, focusedOutput(), name == "power" ? -1 : 100000); });
+    };
+
     registerIpc();
     return true;
 }
 
 void Shell::addOutput(wl::Output* output) {
+    LockScreen::get().addOutput(output); // a monitor plugged in while locked
     if (m_bars.contains(output)) return;
     auto bar = std::make_unique<Bar>(output, [this, output](const std::string& name, float x) {
         togglePopup(name, output, x);
@@ -56,6 +90,7 @@ void Shell::addOutput(wl::Output* output) {
 }
 
 void Shell::removeOutput(wl::Output* output) {
+    LockScreen::get().removeOutput(output);
     if (m_popup && m_popup->output() == output) m_popup.reset();
     m_bars.erase(output);
 }
@@ -70,7 +105,7 @@ wl::Output* Shell::focusedOutput() const {
     return m_bars.empty() ? nullptr : m_bars.begin()->first;
 }
 
-void Shell::togglePopup(const std::string& name, wl::Output* output, float anchorX) {
+void Shell::togglePopup(const std::string& name, wl::Output* output, float anchorX, const std::string& arg) {
     if (m_popup && !m_popup->closing() && m_popup->name() == name && m_popup->output() == output) {
         m_popup->close();
         return;
@@ -95,12 +130,43 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         opts.anchorX = -1;
         opts.centredVertically = true;
         build = panels::run;
+    } else if (name == "quicksettings") {
+        opts.width = 440;
+        build = [arg](ui::Flex* card, Popup& p) { panels::quickSettings(card, p, arg); };
+    } else if (name == "notifications") {
+        opts.width = 440;
+        build = panels::notifications;
+    } else if (name == "power") {
+        opts.width = 520;
+        opts.anchorX = -1;
+        opts.centredVertically = true;
+        build = panels::power;
+    } else if (name == "launcher") {
+        opts.width = 680;
+        opts.anchorX = -1;
+        opts.centredVertically = true;
+        build = [arg](ui::Flex* card, Popup& p) { panels::launcher(card, p, arg); };
+    } else if (name.starts_with("polkit:")) {
+        opts.width = 460;
+        opts.anchorX = -1;
+        opts.centredVertically = true;
+        const int id = std::stoi(name.substr(7));
+        build = [id](ui::Flex* card, Popup& p) { panels::polkit(card, p, id); };
+    } else if (name.starts_with("traymenu:")) {
+        opts.width = 300;
+        const std::string key = name.substr(9);
+        build = [key](ui::Flex* card, Popup& p) { panels::trayMenu(card, p, key); };
     } else {
         return;
     }
     m_popup = std::make_unique<Popup>(output, opts, build);
     Popup* raw = m_popup.get();
-    m_popup->onClosed = [this, raw] {
+    m_popup->onClosed = [this, raw, name] {
+        // Closing the polkit dialog (Esc, Cancel, click outside) dismisses the request
+        if (name.starts_with("polkit:")) {
+            const int id = std::stoi(name.substr(7));
+            if (Polkit::get().find(id)) Polkit::get().cancel(id);
+        }
         // Destroy outside the popup's own callback
         EventLoop::get().defer([this, raw] {
             if (m_popup.get() == raw) m_popup.reset();
@@ -139,14 +205,28 @@ void Shell::registerIpc() {
         for (auto& [_, bar] : m_bars) bar->setVisible(m_barsVisible);
         return std::string(m_barsVisible ? "shown" : "hidden");
     });
-    ipc.add("popup", "popup <audio|network|bluetooth|run>: toggle a panel", [this](const IpcServer::Args& a) {
+    ipc.add("popup", "popup <quicksettings|notifications|audio|network|bluetooth|power|run>: toggle a panel",
+            [this](const IpcServer::Args& a) {
         if (a.empty()) return std::string("error: popup needs a name");
-        auto* out = focusedOutput();
         // Status panels open under the right end of the bar
-        float x = -1;
-        if (out && a[0] != "run") x = 100000;
-        togglePopup(a[0], out, x);
-        return std::string(m_popup ? "open" : "closed");
+        togglePopup(a[0], focusedOutput(), 100000, a.size() > 1 ? a[1] : "");
+        return std::string(m_popup && !m_popup->closing() ? "open" : "closed");
+    });
+    ipc.add("launcher", "launcher [text]: toggle Spotlight, optionally pre-filled (\"#\" clipboard, \":\" emoji…)",
+            [this](const IpcServer::Args& a) {
+        std::string text;
+        for (const auto& w : a) text += (text.empty() ? "" : " ") + w;
+        togglePopup("launcher", focusedOutput(), -1, text);
+        return std::string(m_popup && !m_popup->closing() ? "open" : "closed");
+    });
+    ipc.add("notifications", "notifications [list|clear|dnd on|dnd off]", [](const IpcServer::Args& a) {
+        auto& n = Notifications::get();
+        const std::string cmd = a.empty() ? "list" : a[0];
+        if (cmd == "clear") n.clear();
+        if (cmd == "dnd") n.setDoNotDisturb(a.size() > 1 && a[1] == "on");
+        std::string out = std::format("daemon: {}  dnd: {}\n", n.active() ? "active" : "inactive", n.doNotDisturb());
+        for (const auto& x : n.history()) out += std::format("{}\t{}\t{}\t{}\n", x.id, x.app, x.summary, x.body);
+        return out;
     });
     ipc.add("volume", "volume up|down|mute|set <0-150>|balance <-100..100>", [](const IpcServer::Args& a) {
         auto& audio = Audio::get();
@@ -186,6 +266,14 @@ void Shell::registerIpc() {
         else if (cmd == "previous") m.previous();
         const auto* p = m.active();
         return p ? std::format("{}: {} — {} [{}]", p->identity, p->title, p->artist, p->status) : std::string("no player");
+    });
+    ipc.add("lock", "Lock the session", [](const auto&) {
+        LockScreen::get().lock();
+        return std::string("locked");
+    });
+    ipc.add("idle", "idle [inhibit|allow]: keep the screen awake (Caffeine)", [](const IpcServer::Args& a) {
+        if (!a.empty()) Idle::get().setInhibited(a[0] == "inhibit");
+        return std::string(Idle::get().inhibited() ? "inhibited" : "allowed");
     });
     ipc.add("tray", "List tray items", [](const auto&) {
         std::string out;

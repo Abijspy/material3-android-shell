@@ -19,6 +19,17 @@ void Node::adopt(std::unique_ptr<Node> child) {
     requestLayout();
 }
 
+void Node::adopt(std::unique_ptr<Node> child, size_t index) {
+    child->m_parent = this;
+    m_children.insert(m_children.begin() + static_cast<long>(std::min(index, m_children.size())), std::move(child));
+    requestLayout();
+}
+
+void Node::remove(Node* child) {
+    std::erase_if(m_children, [child](auto& c) { return c.get() == child; });
+    requestLayout();
+}
+
 void Node::clearChildren() {
     m_children.clear();
     requestLayout();
@@ -61,17 +72,18 @@ void Node::doArrange() {
 
 void Node::paint(Renderer& r) {
     if (!shown()) return;
-    const float o = m_opacity.value(), dy = m_translateY.value();
+    const float o = m_opacity.value(), dy = m_translateY.value(), dx = m_translateX.value();
     if (o <= 0.001f) return;
     if (o < 1) r.pushOpacity(o);
-    if (dy != 0) r.pushTranslate(0, dy);
+    const bool moved = dx != 0 || dy != 0;
+    if (moved) r.pushTranslate(dx, dy);
     doPaint(r);
     if (clipsChildren()) r.pushClip(m_rect);
     for (auto& c : m_children) c->paint(r);
     if (clipsChildren()) r.popClip();
-    if (dy != 0) r.popTranslate();
+    if (moved) r.popTranslate();
     if (o < 1) r.popOpacity();
-    if (m_opacity.running() || m_translateY.running()) requestRedraw();
+    if (m_opacity.running() || m_translateY.running() || m_translateX.running()) requestRedraw();
 }
 
 Node* Node::hitTest(float x, float y, bool any) {
@@ -90,6 +102,11 @@ void Node::setOpacity(float o, bool animate) {
     requestRedraw();
 }
 
+void Node::setTranslateX(float dx, bool animate) {
+    m_translateX.set(dx, animate);
+    requestRedraw();
+}
+
 void Node::setTranslateY(float dy, bool animate) {
     m_translateY.set(dy, animate);
     requestRedraw();
@@ -97,7 +114,7 @@ void Node::setTranslateY(float dy, bool animate) {
 
 bool Node::animating() const {
     if (!shown()) return false;
-    if (doAnimating() || m_opacity.running() || m_translateY.running()) return true;
+    if (doAnimating() || m_opacity.running() || m_translateY.running() || m_translateX.running()) return true;
     return std::any_of(m_children.begin(), m_children.end(), [](auto& c) { return c->animating(); });
 }
 
@@ -285,6 +302,12 @@ Label* Label::setMaxWidth(float w) {
     return this;
 }
 
+Label* Label::setMaxLines(int lines) {
+    m_maxLines = lines;
+    requestLayout();
+    return this;
+}
+
 Label* Label::setFamily(const std::string& family) {
     m_family = family;
     requestLayout();
@@ -297,6 +320,7 @@ TextStyle Label::style() const {
     s.size = m_size;
     s.weight = m_weight;
     s.maxWidth = m_maxWidth;
+    s.maxLines = m_maxLines;
     s.icon = m_icon;
     s.fill = m_fill;
     return s;

@@ -3,7 +3,9 @@
 #include "core/Signal.h"
 #include "dbus/Bus.h"
 
+#include <map>
 #include <string>
+#include <vector>
 
 namespace m3 {
 
@@ -25,17 +27,36 @@ public:
     void setWifiEnabled(bool on);
     std::string icon() const;
 
+    // Wi-Fi networks seen by the first wireless device, strongest first
+    struct AccessPoint {
+        std::string path, ssid;
+        int strength = 0;
+        bool secured = false, active = false, saved = false;
+    };
+    const std::vector<AccessPoint>& accessPoints() const { return m_aps; }
+    void scan();
+    // Saved or open networks connect directly; new secured ones need `password`
+    void connect(const AccessPoint& ap, const std::string& password = {});
+    void disconnect();
+    std::string lastError() const { return m_error; }
+
     Signal<> changed;
+    Signal<> accessPointsChanged;
 
 private:
     Network();
+    void findWifiDevice();
+    void loadAccessPoints();
     void refresh();
     void loadPrimary(const std::string& path);
     void loadAccessPoint(const std::string& path);
 
     bool m_available = false, m_wifiEnabled = false, m_connecting = false;
     Kind m_kind = Kind::None;
-    std::string m_name, m_apPath;
+    std::string m_name, m_apPath, m_wifiDevice, m_error;
+    std::vector<AccessPoint> m_aps;
+    std::map<std::string, std::string> m_savedBySsid; // ssid → connection path
+    dbus::Subscription m_devSub;
     int m_strength = 0;
     dbus::Subscription m_nmChanged, m_apChanged, m_owner;
 };

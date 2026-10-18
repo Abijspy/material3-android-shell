@@ -3,6 +3,7 @@
 #include "core/Log.h"
 
 #include <algorithm>
+#include <ctime>
 #include <systemd/sd-bus.h>
 #include <unistd.h>
 
@@ -234,6 +235,7 @@ void Tray::loadItem(const std::string& key) {
         it->status = text("Status");
         it->iconName = text("IconName");
         it->iconThemePath = text("IconThemePath");
+        it->menuPath = text("Menu");
         it->pixmap.clear();
         it->pixmapW = it->pixmapH = 0;
         // a(iiay): pick the smallest pixmap that is at least 32px, else the largest
@@ -268,6 +270,62 @@ void Tray::secondaryActivate(const std::string& key, int x, int y) {
 
 void Tray::contextMenu(const std::string& key, int x, int y) {
     if (Item* i = find(key)) dbus::Bus::session().call(i->service, i->path, kItemIface, "ContextMenu", dbus::args(x, y));
+}
+
+namespace {
+
+// (ia{sv}av) → MenuItem; children arrive as variants holding the same struct
+Tray::MenuItem parseMenu(const dbus::Value& node) {
+    Tray::MenuItem item;
+    if (!node.is_array() || node.size() < 3) return item;
+    item.id = node[0].get<int>();
+    const auto& p = node[1];
+    auto str = [&](const char* k) {
+        auto v = p.find(k);
+        return v != p.end() && v->is_string() ? v->get<std::string>() : std::string();
+    };
+    // Mnemonics: "_Open" → "Open", "__" → "_"
+    const std::string l = str("label");
+    for (size_t i = 0, n = l.size(); i < n; ++i) {
+        if (l[i] == '_') {
+            if (i + 1 < n && l[i + 1] == '_') item.label += '_', ++i;
+            continue;
+        }
+        item.label += l[i];
+    }
+    item.iconName = str("icon-name");
+    if (auto e = p.find("enabled"); e != p.end() && e->is_boolean()) item.enabled = *e;
+    if (auto v = p.find("visible"); v != p.end() && v->is_boolean()) item.visible = *v;
+    item.separator = str("type") == "separator";
+    item.toggleType = str("toggle-type");
+    if (auto t = p.find("toggle-state"); t != p.end() && t->is_number()) item.toggled = t->get<int>() == 1;
+    for (const auto& child : node[2]) item.children.push_back(parseMenu(child));
+    return item;
+}
+
+} // namespace
+
+void Tray::fetchMenu(const std::string& key, std::function<void(const MenuItem&)> done) {
+    Item* i = find(key);
+    if (!i || i->menuPath.empty()) return;
+    auto& bus = dbus::Bus::session();
+    const std::string service = i->service, path = i->menuPath;
+    // Some apps build the menu lazily on AboutToShow
+    bus.call(service, path, "com.canonical.dbusmenu", "AboutToShow", dbus::args(int32_t{0}));
+    bus.call(service, path, "com.canonical.dbusmenu", "GetLayout",
+             [](sd_bus_message* m) { sd_bus_message_append(m, "iias", 0, -1, 0); },
+             [done = std::move(done)](const dbus::Value& a, const std::string& err) {
+                 if (!err.empty() || a.size() < 2) return;
+                 done(parseMenu(a[1]));
+             });
+}
+
+void Tray::menuClicked(const std::string& key, int id) {
+    Item* i = find(key);
+    if (!i || i->menuPath.empty()) return;
+    dbus::Bus::session().call(i->service, i->menuPath, "com.canonical.dbusmenu", "Event", [id](sd_bus_message* m) {
+        sd_bus_message_append(m, "isvu", id, "clicked", "i", 0, static_cast<uint32_t>(time(nullptr)));
+    });
 }
 
 void Tray::scroll(const std::string& key, int delta) {

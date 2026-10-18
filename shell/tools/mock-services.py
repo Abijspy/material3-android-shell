@@ -46,17 +46,64 @@ def system():
     NM = "org.freedesktop.NetworkManager"
     names = [dbus.service.BusName(n, bus) for n in (NM, "org.freedesktop.UPower", "org.bluez")]
     o = dbus.ObjectPath
+    class NMRoot(PropObject):
+        @dbus.service.method(NM, out_signature="ao")
+        def GetDevices(self):
+            return [o("/org/freedesktop/NetworkManager/Devices/1")]
+
+        @dbus.service.method(NM, in_signature="ooo", out_signature="o")
+        def ActivateConnection(self, conn, dev, ap):
+            print(f"activate {conn} on {ap}", flush=True)
+            return o("/org/freedesktop/NetworkManager/ActiveConnection/1")
+
+        @dbus.service.method(NM, in_signature="a{sa{sv}}oo", out_signature="oo")
+        def AddAndActivateConnection(self, settings, dev, ap):
+            print(f"add-and-activate {ap} psk={settings.get('802-11-wireless-security', {}).get('psk')}", flush=True)
+            return (o("/org/freedesktop/NetworkManager/Settings/9"), o("/org/freedesktop/NetworkManager/ActiveConnection/1"))
+
+    class Wireless(PropObject):
+        @dbus.service.method(NM + ".Device.Wireless", out_signature="ao")
+        def GetAllAccessPoints(self):
+            return [o(f"/org/freedesktop/NetworkManager/AccessPoint/{i}") for i in range(1, 5)]
+
+        @dbus.service.method(NM + ".Device.Wireless", in_signature="a{sv}")
+        def RequestScan(self, options):
+            pass
+
+    class Settings(dbus.service.Object):
+        @dbus.service.method(NM + ".Settings", out_signature="ao")
+        def ListConnections(self):
+            return [o("/org/freedesktop/NetworkManager/Settings/1")]
+
+    class SavedConnection(dbus.service.Object):
+        @dbus.service.method(NM + ".Settings.Connection", out_signature="a{sa{sv}}")
+        def GetSettings(self):
+            return {"802-11-wireless": {"ssid": dbus.ByteArray(b"Home-5G")}, "connection": {"id": "Home"}}
+
+    def ap(n, ssid, strength, secured):
+        return PropObject(bus, f"/org/freedesktop/NetworkManager/AccessPoint/{n}", {NM + ".AccessPoint": {
+            "Strength": dbus.Byte(strength), "Ssid": dbus.ByteArray(ssid),
+            "Flags": dbus.UInt32(1 if secured else 0), "WpaFlags": dbus.UInt32(0),
+            "RsnFlags": dbus.UInt32(0x188 if secured else 0)}})
+
     objs = [
-        PropObject(bus, "/org/freedesktop/NetworkManager", {NM: {
+        Settings(bus, "/org/freedesktop/NetworkManager/Settings"),
+        SavedConnection(bus, "/org/freedesktop/NetworkManager/Settings/1"),
+        ap(2, b"Cafe Guest", 48, False),
+        ap(3, b"Neighbour", 30, True),
+        ap(4, b"Office", 88, True),
+        NMRoot(bus, "/org/freedesktop/NetworkManager", {NM: {
             "State": dbus.UInt32(70), "WirelessEnabled": True,
             "PrimaryConnection": o("/org/freedesktop/NetworkManager/ActiveConnection/1")}}),
         PropObject(bus, "/org/freedesktop/NetworkManager/ActiveConnection/1", {NM + ".Connection.Active": {
             "Type": "802-11-wireless", "Id": "Home",
             "Devices": dbus.Array([o("/org/freedesktop/NetworkManager/Devices/1")], signature="o")}}),
-        PropObject(bus, "/org/freedesktop/NetworkManager/Devices/1", {NM + ".Device.Wireless": {
-            "ActiveAccessPoint": o("/org/freedesktop/NetworkManager/AccessPoint/1")}}),
+        Wireless(bus, "/org/freedesktop/NetworkManager/Devices/1", {
+            NM + ".Device.Wireless": {"ActiveAccessPoint": o("/org/freedesktop/NetworkManager/AccessPoint/1")},
+            NM + ".Device": {"DeviceType": dbus.UInt32(2)}}),
         PropObject(bus, "/org/freedesktop/NetworkManager/AccessPoint/1", {NM + ".AccessPoint": {
-            "Strength": dbus.Byte(72), "Ssid": dbus.ByteArray(b"Home-5G")}}),
+            "Strength": dbus.Byte(72), "Ssid": dbus.ByteArray(b"Home-5G"), "Flags": dbus.UInt32(1),
+            "WpaFlags": dbus.UInt32(0), "RsnFlags": dbus.UInt32(0x188)}}),
         PropObject(bus, "/org/freedesktop/UPower/devices/DisplayDevice", {"org.freedesktop.UPower.Device": {
             "IsPresent": True, "Type": dbus.UInt32(2), "Percentage": 76.0, "State": dbus.UInt32(2),
             "TimeToEmpty": dbus.Int64(9000), "TimeToFull": dbus.Int64(0)}}),
@@ -110,7 +157,8 @@ def session():
     for n, props in enumerate([
         {"Id": "mock-pixmap", "Title": "Pixmap item", "Status": "Active", "IconName": "",
          "IconPixmap": dbus.Array([(dbus.Int32(32), dbus.Int32(32), dbus.ByteArray(bytes(px)))], signature="(iiay)")},
-        {"Id": "mock-named", "Title": "Named icon", "Status": "Active", "IconName": "folder"},
+        {"Id": "mock-named", "Title": "Named icon", "Status": "Active", "IconName": "folder",
+         "Menu": dbus.ObjectPath("/MenuBar")},
     ]):
         class Item(PropObject):
             @dbus.service.method(item_iface, in_signature="ii")
@@ -123,9 +171,37 @@ def session():
     def register():
         watcher = bus.get_object("org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher")
         for name, _ in items:
-            watcher.RegisterStatusNotifierItem(name, dbus_interface="org.kde.StatusNotifierWatcher")
+            if name:
+                watcher.RegisterStatusNotifierItem(name, dbus_interface="org.kde.StatusNotifierWatcher")
         print("tray items registered", flush=True)
         return False
+
+    class Menu(dbus.service.Object):
+        def entry(self, i, props, children=()):
+            return dbus.Struct((dbus.Int32(i), dbus.Dictionary(props, signature="sv"),
+                                dbus.Array([dbus.Struct(c, variant_level=1) for c in children], signature="v")))
+
+        @dbus.service.method("com.canonical.dbusmenu", in_signature="iias", out_signature="u(ia{sv}av)")
+        def GetLayout(self, parent, depth, props):
+            sub = [self.entry(11, {"label": "Recent _A"}), self.entry(12, {"label": "Recent B"})]
+            return (dbus.UInt32(1), self.entry(0, {"children-display": "submenu"}, [
+                self.entry(1, {"label": "_Open window"}),
+                self.entry(2, {"label": "Show in tray", "toggle-type": "checkmark", "toggle-state": dbus.Int32(1)}),
+                self.entry(3, {"type": "separator"}),
+                self.entry(4, {"label": "Recent files", "children-display": "submenu"}, sub),
+                self.entry(5, {"label": "Disabled item", "enabled": False}),
+                self.entry(6, {"label": "Quit"}),
+            ]))
+
+        @dbus.service.method("com.canonical.dbusmenu", in_signature="i", out_signature="b")
+        def AboutToShow(self, id):
+            return False
+
+        @dbus.service.method("com.canonical.dbusmenu", in_signature="isvu")
+        def Event(self, id, event, data, timestamp):
+            print(f"menu event {id} {event}", flush=True)
+
+    items.append((None, Menu(bus, "/MenuBar")))
 
     # The shell must own the watcher first
     GLib.timeout_add(float(sys.argv[2]) * 1000 if len(sys.argv) > 2 else 1500, register)

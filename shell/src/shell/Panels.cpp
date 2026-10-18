@@ -1,5 +1,7 @@
 #include "shell/Panels.h"
 
+#include "shell/PanelKit.h"
+
 #include "core/Process.h"
 #include "core/Signal.h"
 #include "services/Audio.h"
@@ -15,36 +17,9 @@ using namespace m3::ui;
 
 namespace {
 
-// A column that re-runs `sync` whenever one of its services changes, and
-// drops the subscriptions when the popup closes.
-class Live : public Flex {
-public:
-    Live() : Flex(Direction::Column) { setAlignItems(Align::Stretch)->setSpacing(12); }
-    std::vector<Connection> conns;
-    std::function<void()> sync;
-    void watch(Signal<>& s) {
-        conns.push_back(s.connect([this] {
-            if (sync) sync();
-        }));
-    }
-};
-
-Flex* header(Node* parent, const char* icon, const std::string& title) {
-    auto* row = parent->add<Flex>(Flex::Direction::Row);
-    row->setSpacing(12);
-    row->add<Icon>(icon, 24)->setColor("primary");
-    auto* t = row->add<Label>(title);
-    t->setSize(20)->setWeight(500);
-    t->grow = true;
-    return row;
-}
-
-Label* caption(Node* parent, const std::string& text) {
-    auto* l = parent->add<Label>(text);
-    l->setSize(13)->setWeight(500)->setColor("on_surface_variant", false);
-    l->alignSelf = Align::Start;
-    return l;
-}
+using kit::Live;
+using kit::caption;
+using kit::header;
 
 std::string percent(float v) {
     return std::format("{}%", static_cast<int>(std::lround(v * 100)));

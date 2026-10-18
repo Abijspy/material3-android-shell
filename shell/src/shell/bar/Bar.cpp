@@ -49,7 +49,7 @@ void Bar::rebuild() {
     end->setSpacing(8);
     auto* trayCap = capsule(end, floating);
     trayCap->setPadding({4, 0});
-    trayCap->add<TrayIcons>();
+    trayCap->add<TrayIcons>(m_openPopup);
     auto* statusCap = capsule(end, floating);
     statusCap->setPadding({4, 0});
     statusCap->add<StatusIcons>(m_openPopup);

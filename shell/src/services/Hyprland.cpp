@@ -95,6 +95,10 @@ std::optional<nlohmann::json> Hyprland::requestJson(const std::string& command) 
     }
 }
 
+void Hyprland::dispatch(const std::string& lua, const std::string& legacy) {
+    request("dispatch " + (m_lua ? lua : legacy));
+}
+
 void Hyprland::focusWorkspace(int id) {
     request(m_lua ? std::format("dispatch hl.dsp.focus({{ workspace = \"{}\" }})", id)
                   : std::format("dispatch workspace {}", id));

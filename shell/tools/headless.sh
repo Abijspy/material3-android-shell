@@ -28,7 +28,7 @@ if [ -n "${M3_SERVICES:-}" ]; then
     export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
     dbus-daemon --config-file=/usr/share/dbus-1/session.conf --fork --address=unix:path=/tmp/sysbus
     export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/tmp/sysbus
-    python3 tools/mock-services.py system >/tmp/mock-system.log 2>&1 &
+    python3 -u tools/mock-services.py system >/tmp/mock-system.log 2>&1 &
     # PipeWire with a stereo null sink as "Speakers"
     pipewire >/tmp/pw.log 2>&1 &
     sleep 0.3
@@ -49,10 +49,11 @@ if [ -n "${M3_FAKE_HYPR:-}" ]; then
     sleep 0.3
 fi
 
+[ -n "${M3_SETUP:-}" ] && eval "$M3_SETUP"
 if [ -n "${M3_GDB:-}" ]; then
     gdb -batch -ex run -ex "bt 30" ./build/material3ui >/tmp/m3.log 2>&1 &
 else
-    ./build/material3ui >/tmp/m3.log 2>&1 &
+    ./build/material3ui ${M3_ARGS:-} >/tmp/m3.log 2>&1 &
 fi
 if [ -n "${M3_SERVICES:-}" ]; then
     python3 tools/mock-services.py session 1 >/tmp/mock-session.log 2>&1 &
@@ -62,4 +63,4 @@ sleep "${M3_WAIT:-2}"
 [ -n "${M3_SCRIPT:-}" ] && eval "$M3_SCRIPT"
 grim "/src/$out"
 grep -v MESA /tmp/m3.log
-[ -n "${M3_SERVICES:-}" ] && cat /tmp/mock-session.log
+[ -n "${M3_SERVICES:-}" ] && cat /tmp/mock-session.log /tmp/mock-system.log

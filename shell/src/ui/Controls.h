@@ -99,6 +99,7 @@ public:
 
     TextField* setText(const std::string& t);
     TextField* setPlaceholder(const std::string& p);
+    TextField* setSecret(bool secret); // shows dots, never the text
     const std::string& text() const { return m_text; }
 
     std::function<void(const std::string&)> onChanged;
@@ -121,11 +122,32 @@ private:
     void edited();
     void restartBlink();
 
+    std::string shownText() const;
     std::string m_text, m_placeholder;
+    bool m_secret = false;
     size_t m_cursor = 0;
     bool m_focused = false, m_caretOn = true;
     float m_scroll = 0;
     EventLoop::TimerId m_blink = 0;
+};
+
+// Draws a texture supplied on demand (icons, pictures, pixmaps), fitted
+// into its fixed size. The provider gets the device scale so it can ask
+// for a sharp size, and may return null while an image is still decoding.
+class ImageView : public Node {
+public:
+    using Provider = std::function<GLuint(float scale, int& w, int& h)>;
+    ImageView(float size, Provider provider);
+    void setProvider(Provider p);
+    bool cover = false; // fill and crop instead of fit
+
+protected:
+    SizeF doMeasure(SizeF) override { return {m_size, m_size}; }
+    void doPaint(Renderer& r) override;
+
+private:
+    float m_size;
+    Provider m_provider;
 };
 
 } // namespace m3::ui

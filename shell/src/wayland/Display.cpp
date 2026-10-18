@@ -1,9 +1,11 @@
 #include "wayland/Display.h"
 
 #include "core/Log.h"
-#include "wayland/LayerSurface.h"
+#include "wayland/Surface.h"
 
 #include "cursor-shape-v1-client-protocol.h"
+#include "ext-idle-notify-v1-client-protocol.h"
+#include "ext-session-lock-v1-client-protocol.h"
 #include "fractional-scale-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
 #include "wayland/LayerShellProtocol.h"
@@ -139,6 +141,10 @@ void Display::addGlobal(wl_registry* r, uint32_t name, const char* iface, uint32
     } else if (i == wp_fractional_scale_manager_v1_interface.name) {
         m_fractionalScale = static_cast<wp_fractional_scale_manager_v1*>(
             wl_registry_bind(r, name, &wp_fractional_scale_manager_v1_interface, 1));
+    } else if (i == ext_session_lock_manager_v1_interface.name) {
+        m_lockManager = wl_registry_bind(r, name, &ext_session_lock_manager_v1_interface, 1);
+    } else if (i == ext_idle_notifier_v1_interface.name) {
+        m_idleNotifier = wl_registry_bind(r, name, &ext_idle_notifier_v1_interface, 1);
     } else if (i == wp_viewporter_interface.name) {
         m_viewporter = static_cast<wp_viewporter*>(wl_registry_bind(r, name, &wp_viewporter_interface, 1));
     } else if (i == wl_output_interface.name && version >= 4) {
@@ -189,7 +195,7 @@ void Display::seatCapabilities(uint32_t caps) {
 }
 
 void Display::pointerEnter(uint32_t serial, wl_surface* surface, double x, double y) {
-    m_pointerFocus = LayerSurface::fromSurface(surface);
+    m_pointerFocus = Surface::fromSurface(surface);
     m_pointerX = x;
     m_pointerY = y;
     // Without a cursor of our own the pointer would keep whatever it showed last
@@ -198,7 +204,7 @@ void Display::pointerEnter(uint32_t serial, wl_surface* surface, double x, doubl
 }
 
 void Display::pointerLeave(wl_surface* surface) {
-    if (auto* s = LayerSurface::fromSurface(surface)) s->pointerLeave();
+    if (auto* s = Surface::fromSurface(surface)) s->pointerLeave();
     m_pointerFocus = nullptr;
 }
 
@@ -224,7 +230,7 @@ void Display::pointerFrame() {
     }
 }
 
-void Display::forget(LayerSurface* surface) {
+void Display::forget(Surface* surface) {
     if (m_pointerFocus == surface) m_pointerFocus = nullptr;
     if (m_keyboardFocus == surface) {
         m_keyboardFocus = nullptr;
@@ -252,13 +258,13 @@ void Display::keymap(int fd, uint32_t size) {
 
 void Display::keyboardEnter(wl_surface* surface) {
     if (debugFocus()) log::info("wl_keyboard.enter {}", static_cast<void*>(surface));
-    m_keyboardFocus = LayerSurface::fromSurface(surface);
+    m_keyboardFocus = Surface::fromSurface(surface);
     if (m_keyboardFocus) m_keyboardFocus->keyboardFocus(true);
 }
 
 void Display::keyboardLeave(wl_surface* surface) {
     if (debugFocus()) log::info("wl_keyboard.leave {}", static_cast<void*>(surface));
-    if (auto* s = LayerSurface::fromSurface(surface)) s->keyboardFocus(false);
+    if (auto* s = Surface::fromSurface(surface)) s->keyboardFocus(false);
     m_keyboardFocus = nullptr;
     if (m_repeatTimer) EventLoop::get().cancel(m_repeatTimer);
     m_repeatTimer = 0;
@@ -314,9 +320,6 @@ void Display::key(uint32_t key, bool pressed) {
     });
 }
 
-LayerSurface* LayerSurface::fromSurface(wl_surface* surface) {
-    return surface ? static_cast<LayerSurface*>(wl_surface_get_user_data(surface)) : nullptr;
-}
 
 int Display::fd() const {
     return wl_display_get_fd(m_display);
