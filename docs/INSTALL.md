@@ -24,7 +24,7 @@ Before we dive in, let's clarify what Material3UI Shell actually is. It is a des
 Before running the installer, make sure your system meets these basic requirements:
 * You are running Arch Linux, CachyOS, or a similar Arch-based distribution.
 * Hyprland is installed and currently running as your compositor.
-* You have an AUR helper installed. If you do not have one, the installer will attempt to set up `paru` for you.
+* You have an AUR helper installed. If you do not have one, the installer will set up `yay` for you.
 * Standard build tools like `git`, `curl`, and `base-devel` are present on your system.
 
 ## Quick Installation
@@ -40,7 +40,7 @@ The installer runs seven steps:
 1. **Preflight** checks that you are on an Arch-based system, not root, and that Hyprland is 0.55 or newer (needed for the Lua config). Everything is logged to `~/.cache/material3ui/install-<timestamp>.log`.
 2. **Choices**: terminal (Alacritty by default), file manager (Nemo), browser (LibreWolf), how to handle Hyprland (`full`, `inject` or `skip`), update channel, and optional components (fonts, NetworkManager/Bluetooth services, KDE theming, live wallpapers, fish + starship, EasyEffects/WARP).
 3. **Dependency review** lists what is already installed and what is missing, and asks before installing anything.
-4. **Packages** are installed with `paru` or `yay` (paru is bootstrapped when neither exists), followed by Google Sans Flex and optional extras.
+4. **Packages** are installed with `yay` (bootstrapped when it is missing), followed by Google Sans Flex and optional extras.
 5. **Configuration review** shows every file that will be written. Existing files are marked and backed up to `~/.config/material3ui/backups/<timestamp>/`. Configs without the `# Material3UI Configuration` marker (your own Matugen or Alacritty setup) are left alone.
 6. **Deploy** installs the shell, Matugen templates, Alacritty config, Hyprland modules and `material3uictl`, sets the XDG default file manager and browser, and removes Material3UI v1 helpers if present.
 7. **Summary** offers to reload Hyprland and start the shell when you are already in a Hyprland session.

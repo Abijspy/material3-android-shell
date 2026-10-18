@@ -342,30 +342,32 @@ if [[ ${#MISSING[@]} -gt 0 ]]; then
     AUR=""
     # A helper built against an older libalpm fails to start ("libalpm.so.N: cannot open
     # shared object file"), so check that it runs, not just that it exists.
-    for h in paru yay; do
-        command -v "$h" >/dev/null 2>&1 || continue
-        if "$h" --version >/dev/null 2>&1; then AUR="$h"; break; fi
-        warn "$h is installed but fails to start (likely built against an older libalpm); skipping it."
-    done
+    if command -v yay >/dev/null 2>&1; then
+        if yay --version >/dev/null 2>&1; then
+            AUR=yay
+        else
+            warn "yay is installed but fails to start (likely built against an older libalpm); reinstalling it."
+        fi
+    fi
     if [[ -z "$AUR" ]]; then
-        say "No working AUR helper found; bootstrapping paru."
+        say "No working AUR helper found; bootstrapping yay."
         run sudo pacman -Syu --needed --noconfirm base-devel git
         tmp="$(mktemp -d)"
         if [[ "$DRY_RUN" == 0 ]]; then
-            # paru-bin is prebuilt and tied to one libalpm soname; build paru from
+            # yay-bin is prebuilt and tied to one libalpm soname; build yay from
             # source against the system's libalpm when the binary does not run.
-            run git clone --depth 1 https://aur.archlinux.org/paru-bin.git "$tmp/paru-bin"
-            (cd "$tmp/paru-bin" && makepkg -si --noconfirm) || true
-            if ! paru --version >/dev/null 2>&1; then
-                warn "paru-bin does not run against this libalpm; building paru from source."
-                pacman -Qq paru-bin >/dev/null 2>&1 && run sudo pacman -Rdd --noconfirm paru-bin
-                run git clone --depth 1 https://aur.archlinux.org/paru.git "$tmp/paru"
-                (cd "$tmp/paru" && makepkg -si --noconfirm) || die "Building paru failed. Install an AUR helper (paru or yay) and re-run the installer."
-                paru --version >/dev/null 2>&1 || die "paru still fails to start. Run 'sudo pacman -Syu', then re-run the installer."
+            run git clone --depth 1 https://aur.archlinux.org/yay-bin.git "$tmp/yay-bin"
+            (cd "$tmp/yay-bin" && makepkg -si --noconfirm) || true
+            if ! yay --version >/dev/null 2>&1; then
+                warn "yay-bin does not run against this libalpm; building yay from source."
+                pacman -Qq yay-bin >/dev/null 2>&1 && run sudo pacman -Rdd --noconfirm yay-bin
+                run git clone --depth 1 https://aur.archlinux.org/yay.git "$tmp/yay"
+                (cd "$tmp/yay" && makepkg -si --noconfirm) || die "Building yay failed. Install yay and re-run the installer."
+                yay --version >/dev/null 2>&1 || die "yay still fails to start. Run 'sudo pacman -Syu', then re-run the installer."
             fi
         fi
         rm -rf "$tmp"
-        AUR=paru
+        AUR=yay
     fi
     ok "AUR helper: $AUR"
     flags=(-S --needed)

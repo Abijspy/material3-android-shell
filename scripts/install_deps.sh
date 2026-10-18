@@ -28,4 +28,4 @@ if [ -z "$PACKAGES" ] || [ "$PACKAGES" == "null" ]; then
 fi
 
 echo "Installing $CATEGORY dependencies..."
-paru -S --needed $CONFIRM_FLAG $PACKAGES
+yay -S --needed $CONFIRM_FLAG $PACKAGES

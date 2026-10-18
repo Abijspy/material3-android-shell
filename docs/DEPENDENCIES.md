@@ -1,6 +1,6 @@
 # Dependencies
 
-The installer reads `data/dependencies.json`, checks what is missing with `pacman -T`, and installs the rest with paru or yay. This is the same list in readable form.
+The installer reads `data/dependencies.json`, checks what is missing with `pacman -T`, and installs the rest with yay. This is the same list in readable form.
 
 ### Core Components
 

@@ -192,7 +192,7 @@ Copy the files from `~/.config/material3ui/backups/<timestamp>/` back into place
 <details>
 <summary><b>Do I need an AUR helper?</b></summary>
 
-For installing, yes: the installer bootstraps `paru` if neither paru nor yay is present. AUR *search* in Packages & Updates uses the AUR's web API, so it works without a helper. Installing AUR packages from there still needs one.
+For installing, yes: the installer uses yay, and installs it if it's missing. AUR *search* in Packages & Updates uses the AUR's web API, so it works without a helper. Installing AUR packages from there still needs one.
 </details>
 
 <details>

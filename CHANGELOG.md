@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Installer:** paru is no longer installed or used. The installer installs packages with yay and bootstraps `yay-bin` when yay is missing, building `yay` from source if the prebuilt binary doesn't run against the system's libalpm. `scripts/install_deps.sh` uses yay too. Packages & Updates still detects paru if you already have it.
 - **Installer:** fix `libalpm.so.15: cannot open shared object file` when bootstrapping paru. An AUR helper is used only if it actually starts. When the prebuilt `paru-bin` doesn't run against the system's libalpm, the installer builds `paru` from source, and it runs a full `pacman -Syu` first. The package-updates check also skips a helper that fails to start.
 - **License:** Material3UI Shell is now MIT-licensed (previously AGPL-3.0), with the permission of the NAnDoroid-shell authors. See `LICENSE` and `NOTICE`.
 - **Native C++ shell, phases 2 and 3** (`shell/`):
