@@ -242,6 +242,18 @@ Item {
 
     Component { id: m3VpnKeyComponent; Item { visible: false; implicitWidth: 0; implicitHeight: 0 } }
 
+    Component { id: m3ArchUpdatesComponent; M3StatusWrapper {
+        id: archUpdatesWrapper
+        Layout.alignment: Qt.AlignVCenter
+        m3Color: Appearance.m3colors.m3secondaryContainer
+        m3ContentColor: Appearance.m3colors.m3onSecondaryContainer
+
+        ArchUpdatesModule {
+            Layout.alignment: Qt.AlignVCenter
+            color: archUpdatesWrapper.m3ContentColor
+        }
+    }}
+
     Component { id: m3BatteryComponent; M3StatusWrapper {
         id: batteryWrapper
         Layout.alignment: Qt.AlignVCenter
@@ -504,6 +516,7 @@ Item {
             case "sysTray": return m3SysTrayComponent;
             case "vpnWarpKey": return m3VpnKeyComponent;
             case "battery": return m3BatteryComponent;
+            case "archUpdates": return m3ArchUpdatesComponent;
             case "statusIconsGroup": return m3StatusIconsGroupComponent;
             case "clock": return m3ClockComponent;
             case "workspaceIndicator": return m3WorkspaceIndicatorComponent;
@@ -515,6 +528,7 @@ Item {
         if (name === "sysTray") return SystemTray.items.values.length > 0;
         if (name === "vpnWarpKey") return false;
         if (name === "battery") return Battery.available;
+        if (name === "archUpdates") return ArchUpdates.count > 0 || ArchUpdates.checking || ArchUpdates.upgrading || (Config.ready && Config.options.archUpdates.showWhenUpToDate);
         if (name === "networkSpeed") return Config.ready && Config.options.bar && Config.options.bar.show_network_speed;
         return true;
     }

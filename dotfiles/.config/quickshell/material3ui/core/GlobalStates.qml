@@ -171,7 +171,8 @@ Singleton {
 
     // Settings Navigation
     property int settingsPageIndex: 0
-    property string settingsAboutView: "main" // "main", "update", "dependency", or "credits"
+    property string settingsAboutView: "main" // "main", "update", "archupdates", "dependency", or "credits"
+    property string pendingAboutView: "" // About sub-page to show when Settings opens
     property bool settingsBluetoothPairMode: false
 
     // System Monitor Navigation
@@ -236,7 +237,8 @@ Singleton {
 
     onSettingsOpenChanged: {
         if (settingsOpen) {
-            settingsAboutView = "main"
+            settingsAboutView = pendingAboutView || "main"
+            pendingAboutView = ""
             notificationCenterOpen = false
             quickSettingsOpen = false
             quickActionsOpen = false
@@ -339,6 +341,17 @@ Singleton {
         accentPickerOpen = false
         // Note: settingsOpen, systemMonitorOpen, wallpaperSelectorOpen and
         // regionSelectorOpen are excluded so Material3UI's own windows survive.
+    }
+
+    // Open Settings → About on a given sub-page (e.g. "archupdates")
+    function openAboutPage(view) {
+        settingsPageIndex = 8
+        if (settingsOpen) {
+            settingsAboutView = view
+        } else {
+            pendingAboutView = view
+            settingsOpen = true
+        }
     }
 
     function activateSettings() {

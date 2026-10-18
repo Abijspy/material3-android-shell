@@ -14,6 +14,8 @@ singleton SystemInfo SystemInfo.qml
 singleton Wallpapers Wallpapers.qml
 singleton Caffeine Caffeine.qml
 singleton GreeterSync GreeterSync.qml
+singleton ArchUpdates ArchUpdates.qml
+singleton PackageSearch PackageSearch.qml
 singleton Session Session.qml
 singleton Weather 1.0 Weather.qml
 singleton LauncherSearch LauncherSearch.qml

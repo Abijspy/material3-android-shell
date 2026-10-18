@@ -34,7 +34,7 @@ ColumnLayout {
         ProjectCard {
             title: "NAnDoroid-shell"
             description: I18nService.tr("na-ive's Android 16 inspired Quickshell shell (AGPL-3.0). Material3UI Shell v2 is built on its codebase.")
-            iconSource: "../../../../assets/icons/Material3UI.svg"
+            iconSource: "../../../../assets/icons/nandoroid.svg"
             url: "https://github.com/na-ive/nandoroid-shell"
             accentColor: "#b4befe"
         }

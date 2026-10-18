@@ -78,6 +78,7 @@ Flickable {
                     text: {
                         if (GlobalStates.settingsAboutView === "main") return I18nService.tr("About")
                         if (GlobalStates.settingsAboutView === "update") return I18nService.tr("Shell Update")
+                        if (GlobalStates.settingsAboutView === "archupdates") return I18nService.tr("Packages & Updates")
                         if (GlobalStates.settingsAboutView === "dependency") return I18nService.tr("Dependency Check")
                         if (GlobalStates.settingsAboutView === "credits") return I18nService.tr("Special Thanks")
                         return I18nService.tr("About")
@@ -94,6 +95,7 @@ Flickable {
                 text: {
                     if (GlobalStates.settingsAboutView === "main") return I18nService.tr("System information and shell details.")
                     if (GlobalStates.settingsAboutView === "update") return I18nService.tr("Manage shell update channels and fetch new versions.")
+                    if (GlobalStates.settingsAboutView === "archupdates") return I18nService.tr("Update Arch, AUR and Flatpak packages, or find and install new ones.")
                     if (GlobalStates.settingsAboutView === "dependency") return I18nService.tr("Check and install missing system dependencies.")
                     if (GlobalStates.settingsAboutView === "credits") return I18nService.tr("Contributors and projects that made Material3UI possible.")
                     return ""
@@ -114,6 +116,12 @@ Flickable {
         // ── Update Sub-page ──
         AboutUpdate {
             visible: GlobalStates.settingsAboutView === "update"
+            Layout.fillWidth: true
+        }
+
+        // ── Packages & updates Sub-page ──
+        AboutArchUpdates {
+            visible: GlobalStates.settingsAboutView === "archupdates"
             Layout.fillWidth: true
         }
 

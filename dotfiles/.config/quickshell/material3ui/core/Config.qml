@@ -406,7 +406,7 @@ property JsonObject background: JsonObject {
                 property int centeredWidth: 1200
                 property string centerModule: "clock"
                 property list<string> leftModules: ["distroIcon", "activeWindow", "systemMonitor"]
-                property list<string> rightModules: ["networkSpeed", "sysTray", "statusIconsGroup", "battery"]
+                property list<string> rightModules: ["networkSpeed", "archUpdates", "sysTray", "statusIconsGroup", "battery"]
                 property bool showSystemMonitorCpu: true
                 property bool showSystemMonitorRam: true
                 property bool showSystemMonitorSwap: false
@@ -567,6 +567,16 @@ property JsonObject background: JsonObject {
                 property JsonObject weather: JsonObject { property string textColorMode: "adaptive" }
                 property JsonObject security: JsonObject { property bool requirePasswordToPower: true }
                 property JsonObject greeter: JsonObject { property bool autoSync: true }
+            }
+
+            // --- Arch package updates ---
+            property JsonObject archUpdates: JsonObject {
+                property bool autoCheck: true
+                property int intervalMinutes: 60
+                property bool includeAur: true
+                property bool includeFlatpak: true
+                property bool notify: true
+                property bool showWhenUpToDate: false
             }
 
             // --- System ---

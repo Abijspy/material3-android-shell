@@ -9,7 +9,7 @@ License v3.0.
 
 Modifications include: rebranding to Material3UI (Quickshell profile, config,
 cache and Hyprland module paths), a unified "material3ui" IPC target, the
-bundled material3uictl CLI, wallpaper IPC functions, a Material3UI v1 migration
+bundled material3uictl CLI, an original logo replacing the NAnDoroid artwork, wallpaper IPC functions, a Material3UI v1 migration
 path in the installer, and the Midnight Dunes wallpaper.
 
 This program is free software: you can redistribute it and/or modify it under

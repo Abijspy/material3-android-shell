@@ -18,6 +18,48 @@ ColumnLayout {
 
             spacing: 24 * Appearance.effectiveScale
 
+            // ── Logo hero ──
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.topMargin: 8 * Appearance.effectiveScale
+                spacing: 6 * Appearance.effectiveScale
+
+                Image {
+                    id: heroLogo
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: 112 * Appearance.effectiveScale
+                    Layout.preferredHeight: 112 * Appearance.effectiveScale
+                    source: Quickshell.shellPath("assets/icons/Material3UI.svg")
+                    sourceSize: Qt.size(224 * Appearance.effectiveScale, 224 * Appearance.effectiveScale)
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+
+                    // Gentle entrance, echoing the shell's expressive motion
+                    scale: 0.85
+                    opacity: 0
+                    Component.onCompleted: { scale = 1; opacity = 1; }
+                    Behavior on scale { NumberAnimation { duration: 500; easing.type: Easing.OutBack; easing.overshoot: 1.2 } }
+                    Behavior on opacity { NumberAnimation { duration: 300 } }
+                }
+
+                StyledText {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: 6 * Appearance.effectiveScale
+                    text: "Material3UI Shell"
+                    font.pixelSize: Appearance.font.pixelSize.huge
+                    font.family: Appearance.font.family.title
+                    font.weight: Font.DemiBold
+                    color: Appearance.colors.colOnLayer1
+                }
+
+                StyledText {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: I18nService.tr("Material You for Hyprland")
+                    font.pixelSize: Appearance.font.pixelSize.small
+                    color: Appearance.colors.colSubtext
+                }
+            }
+
             // ── Top Branding & Distro Cards (50:50) ──
             RowLayout {
                 Layout.fillWidth: true
@@ -85,6 +127,67 @@ ColumnLayout {
                             color: Appearance.colors.colError
                             font.pixelSize: Appearance.font.pixelSize.small
                             visible: updateAvailable
+                        }
+                        MaterialSymbol {
+                            text: "chevron_right"
+                            iconSize: 20 * Appearance.effectiveScale
+                            color: Appearance.colors.colSubtext
+                        }
+                    }
+                }
+
+                RippleButton {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 64 * Appearance.effectiveScale
+                    buttonRadius: 32 * Appearance.effectiveScale
+                    colBackground: Appearance.m3colors.m3surfaceContainerHigh
+                    onClicked: pushView("archupdates")
+
+                    SearchHandler {
+                        searchString: "Packages & Updates"
+                        aliases: ["System updates", "Arch updates", "pacman", "AUR", "Flatpak", "Install packages"]
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16 * Appearance.effectiveScale
+                        anchors.rightMargin: 16 * Appearance.effectiveScale
+                        spacing: 16 * Appearance.effectiveScale
+                        MaterialSymbol {
+                            text: "system_update_alt"
+                            iconSize: 24 * Appearance.effectiveScale
+                            color: Appearance.colors.colPrimary
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 0
+                            StyledText {
+                                Layout.fillWidth: true
+                                text: I18nService.tr("Packages & Updates")
+                                color: Appearance.colors.colOnLayer1
+                            }
+                            StyledText {
+                                Layout.fillWidth: true
+                                text: I18nService.tr(ArchUpdates.statusText)
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                color: Appearance.colors.colSubtext
+                                elide: Text.ElideRight
+                            }
+                        }
+                        Rectangle {
+                            visible: ArchUpdates.count > 0
+                            implicitWidth: Math.max(implicitHeight, updCount.implicitWidth + 12 * Appearance.effectiveScale)
+                            implicitHeight: 22 * Appearance.effectiveScale
+                            radius: height / 2
+                            color: Appearance.colors.colPrimary
+                            StyledText {
+                                id: updCount
+                                anchors.centerIn: parent
+                                text: ArchUpdates.count
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                font.weight: Font.Medium
+                                color: Appearance.colors.colOnPrimary
+                            }
                         }
                         MaterialSymbol {
                             text: "chevron_right"

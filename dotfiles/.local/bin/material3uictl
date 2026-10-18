@@ -18,6 +18,8 @@ Commands:
   close                      Close all open panels
   wallpaper [path|next]      Open the wallpaper picker, apply an image, or cycle
   darkmode                   Toggle light/dark colour scheme
+  packages                   Open Packages & Updates (search / install / update)
+  updates [check|upgrade|count]  Arch, AUR and Flatpak updates
   brightness up|down         Step screen brightness
   region screenshot|ocr|search|record|qrcode
   pomodoro start|pause|stop|reset
@@ -43,6 +45,14 @@ case "$cmd" in
          m3 wallpaper "$(realpath "$1")" ;;
     esac ;;
   darkmode) m3 darkMode ;;
+  packages) m3 packages ;;
+  updates)
+    case "${1:-check}" in
+      check) m3 checkUpdates ;;
+      upgrade) m3 systemUpdate ;;
+      count) m3 updateCount ;;
+      *) usage ;;
+    esac ;;
   brightness)
     case "${1:-}" in
       up|increment) quickshell -c material3ui ipc call brightness increment ;;

@@ -163,6 +163,11 @@
       "name": "translate-shell",
       "command": "trans",
       "description": "CLI translation tool"
+    },
+    {
+      "name": "pacman-contrib",
+      "command": "checkupdates",
+      "description": "Safe update checks for Packages & Updates"
     }
   ],
   "theming": [
@@ -273,6 +278,11 @@
       "name": "cloudflare-warp-bin",
       "command": "warp-cli",
       "description": "Cloudflare WARP client"
+    },
+    {
+      "name": "flatpak",
+      "command": "flatpak",
+      "description": "Flatpak apps in Packages & Updates"
     }
   ]
 }

@@ -46,6 +46,7 @@ ShellRoot {
     readonly property var _caffeine: Caffeine
     readonly property var _versionService: VersionService
     readonly property var _greeterSync: GreeterSync
+    readonly property var _archUpdates: ArchUpdates
 
     Component.onCompleted: {
         MaterialThemeLoader.reapplyTheme()
@@ -87,6 +88,10 @@ ShellRoot {
         function darkMode(): void { Wallpapers.toggleDarkMode() }
         function lock(): void { lockScreen.lock() }
         function close(): void { GlobalStates.closeAllPanels() }
+        function packages(): void { GlobalStates.openAboutPage("archupdates") }
+        function checkUpdates(): void { ArchUpdates.check() }
+        function systemUpdate(): void { ArchUpdates.upgrade() }
+        function updateCount(): int { return ArchUpdates.count }
     }
 
     // ── Phase 1: Background ──

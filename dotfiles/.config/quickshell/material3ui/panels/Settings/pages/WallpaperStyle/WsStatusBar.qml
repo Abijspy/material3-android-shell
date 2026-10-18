@@ -87,6 +87,7 @@ ColumnLayout {
         { id: "sysTray", name: I18nService.tr("System Tray"), icon: "inbox" },
         { id: "statusIconsGroup", name: I18nService.tr("Status Icons (WiFi/Volume)"), icon: "info" },
         { id: "battery", name: I18nService.tr("Battery"), icon: "battery_full" },
+        { id: "archUpdates", name: I18nService.tr("Package Updates"), icon: "system_update_alt" },
         { id: "workspaceIndicator", name: I18nService.tr("Workspace Indicator"), icon: "view_module" }
     ]
 

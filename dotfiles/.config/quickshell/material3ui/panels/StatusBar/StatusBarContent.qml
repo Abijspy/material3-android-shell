@@ -105,6 +105,11 @@ Item {
         Layout.alignment: Qt.AlignVCenter
     }}
 
+    Component { id: archUpdatesComponent; ArchUpdatesModule {
+        Layout.alignment: Qt.AlignVCenter
+        color: root.contentColor
+    }}
+
     Component { id: vpnKeyComponent; Item { visible: false; implicitWidth: 0; implicitHeight: 0 } }
 
     Component { id: batteryComponent; BatteryIndicator {
@@ -315,6 +320,7 @@ Item {
             case "sysTray": return sysTrayComponent;
             case "vpnWarpKey": return vpnKeyComponent;
             case "battery": return batteryComponent;
+            case "archUpdates": return archUpdatesComponent;
             case "statusIconsGroup": return statusIconsGroupComponent;
             case "clock": return clockComponent;
             case "workspaceIndicator": return workspaceIndicatorComponent;
@@ -326,6 +332,7 @@ Item {
         if (name === "sysTray") return SystemTray.items.values.length > 0;
         if (name === "vpnWarpKey") return false;
         if (name === "battery") return Battery.available;
+        if (name === "archUpdates") return ArchUpdates.count > 0 || ArchUpdates.checking || ArchUpdates.upgrading || (Config.ready && Config.options.archUpdates.showWhenUpToDate);
         if (name === "networkSpeed") return Config.ready && Config.options.bar && Config.options.bar.show_network_speed;
         return true;
     }

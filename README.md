@@ -10,8 +10,8 @@ A Quickshell-based Material 3 desktop shell for Hyprland, adopting Android 16 de
 
 > **Note**: This shell and its dependencies are designed for **Arch Linux based distributions** (Arch, CachyOS, EndeavourOS, etc.).
 
-**Version:** v2.3.0
-**License:** AGPL-3.0 — Material3UI Shell v2 is a rebranded fork of [NAnDoroid-shell](https://github.com/na-ive/nandoroid-shell) by na-ive. See [NOTICE](NOTICE).
+**Version:** v3.0.0
+**License:** AGPL-3.0 — Material3UI Shell is built on [NAnDoroid-shell](https://github.com/na-ive/nandoroid-shell) by na-ive and has its own identity since v3. See [NOTICE](NOTICE).
 
 ## Key Features
 
@@ -27,6 +27,7 @@ A Quickshell-based Material 3 desktop shell for Hyprland, adopting Android 16 de
 - **System monitor** powered by the bundled `material3ui-sysmon` (processes with real-time CPU deltas, performance and system pages).
 - **Wallpapers:** Local, Wallhaven and online collections, live wallpapers (mpvpaper / Wallpaper Engine), auto-cycling and desktop widgets.
 - **Auto-generated colours:** The whole shell, GTK, KDE, terminals and apps are themed from the wallpaper with Matugen Material 3 tokens.
+- **Packages & Updates**: Arch, AUR and Flatpak updates with a status bar plugin, plus tabs to search and install packages from the official repositories, the AUR and Flatpak.
 - **Settings app** with onboarding, presets, translations, display, audio, network and Bluetooth dialogs, music recognition (`songrec`), floating lyrics and in-shell OTA updates.
 
 ## Installation
@@ -169,6 +170,19 @@ Update later from Settings → About, or run `update.sh all` in the checkout. Up
 | `shell.lua` | Starts the shell, panel shortcuts, region tools, layer rules — the only module `inject` mode needs |
 | `user_persistence.lua` | Written by the shell (monitor layouts, game mode) |
 | `user.lua` | **Your overrides** — loaded last, never overwritten |
+
+## Packages & Updates
+
+Settings → About → **Packages & Updates** (or the status bar plugin, or `material3uictl packages`) has one tab per job:
+
+| Tab | What it does |
+| :--- | :--- |
+| **Updates** | Pending updates from the official repos (`checkupdates`, which never touches pacman's own databases), the AUR (`paru -Qua` / `yay -Qua`) and Flatpak, with **Check now** and **Update now** (runs `paru -Syu` / `yay -Syu` / `sudo pacman -Syu`, then `flatpak update`, in your terminal). Auto-check interval, AUR/Flatpak inclusion, notifications and the bar plugin are configured here. |
+| **Official** | Search the Arch repositories (`pacman -Ss`) and install with `sudo pacman -S`. |
+| **AUR** | Search the AUR through its web API (no helper needed to search) and install with your AUR helper. |
+| **Flatpak** | Search Flathub and your other remotes and install with `flatpak install`. |
+
+Installs and upgrades open in your terminal so password and confirmation prompts stay in your hands. The **Package Updates** status bar module (on by default for new configs, hidden when you are up to date) shows the count: left click opens the page, right click checks, middle click updates. From a terminal: `material3uictl updates check|upgrade|count`.
 
 ## Login screen (greetd)
 
