@@ -69,49 +69,61 @@ Button* iconButton(Node* parent, const std::string& icon, std::function<void()> 
 }
 
 Tile::Tile(const std::string& icon, const std::string& title) : Button(Direction::Row) {
-    setPadding({20, 12, 14, 12})->setSpacing(12)->setRadius(Radii(28));
-    setBackground("surface_container_highest", false);
-    pressedRadius = 14;
-    minHeight = 72;
+    pill(this)->setPadding({10, 10, 18, 10})->setSpacing(12);
+    setBackground(ColorRef("on_surface", 0.1f), false);
+    pressedRadius = 18;
+    minHeight = 64;
     grow = true;
-    m_icon = add<Icon>(icon, 24);
+    m_chip = add<Button>(Direction::Row);
+    m_chip->setJustify(Align::Center);
+    m_chip->fixedWidth = m_chip->fixedHeight = 44;
+    m_chip->pressedRadius = 10;
+    m_icon = m_chip->add<Icon>(icon, 22);
     auto* texts = add<Flex>(Direction::Column);
-    texts->setAlignItems(Align::Start)->setSpacing(1);
+    texts->setAlignItems(Align::Start)->setSpacing(0);
     texts->grow = true;
     m_title = texts->add<Label>(title);
-    m_title->setSize(15)->setWeight(600)->setMaxWidth(110);
+    m_title->setSize(15)->setWeight(600)->setMaxWidth(112);
     m_status = texts->add<Label>();
-    m_status->setSize(13)->setMaxWidth(110);
+    m_status->setSize(13)->setMaxWidth(112);
+    // With details, the body opens them and the chip toggles
+    onClicked = [this](uint32_t button) {
+        if (button != BTN_LEFT) return;
+        if (onDetails) onDetails();
+        else if (onToggle) onToggle();
+    };
+    m_chip->onClicked = [this](uint32_t button) {
+        if (button != BTN_LEFT) return;
+        if (onToggle) onToggle();
+    };
     set(false, "");
 }
 
-void Tile::enableDetails() {
-    if (m_chevron) return;
-    auto* b = add<Button>();
-    pill(b)->setPadding(Insets(4));
-    m_chevron = b->add<Icon>("chevron_right", 20);
-    b->onClicked = [this](uint32_t) {
-        if (onDetails) onDetails();
-    };
-    set(m_active, m_status->text());
+void Tile::set(bool active, const std::string& status, const std::string& icon) {
+    m_active = active;
+    const bool chipOnly = static_cast<bool>(onDetails);
+    const bool filled = active && !chipOnly;
+    // Off: a translucent tint, so the blurred desktop shows through
+    setBackground(filled ? ColorRef("primary") : ColorRef("on_surface", 0.1f));
+    // The chip: a circle while off, a rounded square while on
+    m_chip->setRadius(Radii(active ? 14 : 22));
+    m_chip->setBackground(active && chipOnly ? ColorRef("primary") : filled ? ColorRef::none() : ColorRef("on_surface", 0.1f));
+    if (!icon.empty()) m_icon->setText(icon);
+    m_icon->setFill(active)->setColor(active ? "on_primary" : "on_surface");
+    m_title->setColor(filled ? "on_primary" : "on_surface");
+    m_status->setText(status);
+    m_status->setVisible(!status.empty());
+    m_status->setColor(filled ? "on_primary" : "on_surface_variant");
 }
 
-void Tile::set(bool active, const std::string& status) {
-    m_active = active;
-    setBackground(active ? "primary" : "surface_container_highest");
-    const char* fg = active ? "on_primary" : "on_surface";
-    m_icon->setColor(active ? "on_primary" : "on_surface_variant");
-    m_icon->setFill(active);
-    m_title->setColor(fg);
-    m_status->setText(status);
-    m_status->setColor(active ? "on_primary" : "on_surface_variant");
-    if (m_chevron) m_chevron->setColor(fg);
+void Tile::setSelected(bool selected) {
+    setBorder(selected ? 3 : 0, "on_surface");
 }
 
 SmallTile::SmallTile(const std::string& icon, float width) : Button(Direction::Row) {
     pill(this)->setJustify(Align::Center);
-    setBackground("surface_container_highest", false);
-    pressedRadius = 14;
+    setBackground(ColorRef("on_surface", 0.1f), false);
+    pressedRadius = 18;
     fixedWidth = width;
     fixedHeight = 64;
     m_icon = add<Icon>(icon, 24);
@@ -119,9 +131,13 @@ SmallTile::SmallTile(const std::string& icon, float width) : Button(Direction::R
 }
 
 void SmallTile::set(bool active, const std::string& icon) {
-    setBackground(active ? "primary" : "surface_container_highest");
+    setBackground(active ? ColorRef("primary") : ColorRef("on_surface", 0.1f));
     if (!icon.empty()) m_icon->setText(icon);
-    m_icon->setFill(active)->setColor(active ? "on_primary" : "on_surface_variant");
+    m_icon->setFill(active)->setColor(active ? "on_primary" : "on_surface");
+}
+
+void SmallTile::setSelected(bool selected) {
+    setBorder(selected ? 3 : 0, "on_surface");
 }
 
 } // namespace m3::shell::kit

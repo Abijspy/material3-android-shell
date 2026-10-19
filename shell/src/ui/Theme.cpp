@@ -79,8 +79,8 @@ Theme::Theme() {
 void Theme::loadEffects() {
     auto& c = Config::get();
     m_blur = c.value<bool>("/appearance/blur/enabled", true);
-    m_barOpacity = std::clamp(static_cast<float>(c.value<double>("/appearance/transparency/bar", 0.8)), 0.3f, 1.0f);
-    m_panelOpacity = std::clamp(static_cast<float>(c.value<double>("/appearance/transparency/panels", 0.9)), 0.3f, 1.0f);
+    m_barOpacity = std::clamp(static_cast<float>(c.value<double>("/appearance/transparency/bar", 0.7)), 0.3f, 1.0f);
+    m_panelOpacity = std::clamp(static_cast<float>(c.value<double>("/appearance/transparency/panels", 0.72)), 0.3f, 1.0f);
     m_roundness = std::clamp(static_cast<float>(c.value<double>("/appearance/roundness", 1.0)), 0.0f, 1.5f);
     ui::motion::scale = std::clamp(static_cast<float>(c.value<double>("/appearance/animationSpeed", 1.0)), 0.0f, 2.0f);
 }

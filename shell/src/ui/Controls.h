@@ -18,8 +18,8 @@ public:
     Slider* setValue(float v, bool animate = true);
     Slider* setCentred(bool c);
     Slider* setStep(float s);
-    // M3 Expressive large slider (Quick Settings): a tall track with the
-    // icon inside it, as Android 16 draws brightness and volume
+    // M3 Expressive large slider (Quick Settings): a tall rounded track with
+    // the icon inside its end, as Android 17 draws brightness and volume
     Slider* setIcon(const std::string& icon, float trackHeight = 40);
     const std::string& icon() const { return m_icon; }
     float value() const { return m_value; }

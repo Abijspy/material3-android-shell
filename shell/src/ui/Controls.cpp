@@ -86,8 +86,8 @@ void Slider::setFromX(float x) {
 void Slider::onHover(bool) {}
 
 void Slider::onPress(uint32_t, float x, float) {
-    // The icon's square at the track's start is a button of its own
-    if (onIconClicked && !m_icon.empty() && x < rect().x + m_track) {
+    // The icon's square at the track's end is a button of its own
+    if (onIconClicked && !m_icon.empty() && x > rect().right() - m_track) {
         onIconClicked();
         return;
     }
@@ -132,7 +132,7 @@ void Slider::doPaint(Renderer& r) {
     const Color inactive = Theme::get().color("secondary_container");
     const float ty = cy - m_track / 2;
     // Large tracks are rounded rectangles, small ones pills
-    const float outer = m_track > kTrack ? std::min(m_track / 2, 14.0f) : m_track / 2, inner = m_track > kTrack ? 4 : 2;
+    const float outer = m_track / 2, inner = m_track > kTrack ? 4 : 2;
     const float kTrack = m_track; // the drawing below uses the instance's track
 
     const float leftEnd = hx - hw / 2 - kGap;
@@ -155,7 +155,7 @@ void Slider::doPaint(Renderer& r) {
     }
     const float handleH = handleHeight(m_track);
     r.rect({hx - hw / 2, cy - handleH / 2, hw, handleH}, active, Radii(hw / 2));
-    // The icon inside the track's start: on the fill once it reaches it
+    // The icon inside the track's end (Android 17): on the fill once it reaches it
     if (!m_icon.empty() && !m_centred) {
         TextStyle st;
         st.family = Theme::get().iconFamily();
@@ -163,7 +163,7 @@ void Slider::doPaint(Renderer& r) {
         st.fill = 1;
         st.size = std::round(m_track * 0.5f);
         const auto& tex = TextEngine::get().texture(m_icon, st, r.scale());
-        const float ix = b.x + (m_track - tex.logical.width) / 2;
+        const float ix = b.right() - (m_track + tex.logical.width) / 2;
         const bool covered = leftEnd >= ix + tex.logical.width;
         const float s = r.scale();
         r.mask(tex.id, {std::round(ix * s) / s, std::round((cy - tex.logical.height / 2) * s) / s, tex.logical.width, tex.logical.height},

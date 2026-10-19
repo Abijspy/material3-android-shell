@@ -49,7 +49,7 @@ void Effects::apply() {
     if (!h.available()) return;
     auto& t = Theme::get();
     const auto& c = Config::get();
-    const int size = std::clamp(c.value<int>("/appearance/blur/size", 8), 1, 20);
+    const int size = std::clamp(c.value<int>("/appearance/blur/size", 12), 1, 20);
     const int passes = std::clamp(c.value<int>("/appearance/blur/passes", 3), 1, 4);
     // Pixels fainter than this are left sharp: the clear space around a
     // popup's card or between bar capsules. Kept under the panels' own alpha.

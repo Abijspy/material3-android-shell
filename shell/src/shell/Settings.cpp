@@ -101,34 +101,6 @@ private:
     }
 };
 
-// Children left to right, wrapping onto new lines (chips)
-class Flow : public Node {
-public:
-    float spacing = 6;
-
-protected:
-    SizeF doMeasure(SizeF available) override { return place(available.w, false); }
-    void doArrange() override { place(rect().w, true); }
-
-private:
-    SizeF place(float width, bool arrange) {
-        float x = 0, y = 0, line = 0, widest = 0;
-        for (auto& c : children()) {
-            if (!c->shown()) continue;
-            const SizeF s = c->measure({width, 1e6f});
-            if (x > 0 && x + s.w > width) {
-                x = 0;
-                y += line + spacing;
-                line = 0;
-            }
-            if (arrange) c->arrange({rect().x + x, rect().y + y, s.w, s.h});
-            x += s.w + spacing;
-            line = std::max(line, s.h);
-            widest = std::max(widest, x - spacing);
-        }
-        return {widest, y + line};
-    }
-};
 
 // A titled group of rows
 Flex* group(Node* page, const std::string& title, const std::string& subtitle = {}) {
@@ -677,10 +649,10 @@ void stylePage(Flex* page, Popup&) {
     switchRow(fx, "blur_on", "Blur", Hyprland::get().available() ? "Behind the bar, panels, notifications and OSD"
                                                                   : "Needs Hyprland, or a compositor with ext-background-effect",
               "/appearance/blur/enabled", true);
-    sliderRow(fx, "blur_medium", "Blur strength", "/appearance/blur/size", 8, 2, 20, 1,
+    sliderRow(fx, "blur_medium", "Blur strength", "/appearance/blur/size", 12, 2, 20, 1,
               [](double v) { return std::format("Radius {:.0f} · applies to windows too", v); });
-    sliderRow(fx, "toolbar", "Bar opacity", "/appearance/transparency/bar", 0.8, 0.3, 1, 0.05, percent);
-    sliderRow(fx, "select_window", "Panel opacity", "/appearance/transparency/panels", 0.9, 0.3, 1, 0.05, percent);
+    sliderRow(fx, "toolbar", "Bar opacity", "/appearance/transparency/bar", 0.7, 0.3, 1, 0.05, percent);
+    sliderRow(fx, "select_window", "Panel opacity", "/appearance/transparency/panels", 0.72, 0.3, 1, 0.05, percent);
 
     auto* shape = group(page, "Shape & motion");
     choiceRow<double>(shape, "rounded_corner", "Corners", "Every card, button and panel", "/appearance/roundness", 1.0,

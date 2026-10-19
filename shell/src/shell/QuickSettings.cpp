@@ -334,15 +334,18 @@ void setTileLayout(const std::vector<Placed>& tiles) {
 }
 
 // Lays tiles on a 4-column grid (a large tile takes two) inside `parent`
-// and returns a function that brings them up to date
+// and returns a function that brings them up to date. With `onSelect` the
+// grid is the editor's: a tap selects a tile (outlined) instead of using it.
 std::function<void()> buildTiles(Node* parent, const std::vector<Placed>& tiles, Popup* popup, kit::Live* live,
-                                 const std::function<void()>& showWifi, const std::function<void()>& showBluetooth) {
+                                 const std::function<void()>& showWifi, const std::function<void()>& showBluetooth,
+                                 int selected = -1, const std::function<void(int)>& onSelect = {}) {
     // Card 440 − padding 40 = 400: four 94 px columns, 8 px apart
     constexpr float kCol = (400 - 3 * 8) / 4.0f;
     std::vector<std::function<void()>> updates;
     Flex* row = nullptr;
     int used = 4;
-    for (const auto& t : tiles) {
+    for (size_t i = 0; i < tiles.size(); ++i) {
+        const auto& t = tiles[i];
         const auto* def = findTile(t.id);
         if (!def) continue;
         const int span = t.large ? 2 : 1;
@@ -352,28 +355,32 @@ std::function<void()> buildTiles(Node* parent, const std::vector<Placed>& tiles,
             used = 0;
         }
         used += span;
-        auto onPress = [def, popup, live](uint32_t button) {
-            if (button != BTN_LEFT || !popup) return;
+        const int index = static_cast<int>(i);
+        std::function<void()> use = [def, popup, live] {
+            if (!popup) return;
             def->press(*popup);
             if (live) live->syncSoon(); // night light and the like have no service to say so
         };
+        if (onSelect) use = [onSelect, index] { onSelect(index); };
         if (t.large) {
             auto* tile = row->add<Tile>(def->icon, def->title);
             tile->grow = false;
             tile->fixedWidth = kCol * 2 + 8;
-            tile->onClicked = onPress;
-            if (def->details == 1 && showWifi) {
-                tile->enableDetails();
+            tile->onToggle = use;
+            if (onSelect)
+                tile->onDetails = use;
+            else if (def->details == 1 && showWifi)
                 tile->onDetails = showWifi;
-            }
-            if (def->details == 2 && showBluetooth) {
-                tile->enableDetails();
+            else if (def->details == 2 && showBluetooth)
                 tile->onDetails = showBluetooth;
-            }
-            updates.push_back([tile, def] { tile->set(def->active(), def->status()); });
+            tile->setSelected(index == selected);
+            updates.push_back([tile, def] { tile->set(def->active(), def->status(), def->glyph ? def->glyph() : ""); });
         } else {
             auto* tile = row->add<SmallTile>(def->icon, kCol);
-            tile->onClicked = onPress;
+            tile->onClicked = [use](uint32_t button) {
+                if (button == BTN_LEFT) use();
+            };
+            tile->setSelected(index == selected);
             updates.push_back([tile, def] { tile->set(def->active(), def->glyph ? def->glyph() : ""); });
         }
     }
@@ -382,94 +389,113 @@ std::function<void()> buildTiles(Node* parent, const std::vector<Placed>& tiles,
     };
 }
 
-// The editor: a live preview, your tiles (size, order, remove), and the
-// rest to add
+// The editor, as Android's: the tiles themselves; tap one to select it,
+// then move it, resize it or remove it; tap an available tile to add it
 void editView(Flex* body, const std::function<void()>& back) {
     body->clearChildren();
     auto* live = body->add<Live>();
-    live->setSpacing(10);
-    live->sync = [live, back] {
+    live->setSpacing(12);
+    auto selected = std::make_shared<int>(-1);
+    live->sync = [live, back, selected] {
         live->clearChildren();
         auto* head = live->add<Flex>(Flex::Direction::Row);
         head->setSpacing(8);
         iconButton(head, "arrow_back", back);
-        auto* title = head->add<Label>("Edit tiles");
-        title->setSize(20)->setWeight(500);
+        auto* title = head->add<Label>("Edit");
+        title->setSize(22)->setWeight(500);
         title->grow = true;
         auto* reset = head->add<Button>();
-        pill(reset->setBackground("surface_container_highest", false))->setPadding({14, 8});
-        reset->add<Label>("Reset")->setSize(13)->setWeight(500);
-        reset->onClicked = [live](uint32_t) {
+        pill(reset->setBackground(ColorRef("on_surface", 0.1f), false))->setPadding({16, 9});
+        reset->pressedRadius = 10;
+        reset->add<Label>("Reset")->setSize(14)->setWeight(500);
+        reset->onClicked = [live, selected](uint32_t) {
+            *selected = -1;
             Config::get().set("/quickSettings/tiles", nullptr);
             live->syncSoon();
         };
 
         auto tiles = tileLayout();
-        // How the panel will look, as it is now
-        auto* preview = live->add<Flex>(Flex::Direction::Column);
-        preview->setSpacing(8)->setAlignItems(Align::Start);
-        buildTiles(preview, tiles, nullptr, nullptr, {}, {})();
-
-        auto* scroll = live->add<ScrollView>();
-        scroll->maxHeight = 300;
-        auto* list = scroll->add<Flex>(Flex::Direction::Column);
-        list->setAlignItems(Align::Stretch)->setSpacing(4);
+        if (*selected >= static_cast<int>(tiles.size())) *selected = -1;
         auto save = [live](const std::vector<Placed>& t) {
             setTileLayout(t);
             live->syncSoon();
         };
-        caption(list, "Your tiles");
-        for (size_t i = 0; i < tiles.size(); ++i) {
+        auto* scroll = live->add<ScrollView>();
+        scroll->maxHeight = 480;
+        auto* content = scroll->add<Flex>(Flex::Direction::Column);
+        content->setAlignItems(Align::Stretch)->setSpacing(12);
+
+        // Your tiles, as they look in the panel
+        auto* grid = content->add<Flex>(Flex::Direction::Column);
+        grid->setSpacing(8)->setAlignItems(Align::Start);
+        buildTiles(grid, tiles, nullptr, nullptr, {}, {}, *selected, [live, selected](int i) {
+            *selected = *selected == i ? -1 : i;
+            live->syncSoon();
+        })();
+
+        // What to do with the selected one
+        if (*selected >= 0) {
+            const size_t i = static_cast<size_t>(*selected);
             const auto* def = findTile(tiles[i].id);
-            auto* r = list->add<Flex>(Flex::Direction::Row);
-            r->setPadding({14, 6, 6, 6})->setSpacing(6)->setRadius(Radii(18))->setBackground("surface_container_highest", false);
-            r->add<Icon>(def->icon, 20)->setColor("on_surface_variant", false);
-            auto* name = r->add<Label>(def->title);
-            name->setSize(14)->setMaxWidth(150);
+            auto* bar = content->add<Flex>(Flex::Direction::Row);
+            bar->setPadding({14, 8})->setSpacing(6)->setRadius(Radii(28))->setBackground("surface_container_high", false);
+            auto* name = bar->add<Label>(def ? def->title : tiles[i].id);
+            name->setSize(14)->setWeight(600)->setMaxWidth(120);
             name->grow = true;
-            // Size: a tonal chip that flips between Large and Small
-            auto* size = r->add<Button>();
-            pill(size->setBackground(tiles[i].large ? "secondary_container" : "surface_container_high", false))->setPadding({12, 6});
-            size->add<Label>(tiles[i].large ? "Large" : "Small")->setSize(12)->setWeight(500);
-            size->onClicked = [tiles, i, save](uint32_t) mutable {
-                tiles[i].large = !tiles[i].large;
-                save(tiles);
-            };
-            iconButton(r, "keyboard_arrow_up", [tiles, i, save]() mutable {
+            iconButton(bar, "arrow_back", [tiles, i, save, selected]() mutable {
                 if (i == 0) return;
                 std::swap(tiles[i], tiles[i - 1]);
+                *selected = static_cast<int>(i - 1);
                 save(tiles);
-            }, 18);
-            iconButton(r, "keyboard_arrow_down", [tiles, i, save]() mutable {
+            }, 20);
+            iconButton(bar, "arrow_forward", [tiles, i, save, selected]() mutable {
                 if (i + 1 >= tiles.size()) return;
                 std::swap(tiles[i], tiles[i + 1]);
+                *selected = static_cast<int>(i + 1);
                 save(tiles);
-            }, 18);
-            iconButton(r, "remove_circle", [tiles, i, save]() mutable {
+            }, 20);
+            iconButton(bar, tiles[i].large ? "close_fullscreen" : "open_in_full", [tiles, i, save]() mutable {
+                tiles[i].large = !tiles[i].large;
+                save(tiles);
+            }, 20);
+            iconButton(bar, "delete", [tiles, i, save, selected]() mutable {
                 tiles.erase(tiles.begin() + static_cast<long>(i));
+                *selected = -1;
                 save(tiles);
-            }, 18);
+            }, 20);
+        } else {
+            caption(content, tiles.empty() ? "No tiles yet: add some below" : "Tap a tile to move, resize or remove it");
         }
-        if (tiles.empty()) caption(list, "No tiles: add some below");
-        bool more = false;
+
+        // Available tiles: icon and name, a tap adds one
+        auto* addHead = content->add<Label>("Add tiles");
+        addHead->setSize(14)->setWeight(600)->setColor("primary", false);
+        auto* avail = content->add<Flow>();
+        avail->spacing = 8;
+        bool any = false;
         for (const auto& def : tileDefs()) {
             if (std::ranges::any_of(tiles, [&](const Placed& p) { return p.id == def.id; })) continue;
-            if (!more) caption(list, "Add tiles");
-            more = true;
-            auto* r = list->add<Button>(Flex::Direction::Row);
-            r->setPadding({14, 10})->setSpacing(10)->setRadius(Radii(18));
-            r->pressedRadius = 10;
-            r->add<Icon>(def.icon, 20)->setColor("on_surface_variant", false);
-            auto* name = r->add<Label>(def.title);
-            name->setSize(14);
-            name->grow = true;
-            r->add<Icon>("add_circle", 20)->setColor("primary", false);
+            any = true;
+            auto* item = avail->add<Button>(Flex::Direction::Column);
+            item->setPadding({4, 8})->setSpacing(6)->setRadius(Radii(20));
+            item->pressedRadius = 12;
+            item->fixedWidth = (400 - 3 * 8) / 4.0f;
+            auto* chip = item->add<Flex>(Flex::Direction::Row);
+            pill(chip->setBackground(ColorRef("on_surface", 0.1f), false))->setJustify(Align::Center);
+            chip->fixedWidth = 64;
+            chip->fixedHeight = 52;
+            chip->alignSelf = Align::Center;
+            chip->add<Icon>(def.icon, 22)->setColor("on_surface", false);
+            auto* label = item->add<Label>(def.title);
+            label->setSize(12)->setMaxWidth(86)->setColor("on_surface_variant", false);
+            label->alignSelf = Align::Center;
             const std::string id = def.id;
-            r->onClicked = [tiles, id, save](uint32_t) mutable {
+            item->onClicked = [tiles, id, save](uint32_t) mutable {
                 tiles.push_back({id, false});
                 save(tiles);
             };
         }
+        if (!any) caption(content, "Every tile is in use");
     };
     live->sync();
 }
@@ -491,7 +517,7 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
     when->add<Label>(today())->setSize(14)->setWeight(500)->setColor("on_surface_variant", false);
     auto roundButton = [&](const char* icon, std::function<void()> fn) {
         auto* b = head->add<Button>();
-        pill(b->setBackground("surface_container_highest", false))->setPadding(Insets(11));
+        pill(b->setBackground(ColorRef("on_surface", 0.1f), false))->setPadding(Insets(11));
         b->pressedRadius = 12;
         b->add<Icon>(icon, 22)->setColor("on_surface", false);
         b->onClicked = [fn = std::move(fn)](uint32_t button) {
@@ -530,7 +556,7 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
 
     // Battery: charge, what it is doing, and the power mode
     auto* battery = live->add<Flex>(Flex::Direction::Row);
-    battery->setPadding({20, 10, 12, 10})->setSpacing(12)->setRadius(Radii(28))->setBackground("surface_container_highest", false);
+    battery->setPadding({20, 10, 12, 10})->setSpacing(12)->setRadius(Radii(28))->setBackground(ColorRef("on_surface", 0.1f), false);
     auto* batIcon = battery->add<Icon>("battery_full", 22);
     auto* batText = battery->add<Flex>(Flex::Direction::Column);
     batText->setAlignItems(Align::Start);
@@ -545,7 +571,7 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
 
     // The connection at a glance, with live speeds; opens the Wi-Fi view
     auto* net = live->add<Button>(Flex::Direction::Row);
-    net->setPadding({20, 12})->setSpacing(12)->setRadius(Radii(28))->setBackground("surface_container_highest", false);
+    net->setPadding({20, 12})->setSpacing(12)->setRadius(Radii(28))->setBackground(ColorRef("on_surface", 0.1f), false);
     net->pressedRadius = 14;
     auto* netIcon = net->add<Icon>("wifi", 22);
     netIcon->setColor("primary", false);
@@ -562,7 +588,7 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
 
     // Now playing
     auto* media = live->add<Flex>(Flex::Direction::Row);
-    media->setPadding({20, 12})->setSpacing(12)->setRadius(Radii(28))->setBackground("surface_container_highest", false);
+    media->setPadding({20, 12})->setSpacing(12)->setRadius(Radii(28))->setBackground(ColorRef("on_surface", 0.1f), false);
     media->add<Icon>("music_note", 24)->setColor("primary");
     auto* mediaText = media->add<Flex>(Flex::Direction::Column);
     mediaText->setAlignItems(Align::Start);
