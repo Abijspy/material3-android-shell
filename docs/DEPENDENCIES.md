@@ -44,7 +44,6 @@ The installer reads `data/dependencies.json`, checks what is missing with `pacma
 | **Recognition** | `songrec` | Shazam-like music recognition feature. |
 | **Visualizer** | `cava` | Audio visualization in the shell. |
 | **Wallpaper Eng.** | `linux-wallpaperengine-git` | Steam Wallpaper Engine support (Optional). |
-| **Effects** | `easyeffects` | Audio effects and equalization management. |
 | **Picker** | `hyprpicker` | System-wide color picker tool. |
 | **Lock** | `hyprlock` | The lock screen provider. |
 | **Night Light** | `hyprsunset` | Blue light filter functionality. |
@@ -55,7 +54,6 @@ The installer reads `data/dependencies.json`, checks what is missing with `pacma
 | **QR Scan** | `zbar` | QR code scanning functionality (`zbarimg`). |
 | **OCR (Opt.)** | `tesseract` | OCR functionality in region tools. |
 | **Biometric (Opt.)** | `fprintd` | Fingerprint sensor support on lockscreen. |
-| **VPN (Opt.)** | `warp-cli` | Cloudflare WARP client integration. |
 | **Flatpak (Opt.)** | `flatpak` | Flatpak updates, search and installs in Packages & Updates. |
 | **Login (Opt.)** | `greetd` | Hosts the Material3UI login screen. |
 

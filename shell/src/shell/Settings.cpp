@@ -3041,6 +3041,23 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
     search->bare = true;
     search->grow = true;
     search->minWidth = 120;
+    // The other app, a window of its own, first under the search: Hyprland's
+    // options from Settings, the shell's settings from Hyprland Settings
+    auto* other = side->add<Button>(Flex::Direction::Row);
+    pill(other->setBackground("secondary_container", false))->setPadding({16, 12, 14, 12})->setSpacing(12);
+    other->pressedRadius = 12;
+    other->add<Icon>(Hypr ? "settings" : "tune", 20)->setColor("on_secondary_container", false);
+    auto* otherTexts = other->add<Flex>(Flex::Direction::Column);
+    otherTexts->setAlignItems(Align::Start)->setSpacing(1);
+    otherTexts->grow = true;
+    otherTexts->add<Label>(Hypr ? "Material3UI Settings" : "Hyprland Settings")
+        ->setSize(15)->setWeight(600)->setColor("on_secondary_container", false);
+    otherTexts->add<Label>(Hypr ? "The shell: bar, dock, network, sound…" : "Every compositor option, animations and more")
+        ->setSize(12)->setColor("on_secondary_container", false)->setMaxWidth(170)->setMaxLines(2);
+    other->add<Icon>("open_in_new", 18)->setColor("on_secondary_container", false);
+    other->onClicked = [](uint32_t button) {
+        if (button == BTN_LEFT && open) open(Hypr ? "settings" : "hyprsettings");
+    };
 
     // The page: a fixed header with the close button, then what scrolls
     auto* right = columns->add<Flex>(Flex::Direction::Column);
@@ -3151,23 +3168,6 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
         items->push_back({b, chip, icon, label, summary, static_cast<int>(i % 3)});
         if (initial == pagesOf(Hypr)[i].id) first = i;
     }
-    // The other app, a window of its own: Hyprland's options from Settings,
-    // the shell's settings from Hyprland Settings
-    auto* other = side->add<Button>(Flex::Direction::Row);
-    pill(other->setBackground("secondary_container", false))->setPadding({16, 12, 14, 12})->setSpacing(12);
-    other->pressedRadius = 12;
-    other->add<Icon>(Hypr ? "settings" : "tune", 20)->setColor("on_secondary_container", false);
-    auto* otherTexts = other->add<Flex>(Flex::Direction::Column);
-    otherTexts->setAlignItems(Align::Start)->setSpacing(1);
-    otherTexts->grow = true;
-    otherTexts->add<Label>(Hypr ? "Material3UI Settings" : "Hyprland Settings")
-        ->setSize(15)->setWeight(600)->setColor("on_secondary_container", false);
-    otherTexts->add<Label>(Hypr ? "The shell: bar, dock, network, sound…" : "Every compositor option, animations and more")
-        ->setSize(12)->setColor("on_secondary_container", false)->setMaxWidth(170)->setMaxLines(2);
-    other->add<Icon>("open_in_new", 18)->setColor("on_secondary_container", false);
-    other->onClicked = [](uint32_t button) {
-        if (button == BTN_LEFT && open) open(Hypr ? "settings" : "hyprsettings");
-    };
     // Universal search, as Android's: every setting by name, not just the
     // pages. The index is read from the pages themselves, built out of view
     // once (their row titles and section headings).

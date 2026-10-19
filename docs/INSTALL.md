@@ -40,7 +40,7 @@ The installer asks everything first, shows one plan, and after you confirm it ru
 1. **Checks:** an Arch-based system, not root, and Hyprland 0.55 or newer (needed for the Lua config).
 2. **Your setup:**
    - **Apps and modes:** your terminal (Alacritty by default), file manager (Nemo) and browser (LibreWolf); how to handle Hyprland (`full`, `inject` or `skip`); and the update channel.
-   - **Extras:** fonts, NetworkManager/Bluetooth, KDE colours, fish + starship, EasyEffects/WARP, and the login screen.
+   - **Extras:** fonts, NetworkManager/Bluetooth, KDE colours, fish + starship, and the login screen.
    - **Re-runs:** when you install again, your previous choices are the defaults.
 3. **The plan:** everything in one place.
    - **Packages:** what's missing (found with `pacman -T`).
@@ -146,6 +146,5 @@ If all dependencies are met and you still face issues, check these common soluti
 | File picker popups do not appear | Make sure `xdg-desktop-portal-gtk` is running. |
 | Screen share dialogs do not appear | Make sure `xdg-desktop-portal-hyprland` is running. |
 | Terminal colors are not applying | Verify that `python3` is installed on your system. |
-| Audio effects are not working | Make sure `easyeffects --daemon` is running in the background. |
 | The shell refuses to start | Run `material3ui` from a terminal and check the output for errors. |
 | The shell does not build | Run `./install.sh` again without `--skip-deps`, or install the libraries in [DEPENDENCIES.md](DEPENDENCIES.md). |

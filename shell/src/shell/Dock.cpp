@@ -154,12 +154,23 @@ std::vector<std::string> Dock::pinned() {
     if (j.is_array()) {
         for (const auto& v : j)
             if (v.is_string()) out.push_back(v.get<std::string>());
+        // Both settings apps join the dock once (v5); unpinned later, they stay off
+        if (!Config::get().value<bool>("/dock/settingsAppsPinned", false)) {
+            for (const char* id : {"material3ui-settings", "material3ui-hyprland"})
+                if (std::ranges::find(out, id) == out.end()) out.push_back(id);
+            Config::get().set("/dock/settingsAppsPinned", true);
+            Config::get().set("/dock/pinned", out);
+        }
         return out;
     }
     // First run: a browser, the files and a terminal, whichever are installed
     for (const char* id : {"firefox", "librewolf", "chromium", "org.gnome.Nautilus", "nemo", "thunar", "Alacritty",
                            "kitty", "org.wezfurlong.wezterm", "foot"})
         if (findApp(id) && out.size() < 4) out.push_back(bareId(findApp(id)->id));
+    // And the two settings apps
+    out.push_back("material3ui-settings");
+    out.push_back("material3ui-hyprland");
+    Config::get().set("/dock/settingsAppsPinned", true);
     return out;
 }
 

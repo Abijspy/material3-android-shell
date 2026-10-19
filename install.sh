@@ -219,7 +219,6 @@ package_list() {
     for c in core services utilities theming; do jq -r ".${c}[].name" "$REPO/data/dependencies.json"; done
     if [[ "$OPT_FONTS" == 1 ]]; then jq -r '.fonts[].name' "$REPO/data/dependencies.json"; fi
     if [[ "$OPT_FISH" == 1 ]]; then printf '%s\n' fish starship; fi
-    if [[ "$OPT_EXTRAS" == 1 ]]; then printf '%s\n' easyeffects cloudflare-warp-bin; fi
     if [[ "$OPT_KDE" == 1 ]]; then echo python-pip; fi
     if [[ "$GREETER" == 1 ]]; then printf '%s\n' greetd acl; fi
     if [[ "$FILE_MANAGER" == nemo ]]; then echo nemo-fileroller; fi
@@ -363,7 +362,7 @@ if [[ "$HYPR_MODE" == inject ]] && grep -qs "^-- Material3UI Shell — Hyprland"
     HYPR_MODE=full
 fi
 
-OPT_FONTS=0 OPT_SERVICES=0 OPT_KDE=0 OPT_FISH=0 OPT_EXTRAS=0
+OPT_FONTS=0 OPT_SERVICES=0 OPT_KDE=0 OPT_FISH=0
 info "${B}Extras${R}"
 confirm "Fonts (Google Sans Flex, Material Symbols, JetBrains Mono)?" Y && OPT_FONTS=1
 confirm "Turn on NetworkManager and Bluetooth?" Y && OPT_SERVICES=1
@@ -383,7 +382,6 @@ if [[ "$OPT_SERVICES" == 1 && ${#NET_RIVALS[@]} -gt 0 ]]; then
 fi
 confirm "Material You colours for KDE/Qt apps (a Python venv)?" N && OPT_KDE=1
 confirm "fish with the starship prompt?" N && OPT_FISH=1
-confirm "EasyEffects and Cloudflare WARP?" N && OPT_EXTRAS=1
 if [[ -z "$GREETER" ]]; then
     if confirm "The Material3UI login screen (greetd; replaces your display manager)?" N; then GREETER=1; else GREETER=0; fi
 fi
@@ -424,7 +422,6 @@ extras=()
 [[ "$OPT_SERVICES" == 1 ]] && extras+=("network & bluetooth")
 [[ "$OPT_KDE" == 1 ]] && extras+=("KDE colours")
 [[ "$OPT_FISH" == 1 ]] && extras+=(fish)
-[[ "$OPT_EXTRAS" == 1 ]] && extras+=("EasyEffects, WARP")
 [[ "$GREETER" == 1 ]] && extras+=("login screen")
 row() { printf '  %s%-9s%s %s\n' "$D" "$1" "$R" "$2"; }
 row Apps "$TERMINAL · $FILE_MANAGER · $BROWSER"

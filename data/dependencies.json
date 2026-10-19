@@ -345,16 +345,6 @@
       "description": "Shell prompt"
     },
     {
-      "name": "easyeffects",
-      "command": "easyeffects",
-      "description": "Audio enhancement"
-    },
-    {
-      "name": "cloudflare-warp-bin",
-      "command": "warp-cli",
-      "description": "Cloudflare WARP client"
-    },
-    {
       "name": "flatpak",
       "command": "flatpak",
       "description": "Flatpak apps in Packages & Updates"
