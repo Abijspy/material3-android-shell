@@ -21,6 +21,9 @@ namespace m3::shell {
 // middle click opens a new one, right click pins or unpins.
 class Dock {
 public:
+    // Kept out while its right-click menu is open (the pointer leaves the
+    // dock for the menu, which would otherwise hide it from under you)
+    void setHeld(bool held);
     explicit Dock(wl::Output* output);
     ~Dock();
 
@@ -42,7 +45,7 @@ private:
     std::unique_ptr<wl::LayerSurface> m_surface;
     class DockRoot* m_root = nullptr;
     ui::Flex* m_card = nullptr;
-    bool m_shown = true, m_hovered = false;
+    bool m_shown = true, m_hovered = false, m_held = false;
     EventLoop::TimerId m_hideTimer = 0, m_refreshTimer = 0;
     Connection m_events, m_workspaces, m_apps;
 };

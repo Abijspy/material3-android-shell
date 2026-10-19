@@ -177,7 +177,7 @@ void Dock::rebuild() {
             if (m_hideTimer) EventLoop::get().cancel(m_hideTimer);
             m_hideTimer = EventLoop::get().addTimer(450, [this] {
                 m_hideTimer = 0;
-                if (!m_hovered) refresh(); // decides whether to stay out
+                if (!m_hovered && !m_held) refresh(); // decides whether to stay out
             });
         }
     };
@@ -288,7 +288,13 @@ void Dock::refresh() {
     const int ws = Hyprland::get().activeWorkspace(m_output->name);
     for (const auto& w : Hyprland::get().workspaces())
         if (w.id == ws) empty = w.windows == 0;
-    reveal(!autoHide() || m_hovered || empty);
+    reveal(!autoHide() || m_hovered || m_held || empty);
+}
+
+void Dock::setHeld(bool held) {
+    if (held == m_held) return;
+    m_held = held;
+    refresh();
 }
 
 void Dock::reveal(bool show) {

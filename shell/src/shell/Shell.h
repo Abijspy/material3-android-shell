@@ -46,6 +46,7 @@ private:
     std::map<wl::Output*, std::unique_ptr<Desktop>> m_desktops;
     std::map<wl::Output*, std::unique_ptr<Dock>> m_docks;
     void syncDock(wl::Output* output);
+    void holdDocks(bool held); // the dock stays out while its menu is open
     std::unique_ptr<Toasts> m_toasts;
     std::unique_ptr<Osd> m_osd;
     bool m_barsVisible = true;

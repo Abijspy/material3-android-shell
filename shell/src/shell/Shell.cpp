@@ -164,6 +164,10 @@ wl::Output* Shell::focusedOutput() const {
     return m_bars.empty() ? nullptr : m_bars.begin()->first;
 }
 
+void Shell::holdDocks(bool held) {
+    for (auto& [_, d] : m_docks) d->setHeld(held);
+}
+
 void Shell::openSettings(const std::string& page) {
     if (m_settings && !m_settings->closing()) {
         if (!page.empty()) panels::settingsPage(page);
@@ -197,6 +201,7 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         return;
     }
     m_popup.reset();
+    holdDocks(false);
     if (!output) return;
 
     Popup::Options opts;
@@ -290,8 +295,10 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         return;
     }
     m_popup = std::make_unique<Popup>(output, opts, build);
+    holdDocks(name == "dockmenu"); // a new popup releases a held dock too
     Popup* raw = m_popup.get();
     m_popup->onClosed = [this, raw, name] {
+        if (name == "dockmenu") holdDocks(false);
         // Closing the polkit dialog (Esc, Cancel, click outside) dismisses the request
         if (name.starts_with("polkit:")) {
             const int id = std::stoi(name.substr(7));
