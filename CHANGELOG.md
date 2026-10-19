@@ -1,5 +1,21 @@
 # Changelog
 
+## v5.0.0 — 2026-10-19
+
+**Hyprland Settings: one app for the whole compositor.** A second settings app, alongside Material3UI Settings and linked from it, for everything Hyprland does. It brings in the features of [HyprMod](https://github.com/BlueManCZ/hyprmod), rebuilt natively in the shell's own Material 3 Expressive design. Every change applies live, is saved at once, undoes with Ctrl+Z, and resets per option to what your config files had.
+
+- **Every Hyprland option.** All of them, read from the running Hyprland (new versions' options appear on their own), on pages for windows and borders, decoration, layouts, input devices, gestures, cursor, window groups, behaviour, rendering and debug, with switches, sliders over Hyprland's ranges, choices, colour and gradient fields and per-side gaps. Hyprland's config errors show on top; every option is in search.
+- **Displays.** Drag monitors into place; resolution and refresh rate, scale, rotation and flipping, variable refresh rate, 10-bit colour, colour modes including HDR (with SDR brightness and saturation) and mirroring. Anything that could leave the screen unusable reverts after 15 seconds unless you press Keep.
+- **Animations and curves.** Every animation's length, curve and style, or what it inherits; a curve editor with draggable points, overshoot, Material and classic presets and a live preview.
+- **Keybinds.** Press a shortcut to set it (Hyprland's own binds pause while you do). Your binds can do any of about thirty actions or run a command, and mouse drags (move, resize) are binds too.
+- **Rules.** Window rules (match apps, or pick an open window, then any of Hyprland's 58 effects), layer rules for bars, launchers and notifications, and workspace rules.
+- **Startup apps and environment variables.**
+- **Cursor themes,** applied live to Hyprland, GTK and new apps.
+- **Plugins.** A catalogue to download and install (hyprexpo, hyprbars, hyprtrails, dynamic cursors, touch gestures and more), built by hyprpm, which installs itself if missing; your hyprpm plugins with switches; any plugin file.
+- **Profiles.** Whole setups saved by name and switched in one go, also from a keybind: `material3ui msg hypr profile next`.
+
+Also: the Keybinds page moves to Hyprland Settings (Settings → Keyboard points there), Settings → Display links to Displays, `material3ui msg hypr …` scripts all of it, and a crash when saving rules (and a latent misread of monitors, curves and animations) is fixed.
+
 ## v4.4.6 — 2026-10-19
 
 - **Forget networks and devices.** Saved Wi-Fi networks (in Quick Settings and Settings) and paired Bluetooth devices (in Quick Settings; Settings already had it) get a forget button. It asks twice: the first tap turns it red, a second within four seconds forgets. A forgotten Wi-Fi network asks for its password again next time.

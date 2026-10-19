@@ -16,7 +16,8 @@
 | `keybinds.lua` | Apps, window management, workspaces, audio and media keys |
 | `shell.lua` | Starts the shell, panel shortcuts, region tools, layer rules — the only module `inject` mode needs |
 | `user_persistence.lua` | Written by the shell (monitor layouts, game mode) |
-| `keybinds_custom.lua` | Written by Settings → Keybinds (remaps, disabled binds, custom commands); not shipped, so updates never touch it |
+| `keybinds_custom.lua` | Written by Hyprland Settings → Keybinds (remaps, disabled binds, your binds); not shipped, so updates never touch it |
+| `hyprland_custom.lua` | Written by Hyprland Settings (options, displays, animations, curves, rules, startup apps, variables); run by `shell.lua` after the rest of the config |
 | `user.lua` | **Your overrides** — loaded last, never overwritten |
 
 Personal settings belong in `~/.config/hypr/material3ui/user.lua`; updates never overwrite `apps.lua`, `user.lua`, `user_persistence.lua` or the generated `colors.lua`.
@@ -31,3 +32,18 @@ Settings → Keybinds lists every Material3UI bind, live from `hyprctl binds -j`
 - **Conflicts:** a warning shows when two binds share keys, because both will run.
 
 Edits are stored in `~/.config/material3ui/keybinds.json` and rendered to `keybinds_custom.lua`, then Hyprland reloads. Binds you write yourself in `user.lua` show under "Other binds" read-only; edit those in `user.lua`. The editor needs the Lua config (Hyprland 0.55+).
+
+## Hyprland Settings
+
+Hyprland Settings (`material3ui msg hyprsettings [page]`) edits the running compositor. Nothing it does touches `hyprland.lua` or `user.lua`:
+
+- **Live, then kept.** A change is applied through Hyprland's socket (`hyprctl eval`) and stored in `~/.config/material3ui/config.json` under `hyprland`, from which `hyprland_custom.lua` is generated. `shell.lua` runs that file when the config loads, again when Hyprland has started, and after every reload, so the Settings value wins over the files. It receives the stage (`"load"`, `"start"`, `"reload"`); startup apps run only on `"start"`.
+- **Options come from Hyprland.** The list, descriptions, ranges and choices are read from `hyprctl descriptions` and the values from `getoption`, so options a newer Hyprland adds appear without an update. Values outside an option's range are clamped.
+- **Reset and undo.** The first time an option is changed, the value your files gave it is remembered; reset goes back to that. <kbd>Ctrl</kbd><kbd>Z</kbd> steps back through options, animations and curves.
+- **Displays** are kept per monitor by `desc:<description>`, so a screen keeps its settings on any port. Risky changes (mode, scale, rotation, position, bit depth, colour mode, mirroring, turning one off) revert after 15 seconds unless kept.
+- **Rules** made here are named `material3ui-<id>`, so edits and removals apply live. A removed workspace rule reloads the config.
+- **Keybinds:** while a shortcut field listens, Hyprland switches to an empty submap (`material3ui_capture`, declared in `shell.lua`) so its own binds don't take the keys; it always switches back.
+- **Profiles** are the `hyprland` part of `config.json` saved as `~/.config/material3ui/hyprland-profiles/<name>.json`. Applying one swaps it in and reloads Hyprland; `material3ui msg hypr profile list|apply|next|previous|save|delete` does it from scripts.
+- **Scripting:** `material3ui msg hypr options | get <name> | set <name> <json> | reset <name> | undo`.
+
+Delete `hyprland_custom.lua` (or the `hyprland` key in `config.json`) to drop everything Hyprland Settings set.

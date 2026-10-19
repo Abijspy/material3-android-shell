@@ -153,19 +153,31 @@ Most settings live in the built-in **Settings** app (<kbd>Super</kbd><kbd>I</kbd
 - **Lock screen and weather:** the clock and widgets on the lock and login screens; your location, units and forecast.
 - **Tools:** clipboard and screenshots.
 - **Session:** notifications, and lock & idle.
-- **Keybinds, Packages & Updates, and About.**
+- **Packages & Updates, and About.**
+
+**Hyprland Settings** is its companion app for the compositor itself: a window of its own (Hyprland Settings in the launcher, `material3ui msg hyprsettings`, or the button at the foot of either app's sidebar). Every change applies live, is saved at once, undoes with <kbd>Ctrl</kbd><kbd>Z</kbd> and resets per option to what your config files had. It has:
+- **Every Hyprland option** (all of them, read from the running Hyprland, so new ones appear on their own): windows and borders, decoration, layouts, input devices, gestures, cursor, groups, behaviour, rendering and debug, with Hyprland's config errors on top.
+- **Displays:** drag monitors into place; resolution, refresh rate, scale, rotation, VRR, 10-bit colour, HDR and mirroring. Anything that could leave the screen unusable reverts by itself unless you keep it.
+- **Animations:** every animation's length, curve and style, and a curve editor with presets and a live preview.
+- **Keybinds:** press a shortcut to set it; binds for any action or command, and mouse drags.
+- **Rules:** window, layer and workspace rules, picked from the windows and layers on screen.
+- **Startup apps and environment variables.**
+- **Cursor themes, plugins** (hyprpm, with a catalogue to download and install) **and profiles** (whole setups saved by name; `material3ui msg hypr profile next` switches from a keybind).
+
+Its changes live in `hyprland_custom.lua`, applied after the rest of your config. → [Hyprland Settings](docs/HYPRLAND.md#hyprland-settings)
 
 For everything else, here is which file to edit. Updates never overwrite the files marked ✎.
 
 | I want to... | Edit |
 | :--- | :--- |
 | Use a different terminal, browser or file manager | ✎ `~/.config/hypr/material3ui/apps.lua` |
-| Remap, disable or add keybinds | **Settings → Keybinds** (saved to ✎ `keybinds_custom.lua`) |
+| Remap, disable or add keybinds | **Hyprland Settings → Keybinds** (saved to ✎ `keybinds_custom.lua`) |
+| Change any Hyprland option, monitor, animation or rule | **Hyprland Settings** (saved to `hyprland_custom.lua`) |
 | Rearrange the bar | **Settings → Status bar → Widgets**, or right-click the bar |
 | Change the lock screen | **Settings → Lock screen → Open editor** (the login screen follows) |
 | Set the weather location | **Settings → Weather** |
 | Pin apps to the dock | **Settings → Dock**, or right-click an app in the dock |
-| Add my own rules, monitors or autostart | ✎ `~/.config/hypr/material3ui/user.lua` |
+| Write my own Lua for rules, monitors or autostart | ✎ `~/.config/hypr/material3ui/user.lua` |
 | Understand the Hyprland setup | [docs/HYPRLAND.md](docs/HYPRLAND.md) |
 | Script the shell from a terminal or another program | `material3ui msg` (below) |
 
@@ -265,6 +277,7 @@ It also stands on the work of:
 - [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell): installer flow, config layout and system monitor design.
 - [end4-pC](https://github.com/pctrade/end4-pC), [ii-p3drovfx](https://github.com/P3DROVFX/ii-p3drovfx), [ii-vynx](https://github.com/vaguesyntax/ii-vynx) and [Ambxst](https://github.com/Axenide/Ambxst): UI and dynamic island ideas.
 - [google-weather-icons](https://github.com/mrdarrengriffin/google-weather-icons): weather icons.
+- [HyprMod](https://github.com/BlueManCZ/hyprmod) by BlueManCZ: the features Hyprland Settings set out to bring in (written from scratch here; none of HyprMod's code or data is used).
 
 **Contributing:** bug reports and pull requests are welcome. For anything large, open an issue first so we can agree on the direction.
 
