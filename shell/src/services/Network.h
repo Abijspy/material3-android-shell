@@ -44,6 +44,19 @@ public:
     void disconnect();
     std::string lastError() const { return m_error; }
 
+    // Wired adapters and their state (NetworkManager)
+    struct Wired {
+        std::string path, iface, ipv4;
+        int state = 0; // NM: 20 no cable, 30 disconnected, 40–90 connecting, 100 connected
+        int speed = 0; // Mb/s, while linked
+        bool cable() const { return state > 20; }
+        bool connected() const { return state == 100; }
+        bool connecting() const { return state > 30 && state < 100; }
+    };
+    const std::vector<Wired>& wired() const { return m_wired; }
+    void connectWired(const std::string& path); // the device's best connection, as NM picks
+    void disconnectWired(const std::string& path);
+
     // The primary connection in depth (Settings and Quick Settings show it)
     struct Details {
         std::string iface, mac, ipv4, gateway, dns, ipv6;
@@ -67,6 +80,12 @@ public:
 private:
     Network();
     void findWifiDevice();
+    void loadWired();
+    void loadWiredDevice(const std::string& path);
+    std::vector<Wired> m_wired;
+    std::map<std::string, dbus::Subscription> m_wiredSubs;
+    dbus::Subscription m_devicesAdded, m_devicesRemoved;
+    EventLoop::TimerId m_wiredDebounce = 0;
     void loadAccessPoints();
     void refresh();
     void loadPrimary(const std::string& path);

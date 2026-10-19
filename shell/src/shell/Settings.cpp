@@ -344,6 +344,33 @@ void networkPage(Flex* page, Popup&) {
     live->watch(Network::get().detailsChanged);
     live->sync();
 
+    // Wired adapters: their state, and a button to connect or disconnect
+    auto* wiredLive = page->add<Live>();
+    wiredLive->setSpacing(6);
+    wiredLive->sync = [wiredLive] {
+        wiredLive->clearChildren();
+        auto* g = group(wiredLive, "Ethernet");
+        const auto& all = Network::get().wired();
+        if (all.empty()) {
+            auto r = row(g, "settings_ethernet", "No Ethernet adapter", "Plug in a network cable, or a USB Ethernet adapter");
+            r.title->setColor("on_surface_variant", false);
+            return;
+        }
+        for (const auto& w : all) {
+            std::string state = !w.cable() ? "Cable unplugged" : w.connecting() ? "Connecting…" : !w.connected() ? "Disconnected" : "Connected";
+            if (w.connected() && w.speed > 0) state += std::format("  ·  {} Mb/s", w.speed);
+            if (w.connected() && !w.ipv4.empty()) state += "  ·  " + w.ipv4;
+            auto r = row(g, "lan", "Ethernet (" + w.iface + ")", state);
+            const std::string path = w.path;
+            if (w.connected() || w.connecting())
+                pillButton(r.row, "Disconnect", false, [path] { Network::get().disconnectWired(path); });
+            else if (w.cable())
+                pillButton(r.row, "Connect", true, [path] { Network::get().connectWired(path); });
+        }
+    };
+    wiredLive->watch(Network::get().changed);
+    wiredLive->sync();
+
     wifiView(panelGroup(page, "Wi-Fi networks", "Tap one to connect; saved networks connect at once"), {}, false);
 }
 
@@ -2135,7 +2162,7 @@ struct PageDef {
 // In Android 17's order; the shell's own pages sit where Android keeps
 // their nearest kin
 const PageDef kPages[] = {
-    {"network", "wifi", "Network & internet", "Wi-Fi networks and your connection", networkPage},
+    {"network", "wifi", "Network & internet", "Wi-Fi, Ethernet and your connection", networkPage},
     {"bluetooth", "bluetooth", "Connected devices", "Bluetooth, pairing and devices", bluetoothPage},
     {"defaults", "apps", "Apps", "Default apps for links, files and the terminal", defaultAppsPage},
     {"notifications", "notifications", "Notifications", "Do not disturb and pop-ups", notificationsPage},

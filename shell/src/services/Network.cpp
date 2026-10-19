@@ -95,9 +95,85 @@ Network::Network() {
                             });
     refresh();
     findWifiDevice();
+    // Wired adapters come and go (USB adapters, docks)
+    auto later = [this](const dbus::Value&, auto*) {
+        EventLoop::get().debounce(m_wiredDebounce, 300, [this] { loadWired(); });
+    };
+    m_devicesAdded = bus.subscribe(kNM, kNMPath, kNM, "DeviceAdded", later);
+    m_devicesRemoved = bus.subscribe(kNM, kNMPath, kNM, "DeviceRemoved", later);
+    loadWired();
     // NetworkManager updates a connected network's strength only when it
     // rescans (minutes apart): read the live link quality instead
     m_signalTimer = EventLoop::get().addTimer(3000, [this] { sampleSignal(); }, true);
+}
+
+void Network::loadWired() {
+    dbus::Bus::system().call(kNM, kNMPath, kNM, "GetDevices", {}, [this](const dbus::Value& a, const std::string& err) {
+        if (!err.empty() || a.empty()) return;
+        std::vector<std::string> paths;
+        for (const auto& dev : a[0]) paths.push_back(dev.get<std::string>());
+        // Gone devices leave
+        const auto before = m_wired.size();
+        std::erase_if(m_wired, [&](const Wired& w) { return std::ranges::find(paths, w.path) == paths.end(); });
+        std::erase_if(m_wiredSubs, [&](const auto& kv) { return std::ranges::find(paths, kv.first) == paths.end(); });
+        if (m_wired.size() != before) changed.emit();
+        for (const auto& p : paths) loadWiredDevice(p);
+    });
+}
+
+void Network::loadWiredDevice(const std::string& path) {
+    auto& bus = dbus::Bus::system();
+    bus.getAll(kNM, path, "org.freedesktop.NetworkManager.Device", [this, path](const dbus::Value& p, bool ok) {
+        // DeviceType 1 is Ethernet
+        if (!ok || num<uint32_t>(p, "DeviceType") != 1) return;
+        auto it = std::ranges::find(m_wired, path, &Wired::path);
+        if (it == m_wired.end()) {
+            m_wired.push_back({path});
+            it = std::prev(m_wired.end());
+            // Its state changes (cable in or out, connected) arrive here
+            m_wiredSubs[path] = dbus::Bus::system().onPropertiesChanged(kNM, path, [this, path](const dbus::Value&, const std::string&) {
+                loadWiredDevice(path);
+            });
+        }
+        it->iface = str(p, "Interface");
+        it->state = static_cast<int>(num<uint32_t>(p, "State"));
+        const std::string ip4 = str(p, "Ip4Config");
+        changed.emit();
+        dbus::Bus::system().getAll(kNM, path, "org.freedesktop.NetworkManager.Device.Wired", [this, path](const dbus::Value& w, bool ok) {
+            auto it = std::ranges::find(m_wired, path, &Wired::path);
+            if (!ok || it == m_wired.end()) return;
+            it->speed = static_cast<int>(num<uint32_t>(w, "Speed"));
+            changed.emit();
+        });
+        if (ip4.empty() || ip4 == "/" || !it->connected()) {
+            it->ipv4.clear();
+            return;
+        }
+        dbus::Bus::system().getAll(kNM, ip4, "org.freedesktop.NetworkManager.IP4Config", [this, path](const dbus::Value& c, bool ok) {
+            auto it = std::ranges::find(m_wired, path, &Wired::path);
+            if (!ok || it == m_wired.end()) return;
+            if (auto a = c.find("AddressData"); a != c.end() && a->is_array() && !a->empty() && (*a)[0].is_object())
+                it->ipv4 = str((*a)[0], "address");
+            changed.emit();
+        });
+    });
+}
+
+void Network::connectWired(const std::string& path) {
+    m_error.clear();
+    // "/" for the connection: NetworkManager picks the device's best one
+    dbus::Bus::system().call(kNM, kNMPath, kNM, "ActivateConnection",
+                             dbus::args(dbus::ObjectPath{"/"}, dbus::ObjectPath{path}, dbus::ObjectPath{"/"}),
+                             [this](const dbus::Value&, const std::string& err) {
+        if (!err.empty()) {
+            m_error = "Couldn't connect the Ethernet: " + err.substr(err.find(": ") == std::string::npos ? 0 : err.find(": ") + 2);
+            changed.emit();
+        }
+    });
+}
+
+void Network::disconnectWired(const std::string& path) {
+    dbus::Bus::system().call(kNM, path, "org.freedesktop.NetworkManager.Device", "Disconnect");
 }
 
 void Network::sampleSignal() {
