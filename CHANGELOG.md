@@ -1,5 +1,28 @@
 # Changelog
 
+## v4.3.0 — 2026-10-19
+
+- **Quick Settings, as Android 17.**
+  - **Header:** a large clock and the date, with round edit, settings, lock and power buttons.
+  - **Sliders:** brightness and volume on tall, rounded tracks with the icon at the end; tap the speaker to mute.
+  - **Tiles:** large pill tiles with the icon in a chip of its own. Wi-Fi and Bluetooth light the chip when on (it toggles; the rest of the tile opens the device list), other tiles fill when on. Small round icon tiles beside them.
+  - **New tiles:** Sound, Dark theme, Airplane mode, Power saver and Screenshot.
+  - **Editor** (the pencil): your tiles in a neutral state. Hold and drag one to move it. Tap one to select it: its corner badge removes it, and dragging the handle on its right edge stretches it to large or shrinks it to small. Tap a tile below to add it.
+- **Frosted glass:** panels, the bar and tiles are translucent over a stronger blur, as Android's shade. Opacity and blur stay adjustable in Look & feel.
+- **Settings, as an app.**
+  - **A window of its own:** title bar with minimise, maximise and close, a dock icon you can pin, and it stays open beside Quick Settings and the other panels. Minimised, it comes back from the dock or `material3ui msg settings`.
+  - **Android 17 layout and order:** a large title, a search field, and the pages in rounded groups with tonal icon circles and summaries: Network & internet, Connected devices, Apps, Notifications, Battery, Storage, Sound, Display, Wallpaper & style, Accessibility, Security & privacy, System and About, with the shell's own pages beside their nearest kin.
+  - **Universal search:** finds settings by name across every page, not just the pages; a result opens its page, scrolls to the setting and highlights it. `material3ui msg settings search:<words>` searches from scripts.
+  - **New pages:** Storage (disk use, home folder sizes, cleaning the package cache, thumbnails and trash), Accessibility (remove animations, reduce transparency, cursor size) and System (automatic time, time zone and language pickers, a backed-up reset).
+  - **Material 3 Expressive details:** switches with ✓ and ✕ in the thumb, larger rounded groups, texts that wrap instead of cutting off.
+- **Editors:** the Status bar editor shows each zone's widgets as chips; tap one for a toolbar to move, group or remove it, and add widgets from the icons below. The lock screen editor takes the same look.
+- **Updates through the shell's own dialog:** updates, installs and cleaning the package cache ask for your password in the shell's polkit dialog and run in the background, instead of opening a terminal for sudo. "Use a terminal" remains for conflicts that need an answer.
+- **Shell updates:** Check now also looks for a new Material3UI release (or new commits on the latest channel), and Update now installs it.
+- **Fixes**
+  - **Installer:** LibreWolf installs from Arch's extra repository (librewolf-bin left the AUR).
+  - **Software & updates:** the Update now button stays inside its card.
+  - **update.sh** restarts the shell correctly with Lua Hyprland configs.
+
 ## v4.2.1 — 2026-10-19
 
 - **Smoother Settings and scrolling.**
