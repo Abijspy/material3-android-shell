@@ -262,74 +262,49 @@ void recolour() {
 
 // ── Pages ──
 
-void networkPage(Flex* page, Popup&) {
-    // What you change most first: Wi-Fi, then wired adapters; the details
-    // of the current connection below them
-    wifiView(panelGroup(page, "Wi-Fi networks", "Tap one to connect; saved networks connect at once"), {}, false);
+// The current connection's speeds and details, inside its own entry (the
+// connected Wi-Fi network, or the wired adapter in use). `fg` is the text
+// colour on that entry's fill; `disconnect` adds a button for it.
+void connectionDetails(Flex* parent, const char* fg, std::function<void()> disconnect) {
+    auto* live = parent->add<Live>();
+    live->setSpacing(12)->setPadding({0, 6, 0, 2});
+    live->setAlignItems(Align::Stretch);
 
-    // Wired adapters: their state, and a button to connect or disconnect
-    auto* wiredLive = page->add<Live>();
-    wiredLive->setSpacing(6);
-    wiredLive->sync = [wiredLive] {
-        wiredLive->clearChildren();
-        auto* g = group(wiredLive, "Ethernet");
-        const auto& all = Network::get().wired();
-        if (all.empty()) {
-            auto r = row(g, "settings_ethernet", "No Ethernet adapter", "Plug in a network cable, or a USB Ethernet adapter");
-            r.title->setColor("on_surface_variant", false);
-            return;
-        }
-        for (const auto& w : all) {
-            std::string state = !w.cable() ? "Cable unplugged" : w.connecting() ? "Connecting…" : !w.connected() ? "Disconnected" : "Connected";
-            if (w.connected() && w.speed > 0) state += std::format("  ·  {} Mb/s", w.speed);
-            if (w.connected() && !w.ipv4.empty()) state += "  ·  " + w.ipv4;
-            auto r = row(g, "lan", "Ethernet (" + w.iface + ")", state);
-            const std::string path = w.path;
-            if (w.connected() || w.connecting())
-                pillButton(r.row, "Disconnect", false, [path] { Network::get().disconnectWired(path); });
-            else if (w.cable())
-                pillButton(r.row, "Connect", true, [path] { Network::get().connectWired(path); });
-        }
-    };
-    wiredLive->watch(Network::get().changed);
-    wiredLive->sync();
-
-    auto* live = page->add<Live>();
-    live->setSpacing(6);
-
-    // The connected network's own segment: its name, then live speeds on
-    // tonal tiles
-    auto* g = group(live, "Connection");
-    auto* current = g->add<Flex>(Flex::Direction::Column);
-    current->setAlignItems(Align::Stretch)->setSpacing(4)->setPadding({0, 0, 0, 16});
-    auto status = row(current, "wifi", "Not connected");
-    status.row->setPadding({20, 12, 20, 4});
-    auto* hero = current->add<Flex>(Flex::Direction::Row);
-    hero->setSpacing(8)->setAlignItems(Align::Stretch)->setPadding({16, 0});
-    auto stat = [hero](const char* icon, const char* title, const char* bg, const char* fg) {
-        auto* t = hero->add<Flex>(Flex::Direction::Column);
+    // Live speeds on tonal tiles
+    auto* tiles = live->add<Flex>(Flex::Direction::Row);
+    tiles->setSpacing(8)->setAlignItems(Align::Stretch);
+    auto stat = [tiles](const char* icon, const char* title, const char* bg, const char* tfg) {
+        auto* t = tiles->add<Flex>(Flex::Direction::Column);
         t->setAlignItems(Align::Start)->setSpacing(2)->setPadding({16, 12})->setRadius(Radii(20))->setBackground(bg, false);
         t->grow = true;
         auto* top = t->add<Flex>(Flex::Direction::Row);
         top->setSpacing(6);
-        top->add<Icon>(icon, 18)->setColor(fg, false);
-        top->add<Label>(title)->setSize(12)->setWeight(500)->setColor(fg, false);
+        top->add<Icon>(icon, 18)->setColor(tfg, false);
+        top->add<Label>(title)->setSize(12)->setWeight(500)->setColor(tfg, false);
         auto* v = t->add<Label>("–");
-        v->setSize(24)->setWeight(600)->setColor(fg, false);
+        v->setSize(24)->setWeight(600)->setColor(tfg, false);
         return v;
     };
     auto* down = stat("arrow_downward", "Download", "primary_container", "on_primary_container");
     auto* up = stat("arrow_upward", "Upload", "tertiary_container", "on_tertiary_container");
-    auto* linkTile = stat("speed", "Link speed", "secondary_container", "on_secondary_container");
+    auto* linkTile = stat("speed", "Link speed", "surface_container_high", "on_surface");
 
+    // Then a compact two-column list: what, and its value
+    auto* list = live->add<Flex>(Flex::Direction::Column);
+    list->setAlignItems(Align::Stretch)->setSpacing(2)->setPadding({4, 0});
     struct Detail {
-        Row row;
+        Flex* row;
         Label* value;
     };
-    auto detail = [g](const char* icon, const char* title, const char* sub = "") {
-        auto r = row(g, icon, title, sub);
-        auto* v = r.row->add<Label>();
-        v->setSize(14)->setColor("on_surface_variant", false)->setMaxWidth(300);
+    auto detail = [list, fg](const char* icon, const char* title) {
+        auto* r = list->add<Flex>(Flex::Direction::Row);
+        r->setSpacing(14)->setPadding({0, 7});
+        r->add<Icon>(icon, 18)->setColor(fg, false);
+        auto* t = r->add<Label>(title);
+        t->setSize(14)->setColor(fg, false);
+        t->grow = true;
+        auto* v = r->add<Label>();
+        v->setSize(14)->setWeight(500)->setColor(fg, false)->setMaxWidth(320);
         return Detail{r, v};
     };
     auto band = detail("radio", "Band");
@@ -340,27 +315,25 @@ void networkPage(Flex* page, Popup&) {
     auto ipv6 = detail("public", "IPv6 address");
     auto mac = detail("fingerprint", "Hardware address");
     auto iface = detail("settings_ethernet", "Interface");
-    auto used = detail("data_usage", "Data used", "Since the interface came up");
+    auto used = detail("data_usage", "Data used since it came up");
+
+    if (disconnect) {
+        auto* actions = live->add<Flex>(Flex::Direction::Row);
+        actions->setJustify(Align::End);
+        pillButton(actions, "Disconnect", false, disconnect, "link_off");
+    }
 
     auto lease = Network::get().watchTraffic();
     live->sync = [=] {
-        (void)lease; // sampling runs while the page is open
+        (void)lease; // sampling runs while the details are shown
         auto& n = Network::get();
         const auto& d = n.details();
-        const bool on = n.kind() != Network::Kind::None;
-        hero->setVisible(on);
-        current->setPadding({0, 0, 0, on ? 16.0f : 0.0f});
         down->setText(formatRate(d.rxRate));
         up->setText(formatRate(d.txRate));
         linkTile->setText(d.linkRate > 0 ? std::format("{} Mb/s", d.linkRate) : "–");
-        static_cast<Icon*>(status.row->children()[0].get())->setText(n.icon());
-        status.title->setText(!on ? (n.connecting() ? "Connecting…" : "Not connected") : n.name());
-        status.subtitle->setText(n.kind() == Network::Kind::Wifi ? std::format("Wi-Fi · signal {}%", n.strength())
-                                 : n.kind() == Network::Kind::Ethernet ? "Ethernet" : on ? "Connected" : "");
-        status.subtitle->setVisible(!status.subtitle->text().empty());
-        auto set = [on](const Detail& x, const std::string& v) {
+        auto set = [](const Detail& x, const std::string& v) {
             x.value->setText(v);
-            x.row.row->setVisible(on && !v.empty());
+            x.row->setVisible(!v.empty());
         };
         std::string rate = d.band();
         if (d.maxRate > 0) rate += (rate.empty() ? "" : " · ") + std::format("up to {} Mb/s", d.maxRate);
@@ -374,9 +347,56 @@ void networkPage(Flex* page, Popup&) {
         set(iface, d.iface);
         set(used, d.iface.empty() ? "" : std::format("↓ {}  ·  ↑ {}", formatBytes(d.rxTotal), formatBytes(d.txTotal)));
     };
-    live->watch(Network::get().changed);
     live->watch(Network::get().detailsChanged);
     live->sync();
+}
+
+void networkPage(Flex* page, Popup&) {
+    // Wi-Fi first, then wired adapters; the connection in use carries its
+    // speeds and details inside its own entry
+    wifiView(panelGroup(page, "Wi-Fi networks", "Tap one to connect; saved networks connect at once"), {}, false,
+             [](Flex* entry) { connectionDetails(entry, "on_secondary_container", [] { Network::get().disconnect(); }); });
+
+    // Wired adapters: their state, and a button to connect or disconnect
+    auto* wiredLive = page->add<Live>();
+    wiredLive->setSpacing(6);
+    wiredLive->sync = [wiredLive] {
+        wiredLive->clearChildren();
+        auto* g = group(wiredLive, "Ethernet");
+        const auto& all = Network::get().wired();
+        if (all.empty()) {
+            auto r = row(g, "settings_ethernet", "No Ethernet adapter", "Plug in a network cable, or a USB Ethernet adapter");
+            r.title->setColor("on_surface_variant", false);
+            return;
+        }
+        auto& n = Network::get();
+        for (const auto& w : all) {
+            std::string state = !w.cable() ? "Cable unplugged" : w.connecting() ? "Connecting…" : !w.connected() ? "Disconnected" : "Connected";
+            if (w.connected() && w.speed > 0) state += std::format("  ·  {} Mb/s", w.speed);
+            if (w.connected() && !w.ipv4.empty()) state += "  ·  " + w.ipv4;
+            // The adapter in use holds the connection's details, as Wi-Fi does
+            const bool inUse = w.connected() && n.kind() == Network::Kind::Ethernet && n.details().iface == w.iface;
+            Flex* holder = g;
+            if (inUse) {
+                holder = g->add<Flex>(Flex::Direction::Column);
+                holder->setAlignItems(Align::Stretch)->setPadding({0, 0, 0, 12})->setRadius(Radii(16))
+                    ->setBackground("secondary_container", false);
+            }
+            auto r = row(holder, "lan", "Ethernet (" + w.iface + ")", state);
+            const std::string path = w.path;
+            if (w.connected() || w.connecting())
+                pillButton(r.row, "Disconnect", false, [path] { Network::get().disconnectWired(path); });
+            else if (w.cable())
+                pillButton(r.row, "Connect", true, [path] { Network::get().connectWired(path); });
+            if (inUse) {
+                auto* details = holder->add<Flex>(Flex::Direction::Column);
+                details->setAlignItems(Align::Stretch)->setPadding({16, 0});
+                connectionDetails(details, "on_secondary_container", {});
+            }
+        }
+    };
+    wiredLive->watch(Network::get().changed);
+    wiredLive->sync();
 }
 
 void bluetoothPage(Flex* page, Popup&) {

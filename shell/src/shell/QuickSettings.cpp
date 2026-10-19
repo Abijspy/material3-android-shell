@@ -114,7 +114,7 @@ std::string formatRate(double bps) {
 }
 
 // Wi-Fi networks, tap to connect; secured new ones ask for the password
-void wifiView(Flex* body, const std::function<void()>& back, bool details) {
+void wifiView(Flex* body, const std::function<void()>& back, bool details, std::function<void(Flex*)> connected) {
     body->clearChildren();
     auto* live = body->add<Live>();
     auto* head = live->add<Flex>(Flex::Direction::Row);
@@ -130,7 +130,7 @@ void wifiView(Flex* body, const std::function<void()>& back, bool details) {
     auto* error = live->add<Label>();
     error->setSize(13)->setColor("error", false);
     auto* scroll = live->add<ScrollView>();
-    scroll->maxHeight = 340;
+    scroll->maxHeight = connected ? 1e6f : 340;
     auto* list = scroll->add<Flex>(Flex::Direction::Column);
     list->setAlignItems(Align::Stretch)->setSpacing(2);
     auto expanded = std::make_shared<std::string>(); // SSID asking for a password
@@ -165,14 +165,22 @@ void wifiView(Flex* body, const std::function<void()>& back, bool details) {
                 texts->add<Label>(ap.active ? "Connected" : "Saved")->setSize(12)->setColor(ap.active ? "on_secondary_container" : "on_surface_variant", false);
             if (ap.secured) row->add<Icon>("lock", 16)->setColor("on_surface_variant", false);
             // The connected entry carries its own details and speeds
-            if (ap.active && details) {
+            if (ap.active && connected) {
+                auto* info = entry->add<Flex>(Flex::Direction::Column);
+                info->setAlignItems(Align::Stretch)->setPadding({0, 4, 0, 4});
+                connected(info);
+            } else if (ap.active && details) {
                 auto* info = entry->add<Flex>(Flex::Direction::Column);
                 info->setAlignItems(Align::Start)->setPadding({32, 0, 0, 2});
                 connectedInfo(info, "on_secondary_container");
             }
             auto apCopy = ap;
+            const bool tapDisconnects = !connected;
             entry->onClicked = [=](uint32_t) {
-                if (apCopy.active) return Network::get().disconnect();
+                if (apCopy.active) {
+                    if (tapDisconnects) Network::get().disconnect();
+                    return;
+                }
                 if (apCopy.secured && !apCopy.saved) {
                     *expanded = *expanded == apCopy.ssid ? "" : apCopy.ssid;
                     // Rebuilding destroys this row: not while its handler runs
