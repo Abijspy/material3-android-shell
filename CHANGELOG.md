@@ -1,5 +1,15 @@
 # Changelog
 
+## v4.3.1 — 2026-10-19
+
+- **Crash-proof shell.**
+  - **Restarts itself:** if the shell ever crashes, it comes back within a second with a notification. Five crashes in a minute stop it from looping. Quitting, the restart key and updates still just quit.
+  - **Crash log:** the signal, time and a backtrace go to `~/.local/state/material3ui/crash.log`.
+  - **Errors stay small:** an unexpected error in a timer, an input or window event, or a D-Bus reply or request is logged and skipped instead of closing the shell.
+- **Apps** (Settings → Apps): every installed app with its icon and where it came from (Official, AUR, Flatpak, a local shortcut or installed manually), with **Open** and **Uninstall** (through the polkit dialog; a second tap confirms). Tap an app for its details: version, installed size, its data in your home folder, install date and description. Searchable.
+- **Ethernet** (Settings → Network & internet): each wired adapter's state (cable unplugged, disconnected, connecting, or connected with speed and address) with Connect and Disconnect; USB adapters and docks appear as they're plugged in.
+- **Update channel** (Settings → Software & updates): Stable (releases) or Latest (git, the newest commits on main) for Material3UI's own updates.
+
 ## v4.3.0 — 2026-10-19
 
 - **Quick Settings, as Android 17.**
