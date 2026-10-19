@@ -14,6 +14,7 @@ const std::vector<Def>& widgets() {
         {"weather", "partly_cloudy_day", "Weather", "Temperature and sky now"},
         {"forecast", "date_range", "Forecast", "The next three days"},
         {"media", "music_note", "Media", "Now playing, with controls"},
+        {"player", "album", "Music player", "The full player: cover, progress and controls"},
         {"battery", "battery_full", "Battery", "Charge level"},
         {"notifications", "notifications", "Notifications", "How many are waiting"},
     };

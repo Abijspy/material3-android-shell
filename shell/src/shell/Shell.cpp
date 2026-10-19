@@ -190,6 +190,8 @@ void Shell::openSettings(const std::string& page) {
 
 void Shell::togglePopup(const std::string& name, wl::Output* output, float anchorX, const std::string& arg) {
     if (name == "settings") return openSettings(arg);
+    // The system monitor lives in Settings now (Ctrl+Alt+Delete, the bar's widget)
+    if (name == "sysmon") return openSettings("monitor");
     if (m_popup && !m_popup->closing() && m_popup->name() == name && m_popup->output() == output) {
         m_popup->close();
         return;
@@ -245,11 +247,6 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
     } else if (name == "dashboard") {
         opts.width = 0; // the calendar and the 340 px column, evenly padded
         build = panels::dashboard;
-    } else if (name == "sysmon") {
-        opts.width = 680;
-        opts.anchorX = -1;
-        opts.centredVertically = true;
-        build = panels::systemMonitor;
     } else if (name == "wallpapers") {
         opts.width = 880;
         opts.anchorX = -1;
@@ -345,7 +342,7 @@ void Shell::registerIpc() {
         for (auto& [_, bar] : m_bars) bar->setVisible(m_barsVisible);
         return std::string(m_barsVisible ? "shown" : "hidden");
     });
-    ipc.add("popup", "popup <quicksettings [wifi]|notifications|dashboard|overview|sysmon|power|audio|network|bluetooth|battery|run>: toggle a panel",
+    ipc.add("popup", "popup <quicksettings [wifi]|notifications|dashboard|overview|power|audio|network|bluetooth|battery|run>: toggle a panel",
             [this](const IpcServer::Args& a) {
         if (a.empty()) return std::string("error: popup needs a name");
         // Status panels open under the right end of the bar; the dashboard

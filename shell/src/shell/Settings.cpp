@@ -26,6 +26,7 @@
 #include "ui/Theme.h"
 
 #include <cmath>
+#include <csignal>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -1125,6 +1126,190 @@ void storagePage(Flex* page, Popup&) {
         removeAll(trash + "/files", sub);
         removeAll(trash + "/info", sub);
     });
+}
+
+// ── System monitor ──
+
+namespace {
+
+// Samples the system while the page holds it
+struct StatsLease : Node {
+    SystemStats::Lease lease = SystemStats::get().lease();
+};
+
+std::string duration(double seconds) {
+    const long t = static_cast<long>(seconds);
+    if (t >= 86400) return std::format("{}d {}h", t / 86400, (t % 86400) / 3600);
+    return std::format("{}h {}m", t / 3600, (t % 3600) / 60);
+}
+
+// Signals a process: directly when it's the user's, through polkit otherwise
+void signalProcess(const SystemStats::Process& p, int sig) {
+    if (p.mine) {
+        ::kill(p.pid, sig);
+        return;
+    }
+    m3::run({"pkexec", "kill", std::format("-{}", sig), std::to_string(p.pid)}, nullptr);
+}
+
+// Ends a process and starts its command again, in the same folder
+void restartProcess(int pid) {
+    namespace fs = std::filesystem;
+    std::ifstream in(std::format("/proc/{}/cmdline", pid), std::ios::binary);
+    std::vector<std::string> argv;
+    for (std::string arg; std::getline(in, arg, '\0');) argv.push_back(arg);
+    if (argv.empty()) return; // a kernel thread, or gone
+    std::error_code ec;
+    const std::string cwd = fs::read_symlink(std::format("/proc/{}/cwd", pid), ec).string();
+    ::kill(pid, SIGTERM);
+    // Once it has gone (or after 3 s, forced), the same command again
+    auto tries = std::make_shared<int>(0);
+    auto timer = std::make_shared<EventLoop::TimerId>(0);
+    *timer = EventLoop::get().addTimer(100, [pid, argv, cwd, tries, timer] {
+        const bool alive = ::kill(pid, 0) == 0;
+        if (alive && ++*tries < 30) return;
+        if (alive) ::kill(pid, SIGKILL);
+        EventLoop::get().cancel(*timer);
+        std::string cmd = cwd.empty() ? "" : "cd '" + cwd + "' && ";
+        cmd += "exec";
+        for (const auto& a : argv) {
+            std::string q = "'";
+            for (char c : a) q += c == '\'' ? std::string("'\\''") : std::string(1, c);
+            cmd += " " + q + "'";
+        }
+        spawn(cmd);
+    }, true);
+}
+
+} // namespace
+
+void monitorPage(Flex* page, Popup&) {
+    struct State {
+        std::string query;
+        int sort = 0;  // 0 CPU, 1 memory, 2 name
+        int open = 0;  // the pid whose actions show
+        int armed = 0; // the pid whose Force kill was tapped once
+    };
+    auto state = std::make_shared<State>();
+    page->add<StatsLease>();
+
+    // Overview: live while the page is open
+    auto* overview = page->add<Live>();
+    overview->setSpacing(6);
+    overview->sync = [overview] {
+        overview->clearChildren();
+        auto& s = SystemStats::get();
+        auto* g = group(overview, "Overview");
+        auto meterRow = [&](const char* icon, const std::string& title, const std::string& value, float share) {
+            auto r = row(g, icon, title, value);
+            auto* m = r.row->add<Meter>(share, ColorRef(share > 0.9f ? "error" : "primary"), 10);
+            m->fixedWidth = 220;
+        };
+        meterRow("memory", "CPU", std::format("{:.0f} %  ·  {} cores{}", s.cpu(), s.cores(),
+                                              s.temperature() > 0 ? std::format("  ·  {:.0f} °C", s.temperature()) : ""),
+                 static_cast<float>(s.cpu() / 100));
+        meterRow("memory_alt", "Memory", std::format("{} of {}", formatBytes(s.memUsed()), formatBytes(s.memTotal())),
+                 s.memTotal() ? static_cast<float>(s.memUsed()) / static_cast<float>(s.memTotal()) : 0);
+        if (s.swapTotal() > 0)
+            meterRow("swap_horiz", "Swap", std::format("{} of {}", formatBytes(s.swapUsed()), formatBytes(s.swapTotal())),
+                     static_cast<float>(s.swapUsed()) / static_cast<float>(s.swapTotal()));
+        row(g, "schedule", "Up for", duration(s.uptime()));
+    };
+    overview->watch(SystemStats::get().changed);
+    overview->sync();
+
+    // Processes: search, sort, and actions on the one opened
+    auto* head = group(page, "Processes", "Tap one to stop, end, force or restart it");
+    auto* tools = head->add<Flex>(Flex::Direction::Row);
+    tools->setPadding({16, 10})->setSpacing(10);
+    auto* field = tools->add<TextField>();
+    field->setPlaceholder("Search by name or PID");
+    field->grow = true;
+    auto* list = page->add<Live>();
+    list->setSpacing(6);
+    connectedGroup<int>(tools, 0, {{0, "CPU"}, {1, "Memory"}, {2, "Name"}}, [state, list](int s) {
+        state->sort = s;
+        list->syncSoon();
+    });
+    field->onChanged = [state, list](const std::string& t) {
+        state->query = t;
+        list->syncSoon();
+    };
+    list->sync = [list, state] {
+        list->clearChildren();
+        auto procs = SystemStats::get().allProcesses();
+        if (procs.empty()) {
+            caption(list, "Reading processes…");
+            return;
+        }
+        if (state->sort == 1) std::ranges::sort(procs, std::greater{}, &SystemStats::Process::rss);
+        if (state->sort == 2) std::ranges::sort(procs, {}, &SystemStats::Process::name);
+        auto lower = [](std::string t) {
+            for (auto& c : t) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            return t;
+        };
+        const std::string q = lower(state->query);
+        auto* g = list->add<Segments>();
+        size_t shown = 0;
+        for (const auto& p : procs) {
+            if (!q.empty() && lower(p.name).find(q) == std::string::npos && std::to_string(p.pid).find(q) == std::string::npos)
+                continue;
+            if (++shown > 60) break; // search finds the rest
+            const bool stopped = p.state == 'T' || p.state == 't';
+            const bool open = state->open == p.pid;
+            auto* b = g->add<Button>(Flex::Direction::Row);
+            b->setPadding({20, 10})->setSpacing(14);
+            b->pressedRadius = 10;
+            b->add<Icon>(stopped ? "pause_circle" : p.mine ? "terminal" : "admin_panel_settings", 20)
+                ->setColor(stopped ? "tertiary" : "on_surface_variant", false);
+            auto* texts = b->add<Flex>(Flex::Direction::Column);
+            texts->setAlignItems(Align::Start)->setSpacing(1);
+            texts->grow = true;
+            texts->add<Label>(p.name)->setSize(15)->setWeight(500)->setMaxWidth(300);
+            texts->add<Label>(std::format("PID {}{}{}", p.pid, p.mine ? "" : "  ·  system", stopped ? "  ·  stopped" : ""))
+                ->setSize(12)->setColor("on_surface_variant", false);
+            auto* cpu = b->add<Label>(std::format("{:.1f} %", p.cpu));
+            cpu->setSize(13)->setColor("on_surface_variant", false);
+            cpu->fixedWidth = 64;
+            auto* mem = b->add<Label>(formatBytes(p.rss));
+            mem->setSize(13)->setColor("on_surface_variant", false);
+            mem->fixedWidth = 84;
+            const int pid = p.pid;
+            b->onClicked = [state, list, pid](uint32_t button) {
+                if (button != BTN_LEFT) return;
+                state->open = state->open == pid ? 0 : pid;
+                state->armed = 0;
+                list->syncSoon();
+            };
+            if (!open) continue;
+            // Its actions
+            auto* actions = g->add<Flex>(Flex::Direction::Row);
+            actions->setPadding({54, 4, 20, 12})->setSpacing(8);
+            const SystemStats::Process copy = p;
+            pillButton(actions, stopped ? "Resume" : "Stop", false, [copy, stopped] { signalProcess(copy, stopped ? SIGCONT : SIGSTOP); },
+                       stopped ? "play_arrow" : "pause");
+            pillButton(actions, "End", false, [copy] { signalProcess(copy, SIGTERM); }, "close");
+            if (copy.mine) pillButton(actions, "Restart", false, [pid] { restartProcess(pid); }, "restart_alt");
+            const bool armed = state->armed == pid;
+            auto* kill = pillButton(actions, armed ? "Tap to force" : "Force kill", false, {}, "dangerous");
+            kill->setBackground(armed ? ColorRef("error") : ColorRef("error_container"), false);
+            for (auto& c : kill->children())
+                if (auto* l = dynamic_cast<Label*>(c.get())) l->setColor(armed ? "on_error" : "on_error_container", false);
+            kill->onClicked = [state, list, copy, armed](uint32_t button) {
+                if (button != BTN_LEFT) return;
+                if (!armed) {
+                    state->armed = copy.pid;
+                    list->syncSoon();
+                    return;
+                }
+                state->armed = 0;
+                signalProcess(copy, SIGKILL);
+            };
+        }
+        if (shown == 0) row(g, "search_off", "No process matches");
+    };
+    list->watch(SystemStats::get().changed);
+    list->sync();
 }
 
 // ── Accessibility ──
@@ -2446,6 +2631,7 @@ const PageDef kPages[] = {
     {"weather", "partly_cloudy_day", "Weather", "Location, units and the forecast", weatherPage},
     {"battery", "battery_full", "Battery", "Charge, power draw, health and the power mode", batteryPage},
     {"storage", "storage", "Storage", "Disks, folders and freeing up space", storagePage},
+    {"monitor", "monitoring", "System monitor", "CPU, memory and processes: stop, end or restart them", monitorPage},
     {"sound", "volume_up", "Sound", "Outputs, inputs, balance and apps", soundPage},
     {"display", "brightness_medium", "Display", "Brightness, night light and monitors", displayPage},
     {"appearance", "palette", "Wallpaper & style", "Wallpaper, Material You colours and fonts", appearancePage},
@@ -2466,7 +2652,7 @@ const PageDef kPages[] = {
 int pageGroup(const std::string& id) {
     if (id == "network" || id == "bluetooth") return 0;
     if (id == "defaults" || id == "notifications" || id == "tools" || id == "weather") return 1;
-    if (id == "battery" || id == "storage" || id == "sound" || id == "display") return 2;
+    if (id == "battery" || id == "storage" || id == "monitor" || id == "sound" || id == "display") return 2;
     if (id == "appearance" || id == "style" || id == "bar" || id == "dock" || id == "lockscreen") return 3;
     if (id == "accessibility" || id == "lock") return 4;
     return 5; // system, keyboard, updates, about

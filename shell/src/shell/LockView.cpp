@@ -8,6 +8,7 @@
 #include "services/Notifications.h"
 #include "services/Weather.h"
 #include "shell/LockLayout.h"
+#include "shell/PanelKit.h"
 #include "ui/Theme.h"
 
 #include <cmath>
@@ -233,9 +234,32 @@ private:
     std::vector<Cell> m_cells;
 };
 
+// The M3 Expressive music player as a lock-screen widget of its own; shown
+// while something plays, never on the login screen (no session to control)
+class LockPlayer : public Flex {
+public:
+    explicit LockPlayer(bool greeter) : Flex(Direction::Column), m_greeter(greeter) {
+        setAlignItems(Align::Stretch);
+        if (m_greeter) {
+            setVisible(false);
+            return;
+        }
+        auto* card = add<kit::MediaCard>();
+        card->fixedWidth = 380;
+        m_conn = Mpris::get().changed.connect([this] { sync(); });
+        sync();
+    }
+
+private:
+    void sync() { setVisible(Mpris::get().active() != nullptr); }
+    bool m_greeter;
+    Connection m_conn;
+};
+
 } // namespace
 
 ui::Node* addLockWidget(ui::Node* parent, const std::string& id, bool greeter, int col, float clockScale) {
+    if (id == "player") return parent->add<LockPlayer>(greeter);
     const Align align = col == 0 ? Align::Start : col == 1 ? Align::Center : Align::End;
     return parent->add<LockWidget>(id, greeter, align, clockScale);
 }

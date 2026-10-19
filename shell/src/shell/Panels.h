@@ -33,7 +33,6 @@ void launcher(ui::Flex* card, Popup& popup, const std::string& initial);
 void trayMenu(ui::Flex* card, Popup& popup, const std::string& itemKey);
 void polkit(ui::Flex* card, Popup& popup, int requestId);
 void dashboard(ui::Flex* card, Popup& popup);
-void systemMonitor(ui::Flex* card, Popup& popup);
 void wallpapers(ui::Flex* card, Popup& popup);
 void overview(ui::Flex* card, Popup& popup);
 void settings(ui::Flex* card, Popup& popup, const std::string& page);

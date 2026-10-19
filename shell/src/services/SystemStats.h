@@ -26,6 +26,8 @@ public:
         std::string name;
         double cpu = 0;    // % of one core
         uint64_t rss = 0;  // bytes
+        char state = '?';  // R running, S sleeping, T stopped, Z zombie…
+        bool mine = false; // the user's own (no root needed to signal it)
     };
 
     static SystemStats& get();
@@ -45,6 +47,7 @@ public:
     int cores() const { return m_cores; }
     const std::vector<Disk>& disks() const { return m_disks; }
     const std::vector<Process>& processes() const { return m_procs; } // by CPU, top 12
+    const std::vector<Process>& allProcesses() const { return m_all; } // every one, by CPU
 
     Signal<> changed;
 
@@ -66,7 +69,7 @@ private:
     std::deque<double> m_history;
     uint64_t m_memTotal = 0, m_memUsed = 0, m_swapTotal = 0, m_swapUsed = 0;
     std::vector<Disk> m_disks;
-    std::vector<Process> m_procs;
+    std::vector<Process> m_procs, m_all;
     std::map<int, uint64_t> m_lastProcTicks;
     uint64_t m_lastProcTotal = 0;
 };

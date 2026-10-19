@@ -293,7 +293,9 @@ void addRounded(std::vector<RectF>& out, const RectF& r, float radius) {
         out.push_back(r);
         return;
     }
-    const int bands = std::clamp(static_cast<int>(radius / 3), 2, 8);
+    // About a band per 2 px of radius: steps fine enough that nothing
+    // behind peeks out around the curve
+    const int bands = std::clamp(static_cast<int>(radius / 2), 2, 16);
     for (int i = 0; i < bands; ++i) {
         const float d0 = radius * static_cast<float>(i) / static_cast<float>(bands);
         const float d1 = radius * static_cast<float>(i + 1) / static_cast<float>(bands);
@@ -336,9 +338,15 @@ void Surface::updateBlurRegion() {
         return;
     }
     wl_region* region = wl_compositor_create_region(Display::get().compositor());
-    for (const auto& b : m_blurRects)
-        wl_region_add(region, static_cast<int>(std::ceil(b.x)), static_cast<int>(std::ceil(b.y)),
-                      static_cast<int>(std::floor(b.w)), static_cast<int>(std::floor(b.h)));
+    // The corner bands share edges: rounding both ends the same way makes
+    // them tile exactly (shrinking each left 1 px gaps, where the window
+    // behind showed through unblurred as thin lines). Sideways they stay
+    // inside the curve.
+    for (const auto& b : m_blurRects) {
+        const int x0 = static_cast<int>(std::ceil(b.x)), x1 = static_cast<int>(std::floor(b.right()));
+        const int y0 = static_cast<int>(std::lround(b.y)), y1 = static_cast<int>(std::lround(b.bottom()));
+        if (x1 > x0 && y1 > y0) wl_region_add(region, x0, y0, x1 - x0, y1 - y0);
+    }
     ext_background_effect_surface_v1_set_blur_region(m_blur, region);
     wl_region_destroy(region);
 }

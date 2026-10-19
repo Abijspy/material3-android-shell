@@ -30,7 +30,7 @@ run(mod .. " + Tab", m3 .. " popup overview", "Shell: Overview")
 run(mod .. " + Escape", m3 .. " popup power", "Shell: Power menu")
 run(mod .. " + L", m3 .. " lock", "Shell: Lock")
 run("CTRL + " .. mod .. " + T", m3 .. " wallpaper pick", "Shell: Wallpapers")
-run("CTRL + ALT + Delete", m3 .. " popup sysmon", "Shell: System monitor")
+run("CTRL + ALT + Delete", m3 .. " settings monitor", "Shell: System monitor")
 run("CTRL + " .. mod .. " + R", "sh -c 'pkill -x material3ui; sleep 0.3; material3ui'", "Shell: Restart shell")
 
 -- Clipboard and emoji

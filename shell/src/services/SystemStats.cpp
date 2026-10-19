@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <sys/stat.h>
 #include <sstream>
 #include <sys/statvfs.h>
 #include <unistd.h>
@@ -143,6 +144,9 @@ void SystemStats::sampleProcesses() {
         try {
         p.pid = std::stoi(pidStr);
         p.name = line.substr(open + 1, close - open - 1);
+        if (close + 2 < line.size()) p.state = line[close + 2];
+        struct stat st {};
+        p.mine = ::stat(e.path().c_str(), &st) == 0 && st.st_uid == getuid();
         std::istringstream rest(line.substr(close + 2));
         std::string field;
         uint64_t utime = 0, stime = 0;
@@ -168,6 +172,7 @@ void SystemStats::sampleProcesses() {
     m_lastProcTicks = std::move(ticks);
     m_lastProcTotal = total;
     std::ranges::sort(procs, [](const Process& a, const Process& b) { return a.cpu != b.cpu ? a.cpu > b.cpu : a.rss > b.rss; });
+    m_all = procs;
     if (procs.size() > 12) procs.resize(12);
     m_procs = std::move(procs);
 }
