@@ -33,6 +33,11 @@ run("CTRL + " .. mod .. " + T", m3 .. " wallpaper pick", "Shell: Wallpapers")
 run("CTRL + ALT + Delete", m3 .. " settings monitor", "Shell: System monitor")
 run("CTRL + " .. mod .. " + R", "sh -c 'pkill -x material3ui; sleep 0.3; material3ui'", "Shell: Restart shell")
 
+-- Magnifier (Settings → Accessibility)
+run(mod .. " + equal", m3 .. " zoom in", "Accessibility: Zoom in", { repeating = true })
+run(mod .. " + minus", m3 .. " zoom out", "Accessibility: Zoom out", { repeating = true })
+run(mod .. " + BackSpace", m3 .. " zoom reset", "Accessibility: Zoom reset")
+
 -- Clipboard and emoji
 run(mod .. " + V", m3 .. " clipboard", "Shell: Clipboard history")
 run(mod .. " + Period", m3 .. " launcher :", "Shell: Emoji picker")
@@ -68,6 +73,12 @@ hl.window_rule({
 })
 if fx.size then
 	hl.config({ decoration = { blur = { size = fx.size, passes = fx.passes or 3 } } })
+end
+
+-- Settings → Accessibility: the magnifier and colour correction
+local ok_a11y, a11y = pcall(require, "material3ui.a11y_custom")
+if ok_a11y and type(a11y) == "table" then
+	hl.config({ cursor = { zoom_factor = a11y.zoom_factor or 1 }, decoration = { screen_shader = a11y.screen_shader or "" } })
 end
 
 -- Settings → System → Mouse & touchpad, written to input_custom.lua

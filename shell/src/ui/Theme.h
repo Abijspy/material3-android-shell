@@ -29,6 +29,8 @@ public:
     float barOpacity() const { return m_barOpacity; }     // bar backgrounds
     float panelOpacity() const { return m_panelOpacity; } // popups, toasts, OSD
     float roundness() const { return m_roundness; }       // multiplies corner radii
+    float textScale() const { return m_textScale; }       // Accessibility → Text size
+    bool boldText() const { return m_boldText; }          // Accessibility → Bold text
 
     Signal<> changed;
 
@@ -40,7 +42,8 @@ private:
 
     std::map<std::string, Color> m_palette;
     bool m_blur = true;
-    float m_barOpacity = 0.8f, m_panelOpacity = 0.9f, m_roundness = 1;
+    float m_barOpacity = 0.8f, m_panelOpacity = 0.9f, m_roundness = 1, m_textScale = 1;
+    bool m_boldText = false;
 };
 
 } // namespace m3

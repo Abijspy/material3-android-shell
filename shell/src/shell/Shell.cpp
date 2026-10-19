@@ -315,6 +315,8 @@ void Shell::restyle(bool relayout) {
     if (relayout) {
         TextEngine::get().clear();
         for (auto& [_, bar] : m_bars) bar->rebuild();
+        // Open panels and windows too: text may have grown (Accessibility)
+        for (auto* s : wl::Surface::all()) s->requestLayout();
         // Desktop widgets follow settings too (desktop clock on/off)
         for (auto& [output, desktop] : m_desktops) desktop = std::make_unique<Desktop>(output);
         for (auto& [output, _] : m_bars) syncDock(output);
@@ -426,6 +428,14 @@ void Shell::registerIpc() {
             chans += std::format("{}{} {}%", i ? ", " : "", s->channels[i], std::lround(s->volumes[i] * 100));
         return std::format("{} {}%{} balance {:+.2f} [{}]", s->description, std::lround(s->volume() * 100),
                            s->muted ? " muted" : "", s->balance(), chans);
+    });
+    ipc.add("zoom", "zoom in|out|reset: the magnifier (Accessibility)", [](const IpcServer::Args& a) {
+        const std::string cmd = a.empty() ? "" : a[0];
+        double z = Config::get().value<double>("/accessibility/zoom", 1.0);
+        z = cmd == "in" ? z + 0.5 : cmd == "out" ? z - 0.5 : 1.0;
+        z = std::clamp(z, 1.0, 4.0);
+        Config::get().set("/accessibility/zoom", z);
+        return std::format("zoom {:.1f}×", z);
     });
     ipc.add("brightness", "brightness up|down|set <0-100>", [](const IpcServer::Args& a) {
         auto& b = Brightness::get();

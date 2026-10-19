@@ -83,6 +83,8 @@ void Theme::loadEffects() {
     m_panelOpacity = std::clamp(static_cast<float>(c.value<double>("/appearance/transparency/panels", 0.72)), 0.3f, 1.0f);
     m_roundness = std::clamp(static_cast<float>(c.value<double>("/appearance/roundness", 1.0)), 0.0f, 1.5f);
     ui::motion::scale = std::clamp(static_cast<float>(c.value<double>("/appearance/animationSpeed", 1.0)), 0.0f, 2.0f);
+    m_textScale = std::clamp(static_cast<float>(c.value<double>("/accessibility/textScale", 1.0)), 0.85f, 1.5f);
+    m_boldText = c.value<bool>("/accessibility/boldText", false);
 }
 
 void Theme::load() {

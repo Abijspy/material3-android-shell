@@ -85,12 +85,91 @@ void Effects::applyInput() {
     h.request("reload");
 }
 
+namespace {
+
+// Colour correction as Hyprland screen shaders (GLSL ES 3.0), written by the
+// shell itself so they need no install step
+const char* kShaderHead = R"(#version 300 es
+// Written by Material3UI (Settings → Accessibility → Colour correction)
+precision highp float;
+in vec2 v_texcoord;
+uniform sampler2D tex;
+out vec4 fragColor;
+)";
+
+// Daltonize: simulate what the eye misses (in LMS), then shift that
+// difference into colours it can tell apart
+const char* kDaltonize = R"(
+vec3 daltonize(vec3 c, int kind) {
+    float L = 17.8824 * c.r + 43.5161 * c.g + 4.11935 * c.b;
+    float M = 3.45565 * c.r + 27.1554 * c.g + 3.86714 * c.b;
+    float S = 0.0299566 * c.r + 0.184309 * c.g + 1.46709 * c.b;
+    float l = L, m = M, s = S;
+    if (kind == 0) l = 2.02344 * M - 2.52581 * S;          // protanopia
+    else if (kind == 1) m = 0.494207 * L + 1.24827 * S;    // deuteranopia
+    else s = -0.395913 * L + 0.801109 * M;                 // tritanopia
+    vec3 sim = vec3(0.0809444479 * l - 0.130504409 * m + 0.116721066 * s,
+                    -0.0102485335 * l + 0.0540193266 * m - 0.113614708 * s,
+                    -0.000365296938 * l - 0.00412161469 * m + 0.693511405 * s);
+    vec3 err = c - sim;
+    return clamp(c + vec3(0.0, 0.7 * err.r + err.g, 0.7 * err.r + err.b), 0.0, 1.0);
+}
+)";
+
+std::string shaderSource(const std::string& filter) {
+    std::string body;
+    if (filter == "grayscale") body = "vec3 o = vec3(dot(c.rgb, vec3(0.2126, 0.7152, 0.0722)));";
+    else if (filter == "invert") body = "vec3 o = vec3(1.0) - c.rgb;";
+    else if (filter == "dim") body = "vec3 o = c.rgb * 0.55;";
+    else if (filter == "protanopia") body = "vec3 o = daltonize(c.rgb, 0);";
+    else if (filter == "deuteranopia") body = "vec3 o = daltonize(c.rgb, 1);";
+    else if (filter == "tritanopia") body = "vec3 o = daltonize(c.rgb, 2);";
+    else return "";
+    return std::string(kShaderHead) + (filter.find("anopia") != std::string::npos ? kDaltonize : "") +
+           "\nvoid main() {\n    vec4 c = texture(tex, v_texcoord);\n    " + body + "\n    fragColor = vec4(o, c.a);\n}\n";
+}
+
+} // namespace
+
+// The magnifier (Hyprland's cursor zoom) and a colour filter: applied at
+// once with eval, and kept in a11y_custom.lua for the next reload or login
+void Effects::applyAccessibility() {
+    auto& h = Hyprland::get();
+    const auto& c = Config::get();
+    const double zoom = std::clamp(c.value<double>("/accessibility/zoom", 1.0), 1.0, 4.0);
+    const std::string filter = c.value<std::string>("/accessibility/colorFilter", "none");
+    std::string shader;
+    if (const std::string src = shaderSource(filter); !src.empty()) {
+        const std::string dir = paths::stateDir() + "/shaders";
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        shader = dir + "/" + filter + ".frag";
+        if (readAll(shader) != src) std::ofstream(shader) << src;
+    }
+    const std::string key = std::format("{:.2f}|{}", zoom, shader);
+    if (key == m_a11yApplied) return;
+    m_a11yApplied = key;
+    if (!h.usingLua()) {
+        h.request(std::format("keyword cursor:zoom_factor {:.2f}", zoom));
+        h.request("keyword decoration:screen_shader " + (shader.empty() ? std::string("[[EMPTY]]") : shader));
+        return;
+    }
+    h.request(std::format("eval hl.config({{ cursor = {{ zoom_factor = {:.2f} }}, decoration = {{ screen_shader = \"{}\" }} }})", zoom, shader));
+    const std::string lua = std::format("-- Written by Material3UI (Settings → Accessibility).\n"
+                                        "-- Change these there; edits made here are overwritten.\n"
+                                        "return {{\n\tzoom_factor = {:.2f},\n\tscreen_shader = \"{}\",\n}}\n",
+                                        zoom, shader);
+    const std::string file = (fs::path(luaFile()).parent_path() / "a11y_custom.lua").string();
+    if (readAll(file) != lua) std::ofstream(file) << lua;
+}
+
 void Effects::apply() {
     auto& h = Hyprland::get();
     if (!h.available()) return;
     auto& t = Theme::get();
     const auto& c = Config::get();
     applyInput();
+    applyAccessibility();
     // Accessibility → cursor size: Hyprland's cursor and GTK's follow it
     if (const int cursor = c.value<int>("/accessibility/cursorSize", 0); cursor > 0 && cursor != m_cursor) {
         m_cursor = cursor;

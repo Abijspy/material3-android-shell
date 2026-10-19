@@ -370,8 +370,10 @@ Label* Label::setFamily(const std::string& family) {
 TextStyle Label::style() const {
     TextStyle s;
     s.family = !m_family.empty() ? m_family : Theme::get().fontFamily();
-    s.size = m_size;
-    s.weight = m_weight;
+    // Accessibility: larger and bolder text (icons keep their size and grade)
+    const auto& theme = Theme::get();
+    s.size = m_icon ? m_size : std::round(m_size * theme.textScale());
+    s.weight = !m_icon && theme.boldText() ? std::min(900, m_weight + 200) : m_weight;
     s.maxWidth = m_maxWidth;
     s.maxLines = m_maxLines;
     s.center = m_center;

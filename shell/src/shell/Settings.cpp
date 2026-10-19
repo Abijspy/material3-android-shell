@@ -1504,7 +1504,11 @@ void usersPage(Flex* page, Popup&) {
 // ── Accessibility ──
 
 void accessibilityPage(Flex* page, Popup&) {
-    auto* see = group(page, "Display", "Easier to see and to follow");
+    // Text and display: larger or bolder text, less motion and transparency
+    auto* see = group(page, "Text & display", "Easier to read and to follow");
+    choiceRow<double>(see, "format_size", "Text size", "All of the shell's text", "/accessibility/textScale", 1.0,
+                      {{1.0, "Default"}, {1.15, "Large"}, {1.3, "Larger"}});
+    switchRow(see, "format_bold", "Bold text", "Heavier letters, easier to make out", "/accessibility/boldText", false);
     auto motion = row(see, "animation", "Remove animations", "Panels and pages appear without motion");
     auto* motionSw = motion.row->add<Switch>();
     motionSw->setChecked(Config::get().value<double>("/appearance/animationSpeed", 1.0) == 0, false);
@@ -1521,6 +1525,50 @@ void accessibilityPage(Flex* page, Popup&) {
             Config::get().set(key, on ? nlohmann::json(1.0) : nlohmann::json(nullptr));
         Config::get().set("/appearance/blur/enabled", on ? nlohmann::json(false) : nlohmann::json(nullptr));
     };
+
+    // Colour correction: one filter over the whole screen (Hyprland shaders)
+    auto* colour = page->add<Live>();
+    colour->setSpacing(6);
+    colour->sync = [colour] {
+        colour->clearChildren();
+        auto* g = group(colour, "Colour correction", "A filter over the whole screen, apps included");
+        const std::string now = Config::get().value<std::string>("/accessibility/colorFilter", "none");
+        const std::tuple<const char*, const char*, const char*, const char*> filters[] = {
+            {"none", "invert_colors_off", "Off", "Colours as they are"},
+            {"grayscale", "filter_b_and_w", "Grayscale", "Shades of grey only"},
+            {"invert", "invert_colors", "Invert colours", "Light becomes dark and dark light"},
+            {"protanopia", "palette", "Red-weak (protanopia)", "Shifts reds into colours you can tell apart"},
+            {"deuteranopia", "palette", "Green-weak (deuteranopia)", "The most common colour blindness"},
+            {"tritanopia", "palette", "Blue-weak (tritanopia)", "Shifts blues and yellows apart"},
+            {"dim", "brightness_4", "Extra dim", "Darker than the lowest brightness, for dark rooms"},
+        };
+        for (const auto& [id, icon, title, sub] : filters) {
+            const bool on = now == id;
+            auto* b = g->add<Button>(Flex::Direction::Row);
+            b->setPadding({20, 12})->setSpacing(16);
+            b->pressedRadius = 10;
+            b->add<Icon>(icon, 22)->setColor(on ? "primary" : "on_surface_variant", false);
+            auto* texts = b->add<Flex>(Flex::Direction::Column);
+            texts->setAlignItems(Align::Start)->setSpacing(1);
+            texts->grow = true;
+            texts->add<Label>(title)->setSize(15)->setWeight(on ? 600 : 500);
+            texts->add<Label>(sub)->setSize(13)->setColor("on_surface_variant", false);
+            if (on) b->add<Icon>("check", 22)->setColor("primary", false);
+            const std::string value = id;
+            b->onClicked = [value](uint32_t button) {
+                if (button != BTN_LEFT) return;
+                Config::get().set("/accessibility/colorFilter", value == "none" ? nlohmann::json(nullptr) : nlohmann::json(value));
+            };
+        }
+    };
+    colour->conns.push_back(Config::get().changed.connect([colour] { colour->syncSoon(); }));
+    colour->sync();
+
+    // The magnifier: Hyprland's zoom around the pointer
+    auto* zoom = group(page, "Magnifier", "Zooms in around the pointer. Super+= zooms in, Super+- out, Super+Backspace resets");
+    sliderRow(zoom, "zoom_in", "Zoom", "/accessibility/zoom", 1.0, 1.0, 4.0, 0.25,
+              [](double v) { return v <= 1.001 ? std::string("Off") : std::format("{:.2f}×", v); });
+
     auto* pointer = group(page, "Pointer");
     choiceRow<int>(pointer, "mouse", "Cursor size", "", "/accessibility/cursorSize", 24,
                    {{24, "Default"}, {32, "Large"}, {48, "Larger"}, {64, "Largest"}});
@@ -2828,7 +2876,7 @@ const PageDef kPages[] = {
     {"bar", "toolbar", "Status bar", "Position, widgets and the island", barPage},
     {"dock", "dock_to_bottom", "Dock", "Pinned apps, running apps and auto-hide", dockPage},
     {"lockscreen", "lock_person", "Lock screen", "Clock, widgets and the login screen", lockScreenPage},
-    {"accessibility", "accessibility_new", "Accessibility", "Motion, transparency and the cursor", accessibilityPage},
+    {"accessibility", "accessibility_new", "Accessibility", "Text, colour correction, magnifier and motion", accessibilityPage},
     {"lock", "security", "Security & privacy", "Screen lock, idle and sleep", lockPage},
     {"users", "account_circle", "Users", "Your profile, password, administrators and new profiles", usersPage},
     {"system", "settings_suggest", "System", "Date & time, languages and reset", systemPage},
