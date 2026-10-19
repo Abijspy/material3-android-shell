@@ -377,6 +377,30 @@ Button* iconButton(Node* parent, const std::string& icon, std::function<void()> 
     return b;
 }
 
+Button* confirmButton(Node* parent, const std::string& key, const std::string& icon, std::function<void()> onConfirm) {
+    static std::string armedKey;
+    static std::chrono::steady_clock::time_point armedAt;
+    static constexpr auto window = std::chrono::seconds(4);
+    const auto armed = [key] { return armedKey == key && std::chrono::steady_clock::now() - armedAt < window; };
+    auto* b = parent->add<Button>();
+    pill(b)->setPadding(Insets(6))->setJustify(Align::Center);
+    auto* glyph = b->add<Icon>(armed() ? "delete_forever" : icon, 20);
+    glyph->setColor(armed() ? "error" : "on_surface_variant", false);
+    b->onClicked = [key, armed, glyph, onConfirm = std::move(onConfirm)](uint32_t button) {
+        if (button != BTN_LEFT) return;
+        if (armed()) {
+            armedKey.clear();
+            onConfirm();
+            return;
+        }
+        armedKey = key;
+        armedAt = std::chrono::steady_clock::now();
+        glyph->setText("delete_forever");
+        glyph->setColor("error");
+    };
+    return b;
+}
+
 Tile::Tile(const std::string& icon, const std::string& title) : Button(Direction::Row) {
     pill(this)->setPadding({10, 10, 18, 10})->setSpacing(12);
     setBackground(ColorRef("on_surface", 0.1f), false);

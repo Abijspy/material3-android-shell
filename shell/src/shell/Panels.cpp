@@ -361,6 +361,7 @@ void bluetoothView(Flex* body, const std::function<void()>& back) {
                                     : d.paired ? "Paired · tap to connect" : "Tap to pair";
             texts->add<Label>(state)->setSize(12)->setColor(d.connected ? fg : "on_surface_variant", false);
             const std::string path = d.path;
+            if (d.paired && busy.empty()) kit::confirmButton(e, "bt:" + path, "delete", [path] { Bluetooth::get().forget(path); });
             const bool connected = d.connected, paired = d.paired;
             e->onClicked = [path, connected, paired](uint32_t button) {
                 if (button != BTN_LEFT || !Bluetooth::get().busy(path).empty()) return;

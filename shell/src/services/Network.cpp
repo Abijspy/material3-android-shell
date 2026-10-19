@@ -315,6 +315,22 @@ void Network::connect(const AccessPoint& ap, const std::string& password) {
                              done);
 }
 
+void Network::forget(const std::string& ssid) {
+    const auto saved = m_savedBySsid.find(ssid);
+    if (saved == m_savedBySsid.end()) return;
+    const std::string path = saved->second;
+    m_savedBySsid.erase(saved);
+    for (auto& ap : m_aps)
+        if (ap.ssid == ssid) ap.saved = false;
+    accessPointsChanged.emit();
+    dbus::Bus::system().call(kNM, path, "org.freedesktop.NetworkManager.Settings.Connection", "Delete", {},
+                             [this](const dbus::Value&, const std::string& err) {
+                                 if (!err.empty()) log::warn("network: forgetting failed: {}", err);
+                                 refresh();
+                                 changed.emit();
+                             });
+}
+
 void Network::disconnect() {
     if (!m_wifiDevice.empty())
         dbus::Bus::system().call(kNM, m_wifiDevice, "org.freedesktop.NetworkManager.Device", "Disconnect");

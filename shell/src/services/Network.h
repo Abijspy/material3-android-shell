@@ -42,6 +42,9 @@ public:
     // Saved or open networks connect directly; new secured ones need `password`
     void connect(const AccessPoint& ap, const std::string& password = {});
     void disconnect();
+    // Deletes the saved connection for `ssid` (its password with it); a
+    // network in use disconnects
+    void forget(const std::string& ssid);
     std::string lastError() const { return m_error; }
 
     // Wired adapters and their state (NetworkManager)

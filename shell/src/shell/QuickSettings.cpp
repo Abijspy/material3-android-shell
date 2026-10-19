@@ -165,6 +165,10 @@ void wifiView(Flex* body, const std::function<void()>& back, bool details, std::
             if (ap.active || ap.saved)
                 texts->add<Label>(ap.active ? "Connected" : "Saved")->setSize(12)->setColor(ap.active ? "on_secondary_container" : "on_surface_variant", false);
             if (ap.secured) row->add<Icon>("lock", 16)->setColor("on_surface_variant", false);
+            if (ap.saved) {
+                const std::string ssid = ap.ssid;
+                confirmButton(row, "wifi:" + ssid, "delete", [ssid] { Network::get().forget(ssid); });
+            }
             // Settings: the connected entry opens like a dropdown
             if (ap.active && connected)
                 row->add<Icon>(*detailsOpen ? "expand_less" : "expand_more", 22)->setColor("on_secondary_container", false);

@@ -448,7 +448,7 @@ void bluetoothPage(Flex* page, Popup&) {
             if (d.connected) pillButton(r.row, "Disconnect", false, [path] { Bluetooth::get().disconnect(path); });
             else if (d.paired) pillButton(r.row, "Connect", true, [path] { Bluetooth::get().connect(path); });
             else pillButton(r.row, "Pair", true, [path] { Bluetooth::get().pair(path); }, "link");
-            if (d.paired) iconButton(r.row, "delete", [path] { Bluetooth::get().forget(path); });
+            if (d.paired) confirmButton(r.row, "bt:" + path, "delete", [path] { Bluetooth::get().forget(path); });
         };
         Node* mine = nullptr;
         for (const auto& d : b.devices())

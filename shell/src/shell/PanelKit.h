@@ -186,6 +186,11 @@ private:
 
 // Round icon button (close, back, power…)
 ui::Button* iconButton(ui::Node* parent, const std::string& icon, std::function<void()> onClick, float size = 20);
+// An icon button for something that can't be undone (forget a network or
+// a device): the first tap arms it, red, and a second within a few seconds
+// acts. `key` names its target, so the armed state outlives the list
+// rebuilding under it.
+ui::Button* confirmButton(ui::Node* parent, const std::string& key, const std::string& icon, std::function<void()> onConfirm);
 
 // Quick Settings tile, as Android 17 draws them: a pill with the icon in a
 // chip of its own. Tiles with details (Wi-Fi, Bluetooth) light the chip when
