@@ -10,6 +10,7 @@
 </p>
 
 <p align="center">
+  <a href="#screenshots">Screenshots</a> ·
   <a href="#install-in-one-line">Install</a> ·
   <a href="#a-tour">Tour</a> ·
   <a href="#make-it-yours">Customise</a> ·
@@ -25,6 +26,10 @@
   <img alt="License" src="https://img.shields.io/badge/license-MIT-7D5260"/>
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/quick-settings.jpg" alt="The Material3UI desktop with Quick Settings open" width="900"/>
+</p>
+
 ---
 
 Most Linux desktops are a patchwork. The bar comes from one project, the lock screen from another, the login screen from a third, and updates run in a terminal. Each has its own fonts, colours and idea of what a button looks like.
@@ -32,6 +37,33 @@ Most Linux desktops are a patchwork. The bar comes from one project, the lock sc
 **Material3UI replaces the patchwork with one shell.** Your wallpaper sets the colours. The same palette, shapes and motion carry through the bar, dock, panels, notifications, lock screen, login screen, password prompts and update manager, and out into GTK, KDE and terminal apps.
 
 **v4 is native.** The shell is one C++ program that talks to Wayland, D-Bus, PipeWire and PAM directly. It renders every pixel itself with OpenGL ES and leaves the blur to the compositor. Qt, QML and Quickshell are gone.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/desktop.jpg" alt="Desktop with the bar, clock and dock"/></td>
+    <td><img src="docs/screenshots/dashboard.jpg" alt="Dashboard: calendar, weather, media and system stats"/></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Desktop:</b> the bar, its dynamic island and the dock</td>
+    <td align="center"><b>Dashboard:</b> calendar, weather, media and system</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/launcher.jpg" alt="App launcher"/></td>
+    <td><img src="docs/screenshots/wallpapers.jpg" alt="Wallpaper picker with the shipped wallpapers"/></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Launcher:</b> apps, maths, emoji, clipboard, files</td>
+    <td align="center"><b>Wallpapers:</b> ten ship with the shell</td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/screenshots/settings.jpg" alt="Settings app on the Wallpaper and style page"/></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><b>Settings:</b> one app for the whole desktop</td>
+  </tr>
+</table>
 
 ## Install in one line
 
@@ -77,7 +109,7 @@ From the moment the machine boots:
 - **Notification Centre** and **Dashboard:** notifications, the clock, a calendar and the week's weather.
 - **Overview:** every workspace at a glance.
 
-**5 · Change the wallpaper.** Pick an image and Matugen builds a new Material 3 palette from it, or seed the palette from an accent colour you choose. The whole desktop recolours, GTK, KDE, Alacritty, kitty and Hyprland's window borders included.
+**5 · Change the wallpaper.** Ten wallpapers ship with the shell, eight of them drawn from Material 3 Expressive shapes (<kbd>Ctrl</kbd><kbd>Super</kbd><kbd>T</kbd>). Pick one or your own image and Matugen builds a new Material 3 palette from it, or seed the palette from an accent colour you choose. The whole desktop recolours, GTK, KDE, Alacritty, kitty and Hyprland's window borders included.
 
 **6 · Lock the screen.** <kbd>Super</kbd><kbd>L</kbd> shows a clock and the widgets you picked: date, weather, forecast, media, battery and a notification count. Rearrange it on a grid in the full-screen lock screen editor (Settings → Lock screen).
 

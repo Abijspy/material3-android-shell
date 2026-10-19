@@ -126,6 +126,14 @@ install_data('data/icons/material3ui-settings.svg', install_dir: get_option('dat
 install_data('data/emojis.txt', install_dir: get_option('datadir') / 'material3ui')
 install_data('data/icons/Material3UI.svg', install_dir: get_option('datadir') / 'material3ui/icons')
 install_data('data/wallpapers/default_wallpaper.png', 'data/wallpapers/midnight-dunes.png',
+  'data/wallpapers/bloom-lavender.jpg',
+  'data/wallpapers/bloom-rose.jpg',
+  'data/wallpapers/pills-mint.jpg',
+  'data/wallpapers/pills-sunset.jpg',
+  'data/wallpapers/ripples-graphite.jpg',
+  'data/wallpapers/ripples-sage.jpg',
+  'data/wallpapers/shapes-coral.jpg',
+  'data/wallpapers/shapes-ocean.jpg',
   install_dir: get_option('datadir') / 'material3ui/wallpapers')
 
 executable('material3ui', sources, protocol_sources,
