@@ -1,0 +1,3 @@
+post_install() {
+    echo ":: Make it the login screen with: material3ui-greeter setup --enable"
+}

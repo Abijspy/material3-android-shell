@@ -2450,10 +2450,9 @@ void lockScreenPage(Flex* page, Popup& popup) {
                 sub->setText(Packages::get().status());
                 conn->disconnect();
             });
-            const bool hasGreetd = access("/usr/bin/greetd", X_OK) == 0;
+            // The package brings greetd with it
             Packages::get().runAsRoot(installed ? "Updating the login screen…" : "Installing the login screen…",
-                                      (hasGreetd ? "" : "pacman -S --needed --noconfirm greetd acl && ") + std::string("'") + tool +
-                                          (installed ? "' install" : "' install --enable"),
+                                      "'" + tool + (installed ? "' install" : "' install --enable"),
                                       installed ? "Login screen updated" : "Login screen installed: it starts at the next boot");
         };
         if (!installed) {

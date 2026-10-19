@@ -1,0 +1,38 @@
+# Attaches the material3ui-greeter pacman package to each published release
+name: Release packages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and attach (e.g. v4.4.0)
+        required: true
+
+jobs:
+  greeter:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - name: Tools
+        run: pacman -Syu --noconfirm git github-cli
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+      - name: Build
+        # makepkg refuses to run as root
+        run: |
+          useradd -m builder
+          chown -R builder "$GITHUB_WORKSPACE"
+          su builder -c "git config --global --add safe.directory '*' && cd '$GITHUB_WORKSPACE' && packaging/build-greeter-pkg.sh '$GITHUB_WORKSPACE/out'"
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload "$TAG" out/*.pkg.tar.zst --clobber

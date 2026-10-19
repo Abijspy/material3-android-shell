@@ -2,7 +2,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #  material3ui-greeter: install, theme and preview the Material3UI greetd greeter
 #
-#    install [--enable]   Install the greeter for greetd (uses sudo). --enable also
+#    install [--enable] [--package FILE]
+#                         Install the material3ui-greeter package (uses sudo):
+#                         FILE, else the release's package when this checkout
+#                         is a release, else one built from the checkout. Then
+#                         runs setup.
+#    setup [--enable]     Point greetd at the greeter and sync it. --enable also
 #                         switches the display manager to greetd.
 #    sync [--quiet]       Copy your wallpaper, colours, lock screen (clock and
 #                         widgets), weather, avatar, keyboard layout and monitor
@@ -18,9 +23,12 @@ set -euo pipefail
 readonly SHARE=/usr/share/material3ui-greeter
 readonly DATA=/var/lib/material3ui-greeter
 readonly GREETD_CONF=/etc/greetd/config.toml
-readonly BIN=/usr/local/bin/material3ui-greeter
+readonly BIN=/usr/bin/material3ui-greeter
+readonly OLD_BIN=/usr/local/bin/material3ui-greeter # copied there before the package
 readonly FONT_DIR=/usr/local/share/fonts/material3ui
+readonly RELEASES=https://github.com/Abijspy/material3-android-shell/releases
 readonly SRC="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+readonly REPO="$(dirname "$SRC")" # the checkout, when run from greeter/
 
 QUIET=0
 say()  { [[ "$QUIET" == 1 ]] || echo -e "\033[38;2;202;169;224m\033[1m│\033[0m $*"; }
@@ -36,25 +44,70 @@ target_user() {
     else id -un; fi
 }
 target_home() { getent passwd "$(target_user)" | cut -d: -f6; }
+# Downloads and builds run as that user (makepkg refuses root)
+as_user() {
+    local user; user="$(target_user)"
+    if [[ "$EUID" -eq 0 && "$user" != root ]]; then
+        runuser -u "$user" -- env HOME="$(target_home)" "$@"
+    else
+        "$@"
+    fi
+}
+in_checkout() { [[ -f "$SRC/greet-run.sh" && -x "$REPO/packaging/build-greeter-pkg.sh" ]]; }
 
 # ── install ──────────────────────────────────────────────────────────────────
+# Prints the path of a package for this checkout: the release's, else built
+fetch_or_build() {
+    local ver tmp name
+    ver="$(as_user "$REPO/packaging/build-greeter-pkg.sh" --version)"
+    tmp="$(as_user mktemp -d)"
+    # A release ships the package; between releases there is none to take
+    if [[ "$ver" != *.r* ]]; then
+        name="material3ui-greeter-$ver-1-any.pkg.tar.zst"
+        if as_user curl -fsSL -o "$tmp/$name" "$RELEASES/download/v$ver/$name"; then
+            say "Downloaded $name from the v$ver release" >&2
+            echo "$tmp/$name"
+            return
+        fi
+        say "The v$ver release has no package; building it here" >&2
+    fi
+    as_user "$REPO/packaging/build-greeter-pkg.sh" "$tmp"
+}
+
 cmd_install() {
+    local enable="" pkg=""
+    while (($#)); do
+        case "$1" in
+            --enable) enable=--enable ;;
+            --package) pkg="$(readlink -f "${2:?--package needs a file}")"; shift ;;
+            *) die "install: unknown option $1" 2 ;;
+        esac
+        shift
+    done
+    command -v material3ui >/dev/null 2>&1 || die "The material3ui shell is not installed (run install.sh)."
+    if [[ -z "$pkg" ]]; then
+        in_checkout || die "Run this from the repository's greeter/ directory, or pass --package FILE."
+        pkg="$(fetch_or_build)" || die "Could not get the greeter package."
+    fi
+    [[ -f "$pkg" ]] || die "No package at $pkg"
+
+    say "Installing $(basename "$pkg")"
+    # Files copied in before the package existed would clash with its own
+    as_root rm -f "$OLD_BIN"
+    pacman -Qq material3ui-greeter >/dev/null 2>&1 || as_root rm -rf "$SHARE"
+    as_root pacman -U --noconfirm "$pkg"
+    ok "Greeter package installed"
+    cmd_setup $enable
+}
+
+# ── setup ────────────────────────────────────────────────────────────────────
+cmd_setup() {
     local enable=0
     [[ "${1:-}" == --enable ]] && enable=1
-    command -v greetd >/dev/null 2>&1 || pacman -Qq greetd >/dev/null 2>&1 || die "greetd is not installed (sudo pacman -S greetd)."
-    command -v material3ui >/dev/null 2>&1 || die "The material3ui shell is not installed (run install.sh)."
-    [[ -f "$SRC/greet-run.sh" ]] || die "Run this from the repository's greeter/ directory (missing $SRC/greet-run.sh)."
+    [[ -f "$SHARE/greet-run.sh" ]] || die "The greeter package is not installed; run: material3ui-greeter install"
     getent passwd greeter >/dev/null || die "The 'greeter' user is missing; reinstall greetd."
 
     local user; user="$(target_user)"
-    say "Installing greeter files to $SHARE"
-    as_root rm -rf "$SHARE"
-    as_root install -d -m 755 "$SHARE"
-    as_root install -m 644 "$SRC"/hyprland.lua "$SHARE/"
-    as_root install -m 755 "$SRC"/greet-hyprland.sh "$SRC"/greet-run.sh "$SHARE/"
-    as_root install -m 755 "$SRC"/material3ui-greeter "$BIN"
-    ok "Greeter installed"
-
     # Data dir: owned by greeter (it writes state.json); the desktop user gets
     # write access through an ACL so the shell can sync without sudo.
     as_root install -d -m 755 -o greeter -g greeter "$DATA" "$DATA/avatars"
@@ -89,16 +142,12 @@ cmd_install() {
         "user = \"greeter\"" | as_root tee "$GREETD_CONF" >/dev/null
     ok "greetd configured"
 
-    if [[ "$EUID" -eq 0 && "$user" != root ]]; then
-        runuser -u "$user" -- "$BIN" sync || true
-    else
-        "$BIN" sync || true
-    fi
+    as_user "$BIN" sync || true
 
     if [[ "$enable" == 1 ]]; then
         as_root systemctl enable --force greetd.service
         ok "greetd is now the display manager (takes effect on next boot)"
-    else
+    elif ! systemctl is-enabled --quiet greetd.service 2>/dev/null; then
         say "Enable it with: sudo systemctl enable --force greetd.service"
     fi
 }
@@ -223,11 +272,16 @@ PY
 cmd_preview() {
     [[ -n "${WAYLAND_DISPLAY:-}" ]] || die "Run the preview inside a Wayland session."
     say "Previewing the greeter (logins are disabled; Ctrl+C here closes it)"
-    env -u GREETD_SOCK sh "$SRC/greet-run.sh"
+    local run="$SRC/greet-run.sh"
+    [[ -f "$run" ]] || run="$SHARE/greet-run.sh"
+    env -u GREETD_SOCK sh "$run"
 }
 
 cmd_status() {
-    [[ -f "$SHARE/greet-run.sh" ]] && ok "Installed in $SHARE" || say "Not installed"
+    local pkg; pkg="$(pacman -Q material3ui-greeter 2>/dev/null || true)"
+    if [[ -n "$pkg" ]]; then ok "Package $pkg"
+    elif [[ -f "$SHARE/greet-run.sh" ]]; then say "Installed by hand in $SHARE (reinstall to get the package)"
+    else say "Not installed"; fi
     grep -qs "material3ui-greeter" "$GREETD_CONF" && ok "greetd uses the Material3UI greeter" || say "greetd is not configured for it"
     systemctl is-enabled --quiet greetd.service 2>/dev/null && ok "greetd.service enabled" || say "greetd.service not enabled"
     [[ -w "$DATA" ]] && ok "$(id -un) can sync without sudo" || say "Sync needs sudo"
@@ -237,8 +291,12 @@ cmd_status() {
     fi
 }
 
+# Compares contents, not versions: between releases every commit changes the
+# version, but only commits that touch the greeter need a new install
 cmd_outdated() {
     [[ -f "$SHARE/greet-run.sh" ]] || exit 2
+    in_checkout || exit 1
+    pacman -Qq material3ui-greeter >/dev/null 2>&1 || exit 0 # copied by hand: move to the package
     local f
     for f in hyprland.lua greet-hyprland.sh greet-run.sh; do
         cmp -s "$SRC/$f" "$SHARE/$f" || exit 0
@@ -254,17 +312,21 @@ cmd_uninstall() {
     elif grep -qs "material3ui-greeter" "$GREETD_CONF"; then
         say "No backup to restore; edit $GREETD_CONF before rebooting."
     fi
+    if pacman -Qq material3ui-greeter >/dev/null 2>&1; then
+        as_root pacman -R --noconfirm material3ui-greeter
+    fi
     as_root rm -rf "$SHARE" "$DATA" "$FONT_DIR"
-    as_root rm -f "$BIN"
+    as_root rm -f "$OLD_BIN"
     ok "Greeter removed"
 }
 
 case "${1:-}" in
     install) shift; cmd_install "$@" ;;
+    setup) shift; cmd_setup "$@" ;;
     sync) shift; out="$(cmd_sync "$@")"; [[ "$QUIET" == 1 || "${1:-}" == --quiet ]] || ok "Synced: $out" ;;
     preview) cmd_preview ;;
     status) cmd_status ;;
     outdated) cmd_outdated ;;
     uninstall) cmd_uninstall ;;
-    *) sed -n '3,13p' "$0" | sed 's/^#  \{0,1\}//'; exit 2 ;;
+    *) sed -n '3,/^# ─/p' "$0" | sed '$d' | sed 's/^#  \{0,1\}//'; exit 2 ;;
 esac

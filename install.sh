@@ -613,9 +613,8 @@ if command -v xdg-mime >/dev/null; then
     ok "Default apps: $FILE_MANAGER, $BROWSER"; SESSION_LINES=1
 fi
 if [[ "$GREETER" == 1 ]]; then
-    if ! command -v greetd >/dev/null && [[ "$DRY" == 0 ]]; then
-        warn "greetd isn't installed; afterwards run: greeter/material3ui-greeter install --enable"
-    elif do_ "$REPO/greeter/material3ui-greeter" install --enable >>"$LOG" 2>&1; then
+    # The material3ui-greeter package brings greetd with it
+    if do_ "$REPO/greeter/material3ui-greeter" install --enable >>"$LOG" 2>&1; then
         ok "Login screen (greetd starts it at the next boot)"; SESSION_LINES=1
     else
         warn "Login screen setup failed (see the log); retry with: greeter/material3ui-greeter install --enable"

@@ -1,0 +1,20 @@
+# Maintainer: Abishek (Abijspy) <reachabishekr@gmail.com>
+# Built from the checkout around it by packaging/build-greeter-pkg.sh, which
+# sets M3_SRC and M3_PKGVER (the release, or release.rN.gHASH between them)
+pkgname=material3ui-greeter
+pkgver=${M3_PKGVER:-0}
+pkgrel=1
+pkgdesc="Material3UI's login screen for greetd"
+arch=(any)
+url="https://github.com/Abijspy/material3-android-shell"
+license=(MIT)
+depends=(greetd hyprland acl)
+install=material3ui-greeter.install
+
+package() {
+    local src="${M3_SRC:?build with packaging/build-greeter-pkg.sh}"
+    install -Dm644 "$src/greeter/hyprland.lua" -t "$pkgdir/usr/share/material3ui-greeter/"
+    install -Dm755 "$src/greeter/greet-hyprland.sh" "$src/greeter/greet-run.sh" -t "$pkgdir/usr/share/material3ui-greeter/"
+    install -Dm755 "$src/greeter/material3ui-greeter" -t "$pkgdir/usr/bin/"
+    install -Dm644 "$src/LICENSE" -t "$pkgdir/usr/share/licenses/$pkgname/"
+}
