@@ -97,6 +97,7 @@ void Workspaces::sync() {
         auto* slot = add<Button>(Direction::Row);
         pill(slot)->setPadding({4, 0});
         slot->fixedHeight = 24;
+        slot->tooltip = std::format("Workspace {}", id);
         slot->onClicked = [id](uint32_t button) {
             if (button == BTN_LEFT) Hyprland::get().focusWorkspace(id);
         };

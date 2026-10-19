@@ -69,6 +69,17 @@ void LayerSurface::setAnchor(uint32_t anchor) {
     }
 }
 
+void LayerSurface::setMargins(int top, int right, int bottom, int left) {
+    m_options.marginTop = top;
+    m_options.marginRight = right;
+    m_options.marginBottom = bottom;
+    m_options.marginLeft = left;
+    if (m_layer) {
+        zwlr_layer_surface_v1_set_margin(m_layer, top, right, bottom, left);
+        wl_surface_commit(wlSurface());
+    }
+}
+
 void LayerSurface::setSize(int width, int height) {
     m_options.width = width;
     m_options.height = height;

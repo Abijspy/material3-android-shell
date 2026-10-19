@@ -107,6 +107,7 @@ sources = files(
   'src/shell/Settings.cpp',
   'src/shell/SettingsKit.cpp',
   'src/shell/Tools.cpp',
+  'src/shell/Tooltip.cpp',
   'src/shell/Popup.cpp',
   'src/shell/Shell.cpp',
   'src/shell/bar/Bar.cpp',

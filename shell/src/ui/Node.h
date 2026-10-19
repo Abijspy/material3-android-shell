@@ -93,6 +93,9 @@ public:
     // Animations still running in this subtree
     bool animating() const;
 
+    // Shown in a tooltip while the pointer rests on this node (or inside it)
+    std::string tooltip;
+
     // Sizing constraints honoured by parents
     std::optional<float> fixedWidth, fixedHeight;
     float minWidth = 0, minHeight = 0;

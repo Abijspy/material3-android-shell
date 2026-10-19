@@ -360,6 +360,7 @@ void Bar::addModule(Flex* zone, const std::string& id, bool floating) {
         else chip = c->add<SysmonChip>(std::function<void()>{});
         const std::string target = id == "weather" ? "settings weather" : id == "calendar" ? "dashboard"
                                  : id == "notifications" ? "notifications" : "sysmon";
+        chip->tooltip = id == "weather" ? "Weather" : id == "calendar" ? "Calendar" : id == "notifications" ? "Notifications" : "System monitor";
         chip->onClicked = [open, chip, target](uint32_t b) {
             if (b == BTN_LEFT) open(target, chip);
         };
@@ -373,6 +374,7 @@ void Bar::addModule(Flex* zone, const std::string& id, bool floating) {
         pill(b)->setPadding(Insets(5));
         b->pressedRadius = 6;
         b->add<Icon>(it->icon, 20)->setColor("on_surface", false);
+        b->tooltip = it->name;
         b->onClicked = [this, b, id](uint32_t button) {
             if (button == BTN_LEFT) m_openPopup(id, b->rect().x + b->rect().w / 2);
         };

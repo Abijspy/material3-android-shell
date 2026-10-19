@@ -1,4 +1,5 @@
 #include "shell/Shell.h"
+#include "shell/Tooltip.h"
 
 #include "build_config.h"
 #include "core/Config.h"
@@ -71,6 +72,8 @@ bool Shell::start() {
     m_osd = std::make_unique<Osd>(focused);
     // Locking: IPC, loginctl lock-session, idle timeout, before suspend
     panels::lock = [] { EventLoop::get().defer([] { LockScreen::get().lock(); }); };
+    // Tooltips on the bar and the dock
+    wl::Surface::tooltipHook = [](wl::Surface* s, ui::Node* n) { Tooltip::get().hover(s, n); };
     Session::get().lockRequested.connectForever([] { LockScreen::get().lock(); });
     Idle::get().lockRequested.connectForever([] { LockScreen::get().lock(); });
     Idle::get().start();

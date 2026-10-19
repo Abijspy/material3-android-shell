@@ -145,7 +145,7 @@ Surface* Surface::fromSurface(wl_surface* surface) {
 }
 
 void Surface::setRoot(std::unique_ptr<ui::Node> root) {
-    m_hovered = m_pressed = m_focus = nullptr;
+    m_hovered = m_pressed = m_focus = m_tooltip = nullptr;
     m_root = std::move(root);
     m_root->setHost(this);
     requestLayout();
@@ -203,6 +203,7 @@ void Surface::requestRedraw() {
 void Surface::nodeDestroyed(ui::Node* node) {
     std::erase(m_hoverChain, node);
     if (m_hovered == node) m_hovered = nullptr;
+    if (m_tooltip == node) m_tooltip = nullptr;
     if (m_pressed == node) m_pressed = nullptr;
     if (m_focus == node) m_focus = nullptr;
 }
@@ -357,6 +358,16 @@ void Surface::pointerMotion(double x, double y) {
     m_pointerX = static_cast<float>(x);
     m_pointerY = static_cast<float>(y);
     ui::Node* hit = m_root ? m_root->hitTest(m_pointerX, m_pointerY) : nullptr;
+    if (hit != m_hovered && tooltipHook) {
+        // The nearest node with a tooltip, from the one under the pointer up
+        ui::Node* tip = nullptr;
+        for (ui::Node* n = hit; n && !tip; n = n->parentNode())
+            if (!n->tooltip.empty()) tip = n;
+        if (tip != m_tooltip) {
+            m_tooltip = tip;
+            tooltipHook(this, tip);
+        }
+    }
     if (hit != m_hovered) {
         if (std::getenv("M3_DEBUG_FOCUS")) log::info("hover {} → {}", static_cast<void*>(m_hovered), static_cast<void*>(hit));
         updateHoverWithin(hit);
@@ -380,6 +391,8 @@ void Surface::updateHoverWithin(ui::Node* hit) {
 }
 
 void Surface::pointerLeave() {
+    if (m_tooltip && tooltipHook) tooltipHook(this, nullptr);
+    m_tooltip = nullptr;
     updateHoverWithin(nullptr);
     if (m_hovered) m_hovered->onHover(false);
     if (m_pressed) m_pressed->onRelease();
@@ -387,6 +400,7 @@ void Surface::pointerLeave() {
 }
 
 void Surface::pointerButton(uint32_t button, bool pressed) {
+    if (pressed && m_tooltip && tooltipHook) tooltipHook(this, nullptr); // a press puts it away
     if (pressed) {
         m_pressed = m_hovered;
         if (m_pressed) {

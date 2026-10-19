@@ -38,6 +38,9 @@ public:
     void setRoot(std::unique_ptr<ui::Node> root);
     ui::Node* root() const { return m_root.get(); }
     Output* output() const { return m_output; }
+    // The pointer came to rest on a node with a tooltip (null: none now, or
+    // the pointer left or pressed); the shell shows or hides it
+    static inline std::function<void(Surface*, ui::Node*)> tooltipHook;
     SizeF size() const { return {static_cast<float>(m_width), static_cast<float>(m_height)}; }
     float scale() const { return m_scale; }
     const std::string& tag() const { return m_tag; }
@@ -125,6 +128,7 @@ private:
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 
     ui::Node* m_hovered = nullptr;
+    ui::Node* m_tooltip = nullptr; // the node whose tooltip is up (or coming)
     ui::Node* m_pressed = nullptr;
     ui::Node* m_focus = nullptr;
     float m_pointerX = 0, m_pointerY = 0;

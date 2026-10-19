@@ -28,6 +28,8 @@ public:
     ~LayerSurface() override;
 
     void setSize(int width, int height);
+    void setMargins(int top, int right, int bottom, int left);
+    const Options& options() const { return m_options; }
     void setAnchor(uint32_t anchor);
     void setExclusiveZone(int zone);
     void setKeyboard(Keyboard mode);

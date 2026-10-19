@@ -253,6 +253,7 @@ void Dock::refresh() {
     bubble->add<Icon>("apps", size * 0.5f)->setColor("on_primary_container", false);
     auto* gap = apps->add<Node>();
     gap->fixedHeight = 4;
+    apps->tooltip = "All apps";
     apps->onClicked = [](uint32_t) {
         if (panels::open) panels::open("launcher");
     };
@@ -261,6 +262,10 @@ void Dock::refresh() {
         bool focused = false;
         for (const auto& w : e.windows) focused = focused || lower(w.cls) == activeClass;
         auto* icon = m_card->add<DockIcon>(e.icon, size, static_cast<int>(e.windows.size()), focused);
+        // Its name (the app's, else its window class), and how many windows
+        std::string name = e.app ? e.app->name : !e.cls.empty() ? e.cls : e.id;
+        if (e.windows.size() > 1) name += std::format(" · {} windows", e.windows.size());
+        icon->tooltip = name;
         const Entry copy = e;
         icon->onClicked = [copy, focused, icon](uint32_t button) {
             // Right click: the menu (open, pin or unpin, close) above the icon
