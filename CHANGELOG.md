@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.4.6 — 2026-10-19
+
+- **Forget networks and devices.** Saved Wi-Fi networks (in Quick Settings and Settings) and paired Bluetooth devices (in Quick Settings; Settings already had it) get a forget button. It asks twice: the first tap turns it red, a second within four seconds forgets. A forgotten Wi-Fi network asks for its password again next time.
+
 ## v4.4.5 — 2026-10-19
 
 - **Network & internet, reorganised.** Wi-Fi comes first, then Ethernet. The separate Connection section is gone: the connected network opens like a dropdown (tap it or its chevron) to show live download, upload and link speed, with band, security, addresses, hardware address, interface and data used, and a Disconnect button. On a cable, the adapter in use opens the same way.
