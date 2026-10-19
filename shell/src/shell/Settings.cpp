@@ -1826,24 +1826,34 @@ void packagesPage(Flex* page, Popup&) {
         body->clearChildren();
         auto& p = Packages::get();
         if (*tab == 0) {
-            auto* hero = body->add<Flex>(Flex::Direction::Row);
-            hero->setPadding(Insets(20))->setSpacing(16)->setRadius(Radii(24))->setBackground("surface_container_high", false);
-            hero->add<Icon>(p.updates().empty() ? "verified" : "system_update_alt", 36)->setColor("primary", false);
-            auto* texts = hero->add<Flex>(Flex::Direction::Column);
+            // The status on top, the actions on their own row below it: side
+            // by side they were wider than the page and spilled past the card
+            auto* hero = body->add<Flex>(Flex::Direction::Column);
+            hero->setPadding(Insets(20))->setSpacing(14)->setRadius(Radii(24))->setBackground("surface_container_high", false);
+            hero->setAlignItems(Align::Stretch);
+            auto* top = hero->add<Flex>(Flex::Direction::Row);
+            top->setSpacing(16);
+            top->add<Icon>(p.updates().empty() ? "verified" : "system_update_alt", 36)->setColor("primary", false);
+            auto* texts = top->add<Flex>(Flex::Direction::Column);
             texts->setAlignItems(Align::Start)->setSpacing(2);
             texts->grow = true;
+            const bool pending = !p.updates().empty() && !p.checking() && p.error().empty();
             const std::string status = p.checking() ? "Checking for updates…"
                                      : !p.error().empty() ? p.error()
                                      : p.lastChecked() == 0 ? "Not checked yet"
                                      : p.updates().empty() ? "Your system is up to date"
-                                     : std::format("{} updates ({} official, {} AUR, {} Flatpak)", p.updates().size(),
-                                                   p.count(Packages::Source::Repo), p.count(Packages::Source::Aur),
-                                                   p.count(Packages::Source::Flatpak));
-            texts->add<Label>(status)->setSize(17)->setWeight(500)->setMaxWidth(420);
-            if (!p.aurHelper().empty())
-                texts->add<Label>("AUR helper: " + p.aurHelper())->setSize(13)->setColor("on_surface_variant", false);
-            pillButton(hero, "Check now", false, [] { Packages::get().check(); }, "refresh");
-            if (!p.updates().empty()) pillButton(hero, "Update now", true, [] { Packages::get().upgrade(); }, "download");
+                                     : std::format("{} update{}", p.updates().size(), p.updates().size() == 1 ? "" : "s");
+            texts->add<Label>(status)->setSize(18)->setWeight(600)->setMaxWidth(560)->setMaxLines(2);
+            // The breakdown and the helper on one quieter line
+            std::string detail = pending ? std::format("{} official · {} AUR · {} Flatpak", p.count(Packages::Source::Repo),
+                                                       p.count(Packages::Source::Aur), p.count(Packages::Source::Flatpak))
+                                         : "";
+            if (!p.aurHelper().empty()) detail += (detail.empty() ? "" : "  ·  ") + std::string("AUR helper: ") + p.aurHelper();
+            if (!detail.empty()) texts->add<Label>(detail)->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(560);
+            auto* actions = hero->add<Flex>(Flex::Direction::Row);
+            actions->setSpacing(8)->setJustify(Align::End);
+            pillButton(actions, "Check now", false, [] { Packages::get().check(); }, "refresh");
+            if (!p.updates().empty()) pillButton(actions, "Update now", true, [] { Packages::get().upgrade(); }, "download");
             if (!p.updates().empty()) {
                 auto* list = group(body, "Pending");
                 for (const auto& u : p.updates()) {
