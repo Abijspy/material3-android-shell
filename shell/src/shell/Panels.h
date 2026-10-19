@@ -44,9 +44,10 @@ void screenshot(ui::Flex* card, Popup& popup);
 // The Wi-Fi network list (Quick Settings and Settings); back may be empty.
 // `details` adds the connected network's speeds and addresses above it.
 // `connected`, when given, fills the connected network's entry instead of
-// the compact summary (Settings: speeds and every detail); the list then
-// grows to full height for the page to scroll, and tapping that entry no
-// longer disconnects (its details carry a button for it)
+// the compact summary (Settings: speeds and every detail) as a dropdown:
+// tapping the entry opens and closes it rather than disconnecting (the
+// details carry a button for that); the list grows to full height for the
+// page to scroll
 void wifiView(ui::Flex* body, const std::function<void()>& back, bool details = true,
               std::function<void(ui::Flex*)> connected = {});
 // Download/upload as "1.2 MB/s"

@@ -134,6 +134,7 @@ void wifiView(Flex* body, const std::function<void()>& back, bool details, std::
     auto* list = scroll->add<Flex>(Flex::Direction::Column);
     list->setAlignItems(Align::Stretch)->setSpacing(2);
     auto expanded = std::make_shared<std::string>(); // SSID asking for a password
+    auto detailsOpen = std::make_shared<bool>(false); // the connected entry's dropdown
 
     live->sync = [=] {
         auto& n = Network::get();
@@ -164,8 +165,11 @@ void wifiView(Flex* body, const std::function<void()>& back, bool details, std::
             if (ap.active || ap.saved)
                 texts->add<Label>(ap.active ? "Connected" : "Saved")->setSize(12)->setColor(ap.active ? "on_secondary_container" : "on_surface_variant", false);
             if (ap.secured) row->add<Icon>("lock", 16)->setColor("on_surface_variant", false);
+            // Settings: the connected entry opens like a dropdown
+            if (ap.active && connected)
+                row->add<Icon>(*detailsOpen ? "expand_less" : "expand_more", 22)->setColor("on_secondary_container", false);
             // The connected entry carries its own details and speeds
-            if (ap.active && connected) {
+            if (ap.active && connected && *detailsOpen) {
                 auto* info = entry->add<Flex>(Flex::Direction::Column);
                 info->setAlignItems(Align::Stretch)->setPadding({0, 4, 0, 4});
                 connected(info);
@@ -178,7 +182,10 @@ void wifiView(Flex* body, const std::function<void()>& back, bool details, std::
             const bool tapDisconnects = !connected;
             entry->onClicked = [=](uint32_t) {
                 if (apCopy.active) {
-                    if (tapDisconnects) Network::get().disconnect();
+                    if (tapDisconnects) return Network::get().disconnect();
+                    *detailsOpen = !*detailsOpen;
+                    // Rebuilding destroys this row: not while its handler runs
+                    live->syncSoon();
                     return;
                 }
                 if (apCopy.secured && !apCopy.saved) {

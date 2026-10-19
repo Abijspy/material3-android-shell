@@ -360,7 +360,8 @@ void networkPage(Flex* page, Popup&) {
     // Wired adapters: their state, and a button to connect or disconnect
     auto* wiredLive = page->add<Live>();
     wiredLive->setSpacing(6);
-    wiredLive->sync = [wiredLive] {
+    auto wiredOpen = std::make_shared<bool>(false); // the in-use adapter's dropdown
+    wiredLive->sync = [wiredLive, wiredOpen] {
         wiredLive->clearChildren();
         auto* g = group(wiredLive, "Ethernet");
         const auto& all = Network::get().wired();
@@ -388,7 +389,12 @@ void networkPage(Flex* page, Popup&) {
                 pillButton(r.row, "Disconnect", false, [path] { Network::get().disconnectWired(path); });
             else if (w.cable())
                 pillButton(r.row, "Connect", true, [path] { Network::get().connectWired(path); });
-            if (inUse) {
+            if (inUse)
+                iconButton(r.row, *wiredOpen ? "expand_less" : "expand_more", [wiredLive, wiredOpen] {
+                    *wiredOpen = !*wiredOpen;
+                    wiredLive->syncSoon();
+                });
+            if (inUse && *wiredOpen) {
                 auto* details = holder->add<Flex>(Flex::Direction::Column);
                 details->setAlignItems(Align::Stretch)->setPadding({16, 0});
                 connectionDetails(details, "on_secondary_container", {});
