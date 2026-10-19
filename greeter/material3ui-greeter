@@ -31,9 +31,20 @@ readonly SRC="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 readonly REPO="$(dirname "$SRC")" # the checkout, when run from greeter/
 
 QUIET=0
-say()  { [[ "$QUIET" == 1 ]] || echo -e "\033[38;2;202;169;224m\033[1m│\033[0m $*"; }
-ok()   { [[ "$QUIET" == 1 ]] || echo -e "\033[38;2;202;169;224m\033[1m│\033[0m \033[38;2;166;209;137m✓\033[0m $*"; }
-die()  { echo -e "\033[38;2;231;130;132m✗ $1\033[0m" >&2; exit "${2:-1}"; }
+# Colours and marks only on a terminal: Settings shows the output in a
+# notification, where escape codes would print as they are
+if [[ -t 1 ]]; then
+    say() { [[ "$QUIET" == 1 ]] || echo -e "\033[38;2;202;169;224m\033[1m│\033[0m $*"; }
+    ok()  { [[ "$QUIET" == 1 ]] || echo -e "\033[38;2;202;169;224m\033[1m│\033[0m \033[38;2;166;209;137m✓\033[0m $*"; }
+else
+    say() { [[ "$QUIET" == 1 ]] || echo "$*"; }
+    ok()  { [[ "$QUIET" == 1 ]] || echo "$*"; }
+fi
+if [[ -t 2 ]]; then
+    die() { echo -e "\033[38;2;231;130;132m✗ $1\033[0m" >&2; exit "${2:-1}"; }
+else
+    die() { echo "$1" >&2; exit "${2:-1}"; }
+fi
 
 as_root() { if [[ "$EUID" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
 

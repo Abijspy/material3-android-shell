@@ -14,7 +14,8 @@ bool spawn(const std::string& command);
 void run(const std::vector<std::string>& argv, std::function<void(int code, const std::string& out)> done,
          const std::string& input = {});
 
-// Called on SIGCHLD: reaps every exited child and completes run() jobs
+// Called on SIGCHLD: reaps the exited children spawn() and run() started
+// (never others: libraries wait for their own) and completes run() jobs
 void reapChildren();
 
 } // namespace m3

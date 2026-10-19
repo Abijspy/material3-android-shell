@@ -2428,7 +2428,10 @@ void lockScreenPage(Flex* page, Popup& popup) {
         auto status = row(login, "palette", "Sync appearance", "Copies your look to the login screen now");
         pillButton(status.row, "Sync now", false, [] {
             m3::run({"material3ui-greeter", "sync"}, [](int code, const std::string& out) {
-                m3::run({"notify-send", "-a", "Settings", code == 0 ? "Login screen synced" : "Login screen sync failed", out}, nullptr);
+                // Older installs colour their output for a terminal: keep the words
+                std::string text = std::regex_replace(out, std::regex("\x1b\\[[0-9;]*m|│|✓|✗"), "");
+                text = std::regex_replace(text, std::regex("^\\s+|\\s+$"), "");
+                m3::run({"notify-send", "-a", "Settings", code == 0 ? "Login screen synced" : "Login screen sync failed", text}, nullptr);
             });
         }, "sync");
     }

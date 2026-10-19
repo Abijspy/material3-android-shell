@@ -6,6 +6,7 @@
 #include <csignal>
 #include <fcntl.h>
 #include <map>
+#include <set>
 #include <memory>
 #include <spawn.h>
 #include <sys/wait.h>
@@ -39,6 +40,12 @@ public:
 std::map<pid_t, std::unique_ptr<Job>>& jobs() {
     static std::map<pid_t, std::unique_ptr<Job>> j;
     return j;
+}
+
+// spawn()'s children, reaped when they exit
+std::set<pid_t>& detached() {
+    static std::set<pid_t> d;
+    return d;
 }
 
 void Job::dispatch(short) {
@@ -92,6 +99,7 @@ bool spawn(const std::string& command) {
     const char* argv[] = {"/bin/sh", "-c", command.c_str(), nullptr};
     const int r = posix_spawn(&pid, "/bin/sh", nullptr, &attr, const_cast<char* const*>(argv), environ);
     posix_spawnattr_destroy(&attr);
+    if (r == 0) detached().insert(pid);
     return r == 0;
 }
 
@@ -144,14 +152,17 @@ void run(const std::vector<std::string>& argv, std::function<void(int, const std
 }
 
 void reapChildren() {
+    // Only our own children, by pid: waitpid(-1) would also take the ones
+    // libraries start and wait for themselves (PAM's unix_chkpwd, on the
+    // auth thread), failing them with ECHILD (a correct password refused)
     int status = 0;
-    pid_t pid;
-    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        auto it = jobs().find(pid);
-        if (it == jobs().end()) continue; // a detached spawn
-        it->second->exited = true;
-        it->second->code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-        it->second->maybeFinish();
+    for (auto it = detached().begin(); it != detached().end();)
+        it = waitpid(*it, &status, WNOHANG) == 0 ? std::next(it) : detached().erase(it);
+    for (auto& [pid, job] : jobs()) {
+        if (job->exited || waitpid(pid, &status, WNOHANG) != pid) continue;
+        job->exited = true;
+        job->code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+        job->maybeFinish();
     }
 }
 
