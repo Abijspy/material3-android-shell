@@ -2761,7 +2761,12 @@ void packagesPage(Flex* page, Popup&) {
             hero->setAlignItems(Align::Stretch);
             auto* top = hero->add<Flex>(Flex::Direction::Row);
             top->setSpacing(16);
-            top->add<Icon>(p.updates().empty() ? "verified" : "system_update_alt", 36)->setColor("primary", false);
+            // Working: M3 Expressive's wavy loader in the icon's place
+            const bool working = p.checking() || p.busy();
+            if (working)
+                top->add<kit::WavyLoader>(36);
+            else
+                top->add<Icon>(p.updates().empty() ? "verified" : "system_update_alt", 36)->setColor("primary", false);
             auto* texts = top->add<Flex>(Flex::Direction::Column);
             texts->setAlignItems(Align::Start)->setSpacing(2);
             texts->grow = true;
@@ -2784,13 +2789,14 @@ void packagesPage(Flex* page, Popup&) {
             if (!p.busy() && !p.status().empty())
                 texts->add<Label>(p.status())->setSize(13)->setColor(p.status().starts_with("Didn't") ? "error" : "primary", false)
                     ->setMaxWidth(560)->setMaxLines(2);
+            if (working) hero->add<kit::WavyBar>();
             auto* actions = hero->add<Flex>(Flex::Direction::Row);
             actions->setSpacing(8)->setJustify(Align::End);
             actions->setVisible(!p.busy()); // one task at a time
             // Pacman questions a background run can't answer: the old way
             if (p.status().starts_with("Didn't"))
                 pillButton(actions, "Use a terminal", false, [] { Packages::get().upgradeInTerminal(); }, "terminal");
-            pillButton(actions, "Check now", false, [] { Packages::get().check(); }, "refresh");
+            if (!p.checking()) pillButton(actions, "Check now", false, [] { Packages::get().check(); }, "refresh");
             if (!p.updates().empty()) pillButton(actions, "Update now", true, [] { Packages::get().upgrade(); }, "download");
             // How the shell itself updates
             auto* shellGroup = group(body, "Material3UI updates");

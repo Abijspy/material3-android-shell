@@ -77,6 +77,46 @@ private:
     }
 };
 
+// M3 Expressive loading indicators, for work of unknown length. Both animate
+// for as long as they are shown.
+// Circular: a wavy arc that spins while it grows and shrinks.
+class WavyLoader : public ui::Node {
+public:
+    explicit WavyLoader(float size = 36) : m_size(size) {}
+
+protected:
+    SizeF doMeasure(SizeF) override { return {m_size, m_size}; }
+    void doPaint(Renderer& r) override;
+    bool doAnimating() const override { return true; }
+
+private:
+    float m_size;
+};
+
+// Linear: a wavy stretch that sweeps along a flat track.
+class WavyBar : public ui::Node {
+protected:
+    SizeF doMeasure(SizeF available) override { return {available.w, 16}; }
+    void doPaint(Renderer& r) override;
+    bool doAnimating() const override { return true; }
+};
+
+// The active player's progress as a ring around its children (an icon):
+// the played arc waves while playing and lies flat when paused.
+class WavyRing : public ui::Flex {
+public:
+    explicit WavyRing(float size);
+
+protected:
+    void doPaint(Renderer& r) override;
+    bool doAnimating() const override { return Flex::doAnimating() || m_playing || m_amp.running(); }
+
+private:
+    float m_size;
+    bool m_playing = false;
+    ui::Tween m_amp{0, ui::motion::mediumMs, ui::Easing::standard()};
+};
+
 // M3 Expressive wavy progress: the played part a wave that moves while
 // playing and lies flat when paused, the rest a straight track with a stop
 // dot. Click or drag to seek.

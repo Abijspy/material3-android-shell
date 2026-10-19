@@ -3,6 +3,7 @@
 #include "render/Images.h"
 #include "services/Audio.h"
 #include "services/Mpris.h"
+#include "shell/PanelKit.h"
 #include "services/Network.h"
 #include "services/Notifications.h"
 #include "services/Tray.h"
@@ -132,7 +133,8 @@ void BatteryStatus::sync() {
 Media::Media() : Button(Direction::Row) {
     pill(this)->setPadding({10, 0})->setSpacing(6);
     fixedHeight = 28;
-    m_icon = add<Icon>("music_note", 18);
+    // The play state inside a ring of the track's progress
+    m_icon = add<kit::WavyRing>(26)->add<Icon>("music_note", 14);
     m_icon->setColor("primary");
     m_label = add<Label>();
     m_label->setSize(13)->setMaxWidth(240);

@@ -66,6 +66,110 @@ void Meter::doPaint(Renderer& r) {
     if (fill.w > 0) r.rect(fill, m_color.resolve(), round);
 }
 
+// ── Loading indicators ──
+
+namespace {
+double seconds() {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+} // namespace
+
+void WavyLoader::doPaint(Renderer& r) {
+    const auto& b = rect();
+    const float cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    const float stroke = std::max(3.0f, m_size / 10), radius = m_size / 2 - stroke / 2 - 1.5f;
+    const Color c = Theme::get().color("primary");
+    const double t = seconds();
+    constexpr float tau = 2 * static_cast<float>(M_PI);
+    // The arc breathes between a short and a long sweep while the whole
+    // thing turns, as Android's indeterminate indicator
+    const float breath = 0.5f - 0.5f * std::cos(tau * static_cast<float>(std::fmod(t / 1.4, 1.0)));
+    const float sweep = tau * (0.22f + 0.5f * breath);
+    const float start = static_cast<float>(std::fmod(t * 1.1, 1.0)) * tau + breath * tau * 0.25f;
+    const float step = 0.9f / radius; // about a pixel apart
+    // A faint track keeps the circle readable when the arc is short
+    const Color track = Theme::get().color("on_surface").withAlpha(0.14f);
+    const float gap = (stroke + 3) / radius;
+    for (float a = start + sweep + gap; a <= start + tau - gap; a += step)
+        r.rect({cx + radius * std::cos(a) - stroke / 2, cy + radius * std::sin(a) - stroke / 2, stroke, stroke}, track,
+               Radii(stroke / 2));
+    // The wave rides along the arc: small and tight, so it stays a circle
+    const float phase = static_cast<float>(std::fmod(t * 5.0, tau));
+    const float waves = std::round(m_size / 3), amp = m_size / 36;
+    for (float a = start; a <= start + sweep; a += step) {
+        const float rr = radius - amp + amp * std::sin(waves * a - phase);
+        const float x = cx + rr * std::cos(a), y = cy + rr * std::sin(a);
+        r.rect({x - stroke / 2, y - stroke / 2, stroke, stroke}, c, Radii(stroke / 2));
+    }
+    requestRedraw();
+}
+
+void WavyBar::doPaint(Renderer& r) {
+    const auto& b = rect();
+    const float cy = b.y + b.h / 2, stroke = 4, gap = 6;
+    const Color active = Theme::get().color("primary");
+    const Color track = Theme::get().color("on_surface").withAlpha(0.18f);
+    const double t = seconds();
+    // A stretch a third as wide as the bar enters on the left and leaves on
+    // the right, easing in the middle
+    const float cycle = static_cast<float>(std::fmod(t / 1.8, 1.0));
+    const float eased = cycle < 0.5f ? 2 * cycle * cycle : 1 - 2 * (1 - cycle) * (1 - cycle);
+    const float len = b.w * 0.34f;
+    const float from = b.x - len + eased * (b.w + len), to = from + len;
+    const float a = std::max(from, b.x + stroke / 2), z = std::min(to, b.right() - stroke / 2);
+    // The track on either side, with a gap around the wave
+    auto flat = [&](float x0, float x1) {
+        if (x1 - x0 > stroke) r.rect({x0, cy - stroke / 2, x1 - x0, stroke}, track, Radii(stroke / 2));
+    };
+    flat(b.x, a - gap);
+    flat(z + gap, b.right());
+    const float phase = static_cast<float>(std::fmod(t * 6.0, 2 * M_PI));
+    constexpr float wavelength = 26, amp = 3;
+    for (float x = a; x <= z; x += 1.5f) {
+        const float y = cy + amp * std::sin(2 * static_cast<float>(M_PI) * (x - b.x) / wavelength - phase);
+        r.rect({x - stroke / 2, y - stroke / 2, stroke, stroke}, active, Radii(stroke / 2));
+    }
+    requestRedraw();
+}
+
+WavyRing::WavyRing(float size) : Flex(Direction::Row), m_size(size) {
+    setJustify(Align::Center);
+    fixedWidth = fixedHeight = size;
+}
+
+void WavyRing::doPaint(Renderer& r) {
+    Flex::doPaint(r);
+    const auto* p = Mpris::get().active();
+    const bool playing = p && p->status == "Playing";
+    if (playing != m_playing) {
+        m_playing = playing;
+        m_amp.set(playing ? 1.0f : 0.0f);
+    }
+    const float f = p && p->length > 0
+                        ? std::clamp(static_cast<float>(static_cast<double>(p->positionNow()) / static_cast<double>(p->length)), 0.0f, 1.0f)
+                        : 0.0f;
+    const auto& b = rect();
+    const float cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    const float stroke = std::max(2.5f, m_size / 11), amp = m_size / 40 * m_amp.value();
+    const float radius = m_size / 2 - stroke / 2 - m_size / 40;
+    constexpr float tau = 2 * static_cast<float>(M_PI), top = -static_cast<float>(M_PI) / 2;
+    const float step = 0.9f / radius, gap = (stroke + 3) / radius;
+    const float end = top + f * tau;
+    auto dot = [&](float a, float rr, const Color& c) {
+        r.rect({cx + rr * std::cos(a) - stroke / 2, cy + rr * std::sin(a) - stroke / 2, stroke, stroke}, c, Radii(stroke / 2));
+    };
+    // The rest of the track, flat and faint, with gaps at both ends
+    const Color track = Theme::get().color("on_surface").withAlpha(0.22f);
+    if (f < 0.98f)
+        for (float a = end + gap; a <= top + tau - (f > 0.02f ? gap : 0); a += step) dot(a, radius, track);
+    // The played arc
+    const Color active = Theme::get().color("primary");
+    const float phase = static_cast<float>(std::fmod(seconds() * 5.0, tau));
+    const float waves = std::max(8.0f, std::round(m_size / 2.5f)); // small rings: small, tight waves
+    for (float a = top; a <= end; a += step) dot(a, radius + amp * std::sin(waves * a - phase), active);
+    if (m_playing || m_amp.running()) requestRedraw();
+}
+
 // ── WavyProgress ──
 
 void WavyProgress::set(float value, bool playing) {

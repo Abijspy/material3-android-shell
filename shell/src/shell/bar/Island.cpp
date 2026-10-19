@@ -3,6 +3,7 @@
 #include "core/Config.h"
 #include "services/Hyprland.h"
 #include "services/Mpris.h"
+#include "shell/PanelKit.h"
 #include "services/Notifications.h"
 #include "shell/bar/Widgets.h"
 #include "ui/Theme.h"
@@ -92,14 +93,15 @@ void Island::build() {
     switch (m_mode) {
     case Mode::Clock: {
         const auto* p = Mpris::get().active();
-        if (p && p->status == "Playing") m_content->add<Icon>("graphic_eq", 18)->setColor("primary", false);
+        // Music playing: its progress rings the equaliser beside the clock
+        if (p && p->status == "Playing") m_content->add<kit::WavyRing>(26)->add<Icon>("graphic_eq", 14)->setColor("primary", false);
         m_content->add<Clock>();
         break;
     }
     case Mode::Media: {
         const auto* p = Mpris::get().active();
         if (!p) break;
-        m_content->add<Icon>("music_note", 18)->setColor("primary", false);
+        m_content->add<kit::WavyRing>(26)->add<Icon>("music_note", 14)->setColor("primary", false);
         m_content->add<Label>(p->artist.empty() ? p->title : p->title + " · " + p->artist)->setSize(13)->setMaxWidth(280);
         auto control = [this](const char* icon, std::function<void()> fn) {
             auto* b = m_content->add<Button>();
