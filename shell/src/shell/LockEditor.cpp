@@ -211,7 +211,7 @@ void lockEditor(Flex* card, Popup& popup) {
                 icon->alignSelf = Align::Center;
                 icon->add<Icon>(d.icon, 22)->setColor("on_surface", false);
                 auto* label = item->add<Label>(d.name);
-                label->setSize(12)->setMaxWidth(90)->setMaxLines(2)->setColor("on_surface_variant", false);
+                label->setSize(12)->setMaxWidth(90)->setMaxLines(2)->setCentered(true)->setColor("on_surface_variant", false);
                 label->alignSelf = Align::Center;
                 const std::string id = d.id;
                 item->onClicked = [id, c, r](uint32_t button) {

@@ -90,7 +90,8 @@ public:
     std::optional<float> fixedWidth, fixedHeight;
     float minWidth = 0, minHeight = 0;
     bool grow = false; // takes leftover main-axis space in a Flex
-    Align alignSelf = Align::Center;
+    // Cross-axis alignment within a Flex; unset follows the parent's alignItems
+    std::optional<Align> alignSelf;
 
     // The compositor blurs what is behind this node's rect (translucent
     // cards); the surface collects these into its blur region after layout
@@ -192,7 +193,8 @@ public:
     Label* setColor(const ColorRef& c, bool animate = true);
     Label* setMaxWidth(float w);
     Label* setFamily(const std::string& family);
-    Label* setMaxLines(int lines); // wraps within maxWidth
+    Label* setMaxLines(int lines);
+    Label* setCentered(bool centered); // wrapped lines centred under each other // wraps within maxWidth
     const std::string& text() const { return m_text; }
     float size() const { return m_size; }
     int weight() const { return m_weight; }
@@ -205,6 +207,7 @@ protected:
 
     std::string m_text;
     std::string m_family; // empty: the theme font
+    bool m_center = false;
     float m_size = 14;
     int m_weight = 400;
     float m_maxWidth = 0;

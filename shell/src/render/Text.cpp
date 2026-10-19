@@ -25,6 +25,7 @@ PangoLayout* makeLayout(PangoContext* ctx, const std::string& text, const TextSt
     if (style.maxWidth > 0) {
         pango_layout_set_width(layout, static_cast<int>(style.maxWidth * scale * PANGO_SCALE));
         pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+        if (style.center) pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
         if (style.maxLines > 1) {
             pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
             pango_layout_set_height(layout, -style.maxLines); // negative: a line count
@@ -49,8 +50,8 @@ TextEngine::TextEngine() {
 }
 
 std::string TextEngine::key(const std::string& text, const TextStyle& style, float scale) const {
-    return std::format("{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}", text, style.family, style.size, style.weight,
-                       style.maxWidth, style.fill, scale, style.maxLines);
+    return std::format("{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}", text, style.family, style.size, style.weight,
+                       style.maxWidth, style.fill, scale, style.maxLines, style.center);
 }
 
 TextMetrics TextEngine::measure(const std::string& text, const TextStyle& style) {

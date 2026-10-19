@@ -295,7 +295,7 @@ void Flex::doArrange() {
         float x = row ? sizes[i].h : sizes[i].w; // cross size
         if (c->grow) m = std::max(0.0f, m + growShare);
         float crossPos = 0;
-        switch (m_alignItems) {
+        switch (c->alignSelf.value_or(m_alignItems)) {
         case Align::Stretch: x = contentCross; break;
         case Align::Center: crossPos = (contentCross - x) / 2; break;
         case Align::End: crossPos = contentCross - x; break;
@@ -349,6 +349,12 @@ Label* Label::setMaxWidth(float w) {
     return this;
 }
 
+Label* Label::setCentered(bool centered) {
+    m_center = centered;
+    requestLayout();
+    return this;
+}
+
 Label* Label::setMaxLines(int lines) {
     m_maxLines = lines;
     requestLayout();
@@ -368,6 +374,7 @@ TextStyle Label::style() const {
     s.weight = m_weight;
     s.maxWidth = m_maxWidth;
     s.maxLines = m_maxLines;
+    s.center = m_center;
     s.icon = m_icon;
     s.fill = m_fill;
     return s;

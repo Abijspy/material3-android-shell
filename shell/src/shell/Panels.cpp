@@ -497,9 +497,10 @@ void battery(Flex* card, Popup& popup) {
                 const bool on = p.profile() == id;
                 auto* b = modes->add<Button>(Flex::Direction::Column);
                 b->setPadding({8, 12})->setSpacing(4)->setRadius(Radii(on ? 20 : 14))->setJustify(Align::Center);
-                b->setBackground(on ? "primary" : "surface_container_high", false);
+                b->setBackground(on ? ColorRef("primary") : ColorRef("on_surface", 0.1f), false);
                 b->pressedRadius = 10;
-                b->grow = true;
+                // Equal thirds of the card (380 − padding 40 − gaps 12), whatever the label
+                b->fixedWidth = (340.0f - 12) / 3;
                 b->add<Icon>(icon, 22)->setFill(on)->setColor(on ? "on_primary" : "on_surface_variant", false);
                 b->add<Label>(label)->setSize(13)->setWeight(on ? 600 : 500)->setColor(on ? "on_primary" : "on_surface", false);
                 b->onClicked = [profile = std::string(id)](uint32_t button) {

@@ -542,6 +542,7 @@ void editView(Flex* body, const std::function<void()>& back) {
         auto edits = std::make_shared<std::vector<EditTile*>>();
         auto* grid = content->add<Flex>(Flex::Direction::Column);
         grid->setSpacing(8)->setAlignItems(Align::Start);
+        grid->alignSelf = Align::Center; // even margins either side
         Flex* row = nullptr;
         int used = 4;
         for (size_t i = 0; i < tiles.size(); ++i) {
@@ -621,6 +622,7 @@ void editView(Flex* body, const std::function<void()>& back) {
         caption(content, "Tap to add tiles");
         auto* avail = content->add<Flow>();
         avail->spacing = 8;
+        avail->alignSelf = Align::Center;
         bool any = false;
         for (const auto& def : tileDefs()) {
             if (std::ranges::any_of(tiles, [&](const Placed& p) { return p.id == def.id; })) continue;
@@ -636,7 +638,7 @@ void editView(Flex* body, const std::function<void()>& back) {
             chip->alignSelf = Align::Center;
             chip->add<Icon>(def.icon, 22)->setColor("on_surface", false);
             auto* label = item->add<Label>(def.title);
-            label->setSize(12)->setMaxWidth(86)->setMaxLines(2)->setColor("on_surface_variant", false);
+            label->setSize(12)->setMaxWidth(kCol - 8)->setMaxLines(2)->setCentered(true)->setColor("on_surface_variant", false);
             label->alignSelf = Align::Center;
             const std::string id = def.id;
             item->onClicked = [tiles, id, save](uint32_t) mutable {
