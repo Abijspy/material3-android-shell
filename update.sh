@@ -4,7 +4,8 @@
 #  Usage: update.sh [all|shell] [stable|canary] [--force]
 #  Run by hand to pull, rebuild the native
 #  shell and refresh configs. Uses the choices recorded by install.sh in
-#  ~/.config/material3ui/install_state.json. Installing the shell needs sudo.
+#  ~/.config/material3ui/install_state.json. Installing the shell needs root:
+#  sudo, or M3_SUDO=pkexec when Settings runs it (the shell's polkit dialog).
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -63,7 +64,7 @@ BUILD="$INSTALL_DIR/shell/build-release"
 [[ -d "$BUILD" ]] && setup_flags=(--reconfigure) || setup_flags=()
 meson setup "${setup_flags[@]}" "$BUILD" "$INSTALL_DIR/shell" --prefix=/usr --sysconfdir=/etc --buildtype=release >/dev/null
 meson compile -C "$BUILD" | tail -1
-sudo meson install -C "$BUILD" --no-rebuild --quiet
+"${M3_SUDO:-sudo}" meson install -C "$BUILD" --no-rebuild --quiet
 mkdir -p "$HOME/.local/share/material3ui"
 rm -rf "$HOME/.local/share/material3ui/scripts"
 cp -a "$INSTALL_DIR/dotfiles/.local/share/material3ui/scripts" "$HOME/.local/share/material3ui/"
@@ -117,8 +118,10 @@ if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
     hyprctl reload >/dev/null || true
     pkill -x material3ui || true
     sleep 0.3
-    hyprctl dispatch exec material3ui >/dev/null
+    # Detached, so it outlives this script (and Lua configs need no dispatch syntax)
+    setsid -f material3ui >/dev/null 2>&1 </dev/null
     echo "Shell restarted."
 fi
 
 echo "Update successful!"
+command -v notify-send >/dev/null && notify-send -a "Software & updates" "Material3UI Shell updated" || true

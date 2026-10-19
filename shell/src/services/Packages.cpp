@@ -1,5 +1,9 @@
 #include "services/Packages.h"
 
+#include "core/Paths.h"
+
+#include "build_config.h"
+
 #include "core/EventLoop.h"
 #include "core/Process.h"
 
@@ -8,6 +12,7 @@
 #include <format>
 #include <nlohmann/json.hpp>
 #include <regex>
+#include <fstream>
 #include <sstream>
 
 namespace m3 {
@@ -102,6 +107,7 @@ void Packages::check() {
         m_lastChecked = std::time(nullptr);
         m_checking = false;
         changed.emit();
+        checkShell(); // appends to the list just set
     });
 }
 
@@ -139,12 +145,65 @@ void Packages::runAsRoot(const std::string& label, const std::string& script, co
     runTask(label, "pkexec /usr/bin/sh -c " + quoted + "'", doneText);
 }
 
+namespace {
+
+// "4.10.0" > "4.9.2"
+bool newerVersion(const std::string& a, const std::string& b) {
+    std::stringstream sa(a), sb(b);
+    for (int i = 0; i < 4; ++i) {
+        int x = 0, y = 0;
+        char dot = 0;
+        sa >> x;
+        sb >> y;
+        if (x != y) return x > y;
+        sa >> dot;
+        sb >> dot;
+    }
+    return false;
+}
+
+} // namespace
+
+void Packages::checkShell() {
+    // Where install.sh put the checkout, and which channel it follows
+    nlohmann::json state;
+    try {
+        std::ifstream in(paths::configDir() + "/install_state.json");
+        if (in) state = nlohmann::json::parse(in);
+    } catch (...) {
+    }
+    m_shellDir = state.value("install_dir", "");
+    const std::string channel = state.value("channel", "stable");
+    if (m_shellDir.empty()) return;
+    const std::string script = "d='" + m_shellDir + "'; git -C \"$d\" fetch -q --tags origin 2>/dev/null || exit 1; " +
+                               (channel == "stable"
+                                    ? std::string("t=$(git -C \"$d\" describe --tags \"$(git -C \"$d\" rev-list --tags --max-count=1)\" "
+                                                  "2>/dev/null); echo \"tag ${t#v}\"")
+                                    : std::string("echo \"commits $(git -C \"$d\" rev-list --count HEAD..origin/main)\""));
+    run({"sh", "-c", script}, [this](int code, const std::string& out) {
+        if (code != 0) return;
+        std::erase_if(m_updates, [](const Update& u) { return u.source == Source::Shell; });
+        std::stringstream ss(out);
+        std::string kind, value;
+        ss >> kind >> value;
+        if (kind == "tag" && !value.empty() && newerVersion(value, M3_VERSION))
+            m_updates.insert(m_updates.begin(), {"Material3UI Shell", M3_VERSION, value, Source::Shell});
+        else if (kind == "commits" && std::atoi(value.c_str()) > 0)
+            m_updates.insert(m_updates.begin(), {"Material3UI Shell", M3_VERSION, value + " new commits", Source::Shell});
+        changed.emit();
+    });
+}
+
 void Packages::upgrade() {
     // Official packages first, then the AUR (built as the user; its helper
     // asks through pkexec to install), then Flatpaks (polkit itself)
     std::string script = "pkexec pacman -Syu --noconfirm";
     if (!m_helper.empty()) script += " && " + helperCommand("-Sua");
     script += " && { command -v flatpak >/dev/null && flatpak update -y --noninteractive || true; }";
+    // Last, the shell itself: update.sh rebuilds it, installs through
+    // pkexec and restarts it (this process ends there; it notifies)
+    if (count(Source::Shell) > 0 && !m_shellDir.empty())
+        script += " && M3_SUDO=pkexec '" + m_shellDir + "/update.sh' all";
     runTask("Updating… this can take a while", script, "Updated");
 }
 

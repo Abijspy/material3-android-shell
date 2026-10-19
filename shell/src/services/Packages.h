@@ -16,7 +16,7 @@ namespace m3 {
 // terminal remains as a fallback for what needs answering by hand.
 class Packages {
 public:
-    enum class Source { Repo, Aur, Flatpak };
+    enum class Source { Repo, Aur, Flatpak, Shell }; // Shell: Material3UI itself
 
     struct Update {
         std::string name, from, to;
@@ -57,6 +57,9 @@ public:
 private:
     Packages();
     void refreshInstalled();
+    // A newer release (stable channel) or new commits (latest) of the shell
+    void checkShell();
+    std::string m_shellDir; // the git checkout update.sh runs from
     std::string terminal() const;
     void runTask(const std::string& label, const std::string& script, const std::string& doneText);
     // yay or paru, told to ask for root through pkexec and not to stop for review

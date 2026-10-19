@@ -2014,6 +2014,7 @@ void packagesPage(Flex* page, Popup&) {
             std::string detail = pending ? std::format("{} official · {} AUR · {} Flatpak", p.count(Packages::Source::Repo),
                                                        p.count(Packages::Source::Aur), p.count(Packages::Source::Flatpak))
                                          : "";
+            if (pending && p.count(Packages::Source::Shell) > 0) detail += " · shell update";
             if (!p.aurHelper().empty()) detail += (detail.empty() ? "" : "  ·  ") + std::string("AUR helper: ") + p.aurHelper();
             if (!detail.empty()) texts->add<Label>(detail)->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(560);
             // How the last update or install ended
@@ -2031,8 +2032,11 @@ void packagesPage(Flex* page, Popup&) {
             if (!p.updates().empty()) {
                 auto* list = group(body, "Pending");
                 for (const auto& u : p.updates()) {
-                    const char* src = u.source == Packages::Source::Aur ? "AUR" : u.source == Packages::Source::Flatpak ? "Flatpak" : "Official";
-                    row(list, u.source == Packages::Source::Flatpak ? "apps" : "deployed_code", u.name,
+                    const char* src = u.source == Packages::Source::Aur       ? "AUR"
+                                    : u.source == Packages::Source::Flatpak ? "Flatpak"
+                                    : u.source == Packages::Source::Shell   ? "Shell"
+                                                                            : "Official";
+                    row(list, u.source == Packages::Source::Flatpak ? "apps" : u.source == Packages::Source::Shell ? "system_update" : "deployed_code", u.name,
                         std::format("{}{} → {}", src, u.from.empty() ? "" : "  ·  " + u.from, u.to));
                 }
             }
