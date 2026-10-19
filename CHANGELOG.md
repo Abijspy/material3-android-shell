@@ -1,5 +1,9 @@
 # Changelog
 
+## v5.0.3 — 2026-10-19
+
+- **One password per update.** Updating from Software & updates asks once ("Install updates") for everything: the system, the AUR, system Flatpaks and Material3UI itself with its login screen. A small helper, started by that one prompt, runs only the update's own steps (pacman, Flatpak updates, Material3UI's packages) and exits when the update ends. This update itself still asks a few times, since it brings the helper.
+
 ## v5.0.2 — 2026-10-19
 
 - **About shows the logos:** your distribution's beside its name (from its own os-release, so every distro shows its own) and Hyprland's beside the compositor.
