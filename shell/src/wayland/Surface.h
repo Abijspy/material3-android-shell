@@ -66,6 +66,9 @@ public:
     void pointerLeave();
     void pointerButton(uint32_t button, bool pressed);
     void pointerScroll(int direction);
+    // True when a node under the pointer scrolled by pixels
+    bool pointerScrollPixels(float dy, bool precise);
+    void pointerScrollEnd();
     void keyboardFocus(bool focused);
     void key(const ui::KeyEvent& event);
 

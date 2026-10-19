@@ -80,8 +80,12 @@ const wl_pointer_listener kPointer = {
         m3::guard("a Wayland event", [&] { static_cast<Display*>(data)->pointerAxis(axis, wl_fixed_to_double(value)); });
     },
     .frame = [](void* data, wl_pointer*) { m3::guard("a Wayland event", [&] { static_cast<Display*>(data)->pointerFrame(); }); },
-    .axis_source = [](void*, wl_pointer*, uint32_t) {},
-    .axis_stop = [](void*, wl_pointer*, uint32_t, uint32_t) {},
+    .axis_source = [](void* data, wl_pointer*, uint32_t source) {
+        m3::guard("a Wayland event", [&] { static_cast<Display*>(data)->pointerAxisSource(source); });
+    },
+    .axis_stop = [](void* data, wl_pointer*, uint32_t, uint32_t axis) {
+        m3::guard("a Wayland event", [&] { static_cast<Display*>(data)->pointerAxisStop(axis); });
+    },
     .axis_discrete = [](void*, wl_pointer*, uint32_t, int32_t) {},
     .axis_value120 = [](void*, wl_pointer*, uint32_t, int32_t) {},
     .axis_relative_direction = [](void*, wl_pointer*, uint32_t, uint32_t) {},
@@ -254,12 +258,26 @@ void Display::pointerAxis(uint32_t axis, double value) {
     if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) m_scrollAccum += value;
 }
 
+void Display::pointerAxisSource(uint32_t source) {
+    m_axisPrecise = source == WL_POINTER_AXIS_SOURCE_FINGER || source == WL_POINTER_AXIS_SOURCE_CONTINUOUS;
+}
+
+void Display::pointerAxisStop(uint32_t axis) {
+    if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) m_axisStopped = true;
+}
+
 void Display::pointerFrame() {
-    // One notch is 10 units on most mice; touchpads send many small deltas
-    if (std::abs(m_scrollAccum) >= 10 && m_pointerFocus) {
+    // Scroll views take the exact distance; everything else gets steps
+    if (m_scrollAccum != 0 && m_pointerFocus && m_pointerFocus->pointerScrollPixels(static_cast<float>(m_scrollAccum), m_axisPrecise)) {
+        m_scrollAccum = 0;
+    } else if (std::abs(m_scrollAccum) >= 10 && m_pointerFocus) {
+        // One notch is 10 units on most mice; touchpads send many small deltas
         m_pointerFocus->pointerScroll(m_scrollAccum > 0 ? 1 : -1);
         m_scrollAccum = 0;
     }
+    if (m_axisStopped && m_pointerFocus) m_pointerFocus->pointerScrollEnd();
+    m_axisStopped = false;
+    m_axisPrecise = false; // each frame names its source again
 }
 
 void Display::forget(Surface* surface) {

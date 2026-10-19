@@ -73,6 +73,13 @@ public:
     virtual void onRelease() {}
     virtual void onClick(uint32_t) {}
     virtual bool onScroll(int) { return false; } // true: handled
+    // Pixel-exact scrolling (scroll views): `precise` for touchpads, which
+    // follow the fingers; wheels step. onScrollEnd: the fingers lifted.
+    virtual bool onScrollPixels(float /*dy*/, bool /*precise*/) { return false; }
+    virtual void onScrollEnd() {}
+    // Takes scroll steps itself (sliders, buttons with onScrolled): pixel
+    // scrolling stops here and leaves the steps to it
+    virtual bool scrollsDiscretely() const { return false; }
     virtual bool onKey(const KeyEvent&) { return false; }
     virtual void onFocus(bool) {}
     void focus();
@@ -247,6 +254,7 @@ public:
     void onRelease() override;
     void onClick(uint32_t button) override;
     bool onScroll(int d) override;
+    bool scrollsDiscretely() const override { return static_cast<bool>(onScrolled); }
 
 protected:
     void doPaint(Renderer& r) override;

@@ -85,10 +85,12 @@ private:
     } m_imageProg;
     struct BlurProgram {
         GLuint id = 0;
-        GLint viewport, rect, tex, texel, radius, top;
+        GLint viewport, rect, tex, step, radius, top;
     } m_blurProg;
     GLuint m_quad = 0;
-    GLuint m_backdrop = 0; // blurEdge's copy of the frame under it
+    // blurEdge: the copy of the frame under it, and its first pass
+    GLuint m_backdrop = 0, m_blurred = 0, m_blurFbo = 0;
+    int m_blurredW = 0, m_blurredH = 0;
 
     int m_bufferWidth = 0, m_bufferHeight = 0;
     float m_scale = 1;

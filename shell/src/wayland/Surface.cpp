@@ -412,6 +412,21 @@ void Surface::pointerScroll(int direction) {
         if (n->onScroll(direction)) return;
 }
 
+bool Surface::pointerScrollPixels(float dy, bool precise) {
+    for (ui::Node* n = m_hovered ? m_hovered : (m_root ? m_root->hitTest(m_pointerX, m_pointerY, true) : nullptr); n;
+         n = n->parentNode()) {
+        if (n->onScrollPixels(dy, precise)) return true;
+        if (n->scrollsDiscretely()) return false;
+    }
+    return false;
+}
+
+void Surface::pointerScrollEnd() {
+    for (ui::Node* n = m_hovered ? m_hovered : (m_root ? m_root->hitTest(m_pointerX, m_pointerY, true) : nullptr); n;
+         n = n->parentNode())
+        n->onScrollEnd();
+}
+
 void Surface::setInputRegion(std::optional<std::vector<RectF>> rects) {
     auto same = [](const auto& a, const auto& b) {
         if (a.has_value() != b.has_value()) return false;

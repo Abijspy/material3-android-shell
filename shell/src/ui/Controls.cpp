@@ -252,8 +252,42 @@ void ScrollView::placeContent() {
 
 bool ScrollView::onScroll(int d) {
     if (maxOffset() <= 0) return false;
+    m_offset.setDuration(kWheelMs);
     scrollTo(m_offset.target() + static_cast<float>(d) * 64);
     return true;
+}
+
+bool ScrollView::onScrollPixels(float dy, bool precise) {
+    if (maxOffset() <= 0) return false;
+    if (!precise) {
+        // A wheel notch (15 units) is about 60 px, eased from wherever the
+        // last step has got to
+        m_velocity = 0;
+        m_offset.setDuration(kWheelMs);
+        scrollTo(m_offset.target() + dy * 4);
+        return true;
+    }
+    // Touchpad: follow the fingers exactly, and remember how fast they go
+    const auto now = AnimClock::now();
+    const float dt = std::chrono::duration<float, std::milli>(now - m_lastPixels).count();
+    m_lastPixels = now;
+    const float speed = dy / std::clamp(dt, 4.0f, 50.0f);
+    m_velocity = dt > 80 ? speed : 0.6f * speed + 0.4f * m_velocity;
+    scrollTo(m_offset.value() + dy, false);
+    return true;
+}
+
+void ScrollView::onScrollEnd() {
+    // Fingers lifted while moving: glide on and slow to a stop
+    const float idle = std::chrono::duration<float, std::milli>(AnimClock::now() - m_lastPixels).count();
+    if (std::abs(m_velocity) < 0.25f || idle > 60 || maxOffset() <= 0) {
+        m_velocity = 0;
+        return;
+    }
+    const float distance = std::clamp(m_velocity * 320.0f, -2400.0f, 2400.0f);
+    m_velocity = 0;
+    m_offset.setDuration(std::clamp(static_cast<int>(std::abs(distance) * 0.9f), 350, 900));
+    scrollTo(m_offset.value() + distance);
 }
 
 void ScrollView::doArrange() {

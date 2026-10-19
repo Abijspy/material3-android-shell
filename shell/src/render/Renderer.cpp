@@ -106,8 +106,9 @@ void main() {
 }
 )";
 
-// A disk of golden-angle taps whose radius grows towards the strong edge.
-// The copy comes from the framebuffer, so its rows run bottom-up.
+// One direction of a Gaussian (the blur is two passes: across, then down)
+// whose radius grows towards the strong edge. Textures hold framebuffer
+// rows, bottom-up; v_local runs top-down.
 const char* kBlurFragment = R"(
 #ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
@@ -116,7 +117,7 @@ precision mediump float;
 #endif
 uniform vec4 u_rect;
 uniform sampler2D u_tex;
-uniform vec2 u_texel;    // one texture pixel in uv
+uniform vec2 u_step;     // one texture pixel along this pass's direction, in uv
 uniform float u_radius;  // device px at the strong edge
 uniform float u_top;     // 1: strong at the top, 0: at the bottom
 varying vec2 v_local;
@@ -124,18 +125,19 @@ void main() {
     vec2 uv = v_local / u_rect.zw;
     float s = mix(uv.y, 1.0 - uv.y, u_top);
     s = s * s * (3.0 - 2.0 * s);
-    float radius = u_radius * s;
+    float sigma = max(u_radius * s * 0.5, 0.001);
     vec2 at = vec2(uv.x, 1.0 - uv.y);
-    vec4 sum = texture2D(u_tex, at);
-    float n = 1.0;
-    for (int i = 0; i < 24; i++) {
-        float f = float(i);
-        float d = sqrt((f + 0.5) / 24.0) * radius;
-        float a = f * 2.39996;
-        sum += texture2D(u_tex, at + vec2(cos(a), sin(a)) * d * u_texel);
-        n += 1.0;
+    // 33 taps over ±3 sigma; linear filtering fills between them
+    float spacing = max(sigma * 3.0 / 16.0, 1.0);
+    vec4 sum = vec4(0.0);
+    float total = 0.0;
+    for (int i = -16; i <= 16; i++) {
+        float d = float(i) * spacing;
+        float w = exp(-0.5 * d * d / (sigma * sigma));
+        sum += texture2D(u_tex, at + u_step * d) * w;
+        total += w;
     }
-    gl_FragColor = sum / n;
+    gl_FragColor = sum / total;
 }
 )";
 
@@ -223,7 +225,7 @@ bool Renderer::buildPrograms() {
         b.viewport = glGetUniformLocation(b.id, "u_viewport");
         b.rect = glGetUniformLocation(b.id, "u_rect");
         b.tex = glGetUniformLocation(b.id, "u_tex");
-        b.texel = glGetUniformLocation(b.id, "u_texel");
+        b.step = glGetUniformLocation(b.id, "u_step");
         b.radius = glGetUniformLocation(b.id, "u_radius");
         b.top = glGetUniformLocation(b.id, "u_top");
     }
@@ -352,29 +354,62 @@ void Renderer::blurEdge(const RectF& r, float radius, bool strongAtTop) {
     const int w = x1 - x0, h = y1 - y0;
     if (w <= 0 || h <= 0) return;
 
-    if (!m_backdrop) {
-        glGenTextures(1, &m_backdrop);
-        glBindTexture(GL_TEXTURE_2D, m_backdrop);
+    auto texture = [](GLuint& t) {
+        if (t) return;
+        glGenTextures(1, &t);
+        glBindTexture(GL_TEXTURE_2D, t);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    }
+    };
+    texture(m_backdrop);
+    texture(m_blurred);
+    if (!m_blurFbo) glGenFramebuffers(1, &m_blurFbo);
+
+    // What has been drawn under the strip so far
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_backdrop);
     glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, x0, m_bufferHeight - y1, w, h, 0);
 
     auto& p = m_blurProg;
     glUseProgram(p.id);
-    glUniform2f(p.viewport, m_bufferWidth / m_scale, m_bufferHeight / m_scale);
-    // Back to logical units, untranslated: the copy already sits there
-    glUniform4f(p.rect, x0 / m_scale, y0 / m_scale, w / m_scale, h / m_scale);
     glUniform1i(p.tex, 0);
-    glUniform2f(p.texel, 1.0f / static_cast<float>(w), 1.0f / static_cast<float>(h));
     glUniform1f(p.radius, radius * m_scale);
     glUniform1f(p.top, strongAtTop ? 1.0f : 0.0f);
-    // Replace, not blend: the copy already holds what was there
+    // Replace, not blend: each pass writes the whole strip
     glDisable(GL_BLEND);
+
+    // Across, into the second texture (same size, same row order)
+    glBindTexture(GL_TEXTURE_2D, m_blurred);
+    if (m_blurredW != w || m_blurredH != h) {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        m_blurredW = w;
+        m_blurredH = h;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, m_blurFbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_blurred, 0);
+    const bool fbo = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+    if (fbo) {
+        const GLboolean scissor = glIsEnabled(GL_SCISSOR_TEST);
+        glDisable(GL_SCISSOR_TEST);
+        glViewport(0, 0, w, h);
+        glBindTexture(GL_TEXTURE_2D, m_backdrop);
+        glUniform2f(p.viewport, static_cast<float>(w), static_cast<float>(h));
+        glUniform4f(p.rect, 0, 0, static_cast<float>(w), static_cast<float>(h));
+        glUniform2f(p.step, 1.0f / static_cast<float>(w), 0);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        if (scissor) glEnable(GL_SCISSOR_TEST);
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, m_bufferWidth, m_bufferHeight);
+
+    // Down, back onto the frame where the strip came from (untranslated:
+    // the copy already sits there)
+    glBindTexture(GL_TEXTURE_2D, fbo ? m_blurred : m_backdrop);
+    glUniform2f(p.viewport, m_bufferWidth / m_scale, m_bufferHeight / m_scale);
+    glUniform4f(p.rect, x0 / m_scale, y0 / m_scale, w / m_scale, h / m_scale);
+    glUniform2f(p.step, 0, 1.0f / static_cast<float>(h));
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     glEnable(GL_BLEND);
 }

@@ -39,6 +39,8 @@ public:
         : m_from(initial), m_to(initial), m_duration(durationMs), m_easing(easing) {}
 
     void set(float target, bool animate = true);
+    // For animations that vary their length (a fling, a wheel step)
+    void setDuration(int ms) { m_duration = ms; }
     float value() const;
     float target() const { return m_to; }
     bool running() const;

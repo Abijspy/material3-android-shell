@@ -87,6 +87,8 @@ public:
     void setButtonSerial(uint32_t serial) { m_buttonSerial = serial; }
     void pointerAxis(uint32_t axis, double value);
     void pointerFrame();
+    void pointerAxisSource(uint32_t source);
+    void pointerAxisStop(uint32_t axis);
     void keymap(int fd, uint32_t size);
     void keyboardEnter(wl_surface* surface);
     void keyboardLeave(wl_surface* surface);
@@ -129,6 +131,8 @@ private:
     Surface* m_pointerFocus = nullptr;
     double m_pointerX = 0, m_pointerY = 0;
     double m_scrollAccum = 0;
+    bool m_axisPrecise = false; // this frame's scrolling is a touchpad's
+    bool m_axisStopped = false; // the fingers lifted this frame
 };
 
 } // namespace m3::wl

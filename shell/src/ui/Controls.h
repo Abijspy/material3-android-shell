@@ -35,6 +35,7 @@ public:
     void onDrag(float x, float y) override;
     void onRelease() override;
     bool onScroll(int d) override;
+    bool scrollsDiscretely() const override { return true; }
     bool onKey(const KeyEvent& e) override;
 
 protected:
@@ -92,6 +93,8 @@ public:
     Node* content() const { return children().empty() ? nullptr : children().front().get(); }
     void scrollTo(float y, bool animate = true);
     bool onScroll(int d) override;
+    bool onScrollPixels(float dy, bool precise) override;
+    void onScrollEnd() override;
 
     // Interactive for the scrollbar; presses elsewhere do nothing
     bool interactive() const override { return overflows(); }
@@ -115,8 +118,13 @@ private:
     void placeContent();
     bool overflows() const { return m_contentHeight > rect().h + 0.5f; }
     RectF thumb() const;
-    Tween m_offset{0, motion::shortMs, Easing::standard()};
+    // Starts fast and settles: wheel steps chain without stalling
+    Tween m_offset{0, kWheelMs, Easing::emphasizedDecelerate()};
     Tween m_bar{0, motion::shortMs, Easing::standard()}; // 0 idle … 1 hovered/dragging
+    static constexpr int kWheelMs = 260;
+    // Touchpad speed (px per ms), for the glide when the fingers lift
+    float m_velocity = 0;
+    AnimClock::time_point m_lastPixels{};
     float m_contentHeight = 0;
     float m_placedOffset = 0; // the offset the content was last arranged at
     float m_grab = -1; // pointer offset within the thumb while dragging
