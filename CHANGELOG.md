@@ -1,5 +1,12 @@
 # Changelog
 
+## v4.4.1 — 2026-10-19
+
+- **The shell is a pacman package.** Each release now carries `material3ui` (the shell) next to `material3ui-greeter` (the login screen). On the stable channel, updates download the release's package and install it with pacman instead of compiling; on the latest channel they build the checkout and package it, so pacman owns the files either way. The first update takes over the files an earlier install put in place.
+- **Package icons:** both packages carry an icon (the logo, and the logo with a padlock for the login screen) without appearing in app lists. Material3UI's own update shows its logo in Software & updates.
+- **Eight new wallpapers**, drawn from Material 3 Expressive shapes in light and dark palettes: ten ship with the shell now.
+- **Screenshots** in the README.
+
 ## v4.4.0 — 2026-10-19
 
 - **Accessibility** (Settings → Accessibility):
