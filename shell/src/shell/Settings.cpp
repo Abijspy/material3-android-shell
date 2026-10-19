@@ -8,6 +8,7 @@
 #include "render/Images.h"
 #include "services/Audio.h"
 #include "services/Clipboard.h"
+#include "services/HyprOptions.h"
 #include "services/Hyprland.h"
 #include "services/Keybinds.h"
 #include "services/Network.h"
@@ -18,8 +19,10 @@
 #include "services/Wallpaper.h"
 #include "services/Weather.h"
 #include "shell/Dock.h"
+#include "shell/HyprPages.h"
 #include "shell/LockLayout.h"
 #include "shell/PanelKit.h"
+#include "shell/SettingsKit.h"
 #include "shell/Panels.h"
 #include "shell/bar/Bar.h"
 #include "ui/Controls.h"
@@ -56,109 +59,10 @@ namespace {
 // apart, large outer and small inner corners), choices are connected button
 // groups, and pressed controls spring into a tighter shape.
 
-// M3 Expressive: large outer corners, tight inner ones
-constexpr float kOuter = 28, kInner = 6;
-
 // Rebuilds a page by id (after a reset, so its controls show the defaults)
 std::function<void(const std::string&)> reshow;
 // Types into the open Settings' search (`msg settings search:<words>`)
 std::function<void(const std::string&)> searchFor;
-
-// The rows of one group. Their backgrounds are painted here, shaped by their
-// place in the group, so rows added or hidden later reshape the stack.
-class Segments : public Flex {
-public:
-    Segments() : Flex(Direction::Column) { setAlignItems(Align::Stretch)->setSpacing(2); }
-
-protected:
-    void doArrange() override {
-        Flex::doArrange();
-        const auto rows = shownRows();
-        for (size_t i = 0; i < rows.size(); ++i) {
-            const Radii want = shape(i, rows.size());
-            const Radii& has = rows[i]->radius();
-            // Hover and press layers follow the segment's corners
-            if (has.tl != want.tl || has.bl != want.bl) rows[i]->setRadius(want);
-        }
-    }
-    void doPaint(Renderer& r) override {
-        const Color bg = ColorRef("surface_container_high", std::min(1.0f, Theme::get().panelOpacity() + 0.06f)).resolve();
-        const float k = Theme::get().roundness();
-        const auto rows = shownRows();
-        for (size_t i = 0; i < rows.size(); ++i) {
-            const Radii s = shape(i, rows.size());
-            const float half = std::min(rows[i]->rect().w, rows[i]->rect().h) / 2;
-            auto f = [&](float v) { return std::min(v * k, half); };
-            r.rect(rows[i]->rect(), bg, {f(s.tl), f(s.tr), f(s.br), f(s.bl)});
-        }
-    }
-
-private:
-    std::vector<Flex*> shownRows() const {
-        std::vector<Flex*> out;
-        for (const auto& c : children())
-            if (c->shown())
-                if (auto* f = dynamic_cast<Flex*>(c.get())) out.push_back(f);
-        return out;
-    }
-    static Radii shape(size_t i, size_t n) {
-        const float top = i == 0 ? kOuter : kInner, bottom = i + 1 == n ? kOuter : kInner;
-        return {top, top, bottom, bottom};
-    }
-};
-
-
-// A titled group of rows
-Flex* group(Node* page, const std::string& title, const std::string& subtitle = {}) {
-    auto* head = page->add<Flex>(Flex::Direction::Column);
-    head->setAlignItems(Align::Start)->setSpacing(2)->setPadding({8, 10, 8, 2});
-    head->add<Label>(title)->setSize(14)->setWeight(600)->setColor("primary", false);
-    if (!subtitle.empty()) head->add<Label>(subtitle)->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(640)->setMaxLines(2);
-    return page->add<Segments>();
-}
-
-// A group holding one block of controls on a single surface (popup
-// layouts reused inside Settings)
-Flex* panelGroup(Node* page, const std::string& title, const std::string& subtitle = {}) {
-    auto* inner = group(page, title, subtitle)->add<Flex>(Flex::Direction::Column);
-    inner->setAlignItems(Align::Stretch)->setSpacing(12)->setPadding({20, 16});
-    return inner;
-}
-
-// One row: icon, title and subtitle, and a trailing slot for the control
-struct Row {
-    Flex* row;
-    Label* title;
-    Label* subtitle;
-};
-
-Row row(Node* group, const std::string& icon, const std::string& title, const std::string& subtitle = {}) {
-    auto* r = group->add<Flex>(Flex::Direction::Row);
-    r->setPadding({20, 12})->setSpacing(16);
-    r->minHeight = 60;
-    if (!icon.empty()) r->add<Icon>(icon, 22)->setColor("on_surface_variant", false);
-    auto* texts = r->add<Flex>(Flex::Direction::Column);
-    texts->setAlignItems(Align::Start)->setSpacing(1);
-    texts->grow = true;
-    auto* t = texts->add<Label>(title);
-    t->setSize(15)->setWeight(500)->setMaxWidth(420);
-    auto* s = texts->add<Label>(subtitle);
-    s->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(440)->setMaxLines(2);
-    s->setVisible(!subtitle.empty());
-    return {r, t, s};
-}
-
-Button* pillButton(Node* parent, const std::string& label, bool primary, std::function<void()> fn, const std::string& icon = {}) {
-    auto* b = parent->add<Button>();
-    pill(b->setBackground(primary ? "primary" : "secondary_container", false))->setPadding({18, 10})->setSpacing(8);
-    b->pressedRadius = 10;
-    if (!icon.empty()) b->add<Icon>(icon, 18)->setColor(primary ? "on_primary" : "on_secondary_container", false);
-    b->add<Label>(label)->setSize(14)->setWeight(500)->setColor(primary ? "on_primary" : "on_secondary_container", false);
-    b->onClicked = [fn = std::move(fn)](uint32_t button) {
-        if (button == BTN_LEFT && fn) fn();
-    };
-    return b;
-}
 
 // Config-bound controls
 
@@ -171,40 +75,6 @@ void switchRow(Node* g, const std::string& icon, const std::string& title, const
         Config::get().set(pointer, on);
         if (after) after(on);
     };
-}
-
-// M3 Expressive connected button group: segments a hairline apart with tight
-// inner corners; the selected one turns primary and rounds off completely.
-template <typename T>
-Flex* connectedGroup(Node* parent, T current, std::vector<std::pair<T, std::string>> options, std::function<void(T)> pick) {
-    auto* chips = parent->add<Flex>(Flex::Direction::Row);
-    chips->setSpacing(2);
-    auto buttons = std::make_shared<std::vector<std::pair<T, Button*>>>();
-    auto paint = [buttons](const T& selected, bool animate) {
-        const size_t n = buttons->size();
-        for (size_t i = 0; i < n; ++i) {
-            auto& [val, btn] = (*buttons)[i];
-            const bool on = val == selected;
-            const float l = on || i == 0 ? 100 : 8, rr = on || i + 1 == n ? 100 : 8;
-            btn->setRadius({l, rr, rr, l});
-            btn->setBackground(on ? ColorRef("primary") : ColorRef("surface_container_highest"), animate);
-            for (auto& c : btn->children())
-                if (auto* lab = dynamic_cast<Label*>(c.get())) lab->setColor(on ? "on_primary" : "on_surface", animate);
-        }
-    };
-    for (const auto& [value, label] : options) {
-        auto* b = chips->add<Button>();
-        b->setPadding({14, 9})->setSpacing(6);
-        b->pressedRadius = 4;
-        b->add<Label>(label)->setSize(13)->setWeight(500);
-        buttons->push_back({value, b});
-        b->onClicked = [=, v = value](uint32_t) {
-            paint(v, true);
-            if (pick) pick(v);
-        };
-    }
-    paint(current, false);
-    return chips;
 }
 
 template <typename T>
@@ -2964,6 +2834,17 @@ const PageDef kPages[] = {
     {"lock", "security", "Security & privacy", "Screen lock, idle and sleep", lockPage},
     {"users", "account_circle", "Users", "Your profile, password, administrators and new profiles", usersPage},
     {"system", "settings_suggest", "System", "Date & time, languages and reset", systemPage},
+    // Hyprland itself: every compositor option, live
+    {"hypr-windows", "space_dashboard", "Windows & borders", "Gaps, borders, their colours and snapping", hyprWindowsPage},
+    {"hypr-decoration", "auto_awesome", "Decoration", "Corners, opacity, blur, shadows and glow", hyprDecorationPage},
+    {"hypr-layouts", "dashboard", "Layouts", "Dwindle, master and scrolling tiling", hyprLayoutsPage},
+    {"hypr-input", "keyboard_alt", "Input devices", "Keyboard layouts, pointer, touchpad, touch and tablets", hyprInputPage},
+    {"hypr-gestures", "swipe", "Gestures", "Workspace swipes and the scrolling layout", hyprGesturesPage},
+    {"hypr-cursor", "arrow_selector_tool", "Cursor", "Hiding, warping, zoom and hardware cursors", hyprCursorPage},
+    {"hypr-groups", "tab_group", "Window groups", "Tabbed groups and the group bar", hyprGroupsPage},
+    {"hypr-misc", "tune", "Behaviour", "Focus, swallowing, keybind and XWayland behaviour", hyprMiscPage},
+    {"hypr-render", "memory", "Rendering", "Direct scanout, colour management and OpenGL", hyprRenderPage},
+    {"hypr-debug", "bug_report", "Debug", "Logs, overlays and damage tracking", hyprDebugPage},
     {"mouse", "touchpad_mouse", "Mouse & touchpad", "Tap to click, scrolling, gestures and pointer speed", mousePage},
     {"keybinds", "keyboard", "Keyboard", "Shortcuts: remap, disable and add", keybindsPage},
     {"packages", "system_update", "Software & updates", "Updates from the repos, the AUR and Flathub", packagesPage},
@@ -2977,6 +2858,7 @@ int pageGroup(const std::string& id) {
     if (id == "battery" || id == "storage" || id == "monitor" || id == "sound" || id == "display") return 2;
     if (id == "appearance" || id == "style" || id == "bar" || id == "dock" || id == "lockscreen") return 3;
     if (id == "accessibility" || id == "lock" || id == "users") return 4;
+    if (id.starts_with("hypr-")) return 6;
     return 5; // system, keyboard, updates, about
 }
 
@@ -2996,6 +2878,13 @@ void settingsClosed() {
 }
 
 void settings(Flex* card, Popup& popup, const std::string& initial) {
+    // Ctrl+Z steps back through Hyprland option changes
+    popup.onKey = [](const KeyEvent& e) {
+        if (!e.ctrl() || (e.sym != XKB_KEY_z && e.sym != XKB_KEY_Z) || !HyprOptions::get().canUndo()) return false;
+        const std::string name = HyprOptions::get().undo();
+        if (!name.empty()) m3::run({"notify-send", "-a", "Settings", "-t", "2500", "Undone", name}, nullptr);
+        return true;
+    };
     // As an app window it fills the window and follows its size
     const bool window = popup.isWindow();
     card->setPadding(Insets(12))->setSpacing(0);
@@ -3103,7 +2992,9 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
     size_t first = 0;
     // Android's groups: connections, apps, device, style, access, system
     std::vector<Segments*> groups;
-    for (int g = 0; g < 6; ++g) {
+    for (int g = 0; g < 7; ++g) {
+        // Hyprland's own options under a heading of their own
+        if (g == 6) side->add<Label>("Hyprland")->setSize(13)->setWeight(600)->setColor("primary", false);
         auto* seg = side->add<Segments>();
         seg->collapseWhenEmpty = true; // searching can empty it
         groups.push_back(seg);

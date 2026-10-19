@@ -8,6 +8,7 @@
 #include "render/Images.h"
 #include "render/Renderer.h"
 #include "render/Text.h"
+#include "services/HyprOptions.h"
 #include "services/Hyprland.h"
 #include "services/Audio.h"
 #include "services/Clipboard.h"
@@ -436,6 +437,46 @@ void Shell::registerIpc() {
         z = std::clamp(z, 1.0, 4.0);
         Config::get().set("/accessibility/zoom", z);
         return std::format("zoom {:.1f}×", z);
+    });
+    ipc.add("hypr", "hypr options | get <name> | set <name> <json> | reset <name> | undo: Hyprland options as Settings keeps them",
+            [](const IpcServer::Args& a) {
+        auto& h = HyprOptions::get();
+        if (!h.loaded()) h.load();
+        const std::string cmd = a.empty() ? "options" : a[0];
+        if (cmd == "options") {
+            std::map<int, int> kinds;
+            int custom = 0;
+            for (const auto& o : h.options()) {
+                ++kinds[static_cast<int>(o.kind)];
+                custom += o.custom;
+            }
+            static const char* names[] = {"bool", "int", "float", "text", "choice", "color", "gradient", "vec2", "gaps"};
+            std::string out = std::format("{} options, {} set in Settings:", h.options().size(), custom);
+            for (auto [k, n] : kinds) out += std::format(" {} {}", n, names[k]);
+            return out;
+        }
+        if (cmd == "undo") {
+            const std::string name = h.undo();
+            return name.empty() ? std::string("nothing to undo") : std::format("undid {} = {}", name, h.find(name)->value.dump());
+        }
+        if (a.size() < 2) return std::string("error: name needed");
+        const auto* o = h.find(a[1]);
+        if (!o) return std::string("error: no option ") + a[1];
+        if (cmd == "get")
+            return std::format("{} = {} (default {}){}", o->name, o->value.dump(), o->fallback.dump(), o->custom ? " [Settings]" : "");
+        std::string err;
+        if (cmd == "set" && a.size() > 2) {
+            std::string text;
+            for (size_t i = 2; i < a.size(); ++i) text += (i > 2 ? " " : "") + a[i];
+            try {
+                err = h.set(a[1], nlohmann::json::parse(text));
+            } catch (const std::exception&) {
+                err = h.set(a[1], text); // a bare string
+            }
+        } else if (cmd == "reset") {
+            err = h.reset(a[1]);
+        }
+        return err.empty() ? std::format("{} = {}", o->name, h.find(a[1])->value.dump()) : "error: " + err;
     });
     ipc.add("brightness", "brightness up|down|set <0-100>", [](const IpcServer::Args& a) {
         auto& b = Brightness::get();

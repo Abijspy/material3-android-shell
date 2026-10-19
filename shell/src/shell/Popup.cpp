@@ -152,6 +152,7 @@ Popup::Popup(wl::Output* output, Options options, const std::function<void(Flex*
 
     m_surface->onEmptyClick = [this](float, float) { close(); };
     m_surface->onKey = [this](const KeyEvent& e) {
+        if (onKey && onKey(e)) return true;
         if (e.sym != XKB_KEY_Escape) return false;
         close();
         return true;

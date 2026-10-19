@@ -86,3 +86,15 @@ local ok_in, input = pcall(require, "material3ui.input_custom")
 if ok_in and type(input) == "table" then
 	hl.config({ input = input })
 end
+
+-- Settings → Hyprland: every option changed there, written to
+-- hyprland_custom.lua. Applied now and again once the whole config has run
+-- (start and every reload), so the Settings app wins over other files.
+local function settings_app_options()
+	package.loaded["material3ui.hyprland_custom"] = nil
+	local ok, apply = pcall(require, "material3ui.hyprland_custom")
+	if ok and type(apply) == "function" then pcall(apply) end
+end
+settings_app_options()
+hl.on("hyprland.start", settings_app_options)
+hl.on("config.reloaded", settings_app_options)

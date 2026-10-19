@@ -55,6 +55,8 @@ public:
     wl::LayerSurface* surface() const { return m_surface.get(); }
 
     std::function<void()> onClosed; // after the exit animation
+    // Keys nothing focused took, before Escape closes (Settings' Ctrl+Z)
+    std::function<bool(const ui::KeyEvent&)> onKey;
     ui::Node* initialFocus = nullptr; // set by the builder: gets the keyboard
 
 private:
