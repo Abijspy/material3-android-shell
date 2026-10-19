@@ -1349,6 +1349,12 @@ void installedApps(Flex* page) {
         std::set<std::string> foreign;             // AUR and other non-repo packages
         bool loaded = false;
         std::string query, armed;                  // armed: the app whose Uninstall was tapped once
+        std::string open;                          // the app whose details show
+        struct Info {
+            std::string version, size, date, description, data;
+            bool loaded = false;
+        };
+        std::map<std::string, Info> info;          // by .desktop path, read once
         Signal<> changed;
     };
     auto state = std::make_shared<State>();
@@ -1423,7 +1429,10 @@ void installedApps(Flex* page) {
             // What it is, and how it would go
             enum class Kind { Repo, Aur, Flatpak, Local, Other } kind;
             std::string pkg;
-            if (app.path.find("/flatpak/exports/") != std::string::npos) {
+            std::error_code ec;
+            const std::string real = std::filesystem::canonical(app.path, ec).string();
+            if (app.path.find("/flatpak/") != std::string::npos || real.find("/flatpak/") != std::string::npos ||
+                app.exec.find("flatpak run") != std::string::npos) {
                 kind = Kind::Flatpak;
                 pkg = app.id.ends_with(".desktop") ? app.id.substr(0, app.id.size() - 8) : app.id;
             } else if (auto it = state->owner.find(app.path); it != state->owner.end()) {
@@ -1438,17 +1447,115 @@ void installedApps(Flex* page) {
                 lower(type).find(q) == std::string::npos)
                 continue;
             ++shown;
-            auto r = row(g, "", app.name, pkg.empty() ? type : std::string(type) + "  ·  " + pkg);
+            // The row itself opens the app's details (its buttons act alone)
+            const bool expanded = state->open == app.path;
+            auto* rowButton = g->add<Button>(Flex::Direction::Row);
+            rowButton->setPadding({20, 12})->setSpacing(16);
+            rowButton->minHeight = 60;
+            rowButton->pressedRadius = 10;
             const std::string icon = app.icon;
-            r.row->adopt(std::make_unique<ImageView>(32, [icon](float scale, int& w, int& h) -> GLuint {
+            rowButton->add<ImageView>(32, [icon](float scale, int& w, int& h) -> GLuint {
                 auto* t = Images::get().icon(icon, static_cast<int>(std::lround(32 * scale)));
                 if (!t) return 0;
                 w = t->width;
                 h = t->height;
                 return t->id;
-            }), 0);
+            });
+            auto* texts = rowButton->add<Flex>(Flex::Direction::Column);
+            texts->setAlignItems(Align::Start)->setSpacing(1);
+            texts->grow = true;
+            texts->add<Label>(app.name)->setSize(15)->setWeight(500)->setMaxWidth(420);
+            texts->add<Label>(pkg.empty() ? type : std::string(type) + "  ·  " + pkg)
+                ->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(440);
+            Row r{rowButton, nullptr, nullptr};
+            const std::string appPath = app.path;
+            rowButton->onClicked = [state, list, appPath](uint32_t button) {
+                if (button != BTN_LEFT) return;
+                state->open = state->open == appPath ? "" : appPath;
+                list->syncSoon();
+            };
             pillButton(r.row, "Open", false, [app] { Apps::get().launch(app); }, "open_in_new");
-            if (kind == Kind::Other) continue;
+            // The chevron ends the row, after Uninstall
+            auto chevron = [&] { r.row->add<Icon>(expanded ? "expand_less" : "expand_more", 20)->setColor("on_surface_variant", false); };
+
+            // App info: version, installed size, its data in your home, and more
+            if (expanded) {
+                auto& inf = state->info[app.path];
+                if (!inf.loaded) {
+                    inf.loaded = true;
+                    inf.size = "Counting…";
+                    // Its data and cache in the home folder, by the names it is likely to use
+                    std::set<std::string> names = {lower(pkg), lower(app.wmClass)};
+                    std::string id = app.id.ends_with(".desktop") ? app.id.substr(0, app.id.size() - 8) : app.id;
+                    names.insert(id);
+                    names.insert(lower(id.substr(id.rfind('.') + 1)));
+                    std::string dirs;
+                    for (const auto& n : names)
+                        if (!n.empty())
+                            for (const char* base : {"/.config/", "/.local/share/", "/.cache/"}) dirs += " '" + home + base + n + "'";
+                    if (kind == Kind::Flatpak) dirs += " '" + home + "/.var/app/" + pkg + "'";
+                    const std::string path = app.path;
+                    std::string script = "echo '#DATA'; du -scb" + dirs + " 2>/dev/null | tail -1; echo '#INFO'; ";
+                    if (kind == Kind::Flatpak) script += "flatpak info '" + pkg + "' 2>/dev/null";
+                    else if (!pkg.empty()) script += "LC_ALL=C pacman -Qi '" + pkg + "' 2>/dev/null";
+                    m3::run({"sh", "-c", script}, [state, path, flatpak = kind == Kind::Flatpak](int, const std::string& out) {
+                        auto& i = state->info[path];
+                        i.size.clear();
+                        bool infoPart = false;
+                        std::stringstream ss(out);
+                        for (std::string l; std::getline(ss, l);) {
+                            if (l == "#INFO") {
+                                infoPart = true;
+                                continue;
+                            }
+                            if (l == "#DATA") continue;
+                            if (!infoPart) {
+                                const uint64_t bytes = std::strtoull(l.c_str(), nullptr, 10);
+                                i.data = bytes > 0 ? formatBytes(bytes) : "None";
+                                continue;
+                            }
+                            // "Key : value" (pacman) or "Key: value" (flatpak)
+                            const auto colon = l.find(':');
+                            if (colon == std::string::npos) continue;
+                            auto trim = [](std::string t) {
+                                t.erase(0, t.find_first_not_of(' '));
+                                while (!t.empty() && t.back() == ' ') t.pop_back();
+                                return t;
+                            };
+                            const std::string key = trim(l.substr(0, colon)), value = trim(l.substr(colon + 1));
+                            if (key == "Version") i.version = value;
+                            else if (key == "Installed Size" || (flatpak && key == "Installed")) i.size = value;
+                            else if (key == "Install Date" || (flatpak && key == "Date")) i.date = value;
+                            else if (key == "Description" || (flatpak && key == "Subject")) i.description = value;
+                        }
+                        state->changed.emit();
+                    });
+                }
+                auto* card = g->add<Flex>(Flex::Direction::Column);
+                card->setPadding({68, 6, 20, 14})->setSpacing(6)->setAlignItems(Align::Stretch);
+                auto fact = [card](const char* icon, const std::string& key, const std::string& value) {
+                    if (value.empty()) return;
+                    auto* f = card->add<Flex>(Flex::Direction::Row);
+                    f->setSpacing(10);
+                    f->add<Icon>(icon, 18)->setColor("on_surface_variant", false);
+                    auto* k = f->add<Label>(key);
+                    k->setSize(13)->setColor("on_surface_variant", false);
+                    k->fixedWidth = 120;
+                    auto* v = f->add<Label>(value);
+                    v->setSize(13)->setMaxWidth(420)->setMaxLines(3);
+                    v->grow = true;
+                };
+                fact("sell", "Version", inf.version);
+                fact("hard_drive", "Installed size", inf.size);
+                fact("folder_data", "App data", inf.data);
+                fact("calendar_month", "Installed on", inf.date);
+                fact("description", "About", inf.description);
+                fact("draft", "Entry", app.path);
+            }
+            if (kind == Kind::Other) {
+                chevron();
+                continue;
+            }
             // Two taps: the first arms it
             const bool armed = state->armed == app.path;
             const std::string label = armed ? "Tap to confirm" : kind == Kind::Local ? "Remove" : "Uninstall";
@@ -1474,6 +1581,7 @@ void installedApps(Flex* page) {
                 }
                 list->syncSoon();
             };
+            chevron();
         }
         if (shown == 0) row(g, "search_off", "No app matches");
         // What an uninstall is doing, or how it ended
