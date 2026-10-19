@@ -2,8 +2,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #  Material3UI Shell updater
 #  Usage: update.sh [all|shell] [stable|canary] [--force]
-#  Run by hand to pull, rebuild the native
-#  shell and refresh configs. Uses the choices recorded by install.sh in
+#  Run by hand to pull, install the shell (the release's material3ui
+#  package on the stable channel, else one built from the checkout) and
+#  refresh configs. Uses the choices recorded by install.sh in
 #  ~/.config/material3ui/install_state.json. Installing the shell needs root:
 #  sudo, or M3_SUDO=pkexec when Settings runs it (the shell's polkit dialog).
 # ─────────────────────────────────────────────────────────────────────────────
@@ -59,12 +60,38 @@ fi
 
 ours() { [[ ! -e "$1" ]] || grep -qs "# Material3UI Configuration" "$1"; }
 
-echo "Building the shell..."
-BUILD="$INSTALL_DIR/shell/build-release"
-[[ -d "$BUILD" ]] && setup_flags=(--reconfigure) || setup_flags=()
-meson setup "${setup_flags[@]}" "$BUILD" "$INSTALL_DIR/shell" --prefix=/usr --sysconfdir=/etc --buildtype=release >/dev/null
-meson compile -C "$BUILD" | tail -1
-"${M3_SUDO:-sudo}" meson install -C "$BUILD" --no-rebuild --quiet
+# The shell installs as the material3ui pacman package: a release's own
+# package on the stable channel, else one made from a build of the checkout
+PACKAGING="$INSTALL_DIR/packaging"
+PKG_DIR="$(mktemp -d)"
+trap 'rm -rf "$PKG_DIR"' EXIT
+PKG=""
+if [[ "$CHANNEL" == stable && -n "${tag:-}" ]]; then
+    name="material3ui-${tag#v}-1-$(uname -m).pkg.tar.zst"
+    if curl -fsSL -o "$PKG_DIR/$name" "https://github.com/Abijspy/material3-android-shell/releases/download/$tag/$name"; then
+        PKG="$PKG_DIR/$name"
+        echo "Downloaded $name"
+    else
+        echo "The $tag release has no package for $(uname -m); building it here."
+    fi
+fi
+if [[ -z "$PKG" ]]; then
+    echo "Building the shell..."
+    BUILD="$INSTALL_DIR/shell/build-release"
+    [[ -d "$BUILD" ]] && setup_flags=(--reconfigure) || setup_flags=()
+    meson setup "${setup_flags[@]}" "$BUILD" "$INSTALL_DIR/shell" --prefix=/usr --sysconfdir=/etc --buildtype=release >/dev/null
+    meson compile -C "$BUILD" | tail -1
+    if [[ -x "$PACKAGING/build-pkg.sh" ]] && command -v makepkg >/dev/null; then
+        PKG="$("$PACKAGING/build-pkg.sh" material3ui --build "$BUILD" "$PKG_DIR" 2>/dev/null)" || PKG=""
+    fi
+fi
+if [[ -n "$PKG" && -x "$PACKAGING/install-pkg.sh" ]]; then
+    "${M3_SUDO:-sudo}" "$PACKAGING/install-pkg.sh" "$PKG"
+else
+    # No makepkg (base-devel), or a release from before the packages
+    [[ -n "${BUILD:-}" ]] || { echo "No package to install." >&2; exit 1; }
+    "${M3_SUDO:-sudo}" meson install -C "$BUILD" --no-rebuild --quiet
+fi
 mkdir -p "$HOME/.local/share/material3ui"
 rm -rf "$HOME/.local/share/material3ui/scripts"
 cp -a "$INSTALL_DIR/dotfiles/.local/share/material3ui/scripts" "$HOME/.local/share/material3ui/"

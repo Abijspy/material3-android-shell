@@ -1,4 +1,5 @@
-# Attaches the material3ui-greeter pacman package to each published release
+# Attaches the pacman packages to each published release: material3ui (the
+# shell) and material3ui-greeter (the login screen)
 name: Release packages
 
 on:
@@ -7,11 +8,11 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to build and attach (e.g. v4.4.0)
+        description: Release tag to build and attach (e.g. v4.5.0)
         required: true
 
 jobs:
-  greeter:
+  packages:
     runs-on: ubuntu-latest
     container: archlinux:base-devel
     permissions:
@@ -25,12 +26,19 @@ jobs:
         with:
           ref: ${{ env.TAG }}
           fetch-depth: 0
+      - name: Build dependencies
+        # The libraries the shell links against; runtime-only ones are skipped
+        run: |
+          source packaging/material3ui/PKGBUILD
+          pacman -S --needed --noconfirm "${makedepends[@]}" $(printf '%s\n' "${depends[@]}" | grep -vx hyprland)
       - name: Build
         # makepkg refuses to run as root
         run: |
           useradd -m builder
           chown -R builder "$GITHUB_WORKSPACE"
-          su builder -c "git config --global --add safe.directory '*' && cd '$GITHUB_WORKSPACE' && packaging/build-greeter-pkg.sh '$GITHUB_WORKSPACE/out'"
+          su builder -c "git config --global --add safe.directory '*' && cd '$GITHUB_WORKSPACE' &&
+            packaging/build-pkg.sh material3ui '$GITHUB_WORKSPACE/out' &&
+            packaging/build-pkg.sh material3ui-greeter '$GITHUB_WORKSPACE/out'"
       - name: Upload
         env:
           GH_TOKEN: ${{ github.token }}

@@ -53,13 +53,13 @@ as_user() {
         "$@"
     fi
 }
-in_checkout() { [[ -f "$SRC/greet-run.sh" && -x "$REPO/packaging/build-greeter-pkg.sh" ]]; }
+in_checkout() { [[ -f "$SRC/greet-run.sh" && -x "$REPO/packaging/build-pkg.sh" ]]; }
 
 # ── install ──────────────────────────────────────────────────────────────────
 # Prints the path of a package for this checkout: the release's, else built
 fetch_or_build() {
     local ver tmp name
-    ver="$(as_user "$REPO/packaging/build-greeter-pkg.sh" --version)"
+    ver="$(as_user "$REPO/packaging/build-pkg.sh" --version)"
     tmp="$(as_user mktemp -d)"
     # A release ships the package; between releases there is none to take
     if [[ "$ver" != *.r* ]]; then
@@ -71,7 +71,7 @@ fetch_or_build() {
         fi
         say "The v$ver release has no package; building it here" >&2
     fi
-    as_user "$REPO/packaging/build-greeter-pkg.sh" "$tmp"
+    as_user "$REPO/packaging/build-pkg.sh" material3ui-greeter "$tmp"
 }
 
 cmd_install() {

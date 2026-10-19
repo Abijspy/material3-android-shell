@@ -127,6 +127,9 @@ If you prefer the command line, you can run the update script directly:
 ~/.local/src/material3ui/update.sh shell
 ```
 
+### Packages
+The shell installs as the `material3ui` pacman package, and the login screen as `material3ui-greeter`. Every release carries both (`material3ui-<version>-1-x86_64.pkg.tar.zst` and `material3ui-greeter-<version>-1-any.pkg.tar.zst`). On the stable channel, updates download the release's package and install it with pacman, with no compiling. On the latest (git) channel, or for a release without a package for your architecture, the update builds the shell from the checkout and packages that build, so pacman owns the files either way (`pacman -Qi material3ui`). Build one by hand with `packaging/build-pkg.sh material3ui`.
+
 Whichever method you choose, updating is non-destructive. It safely overlays new files without deleting your existing configurations, so your personal Hyprland keybinds, Fish functions, and Kitty settings are always safe.
 
 ## Troubleshooting Common Issues

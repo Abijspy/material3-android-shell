@@ -1,5 +1,5 @@
 # Maintainer: Abishek (Abijspy) <reachabishekr@gmail.com>
-# Built from the checkout around it by packaging/build-greeter-pkg.sh, which
+# Built from the checkout around it by packaging/build-pkg.sh, which
 # sets M3_SRC and M3_PKGVER (the release, or release.rN.gHASH between them)
 pkgname=material3ui-greeter
 pkgver=${M3_PKGVER:-0}
@@ -12,9 +12,11 @@ depends=(greetd hyprland acl)
 install=material3ui-greeter.install
 
 package() {
-    local src="${M3_SRC:?build with packaging/build-greeter-pkg.sh}"
+    local src="${M3_SRC:?build with packaging/build-pkg.sh}"
     install -Dm644 "$src/greeter/hyprland.lua" -t "$pkgdir/usr/share/material3ui-greeter/"
     install -Dm755 "$src/greeter/greet-hyprland.sh" "$src/greeter/greet-run.sh" -t "$pkgdir/usr/share/material3ui-greeter/"
     install -Dm755 "$src/greeter/material3ui-greeter" -t "$pkgdir/usr/bin/"
+    # Its icon, for package tools; no .desktop file, so it stays out of app lists
+    install -Dm644 "$src/greeter/material3ui-greeter.svg" -t "$pkgdir/usr/share/icons/hicolor/scalable/apps/"
     install -Dm644 "$src/LICENSE" -t "$pkgdir/usr/share/licenses/$pkgname/"
 }

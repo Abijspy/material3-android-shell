@@ -125,6 +125,9 @@ install_data('data/icons/material3ui-settings.svg', install_dir: get_option('dat
 # Shipped data: emoji list, logo, wallpapers
 install_data('data/emojis.txt', install_dir: get_option('datadir') / 'material3ui')
 install_data('data/icons/Material3UI.svg', install_dir: get_option('datadir') / 'material3ui/icons')
+# The package's icon (no .desktop file: the shell is not an app to launch)
+install_data('data/icons/Material3UI.svg', rename: 'material3ui.svg',
+  install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps')
 install_data('data/wallpapers/default_wallpaper.png', 'data/wallpapers/midnight-dunes.png',
   'data/wallpapers/bloom-lavender.jpg',
   'data/wallpapers/bloom-rose.jpg',

@@ -16,7 +16,7 @@ sudo pacman -U material3ui-greeter-4.4.0-1-any.pkg.tar.zst
 material3ui-greeter setup --enable             # point greetd at it
 ```
 
-To build one by hand: `packaging/build-greeter-pkg.sh` (writes to `packaging/out/`).
+To build one by hand: `packaging/build-pkg.sh material3ui-greeter` (writes to `packaging/out/`).
 
 greetd runs a minimal Hyprland session (`/usr/share/material3ui-greeter/hyprland.lua`) that starts the greeter and exits once you log in. The `greeter` user cannot read your home directory, so `material3ui-greeter sync` copies these to `/var/lib/material3ui-greeter`:
 - your wallpaper and Material colours (the lock-screen wallpaper's, when you use a separate one);

@@ -2804,8 +2804,20 @@ void packagesPage(Flex* page, Popup&) {
                                     : u.source == Packages::Source::Flatpak ? "Flatpak"
                                     : u.source == Packages::Source::Shell   ? "Shell"
                                                                             : "Official";
-                    row(list, u.source == Packages::Source::Flatpak ? "apps" : u.source == Packages::Source::Shell ? "system_update" : "deployed_code", u.name,
-                        std::format("{}{} → {}", src, u.from.empty() ? "" : "  ·  " + u.from, u.to));
+                    const bool shell = u.source == Packages::Source::Shell;
+                    auto r = row(list, shell ? "" : u.source == Packages::Source::Flatpak ? "apps" : "deployed_code", u.name,
+                                 std::format("{}{} → {}", src, u.from.empty() ? "" : "  ·  " + u.from, u.to));
+                    // Material3UI's own update wears its logo
+                    if (shell)
+                        r.row->adopt(std::make_unique<ImageView>(24, [](float scale, int& w, int& h) -> GLuint {
+                                         auto* t = Images::get().icon(paths::dataFile("icons/Material3UI.svg"),
+                                                                      static_cast<int>(std::lround(24 * scale)));
+                                         if (!t) return 0;
+                                         w = t->width;
+                                         h = t->height;
+                                         return t->id;
+                                     }),
+                                     0);
                 }
             }
             return;
