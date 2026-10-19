@@ -62,7 +62,7 @@ public:
 
     // Input. hitTest returns the deepest interactive node (or, with `any`,
     // the deepest node of any kind).
-    Node* hitTest(float x, float y, bool any = false);
+    virtual Node* hitTest(float x, float y, bool any = false);
     virtual bool interactive() const { return false; }
     virtual bool focusable() const { return false; }
     virtual void onHover(bool) {}

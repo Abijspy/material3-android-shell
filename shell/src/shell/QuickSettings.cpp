@@ -13,6 +13,7 @@
 #include "ui/Theme.h"
 
 #include <algorithm>
+#include <cmath>
 #include <ctime>
 #include <format>
 #include <linux/input-event-codes.h>
@@ -334,18 +335,15 @@ void setTileLayout(const std::vector<Placed>& tiles) {
 }
 
 // Lays tiles on a 4-column grid (a large tile takes two) inside `parent`
-// and returns a function that brings them up to date. With `onSelect` the
-// grid is the editor's: a tap selects a tile (outlined) instead of using it.
+// and returns a function that brings them up to date
 std::function<void()> buildTiles(Node* parent, const std::vector<Placed>& tiles, Popup* popup, kit::Live* live,
-                                 const std::function<void()>& showWifi, const std::function<void()>& showBluetooth,
-                                 int selected = -1, const std::function<void(int)>& onSelect = {}) {
+                                 const std::function<void()>& showWifi, const std::function<void()>& showBluetooth) {
     // Card 440 − padding 40 = 400: four 94 px columns, 8 px apart
     constexpr float kCol = (400 - 3 * 8) / 4.0f;
     std::vector<std::function<void()>> updates;
     Flex* row = nullptr;
     int used = 4;
-    for (size_t i = 0; i < tiles.size(); ++i) {
-        const auto& t = tiles[i];
+    for (const auto& t : tiles) {
         const auto* def = findTile(t.id);
         if (!def) continue;
         const int span = t.large ? 2 : 1;
@@ -355,32 +353,26 @@ std::function<void()> buildTiles(Node* parent, const std::vector<Placed>& tiles,
             used = 0;
         }
         used += span;
-        const int index = static_cast<int>(i);
         std::function<void()> use = [def, popup, live] {
             if (!popup) return;
             def->press(*popup);
             if (live) live->syncSoon(); // night light and the like have no service to say so
         };
-        if (onSelect) use = [onSelect, index] { onSelect(index); };
         if (t.large) {
             auto* tile = row->add<Tile>(def->icon, def->title);
             tile->grow = false;
             tile->fixedWidth = kCol * 2 + 8;
             tile->onToggle = use;
-            if (onSelect)
-                tile->onDetails = use;
-            else if (def->details == 1 && showWifi)
+            if (def->details == 1 && showWifi)
                 tile->onDetails = showWifi;
             else if (def->details == 2 && showBluetooth)
                 tile->onDetails = showBluetooth;
-            tile->setSelected(index == selected);
             updates.push_back([tile, def] { tile->set(def->active(), def->status(), def->glyph ? def->glyph() : ""); });
         } else {
             auto* tile = row->add<SmallTile>(def->icon, kCol);
             tile->onClicked = [use](uint32_t button) {
                 if (button == BTN_LEFT) use();
             };
-            tile->setSelected(index == selected);
             updates.push_back([tile, def] { tile->set(def->active(), def->glyph ? def->glyph() : ""); });
         }
     }
@@ -389,8 +381,84 @@ std::function<void()> buildTiles(Node* parent, const std::vector<Placed>& tiles,
     };
 }
 
-// The editor, as Android's: the tiles themselves; tap one to select it,
-// then move it, resize it or remove it; tap an available tile to add it
+// ── Editor ──
+//
+// As Android 17's: the tiles in a neutral state. Hold and drag one to move
+// it; tap one to select it, and its corner badge removes it while the
+// handle on its right edge switches it between large and small. The tiles
+// not in use sit below; a tap adds one.
+
+// Takes the press over a tile in the editor: a tap selects, a drag moves
+// the whole tile with the pointer and drops it where it is released
+class DragCatcher : public Node {
+public:
+    std::function<void()> onTap;
+    std::function<void(float, float)> onDrop; // where it was released
+    Node* moving = nullptr;                   // follows the pointer
+
+    bool interactive() const override { return true; }
+    void onPress(uint32_t button, float x, float y) override {
+        m_down = button == BTN_LEFT;
+        m_x0 = m_x = x;
+        m_y0 = m_y = y;
+        m_dragging = false;
+    }
+    void onDrag(float x, float y) override {
+        if (!m_down) return;
+        m_x = x;
+        m_y = y;
+        if (!m_dragging && std::hypot(x - m_x0, y - m_y0) > 6) m_dragging = true;
+        if (m_dragging && moving) {
+            moving->setTranslateX(x - m_x0, false);
+            moving->setTranslateY(y - m_y0, false);
+        }
+    }
+    void onRelease() override {
+        if (!m_down) return;
+        m_down = false;
+        if (m_dragging) {
+            if (moving) {
+                moving->setTranslateX(0, false);
+                moving->setTranslateY(0, false);
+            }
+            if (onDrop) onDrop(m_x, m_y);
+        } else if (onTap) {
+            onTap();
+        }
+    }
+
+protected:
+    SizeF doMeasure(SizeF) override { return {}; }
+
+private:
+    bool m_down = false, m_dragging = false;
+    float m_x0 = 0, m_y0 = 0, m_x = 0, m_y = 0;
+};
+
+// One tile in the editor: the tile, the catcher over it, and (selected) the
+// remove badge on its top-left corner and the resize handle on its right edge
+class EditTile : public Node {
+public:
+    Node* hitTest(float x, float y, bool any) override {
+        // The badge hangs over the corner: it answers outside the tile too
+        const auto& k = children();
+        for (size_t i = k.size(); i-- > 2;)
+            if (Node* hit = k[i]->hitTest(x, y, any)) return hit;
+        return Node::hitTest(x, y, any);
+    }
+
+protected:
+    SizeF doMeasure(SizeF available) override { return children().empty() ? SizeF{} : children()[0]->measure(available); }
+    void doArrange() override {
+        const auto& r = rect();
+        const auto& k = children();
+        if (k.size() > 0) k[0]->arrange(r);
+        if (k.size() > 1) k[1]->arrange(r);
+        if (k.size() > 2) k[2]->arrange({r.x - 6, r.y - 6, 26, 26});
+        if (k.size() > 3) k[3]->arrange({r.right() - 22, r.y + r.h / 2 - 20, 22, 40});
+    }
+};
+
 void editView(Flex* body, const std::function<void()>& back) {
     body->clearChildren();
     auto* live = body->add<Live>();
@@ -421,55 +489,95 @@ void editView(Flex* body, const std::function<void()>& back) {
             live->syncSoon();
         };
         auto* scroll = live->add<ScrollView>();
-        scroll->maxHeight = 480;
+        scroll->maxHeight = 500;
         auto* content = scroll->add<Flex>(Flex::Direction::Column);
-        content->setAlignItems(Align::Stretch)->setSpacing(12);
+        content->setAlignItems(Align::Stretch)->setSpacing(12)->setPadding({6, 6, 6, 0});
+        caption(content, "Hold and drag to rearrange tiles");
 
-        // Your tiles, as they look in the panel
+        // Your tiles, neutral, on the panel's 4-column grid: 400 less the
+        // scrollbar's gutter (14) and the 6 px either side the badges
+        // overhang by
+        constexpr float kCol = (374 - 3 * 8) / 4.0f;
+        auto edits = std::make_shared<std::vector<EditTile*>>();
         auto* grid = content->add<Flex>(Flex::Direction::Column);
         grid->setSpacing(8)->setAlignItems(Align::Start);
-        buildTiles(grid, tiles, nullptr, nullptr, {}, {}, *selected, [live, selected](int i) {
-            *selected = *selected == i ? -1 : i;
-            live->syncSoon();
-        })();
-
-        // What to do with the selected one
-        if (*selected >= 0) {
-            const size_t i = static_cast<size_t>(*selected);
+        Flex* row = nullptr;
+        int used = 4;
+        for (size_t i = 0; i < tiles.size(); ++i) {
             const auto* def = findTile(tiles[i].id);
-            auto* bar = content->add<Flex>(Flex::Direction::Row);
-            bar->setPadding({14, 8})->setSpacing(6)->setRadius(Radii(28))->setBackground("surface_container_high", false);
-            auto* name = bar->add<Label>(def ? def->title : tiles[i].id);
-            name->setSize(14)->setWeight(600)->setMaxWidth(120);
-            name->grow = true;
-            iconButton(bar, "arrow_back", [tiles, i, save, selected]() mutable {
-                if (i == 0) return;
-                std::swap(tiles[i], tiles[i - 1]);
-                *selected = static_cast<int>(i - 1);
-                save(tiles);
-            }, 20);
-            iconButton(bar, "arrow_forward", [tiles, i, save, selected]() mutable {
-                if (i + 1 >= tiles.size()) return;
-                std::swap(tiles[i], tiles[i + 1]);
-                *selected = static_cast<int>(i + 1);
-                save(tiles);
-            }, 20);
-            iconButton(bar, tiles[i].large ? "close_fullscreen" : "open_in_full", [tiles, i, save]() mutable {
-                tiles[i].large = !tiles[i].large;
-                save(tiles);
-            }, 20);
-            iconButton(bar, "delete", [tiles, i, save, selected]() mutable {
-                tiles.erase(tiles.begin() + static_cast<long>(i));
-                *selected = -1;
-                save(tiles);
-            }, 20);
-        } else {
-            caption(content, tiles.empty() ? "No tiles yet: add some below" : "Tap a tile to move, resize or remove it");
+            if (!def) continue;
+            const int span = tiles[i].large ? 2 : 1;
+            if (used + span > 4) {
+                row = grid->add<Flex>(Flex::Direction::Row);
+                row->setSpacing(8);
+                used = 0;
+            }
+            used += span;
+            const bool on = *selected == static_cast<int>(i);
+            auto* edit = row->add<EditTile>();
+            edits->push_back(edit);
+            if (tiles[i].large) {
+                auto* t = edit->add<Tile>(def->icon, def->title);
+                t->grow = false;
+                t->fixedWidth = kCol * 2 + 8;
+                t->set(false, "");
+                t->setSelected(on);
+            } else {
+                auto* t = edit->add<SmallTile>(def->icon, kCol);
+                t->setSelected(on);
+            }
+            auto* catcher = edit->add<DragCatcher>();
+            catcher->moving = edit;
+            const int index = static_cast<int>(i);
+            catcher->onTap = [selected, live, index] {
+                *selected = *selected == index ? -1 : index;
+                live->syncSoon();
+            };
+            // Dropped over another tile: it takes that tile's place
+            catcher->onDrop = [edits, tiles, index, selected, save](float x, float y) mutable {
+                for (size_t to = 0; to < edits->size(); ++to) {
+                    if (!(*edits)[to]->rect().contains(x, y) || static_cast<int>(to) == index) continue;
+                    const Placed moved = tiles[static_cast<size_t>(index)];
+                    tiles.erase(tiles.begin() + index);
+                    tiles.insert(tiles.begin() + static_cast<long>(to), moved);
+                    *selected = static_cast<int>(to);
+                    save(tiles);
+                    return;
+                }
+            };
+            if (on) {
+                // Remove: the badge on the corner
+                auto* badge = edit->add<Button>();
+                pill(badge->setBackground("on_surface", false))->setJustify(Align::Center);
+                badge->add<Icon>("remove", 18)->setColor("surface", false);
+                badge->onClicked = [tiles, index, selected, save](uint32_t button) mutable {
+                    if (button != BTN_LEFT) return;
+                    tiles.erase(tiles.begin() + index);
+                    *selected = -1;
+                    save(tiles);
+                };
+                // Resize: the handle on the right edge
+                auto* handle = edit->add<Button>();
+                handle->setJustify(Align::Center);
+                auto* grip = handle->add<Flex>(Flex::Direction::Row);
+                pill(grip->setBackground("primary", false));
+                grip->fixedWidth = 6;
+                grip->fixedHeight = 26;
+                handle->onClicked = [tiles, index, save](uint32_t button) mutable {
+                    if (button != BTN_LEFT) return;
+                    tiles[static_cast<size_t>(index)].large = !tiles[static_cast<size_t>(index)].large;
+                    save(tiles);
+                };
+            }
         }
+        if (tiles.empty()) caption(grid, "No tiles: add some below");
 
-        // Available tiles: icon and name, a tap adds one
-        auto* addHead = content->add<Label>("Add tiles");
-        addHead->setSize(14)->setWeight(600)->setColor("primary", false);
+        auto* divider = content->add<Flex>(Flex::Direction::Row);
+        divider->fixedHeight = 1;
+        divider->setBackground(ColorRef("outline_variant"), false);
+
+        // Tiles not in use: a tap adds one
+        caption(content, "Tap to add tiles");
         auto* avail = content->add<Flow>();
         avail->spacing = 8;
         bool any = false;
@@ -479,7 +587,7 @@ void editView(Flex* body, const std::function<void()>& back) {
             auto* item = avail->add<Button>(Flex::Direction::Column);
             item->setPadding({4, 8})->setSpacing(6)->setRadius(Radii(20));
             item->pressedRadius = 12;
-            item->fixedWidth = (400 - 3 * 8) / 4.0f;
+            item->fixedWidth = kCol;
             auto* chip = item->add<Flex>(Flex::Direction::Row);
             pill(chip->setBackground(ColorRef("on_surface", 0.1f), false))->setJustify(Align::Center);
             chip->fixedWidth = 64;
