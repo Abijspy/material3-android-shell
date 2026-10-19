@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.4.3 — 2026-10-19
+
+- **Wavy loaders, as Material 3 Expressive.** While Software & updates checks or installs, the status icon becomes a wavy arc that spins and breathes on a faint track, and a wavy stretch sweeps along a bar beneath it. The lock and login screens show the same loader in the submit button while your password is checked.
+- **Music progress ring:** while music plays, the dynamic island rings its equaliser with the track's progress, wavy while playing and flat when paused. The island's media view and the bar's media widget have it too.
+
 ## v4.4.2 — 2026-10-19
 
 - **Lock screen: a correct password is no longer refused.** The first try could fail and the second succeed with the same password: the shell collected the password checker's helper process before PAM could read its answer. It now only collects processes it started itself, which also fixes the same race for other tools that wait on their own helpers.
