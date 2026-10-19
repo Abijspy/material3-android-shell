@@ -1,5 +1,23 @@
 # Changelog
 
+## v4.4.0 — 2026-10-19
+
+- **Accessibility** (Settings → Accessibility):
+  - **Text:** Large and Larger text sizes, and bold text, across the whole shell.
+  - **Colour correction:** a filter over the whole screen, apps included: grayscale, inverted colours, red-weak, green-weak and blue-weak corrections, and extra dim.
+  - **Magnifier:** zooms in around the pointer. Super+= zooms in, Super+- zooms out and Super+Backspace resets; there is also a slider.
+  - Remove animations, Reduce transparency and Cursor size sit alongside them.
+- **Login screen, redone.**
+  - **Session picker:** a chip in the corner that opens a card of sessions, each with a description and a tick on the one you'll start.
+  - **Power menu:** one power button that opens Sleep, Restart and Shut down, each labelled, instead of three bare icons that acted on one tap.
+  - **Its own package:** `material3ui-greeter` is now a pacman package, attached to every release from this one on. Installing and updating take the release's package, or build one between releases. greetd comes with it as a dependency.
+  - **Updates from Settings:** Settings → Lock screen shows whether the login screen is up to date, with Update (or Install). Shell updates from Settings update it too, through the password dialog.
+- **Users** (Settings → Users): your profile picture, name and password, administrators, and new profiles.
+- **System monitor** in Settings (Ctrl+Alt+Delete): every process with its state and owner, with stop and restart.
+- **Quick Settings:** a two-row header with room for everything, your profile and the battery, and no separate battery and connection cards.
+- **Lock screen music player** while something plays.
+- **Fixes:** cleaner blur edges; the dock stays out while its right-click menu is open; even names in the editors; widget alignment.
+
 ## v4.3.2 — 2026-10-19
 
 - **Music player, as Material 3 Expressive.** The album art fills the card under a tint, with the title and artist, a wavy progress line that moves while playing and lies flat when paused (click or drag it to seek, with elapsed and remaining time), and a play button that's a circle while paused and a rounded square while playing. Full size in the Dashboard, compact in Quick Settings. Cover art from the web (Spotify, browsers) now shows too.
