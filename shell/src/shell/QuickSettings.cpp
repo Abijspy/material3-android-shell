@@ -709,38 +709,6 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
     grid->setSpacing(8)->setAlignItems(Align::Start);
     const auto updateTiles = buildTiles(grid, tileLayout(), &popup, live, showWifi, showBluetooth);
 
-    // Battery: charge, what it is doing, and the power mode
-    auto* battery = live->add<Flex>(Flex::Direction::Row);
-    battery->setPadding({20, 10, 12, 10})->setSpacing(12)->setRadius(Radii(28))->setBackground(ColorRef("on_surface", 0.1f), false);
-    auto* batIcon = battery->add<Icon>("battery_full", 22);
-    auto* batText = battery->add<Flex>(Flex::Direction::Column);
-    batText->setAlignItems(Align::Start);
-    batText->grow = true;
-    auto* batPercent = batText->add<Label>();
-    batPercent->setSize(14)->setWeight(500);
-    auto* batStatus = batText->add<Label>();
-    batStatus->setSize(12)->setColor("on_surface_variant", false)->setMaxWidth(170);
-    std::vector<std::pair<std::string, Button*>> modes;
-    for (const auto& [profile, icon] : {std::pair{"power-saver", "eco"}, {"balanced", "balance"}, {"performance", "bolt"}})
-        modes.push_back({profile, iconButton(battery, icon, [p = std::string(profile)] { Power::get().setProfile(p); })});
-
-    // The connection at a glance, with live speeds; opens the Wi-Fi view
-    auto* net = live->add<Button>(Flex::Direction::Row);
-    net->setPadding({20, 12})->setSpacing(12)->setRadius(Radii(28))->setBackground(ColorRef("on_surface", 0.1f), false);
-    net->pressedRadius = 14;
-    auto* netIcon = net->add<Icon>("wifi", 22);
-    netIcon->setColor("primary", false);
-    auto* netText = net->add<Flex>(Flex::Direction::Column);
-    netText->setAlignItems(Align::Start);
-    netText->grow = true;
-    auto* netName = netText->add<Label>();
-    netName->setSize(14)->setWeight(500)->setMaxWidth(150);
-    auto* netLink = netText->add<Label>();
-    netLink->setSize(12)->setColor("on_surface_variant", false)->setMaxWidth(150);
-    auto [netDown, netUp] = rates(net, 12);
-    net->onClicked = [showWifi](uint32_t) { showWifi(); };
-    auto lease = Network::get().watchTraffic();
-
     // Now playing: the M3 Expressive player, while something plays
     auto* media = live->add<MediaCard>(true);
 
@@ -751,36 +719,13 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
             volume->setIcon(s->muted ? "volume_off" : "volume_up");
         }
         if (light) light->setValue(Brightness::get().value());
-        auto& n = Network::get();
         updateTiles();
-        (void)lease;
-        net->setVisible(n.kind() != Network::Kind::None);
-        netIcon->setText(n.icon());
-        netName->setText(n.name());
-        const auto summary = linkSummary();
-        netLink->setText(summary.empty() ? (n.kind() == Network::Kind::Wifi ? std::format("Signal {}%", n.strength()) : "Connected") : summary);
-        netDown->setText(formatRate(n.details().rxRate));
-        netUp->setText(formatRate(n.details().txRate));
         clock->setText(nowTime());
-        auto& pw = Power::get();
-        battery->setVisible(pw.hasBattery() || !pw.profile().empty());
-        batIcon->setText(pw.hasBattery() ? pw.icon() : "power");
-        batIcon->setColor(pw.hasBattery() && pw.percent() <= 15 && !pw.charging() ? "error" : "primary");
-        batPercent->setText(pw.hasBattery() ? std::to_string(pw.percent()) + "%" : "Power mode");
-        batStatus->setText(pw.hasBattery() ? pw.status() : "");
-        batStatus->setVisible(pw.hasBattery());
-        for (auto& [profile, button] : modes) {
-            const bool on = pw.profile() == profile;
-            button->setVisible(std::ranges::find(pw.profiles(), profile) != pw.profiles().end());
-            button->setBackground(on ? ColorRef("primary") : ColorRef::none());
-            static_cast<Icon*>(button->children()[0].get())->setFill(on)->setColor(on ? "on_primary" : "on_surface_variant");
-        }
         media->setVisible(Mpris::get().active() != nullptr);
     };
     live->watch(Audio::get().changed);
     live->watch(Brightness::get().changed);
     live->watch(Network::get().changed);
-    live->watch(Network::get().detailsChanged);
     live->watch(Bluetooth::get().changed);
     live->watch(Notifications::get().changed);
     live->watch(Idle::get().changed);
