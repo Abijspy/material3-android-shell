@@ -1067,12 +1067,20 @@ void storagePage(Flex* page, Popup&) {
     auto* clean = group(page, "Free up space");
     auto pkg = row(clean, "inventory_2", "Package cache", "Counting…");
     measure("/var/cache/pacman/pkg", pkg.subtitle);
-    pillButton(pkg.row, "Clean", false, [] {
-        // Root is needed: in the terminal, where sudo can ask
-        const std::string cmd = "if command -v paccache >/dev/null; then sudo paccache -rk1 && sudo paccache -ruk0; "
-                                "else sudo pacman -Sc; fi; echo; read -p 'Done. Press Enter to close…' _";
-        const char* term = std::getenv("TERMINAL");
-        m3::run({term && *term ? term : "alacritty", "-e", "sh", "-c", cmd}, nullptr);
+    pillButton(pkg.row, "Clean", false, [alive, sub = pkg.subtitle] {
+        // Root through polkit: one password for the whole clean-up
+        sub->setText("Cleaning…");
+        Packages::get().runAsRoot("Cleaning the package cache…",
+                                  "if command -v paccache >/dev/null; then paccache -rk1 && paccache -ruk0; "
+                                  "else pacman -Sc --noconfirm; fi",
+                                  "Package cache cleaned");
+        // The new size once it has finished
+        auto conn = std::make_shared<Connection>();
+        *conn = Packages::get().changed.connect([alive, sub, conn] {
+            if (Packages::get().busy() || !*alive) return;
+            sub->setText(Packages::get().status());
+            conn->disconnect();
+        });
     }, "cleaning_services");
     auto removeAll = [alive](const std::string& dir, Label* sizeLabel) {
         std::error_code ec;
@@ -1995,7 +2003,8 @@ void packagesPage(Flex* page, Popup&) {
             texts->setAlignItems(Align::Start)->setSpacing(2);
             texts->grow = true;
             const bool pending = !p.updates().empty() && !p.checking() && p.error().empty();
-            const std::string status = p.checking() ? "Checking for updates…"
+            const std::string status = p.busy() ? p.status()
+                                     : p.checking() ? "Checking for updates…"
                                      : !p.error().empty() ? p.error()
                                      : p.lastChecked() == 0 ? "Not checked yet"
                                      : p.updates().empty() ? "Your system is up to date"
@@ -2007,8 +2016,16 @@ void packagesPage(Flex* page, Popup&) {
                                          : "";
             if (!p.aurHelper().empty()) detail += (detail.empty() ? "" : "  ·  ") + std::string("AUR helper: ") + p.aurHelper();
             if (!detail.empty()) texts->add<Label>(detail)->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(560);
+            // How the last update or install ended
+            if (!p.busy() && !p.status().empty())
+                texts->add<Label>(p.status())->setSize(13)->setColor(p.status().starts_with("Didn't") ? "error" : "primary", false)
+                    ->setMaxWidth(560)->setMaxLines(2);
             auto* actions = hero->add<Flex>(Flex::Direction::Row);
             actions->setSpacing(8)->setJustify(Align::End);
+            actions->setVisible(!p.busy()); // one task at a time
+            // Pacman questions a background run can't answer: the old way
+            if (p.status().starts_with("Didn't"))
+                pillButton(actions, "Use a terminal", false, [] { Packages::get().upgradeInTerminal(); }, "terminal");
             pillButton(actions, "Check now", false, [] { Packages::get().check(); }, "refresh");
             if (!p.updates().empty()) pillButton(actions, "Update now", true, [] { Packages::get().upgrade(); }, "download");
             if (!p.updates().empty()) {

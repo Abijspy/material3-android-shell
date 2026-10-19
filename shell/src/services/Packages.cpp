@@ -105,7 +105,50 @@ void Packages::check() {
     });
 }
 
+std::string Packages::helperCommand(const std::string& args) const {
+    if (m_helper == "paru") return "paru " + args + " --noconfirm --skipreview --sudo pkexec";
+    return m_helper + " " + args + " --noconfirm --sudo pkexec --answerclean None --answerdiff None --answeredit None";
+}
+
+void Packages::runTask(const std::string& label, const std::string& script, const std::string& doneText) {
+    if (m_busy) return;
+    m_busy = true;
+    m_status = label;
+    changed.emit();
+    run({"sh", "-c", "{ " + script + "; } 2>&1"}, [this, doneText](int code, const std::string& out) {
+        m_busy = false;
+        // pkexec: 126 when the dialog was dismissed, 127 when not authorised
+        std::string last;
+        std::stringstream ss(out);
+        for (std::string l; std::getline(ss, l);)
+            if (!l.empty()) last = l;
+        m_status = code == 0 ? doneText
+                 : code == 126 || code == 127 ? std::string("Cancelled: no password given")
+                 : "Didn't finish: " + (last.empty() ? std::to_string(code) : last);
+        run({"notify-send", "-a", "Software & updates", m_status}, nullptr);
+        changed.emit();
+        refreshInstalled();
+        check();
+    });
+}
+
+void Packages::runAsRoot(const std::string& label, const std::string& script, const std::string& doneText) {
+    // One prompt for the whole script
+    std::string quoted = "'";
+    for (char c : script) quoted += c == '\'' ? std::string("'\\''") : std::string(1, c);
+    runTask(label, "pkexec /usr/bin/sh -c " + quoted + "'", doneText);
+}
+
 void Packages::upgrade() {
+    // Official packages first, then the AUR (built as the user; its helper
+    // asks through pkexec to install), then Flatpaks (polkit itself)
+    std::string script = "pkexec pacman -Syu --noconfirm";
+    if (!m_helper.empty()) script += " && " + helperCommand("-Sua");
+    script += " && { command -v flatpak >/dev/null && flatpak update -y --noninteractive || true; }";
+    runTask("Updating… this can take a while", script, "Updated");
+}
+
+void Packages::upgradeInTerminal() {
     const std::string cmd = (m_helper.empty() ? "sudo pacman -Syu" : m_helper + " -Syu") +
                             std::string("; command -v flatpak >/dev/null && flatpak update; echo; read -p 'Done. Press Enter to close…' _");
     run({terminal(), "-e", "sh", "-c", cmd}, [this](int, const std::string&) {
@@ -207,13 +250,10 @@ void Packages::search(Source source, const std::string& query) {
 
 void Packages::install(const Result& r) {
     std::string cmd;
-    if (r.source == Source::Repo) cmd = "sudo pacman -S " + r.name;
-    else if (r.source == Source::Aur) cmd = (m_helper.empty() ? "yay" : m_helper) + " -S " + r.name;
-    else cmd = "flatpak install " + r.repo + " " + r.name;
-    run({terminal(), "-e", "sh", "-c", cmd + "; echo; read -p 'Done. Press Enter to close…' _"}, [this](int, const std::string&) {
-        refreshInstalled();
-        check();
-    });
+    if (r.source == Source::Repo) cmd = "pkexec pacman -S --needed --noconfirm " + r.name;
+    else if (r.source == Source::Aur) cmd = m_helper.empty() ? "false" : helperCommand("-S --needed " + r.name);
+    else cmd = "flatpak install -y --noninteractive " + r.repo + " " + r.name;
+    runTask("Installing " + r.name + "…", cmd, "Installed " + r.name);
 }
 
 } // namespace m3

@@ -11,8 +11,9 @@ namespace m3 {
 
 // Arch packages: pending updates (official repos via checkupdates, AUR via
 // yay/paru, Flatpak), search across the three sources, and installs.
-// Upgrades and installs open the user's terminal so sudo and pacman prompts
-// stay interactive.
+// Upgrades and installs run in the background; root is asked for through
+// polkit (pkexec), which the shell's own agent answers with its dialog. A
+// terminal remains as a fallback for what needs answering by hand.
 class Packages {
 public:
     enum class Source { Repo, Aur, Flatpak };
@@ -38,6 +39,12 @@ public:
     const std::string& error() const { return m_error; }
     const std::string& aurHelper() const { return m_helper; }
     void upgrade();
+    void upgradeInTerminal(); // interactive: for conflicts the background run can't answer
+    // A background task: what it is doing, or how the last one ended
+    bool busy() const { return m_busy; }
+    const std::string& status() const { return m_status; }
+    // Runs `script` with root, asking through polkit; `done` gets success
+    void runAsRoot(const std::string& label, const std::string& script, const std::string& doneText);
 
     // Search and install
     void search(Source source, const std::string& query);
@@ -51,8 +58,12 @@ private:
     Packages();
     void refreshInstalled();
     std::string terminal() const;
+    void runTask(const std::string& label, const std::string& script, const std::string& doneText);
+    // yay or paru, told to ask for root through pkexec and not to stop for review
+    std::string helperCommand(const std::string& args) const;
 
-    bool m_checking = false, m_searching = false;
+    bool m_checking = false, m_searching = false, m_busy = false;
+    std::string m_status;
     std::vector<Update> m_updates;
     std::vector<Result> m_results;
     std::set<std::string> m_native, m_flatpaks;
