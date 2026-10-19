@@ -45,7 +45,7 @@ std::string today() {
     std::tm tm{};
     localtime_r(&t, &tm);
     char buf[64];
-    std::strftime(buf, sizeof buf, "%A, %-d %B", &tm);
+    std::strftime(buf, sizeof buf, "%a, %-d %b", &tm); // "Mon, 19 Oct", as Android's shade
     return buf;
 }
 
@@ -663,41 +663,31 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
     scroller->overlayBar = true;
     auto* live = scroller->add<Live>();
 
-    // M3 Expressive, as Android 16/17's shade: a large clock and the date,
-    // round tonal buttons on the right
-    auto* head = live->add<Flex>(Flex::Direction::Row);
-    head->setSpacing(8)->setPadding({4, 0, 0, 4});
-    auto* when = head->add<Flex>(Flex::Direction::Column);
-    when->setAlignItems(Align::Start);
-    when->grow = true;
-    auto* clock = when->add<Label>(nowTime());
+    // M3 Expressive, as Android 16/17's shade, in two rows: the large clock
+    // with the battery and your picture at its end; the date with the round
+    // tonal buttons at its end
+    auto* head = live->add<Flex>(Flex::Direction::Column);
+    head->setAlignItems(Align::Stretch)->setSpacing(2)->setPadding({4, 0, 0, 4});
+    auto* top = head->add<Flex>(Flex::Direction::Row);
+    top->setSpacing(10);
+    auto* clock = top->add<Label>(nowTime());
     clock->setSize(44)->setWeight(400);
-    // The date, then the battery (a tap opens its popup)
-    auto* dateRow = when->add<Flex>(Flex::Direction::Row);
-    dateRow->setSpacing(10);
-    dateRow->add<Label>(today())->setSize(14)->setWeight(500)->setColor("on_surface_variant", false);
-    auto* battery = dateRow->add<Button>(Flex::Direction::Row);
-    pill(battery)->setPadding({6, 2})->setSpacing(2);
-    battery->pressedRadius = 6;
+    auto* gap = top->add<Node>();
+    gap->grow = true;
+    // The battery: its icon and level (a tap opens its popup)
+    auto* battery = top->add<Button>(Flex::Direction::Row);
+    pill(battery)->setPadding({8, 6})->setSpacing(2);
+    battery->pressedRadius = 8;
     auto* batteryIcon = battery->add<Icon>("battery_full", 18);
     auto* batteryText = battery->add<Label>();
     batteryText->setSize(14)->setWeight(500)->setColor("on_surface_variant", false);
     battery->onClicked = [](uint32_t button) {
         if (button == BTN_LEFT && open) open("battery");
     };
-    auto roundButton = [&](const char* icon, std::function<void()> fn) {
-        auto* b = head->add<Button>();
-        pill(b->setBackground(ColorRef("on_surface", 0.1f), false))->setPadding(Insets(11));
-        b->pressedRadius = 12;
-        b->add<Icon>(icon, 22)->setColor("on_surface", false);
-        b->onClicked = [fn = std::move(fn)](uint32_t button) {
-            if (button == BTN_LEFT) fn();
-        };
-    };
     // You: your picture, opening Settings → Users
     {
         const std::string user = std::getenv("USER") ? std::getenv("USER") : "";
-        auto* me = head->add<Button>();
+        auto* me = top->add<Button>();
         pill(me)->setPadding(Insets(0));
         me->pressedRadius = 14;
         me->add<AvatarView>(paths::home() + "/.face", auth::realName(user), 44);
@@ -705,6 +695,20 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
             if (button == BTN_LEFT && open) open("settings users");
         };
     }
+    auto* bottom = head->add<Flex>(Flex::Direction::Row);
+    bottom->setSpacing(8);
+    auto* date = bottom->add<Label>(today());
+    date->setSize(14)->setWeight(500)->setColor("on_surface_variant", false);
+    date->grow = true;
+    auto roundButton = [&](const char* icon, std::function<void()> fn) {
+        auto* b = bottom->add<Button>();
+        pill(b->setBackground(ColorRef("on_surface", 0.1f), false))->setPadding(Insets(10));
+        b->pressedRadius = 12;
+        b->add<Icon>(icon, 20)->setColor("on_surface", false);
+        b->onClicked = [fn = std::move(fn)](uint32_t button) {
+            if (button == BTN_LEFT) fn();
+        };
+    };
     roundButton("edit", showEdit);
     roundButton("settings", [] {
         if (open) open("settings");

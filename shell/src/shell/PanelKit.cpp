@@ -238,13 +238,13 @@ void MediaCard::doPaint(Renderer& r) {
 AvatarView::AvatarView(std::string picture, const std::string& name, float size) : Flex(Direction::Row) {
     std::error_code ec;
     if (!picture.empty() && std::filesystem::exists(picture, ec)) m_picture = std::move(picture);
-    pill(this)->setJustify(Align::Center)->setBackground("primary_container", false);
+    pill(this)->setJustify(Align::Center)->setBackground("secondary_container", false);
     fixedWidth = fixedHeight = size;
     if (m_picture.empty()) {
         // The first letter, upper-cased (ASCII; other scripts keep theirs)
         std::string initial = name.empty() ? "?" : name.substr(0, 1);
         initial[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(initial[0])));
-        add<Label>(initial)->setSize(size * 0.45f)->setWeight(600)->setColor("on_primary_container", false);
+        add<Label>(initial)->setSize(size * 0.45f)->setWeight(600)->setColor("on_secondary_container", false);
     }
 }
 
