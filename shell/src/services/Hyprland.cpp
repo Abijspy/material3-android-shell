@@ -99,7 +99,7 @@ void Hyprland::dispatch(const std::string& lua, const std::string& legacy) {
     request("dispatch " + (m_lua ? lua : legacy));
 }
 
-std::vector<Hyprland::Client> Hyprland::clients() const {
+std::vector<Hyprland::Client> Hyprland::clients(bool minimised) const {
     std::vector<Client> out;
     auto j = requestJson("clients");
     if (!j || !j->is_array()) return out;
@@ -119,7 +119,8 @@ std::vector<Hyprland::Client> Hyprland::clients() const {
             cl.w = c["size"][0].get<float>();
             cl.h = c["size"][1].get<float>();
         }
-        if (cl.workspace > 0 && c.value("mapped", true) && !c.value("hidden", false)) out.push_back(cl);
+        if ((cl.workspace > 0 || (minimised && cl.workspace < 0)) && c.value("mapped", true) && !c.value("hidden", false))
+            out.push_back(cl);
     }
     return out;
 }
@@ -136,6 +137,13 @@ std::vector<Hyprland::MonitorGeometry> Hyprland::monitorGeometry() const {
 }
 
 void Hyprland::focusWindow(const std::string& address) {
+    // A minimised window (parked on special:minimized) comes back to the
+    // active workspace first, instead of the special workspace opening
+    for (const auto& c : clients(true))
+        if (c.address == address && c.workspace < 0)
+            // "e+0": the workspace in front of the user now
+            dispatch(std::format("hl.dsp.window.move({{ workspace = \"e+0\", window = \"address:{}\" }})", address),
+                     std::format("movetoworkspace e+0,address:{}", address));
     dispatch("hl.dsp.focus({ window = \"address:" + address + "\" })", "focuswindow address:" + address);
 }
 

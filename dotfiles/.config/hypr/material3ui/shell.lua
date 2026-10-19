@@ -58,6 +58,14 @@ for _, ns in ipairs({ "bar", "popup", "toasts", "osd", "dock" }) do
 	hl.layer_rule({ match = { namespace = "material3ui-" .. ns }, blur = fx.blur ~= false, ignore_alpha = fx.ignore_alpha or 0.6 })
 end
 hl.layer_rule({ match = { namespace = "material3ui-wallpaper" }, blur = false, no_anim = true })
+
+-- The Settings app is a window: floating and centred, at a comfortable size
+hl.window_rule({
+	match = { class = "^(material3ui-settings)$" },
+	float = true,
+	center = true,
+	size = { "monitor_w*0.8", "monitor_h*0.85" },
+})
 if fx.size then
 	hl.config({ decoration = { blur = { size = fx.size, passes = fx.passes or 3 } } })
 end

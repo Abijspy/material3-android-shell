@@ -619,7 +619,8 @@ void appearancePage(Flex* page, Popup& popup) {
         where->setSize(12)->setColor("on_surface_variant", false)->setMaxWidth(420);
         where->grow = true;
         pillButton(foot, "Browse all…", false, [&popup] {
-            popup.close();
+            // The app stays open behind it; a popup makes way
+            if (!popup.isWindow()) popup.close();
             if (open) open("wallpapers");
         }, "wallpaper");
     }
@@ -1260,7 +1261,7 @@ void toolsPage(Flex* page, Popup& popup) {
     auto r = row(clip, "content_paste", "Clipboard history");
     pillButton(r.row, "Clear", false, [] { Clipboard::get().wipe(); }, "delete_sweep");
     pillButton(r.row, "Open", true, [&popup] {
-        popup.close();
+        popup.dismiss();
         if (open) open("clipboard");
     });
 
@@ -1271,7 +1272,7 @@ void toolsPage(Flex* page, Popup& popup) {
     switchRow(shots, "notifications", "Notify when saved", "", "/screenshot/notify", true);
     auto take = row(shots, "screenshot_region", "Take a screenshot", "Also: material3ui msg screenshot region|window|screen");
     pillButton(take.row, "Open tool", true, [&popup] {
-        popup.close();
+        popup.dismiss();
         if (open) open("screenshot");
     }, "photo_camera");
 }
@@ -1545,7 +1546,8 @@ void lockScreenPage(Flex* page, Popup& popup) {
     }, "sync");
     auto preview = row(login, "visibility", "Preview", "Locks the screen now: unlock with your password");
     pillButton(preview.row, "Lock now", true, [&popup] {
-        popup.close();
+        // The app stays open behind it; a popup makes way
+        if (!popup.isWindow()) popup.close();
         if (lock) lock();
     }, "lock");
 }
@@ -1970,14 +1972,24 @@ const PageDef kPages[] = {
 
 } // namespace
 
+void settingsPage(const std::string& id) {
+    if (reshow) reshow(id);
+}
+
+void settingsClosed() {
+    reshow = nullptr; // its pages are gone
+}
+
 void settings(Flex* card, Popup& popup, const std::string& initial) {
+    // As an app window it fills the window and follows its size
+    const bool window = popup.isWindow();
     card->setPadding(Insets(12))->setSpacing(0);
     auto* columns = card->add<Flex>(Flex::Direction::Row);
     columns->setAlignItems(Align::Start)->setSpacing(12);
 
     // Navigation drawer; scrolls too when the screen is short
     auto* sideScroll = columns->add<ScrollView>();
-    sideScroll->maxHeight = 680;
+    sideScroll->maxHeight = window ? 1e6f : 680;
     sideScroll->fixedWidth = 244;
     auto* side = sideScroll->add<Flex>(Flex::Direction::Column);
     side->setAlignItems(Align::Stretch)->setSpacing(2)->setPadding({4, 12, 4, 8});
@@ -2004,7 +2016,10 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
     // The page: a fixed header with the close button, then what scrolls
     auto* right = columns->add<Flex>(Flex::Direction::Column);
     right->setAlignItems(Align::Stretch)->setSpacing(4);
-    right->fixedWidth = 740;
+    if (window)
+        right->grow = true;
+    else
+        right->fixedWidth = 740;
     auto* hero = right->add<Flex>(Flex::Direction::Row);
     hero->setSpacing(16)->setPadding({8, 4, 0, 8})->setAlignItems(Align::Start);
     auto* badge = hero->add<Flex>(Flex::Direction::Row);
@@ -2028,9 +2043,10 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
     close->onClicked = [&popup](uint32_t button) {
         if (button == BTN_LEFT) popup.close();
     };
+    close->setVisible(!window); // the window's title bar has its own
 
     auto* scroll = right->add<ScrollView>();
-    scroll->maxHeight = 600;
+    scroll->maxHeight = window ? 1e6f : 600;
     auto* content = scroll->add<Flex>(Flex::Direction::Column);
     content->setAlignItems(Align::Stretch)->setSpacing(6)->setPadding({4, 4, 12, 12});
 

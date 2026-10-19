@@ -196,7 +196,7 @@ void Dock::refresh() {
     if (!m_card) return;
     m_card->clearChildren();
     const float size = static_cast<float>(Config::get().value<double>("/dock/iconSize", 44));
-    const auto clients = Hyprland::get().clients();
+    const auto clients = Hyprland::get().clients(true); // minimised ones too: a click brings them back
     const std::string activeClass = lower(Hyprland::get().activeWindowClass());
 
     struct Entry {

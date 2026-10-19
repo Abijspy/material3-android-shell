@@ -11,6 +11,7 @@ struct wl_display;
 struct wl_registry;
 struct wl_compositor;
 struct wl_seat;
+struct xdg_wm_base;
 struct wl_pointer;
 struct wl_keyboard;
 struct xkb_context;
@@ -57,6 +58,8 @@ public:
     void* sessionLockManager() const { return m_lockManager; } // ext_session_lock_manager_v1*
     void* idleNotifier() const { return m_idleNotifier; }      // ext_idle_notifier_v1*
     wl_seat* seat() const { return m_seat; }
+    xdg_wm_base* wmBase() const { return m_wmBase; }  // app windows (xdg-shell)
+    uint32_t buttonSerial() const { return m_buttonSerial; } // the last pointer press, for window moves
     wp_fractional_scale_manager_v1* fractionalScale() const { return m_fractionalScale; }
     wp_viewporter* viewporter() const { return m_viewporter; }
     // Set when the compositor can blur behind surfaces (ext-background-effect)
@@ -81,6 +84,7 @@ public:
     void pointerLeave(wl_surface* surface);
     void pointerMotion(double x, double y);
     void pointerButton(uint32_t button, bool pressed);
+    void setButtonSerial(uint32_t serial) { m_buttonSerial = serial; }
     void pointerAxis(uint32_t axis, double value);
     void pointerFrame();
     void keymap(int fd, uint32_t size);
@@ -98,6 +102,8 @@ private:
     wl_compositor* m_compositor = nullptr;
     zwlr_layer_shell_v1* m_layerShell = nullptr;
     wl_seat* m_seat = nullptr;
+    xdg_wm_base* m_wmBase = nullptr;
+    uint32_t m_buttonSerial = 0;
     wl_pointer* m_pointer = nullptr;
     wp_cursor_shape_manager_v1* m_cursorShapeManager = nullptr;
     wp_cursor_shape_device_v1* m_cursorShape = nullptr;

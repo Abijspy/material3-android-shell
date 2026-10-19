@@ -9,6 +9,7 @@
 #include "ext-session-lock-v1-client-protocol.h"
 #include "fractional-scale-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
+#include "xdg-shell-client-protocol.h"
 #include "wayland/LayerShellProtocol.h"
 
 #include <algorithm>
@@ -70,7 +71,8 @@ const wl_pointer_listener kPointer = {
     .motion = [](void* data, wl_pointer*, uint32_t, wl_fixed_t x, wl_fixed_t y) {
         static_cast<Display*>(data)->pointerMotion(wl_fixed_to_double(x), wl_fixed_to_double(y));
     },
-    .button = [](void* data, wl_pointer*, uint32_t, uint32_t, uint32_t button, uint32_t state) {
+    .button = [](void* data, wl_pointer*, uint32_t serial, uint32_t, uint32_t button, uint32_t state) {
+        static_cast<Display*>(data)->setButtonSerial(serial);
         static_cast<Display*>(data)->pointerButton(button, state == WL_POINTER_BUTTON_STATE_PRESSED);
     },
     .axis = [](void* data, wl_pointer*, uint32_t, uint32_t axis, wl_fixed_t value) {
@@ -82,6 +84,11 @@ const wl_pointer_listener kPointer = {
     .axis_discrete = [](void*, wl_pointer*, uint32_t, int32_t) {},
     .axis_value120 = [](void*, wl_pointer*, uint32_t, int32_t) {},
     .axis_relative_direction = [](void*, wl_pointer*, uint32_t, uint32_t) {},
+};
+
+// The compositor pings app windows to see that we're alive
+const xdg_wm_base_listener kWmBase = {
+    .ping = [](void*, xdg_wm_base* base, uint32_t serial) { xdg_wm_base_pong(base, serial); },
 };
 
 const wl_keyboard_listener kKeyboard = {
@@ -139,6 +146,9 @@ void Display::addGlobal(wl_registry* r, uint32_t name, const char* iface, uint32
         m_compositor = static_cast<wl_compositor*>(wl_registry_bind(r, name, &wl_compositor_interface, std::min(version, 6u)));
     } else if (i == zwlr_layer_shell_v1_interface.name) {
         m_layerShell = static_cast<zwlr_layer_shell_v1*>(wl_registry_bind(r, name, &zwlr_layer_shell_v1_interface, std::min(version, 4u)));
+    } else if (i == xdg_wm_base_interface.name) {
+        m_wmBase = static_cast<xdg_wm_base*>(wl_registry_bind(r, name, &xdg_wm_base_interface, std::min(version, 5u)));
+        xdg_wm_base_add_listener(m_wmBase, &kWmBase, nullptr);
     } else if (i == wl_seat_interface.name && !m_seat) {
         m_seat = static_cast<wl_seat*>(wl_registry_bind(r, name, &wl_seat_interface, std::min(version, 5u)));
         wl_seat_add_listener(m_seat, &kSeat, this);

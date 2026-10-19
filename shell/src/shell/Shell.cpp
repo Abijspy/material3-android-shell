@@ -161,7 +161,32 @@ wl::Output* Shell::focusedOutput() const {
     return m_bars.empty() ? nullptr : m_bars.begin()->first;
 }
 
+void Shell::openSettings(const std::string& page) {
+    if (m_settings && !m_settings->closing()) {
+        if (!page.empty()) panels::settingsPage(page);
+        // Raised, and back from minimised if it was
+        auto& h = Hyprland::get();
+        for (const auto& c : h.clients(true))
+            if (c.cls == "material3ui-settings") h.focusWindow(c.address);
+        return;
+    }
+    // Popups belong to the bar; the app replaces any that is open
+    if (m_popup) m_popup->close();
+    Popup::Options opts;
+    opts.name = "settings";
+    opts.window = true;
+    opts.appId = "material3ui-settings"; // the .desktop file: dock icon and pinning
+    opts.title = "Settings";
+    opts.icon = "settings";
+    m_settings = std::make_unique<Popup>(nullptr, opts, [page](ui::Flex* card, Popup& p) { panels::settings(card, p, page); });
+    m_settings->onClosed = [this] {
+        panels::settingsClosed();
+        EventLoop::get().defer([this] { m_settings.reset(); });
+    };
+}
+
 void Shell::togglePopup(const std::string& name, wl::Output* output, float anchorX, const std::string& arg) {
+    if (name == "settings") return openSettings(arg);
     if (m_popup && !m_popup->closing() && m_popup->name() == name && m_popup->output() == output) {
         m_popup->close();
         return;
@@ -411,8 +436,8 @@ void Shell::registerIpc() {
     });
     ipc.add("settings", "settings [network|bluetooth|sound|display|appearance|style|bar|dock|tools|weather|notifications|lockscreen|lock|keybinds|packages|about]",
             [this](const IpcServer::Args& a) {
-        togglePopup("settings", focusedOutput(), -1, a.empty() ? "" : a[0]);
-        return std::string(m_popup && !m_popup->closing() ? "open" : "closed");
+        openSettings(a.empty() ? "" : a[0]);
+        return std::string(m_settings && !m_settings->closing() ? "open" : "closed");
     });
     ipc.add("wallpaper", "wallpaper [next|prev|set <path>|pick]", [this](const IpcServer::Args& a) {
         auto& w = Wallpaper::get();

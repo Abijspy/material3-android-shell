@@ -35,10 +35,14 @@ private:
     void registerIpc();
     void restyle(bool relayout);
     void togglePopup(const std::string& name, wl::Output* output, float anchorX, const std::string& arg = {});
+    // The Settings app window: opened, or raised (and restored from
+    // minimised) with `page` shown
+    void openSettings(const std::string& page);
     wl::Output* focusedOutput() const;
 
     std::map<wl::Output*, std::unique_ptr<Bar>> m_bars;
     std::unique_ptr<Popup> m_popup;
+    std::unique_ptr<Popup> m_settings; // an app window, beside the popups
     std::map<wl::Output*, std::unique_ptr<Desktop>> m_desktops;
     std::map<wl::Output*, std::unique_ptr<Dock>> m_docks;
     void syncDock(wl::Output* output);

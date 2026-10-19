@@ -42,7 +42,9 @@ public:
     static Hyprland& get();
 
     // Fetched on demand (the overview), not tracked
-    std::vector<Client> clients() const;
+    // Mapped windows on regular workspaces; `minimised` adds those parked on
+    // special workspaces (the Settings app's minimise), which have ids < 0
+    std::vector<Client> clients(bool minimised = false) const;
     std::vector<MonitorGeometry> monitorGeometry() const;
     void focusWindow(const std::string& address);
 

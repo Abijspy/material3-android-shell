@@ -8,3 +8,4 @@ Icon=material3ui-settings
 Categories=Settings;DesktopSettings;
 Keywords=preferences;configuration;wifi;bluetooth;sound;display;wallpaper;dock;bar;keybinds;
 StartupNotify=false
+StartupWMClass=material3ui-settings

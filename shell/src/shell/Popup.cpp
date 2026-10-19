@@ -1,9 +1,12 @@
 #include "shell/Popup.h"
 
 #include "core/Config.h"
+#include "services/Hyprland.h"
 #include "ui/Theme.h"
 
 #include <algorithm>
+#include <chrono>
+#include <linux/input-event-codes.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
 namespace m3::shell {
@@ -46,8 +49,69 @@ protected:
 
 } // namespace
 
+namespace {
+
+// The title bar's empty stretch: pressing it moves the window, a double
+// press maximises or restores it
+class DragArea : public Node {
+public:
+    std::function<void()> onDrag, onDouble;
+    bool interactive() const override { return true; }
+    void onPress(uint32_t button, float, float) override {
+        if (button != BTN_LEFT) return;
+        const auto now = std::chrono::steady_clock::now();
+        if (now - m_last < std::chrono::milliseconds(400)) {
+            m_last = {};
+            if (onDouble) onDouble();
+            return;
+        }
+        m_last = now;
+        if (onDrag) onDrag();
+    }
+
+protected:
+    SizeF doMeasure(SizeF) override { return {0, 0}; }
+
+private:
+    std::chrono::steady_clock::time_point m_last;
+};
+
+} // namespace
+
 Popup::Popup(wl::Output* output, Options options, const std::function<void(Flex*, Popup&)>& build)
     : m_output(output), m_options(std::move(options)) {
+    if (m_options.window) {
+        wl::Window::Options wo;
+        wo.appId = m_options.appId;
+        wo.title = m_options.title;
+        wo.width = m_options.windowWidth;
+        wo.height = m_options.windowHeight;
+        wo.minWidth = 860;
+        wo.minHeight = 560;
+        m_window = std::make_unique<wl::Window>(wo);
+        // The compositor rounds, borders and blurs the window: a plain,
+        // translucent card that fills it
+        auto root = std::make_unique<Flex>(Flex::Direction::Column);
+        m_card = root.get();
+        m_card->setAlignItems(Align::Stretch);
+        m_card->setBackground(ColorRef("surface_container", Theme::get().panelOpacity()), false);
+        m_theme = Theme::get().changed.connect([this] {
+            m_card->setBackground(ColorRef("surface_container", Theme::get().panelOpacity()));
+            m_card->requestLayout();
+        });
+        buildTitleBar(m_card);
+        auto* body = m_card->add<Flex>(Flex::Direction::Column);
+        body->setAlignItems(Align::Stretch);
+        body->grow = true;
+        build(body, *this);
+        m_window->setRoot(std::move(root));
+        if (initialFocus) m_window->setFocus(initialFocus);
+        m_window->onCloseRequested = [this] { close(); };
+        m_window->onStateChanged = [this] {
+            if (m_maxIcon) m_maxIcon->setText(m_window->maximized() ? "filter_none" : "crop_square");
+        };
+        return;
+    }
     LayerSurface::Options opts;
     opts.ns = "material3ui-popup";
     opts.layer = LayerSurface::Layer::Overlay;
@@ -92,12 +156,68 @@ Popup::Popup(wl::Output* output, Options options, const std::function<void(Flex*
 }
 
 Popup::~Popup() {
+    *m_alive = false;
     if (m_closeTimer) EventLoop::get().cancel(m_closeTimer);
+}
+
+void Popup::buildTitleBar(Flex* card) {
+    auto* bar = card->add<Flex>(Flex::Direction::Row);
+    bar->setPadding({18, 8, 10, 4})->setSpacing(6);
+    if (!m_options.icon.empty()) bar->add<Icon>(m_options.icon, 20)->setColor("primary", false);
+    bar->add<Label>(m_options.title)->setSize(14)->setWeight(500)->setColor("on_surface_variant", false);
+    auto* drag = bar->add<DragArea>();
+    drag->grow = true;
+    drag->minHeight = 32;
+    drag->onDrag = [this] { m_window->startMove(); };
+    drag->onDouble = [this] { toggleMaximized(); };
+    // Round tonal buttons, close last
+    auto button = [&](const char* icon, std::function<void()> fn, const char* hover) -> Icon* {
+        auto* b = bar->add<Button>();
+        pill(b)->setPadding(Insets(7));
+        b->pressedRadius = 8;
+        b->setBackground("surface_container_highest", false);
+        auto* i = b->add<Icon>(icon, 18);
+        i->setColor(hover, false);
+        b->onClicked = [fn = std::move(fn)](uint32_t button) {
+            if (button == BTN_LEFT) fn();
+        };
+        return i;
+    };
+    button("remove", [this] { minimize(); }, "on_surface");
+    m_maxIcon = button("crop_square", [this] { toggleMaximized(); }, "on_surface");
+    button("close", [this] { close(); }, "error");
+}
+
+void Popup::minimize() {
+    if (!m_window) return;
+    // Hyprland has no minimised state: park the window on a hidden special
+    // workspace; opening the app or its dock icon brings it back
+    const std::string cls = "class:^(" + m_options.appId + ")$";
+    Hyprland::get().dispatch("hl.dsp.window.move({ workspace = \"special:minimized\", window = \"" + cls + "\", silent = true })",
+                             "movetoworkspacesilent special:minimized," + cls);
+}
+
+void Popup::toggleMaximized() {
+    if (m_window) m_window->setMaximized(!m_window->maximized());
+}
+
+void Popup::dismiss() {
+    if (m_window)
+        minimize();
+    else
+        close();
 }
 
 void Popup::close() {
     if (m_closing) return;
     m_closing = true;
+    if (m_window) {
+        // Windows close at once; the compositor animates them out
+        EventLoop::get().defer([this, alive = m_alive] {
+            if (*alive && onClosed) onClosed(); // the owner destroys us here
+        });
+        return;
+    }
     m_card->setOpacity(0);
     m_card->setTranslateY(8 * m_drop);
     m_closeTimer = EventLoop::get().addTimer(ui::motion::mediumMs, [this] {

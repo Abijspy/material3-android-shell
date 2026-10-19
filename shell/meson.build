@@ -113,6 +113,7 @@ sources = files(
   'src/ui/Theme.cpp',
   'src/wayland/Display.cpp',
   'src/wayland/LayerSurface.cpp',
+  'src/wayland/Window.cpp',
   'src/wayland/Surface.cpp',
 )
 
