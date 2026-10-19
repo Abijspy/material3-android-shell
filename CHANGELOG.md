@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.4.2 — 2026-10-19
+
+- **Lock screen: a correct password is no longer refused.** The first try could fail and the second succeed with the same password: the shell collected the password checker's helper process before PAM could read its answer. It now only collects processes it started itself, which also fixes the same race for other tools that wait on their own helpers.
+- **Login screen synced notification** shows plain words instead of terminal colour codes.
+
 ## v4.4.1 — 2026-10-19
 
 - **The shell is a pacman package.** Each release now carries `material3ui` (the shell) next to `material3ui-greeter` (the login screen). On the stable channel, updates download the release's package and install it with pacman instead of compiling; on the latest channel they build the checkout and package it, so pacman owns the files either way. The first update takes over the files an earlier install put in place.
