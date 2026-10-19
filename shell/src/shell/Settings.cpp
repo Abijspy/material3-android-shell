@@ -29,6 +29,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <sys/statvfs.h>
 #include <linux/input-event-codes.h>
 #include <map>
 #include <memory>
@@ -57,6 +58,8 @@ constexpr float kOuter = 28, kInner = 6;
 
 // Rebuilds a page by id (after a reset, so its controls show the defaults)
 std::function<void(const std::string&)> reshow;
+// Types into the open Settings' search (`msg settings search:<words>`)
+std::function<void(const std::string&)> searchFor;
 
 // The rows of one group. Their backgrounds are painted here, shaped by their
 // place in the group, so rows added or hidden later reshape the stack.
@@ -462,16 +465,24 @@ void fontFamilies(bool mono, std::function<void(const std::vector<std::string>&)
     });
 }
 
-// A dropdown of installed fonts: the button shows the current one in its
-// own face; the list below it can be searched and previews each font
-void fontRow(Node* g, const std::string& icon, const std::string& title, const std::string& pointer,
-             const std::string& fallback, bool mono) {
+// A dropdown with a searchable list under it (fonts, time zones, languages).
+// `load` hands the options over (it may take a while); `pick` applies one.
+// With `preview`, each option is drawn in its own font.
+struct PickerOptions {
+    std::string searchHint = "Search";
+    bool preview = false;
+};
+
+void pickerRow(Node* g, const std::string& icon, const std::string& title, std::function<std::string()> current,
+               std::function<void(std::function<void(const std::vector<std::string>&)>)> load,
+               std::function<void(const std::string&)> pick, PickerOptions opts = {}) {
     auto r = row(g, icon, title, "");
     auto* drop = r.row->add<Button>(Flex::Direction::Row);
-    pill(drop->setBackground("surface_container_highest", false))->setPadding({18, 10})->setSpacing(8);
+    pill(drop->setBackground(ColorRef("on_surface", 0.1f), false))->setPadding({18, 10})->setSpacing(8);
     drop->pressedRadius = 10;
-    auto* name = drop->add<Label>(Config::get().value<std::string>(pointer, fallback));
-    name->setSize(14)->setMaxWidth(220)->setFamily(Config::get().value<std::string>(pointer, fallback));
+    auto* name = drop->add<Label>(current());
+    name->setSize(14)->setMaxWidth(220);
+    if (opts.preview) name->setFamily(current());
     auto* chevron = drop->add<Icon>("expand_more", 20);
     chevron->setColor("on_surface_variant", false);
 
@@ -480,44 +491,45 @@ void fontRow(Node* g, const std::string& icon, const std::string& title, const s
     panel->setPadding({20, 8, 20, 14})->setSpacing(8)->setAlignItems(Align::Stretch);
     panel->setVisible(false);
     auto* search = panel->add<TextField>();
-    search->setPlaceholder("Search fonts");
+    search->setPlaceholder(opts.searchHint);
     auto* scroll = panel->add<ScrollView>();
     scroll->maxHeight = 260;
     auto* list = scroll->add<Flex>(Flex::Direction::Column);
     list->setAlignItems(Align::Stretch)->setSpacing(2);
 
     auto fill = std::make_shared<std::function<void()>>();
-    *fill = [list, search, pointer, fallback, mono, name, panel, chevron, scroll] {
-        fontFamilies(mono, [=](const std::vector<std::string>& all) {
+    *fill = [=] {
+        load([=](const std::vector<std::string>& all) {
             list->clearChildren();
-            const std::string current = Config::get().value<std::string>(pointer, fallback);
+            const std::string now = current();
             auto lower = [](std::string t) {
                 for (auto& c : t) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
                 return t;
             };
             const std::string q = lower(search->text());
             size_t shown = 0;
-            for (const auto& family : all) {
-                if (!q.empty() && lower(family).find(q) == std::string::npos) continue;
-                // Previews load each font: keep the list short, search finds the rest
+            for (const auto& option : all) {
+                if (!q.empty() && lower(option).find(q) == std::string::npos) continue;
+                // Keep the list short (font previews load each font): search finds the rest
                 if (++shown > 60) break;
                 auto* item = list->add<Button>(Flex::Direction::Row);
                 pill(item)->setPadding({14, 8})->setSpacing(10);
-                if (family == current) item->setBackground("secondary_container", false);
-                auto* l = item->add<Label>(family);
-                l->setSize(15)->setFamily(family)->setMaxWidth(560);
+                if (option == now) item->setBackground("secondary_container", false);
+                auto* l = item->add<Label>(option);
+                l->setSize(15)->setMaxWidth(560);
+                if (opts.preview) l->setFamily(option);
                 l->grow = true;
-                if (family == current) item->add<Icon>("check", 18)->setColor("on_secondary_container", false);
+                if (option == now) item->add<Icon>("check", 18)->setColor("on_secondary_container", false);
                 item->onClicked = [=](uint32_t button) {
                     if (button != BTN_LEFT) return;
-                    Config::get().set(pointer, family);
-                    name->setText(family);
-                    name->setFamily(family);
+                    pick(option);
+                    name->setText(option);
+                    if (opts.preview) name->setFamily(option);
                     panel->setVisible(false);
                     chevron->setText("expand_more");
                 };
             }
-            if (shown == 0) list->add<Label>("No font matches")->setSize(13)->setColor("on_surface_variant", false);
+            if (shown == 0) list->add<Label>("Nothing matches")->setSize(13)->setColor("on_surface_variant", false);
             scroll->scrollTo(0, false);
         });
     };
@@ -534,6 +546,15 @@ void fontRow(Node* g, const std::string& icon, const std::string& title, const s
             search->focus();
         }
     };
+}
+
+// A dropdown of installed fonts, each previewed in its own face
+void fontRow(Node* g, const std::string& icon, const std::string& title, const std::string& pointer,
+             const std::string& fallback, bool mono) {
+    pickerRow(
+        g, icon, title, [pointer, fallback] { return Config::get().value<std::string>(pointer, fallback); },
+        [mono](auto done) { fontFamilies(mono, done); },
+        [pointer](const std::string& family) { Config::get().set(pointer, family); }, {"Search fonts", true});
 }
 
 void appearancePage(Flex* page, Popup& popup) {
@@ -985,6 +1006,210 @@ void batteryPage(Flex* page, Popup&) {
         connectedGroup<std::string>(r.row, p.profile(), options, [](std::string v) { Power::get().setProfile(v); });
     };
     live->sync();
+}
+
+// ── Storage ──
+
+// Async work outliving a page must not touch it: callbacks check this flag,
+// cleared when the page (and this node with it) goes away
+class AliveGuard : public Node {
+public:
+    std::shared_ptr<bool> alive = std::make_shared<bool>(true);
+    ~AliveGuard() override { *alive = false; }
+
+protected:
+    SizeF doMeasure(SizeF) override { return {}; }
+};
+
+void storagePage(Flex* page, Popup&) {
+    auto alive = page->add<AliveGuard>()->alive;
+    namespace fs = std::filesystem;
+
+    // Each real filesystem once (btrfs mounts one device many times)
+    auto* disks = group(page, "Disks");
+    std::ifstream mounts("/proc/mounts");
+    std::string dev, mnt, type, rest;
+    std::set<unsigned long> seen;
+    while (mounts >> dev >> mnt >> type && std::getline(mounts, rest)) {
+        if (!dev.starts_with("/dev/") || type == "squashfs" || mnt.starts_with("/snap") || mnt.starts_with("/var/lib/docker")) continue;
+        struct statvfs st {};
+        if (statvfs(mnt.c_str(), &st) != 0 || st.f_blocks == 0 || !seen.insert(st.f_fsid).second) continue;
+        const uint64_t total = static_cast<uint64_t>(st.f_blocks) * st.f_frsize;
+        const uint64_t free = static_cast<uint64_t>(st.f_bavail) * st.f_frsize;
+        const uint64_t used = total - static_cast<uint64_t>(st.f_bfree) * st.f_frsize;
+        auto r = row(disks, mnt == "/" ? "hard_drive" : "storage", mnt == "/" ? "System (/)" : mnt,
+                     std::format("{} used of {}  ·  {} free", formatBytes(used), formatBytes(total), formatBytes(free)));
+        const float share = total ? static_cast<float>(used) / static_cast<float>(total) : 0;
+        auto* meter = r.row->add<Meter>(share, ColorRef(share > 0.9f ? "error" : "primary"), 10);
+        meter->fixedWidth = 200;
+    }
+
+    // Where the space goes at home, counted in the background
+    auto* home = group(page, "In your home folder", "Counted when this page opens");
+    auto measure = [alive](const std::string& path, Label* into) {
+        m3::run({"du", "-sb", path}, [alive, into](int, const std::string& out) {
+            if (!*alive) return;
+            into->setText(out.empty() ? "Empty" : formatBytes(std::strtoull(out.c_str(), nullptr, 10)));
+        });
+    };
+    const std::pair<const char*, const char*> folders[] = {
+        {"download", "Downloads"}, {"description", "Documents"}, {"image", "Pictures"}, {"movie", "Videos"}, {"music_note", "Music"}};
+    for (const auto& [icon, name] : folders) {
+        const std::string path = paths::home() + "/" + name;
+        std::error_code ec;
+        if (!fs::is_directory(path, ec)) continue;
+        auto r = row(home, icon, name, "Counting…");
+        measure(path, r.subtitle);
+        pillButton(r.row, "Open", false, [path] { spawn("xdg-open '" + path + "'"); });
+    }
+
+    // Space that can go
+    auto* clean = group(page, "Free up space");
+    auto pkg = row(clean, "inventory_2", "Package cache", "Counting…");
+    measure("/var/cache/pacman/pkg", pkg.subtitle);
+    pillButton(pkg.row, "Clean", false, [] {
+        // Root is needed: in the terminal, where sudo can ask
+        const std::string cmd = "if command -v paccache >/dev/null; then sudo paccache -rk1 && sudo paccache -ruk0; "
+                                "else sudo pacman -Sc; fi; echo; read -p 'Done. Press Enter to close…' _";
+        const char* term = std::getenv("TERMINAL");
+        m3::run({term && *term ? term : "alacritty", "-e", "sh", "-c", cmd}, nullptr);
+    }, "cleaning_services");
+    auto removeAll = [alive](const std::string& dir, Label* sizeLabel) {
+        std::error_code ec;
+        for (const auto& e : fs::directory_iterator(dir, ec)) fs::remove_all(e.path(), ec);
+        if (*alive) sizeLabel->setText("Empty");
+    };
+    const std::string thumbs = paths::home() + "/.cache/thumbnails";
+    auto th = row(clean, "photo_library", "Thumbnails", "Counting…");
+    measure(thumbs, th.subtitle);
+    pillButton(th.row, "Clear", false, [removeAll, thumbs, sub = th.subtitle] { removeAll(thumbs, sub); });
+    const std::string trash = paths::home() + "/.local/share/Trash";
+    auto tr = row(clean, "delete", "Trash", "Counting…");
+    measure(trash, tr.subtitle);
+    pillButton(tr.row, "Empty", false, [removeAll, trash, sub = tr.subtitle] {
+        removeAll(trash + "/files", sub);
+        removeAll(trash + "/info", sub);
+    });
+}
+
+// ── Accessibility ──
+
+void accessibilityPage(Flex* page, Popup&) {
+    auto* see = group(page, "Display", "Easier to see and to follow");
+    auto motion = row(see, "animation", "Remove animations", "Panels and pages appear without motion");
+    auto* motionSw = motion.row->add<Switch>();
+    motionSw->setChecked(Config::get().value<double>("/appearance/animationSpeed", 1.0) == 0, false);
+    motionSw->onToggled = [](bool on) {
+        Config::get().set("/appearance/animationSpeed", on ? nlohmann::json(0.0) : nlohmann::json(nullptr));
+    };
+    auto solid = row(see, "opacity", "Reduce transparency", "Solid panels and bar, with no blur behind them");
+    auto* solidSw = solid.row->add<Switch>();
+    solidSw->setChecked(Config::get().value<double>("/appearance/transparency/panels", 0.72) >= 1 &&
+                            !Config::get().value<bool>("/appearance/blur/enabled", true),
+                        false);
+    solidSw->onToggled = [](bool on) {
+        for (const char* key : {"/appearance/transparency/panels", "/appearance/transparency/bar"})
+            Config::get().set(key, on ? nlohmann::json(1.0) : nlohmann::json(nullptr));
+        Config::get().set("/appearance/blur/enabled", on ? nlohmann::json(false) : nlohmann::json(nullptr));
+    };
+    auto* pointer = group(page, "Pointer");
+    choiceRow<int>(pointer, "mouse", "Cursor size", "", "/accessibility/cursorSize", 24,
+                   {{24, "Default"}, {32, "Large"}, {48, "Larger"}, {64, "Largest"}});
+}
+
+// ── System ──
+
+void systemPage(Flex* page, Popup&) {
+    auto alive = page->add<AliveGuard>()->alive;
+    namespace fs = std::filesystem;
+    auto* dt = group(page, "Date & time");
+    auto ntp = row(dt, "schedule", "Set time automatically", "From the network");
+    auto* ntpSw = ntp.row->add<Switch>();
+    m3::run({"timedatectl", "show", "-p", "NTP", "--value"}, [alive, ntpSw](int, const std::string& out) {
+        if (*alive) ntpSw->setChecked(out.starts_with("yes"), false);
+    });
+    ntpSw->onToggled = [](bool on) { m3::run({"timedatectl", "set-ntp", on ? "true" : "false"}, nullptr); };
+    // The zone /etc/localtime points into (no wait for timedatectl)
+    auto zone = std::make_shared<std::string>("UTC");
+    {
+        std::error_code ec;
+        const std::string target = fs::read_symlink("/etc/localtime", ec).string();
+        if (const auto at = target.find("zoneinfo/"); at != std::string::npos) *zone = target.substr(at + 9);
+    }
+    pickerRow(
+        dt, "public", "Time zone", [zone] { return *zone; },
+        [](auto done) {
+            static std::vector<std::string> zones;
+            if (!zones.empty()) return done(zones);
+            m3::run({"timedatectl", "list-timezones"}, [done](int, const std::string& out) {
+                std::stringstream ss(out);
+                for (std::string l; std::getline(ss, l);)
+                    if (!l.empty()) zones.push_back(l);
+                done(zones);
+            });
+        },
+        [zone](const std::string& z) {
+            *zone = z;
+            m3::run({"timedatectl", "set-timezone", z}, nullptr);
+        },
+        {"Search time zones"});
+
+    auto* lang = group(page, "Language & region", "A new language applies after you sign in again");
+    auto locale = std::make_shared<std::string>("en_US.UTF-8");
+    {
+        std::ifstream in("/etc/locale.conf");
+        for (std::string l; std::getline(in, l);)
+            if (l.starts_with("LANG=")) *locale = l.substr(5);
+    }
+    pickerRow(
+        lang, "language", "Language", [locale] { return *locale; },
+        [](auto done) {
+            m3::run({"localectl", "list-locales"}, [done](int, const std::string& out) {
+                std::vector<std::string> list;
+                std::stringstream ss(out);
+                for (std::string l; std::getline(ss, l);)
+                    if (!l.empty()) list.push_back(l);
+                done(list);
+            });
+        },
+        [locale](const std::string& l) {
+            *locale = l;
+            m3::run({"localectl", "set-locale", "LANG=" + l}, nullptr);
+        },
+        {"Search languages"});
+
+    auto* more = group(page, "More");
+    auto kb = row(more, "keyboard", "Keyboard", "Shortcuts: remap, disable and add");
+    pillButton(kb.row, "Open", false, [] {
+        EventLoop::get().defer([] {
+            if (reshow) reshow("keybinds");
+        });
+    });
+    auto up = row(more, "system_update", "Software & updates", "Updates from the repos, the AUR and Flathub");
+    pillButton(up.row, "Open", false, [] {
+        EventLoop::get().defer([] {
+            if (reshow) reshow("packages");
+        });
+    });
+
+    // Reset: two taps, and the old settings are kept beside the file
+    auto* reset = group(page, "Reset options");
+    auto rr = row(reset, "restart_alt", "Reset shell settings", "Your config.json is backed up first");
+    auto armed = std::make_shared<bool>(false);
+    auto* button = pillButton(rr.row, "Reset…", false, {});
+    button->onClicked = [armed, button](uint32_t b) {
+        if (b != BTN_LEFT) return;
+        if (!*armed) {
+            *armed = true;
+            for (auto& c : button->children())
+                if (auto* l = dynamic_cast<Label*>(c.get())) l->setText("Tap again to reset");
+            return;
+        }
+        const std::string file = paths::configFile();
+        std::error_code ec;
+        fs::copy_file(file, file + ".bak-" + std::to_string(std::time(nullptr)), fs::copy_options::overwrite_existing, ec);
+        std::ofstream(file) << "{}\n";
+    };
 }
 
 // ── Default apps ──
@@ -1878,35 +2103,55 @@ struct PageDef {
     void (*build)(Flex*, Popup&);
 };
 
+// In Android 17's order; the shell's own pages sit where Android keeps
+// their nearest kin
 const PageDef kPages[] = {
-    {"network", "wifi", "Network", "Wi-Fi networks and your connection", networkPage},
-    {"bluetooth", "bluetooth", "Bluetooth", "Pair and connect devices", bluetoothPage},
-    {"sound", "volume_up", "Sound", "Outputs, inputs, balance and apps", soundPage},
-    {"battery", "battery_full", "Battery & power", "Charge, power draw, health and the power mode", batteryPage},
-    {"display", "brightness_medium", "Display", "Brightness, night light and monitors", displayPage},
-    {"appearance", "palette", "Wallpaper & colour", "Wallpaper, Material You colours and fonts", appearancePage},
-    {"style", "blur_on", "Look & feel", "Blur, transparency, corners and motion", stylePage},
-    {"bar", "toolbar", "Status bar", "Position, modules and the island", barPage},
-    {"dock", "dock_to_bottom", "Dock", "Pinned apps, running apps and auto-hide", dockPage},
-    {"defaults", "apps", "Default apps", "Browser, files, terminal and what opens each file type", defaultAppsPage},
+    {"network", "wifi", "Network & internet", "Wi-Fi networks and your connection", networkPage},
+    {"bluetooth", "bluetooth", "Connected devices", "Bluetooth, pairing and devices", bluetoothPage},
+    {"defaults", "apps", "Apps", "Default apps for links, files and the terminal", defaultAppsPage},
+    {"notifications", "notifications", "Notifications", "Do not disturb and pop-ups", notificationsPage},
     {"tools", "construction", "Tools", "Clipboard history and screenshots", toolsPage},
     {"weather", "partly_cloudy_day", "Weather", "Location, units and the forecast", weatherPage},
-    {"notifications", "notifications", "Notifications", "Do not disturb and pop-ups", notificationsPage},
+    {"battery", "battery_full", "Battery", "Charge, power draw, health and the power mode", batteryPage},
+    {"storage", "storage", "Storage", "Disks, folders and freeing up space", storagePage},
+    {"sound", "volume_up", "Sound", "Outputs, inputs, balance and apps", soundPage},
+    {"display", "brightness_medium", "Display", "Brightness, night light and monitors", displayPage},
+    {"appearance", "palette", "Wallpaper & style", "Wallpaper, Material You colours and fonts", appearancePage},
+    {"style", "blur_on", "Look & feel", "Blur, transparency, corners and motion", stylePage},
+    {"bar", "toolbar", "Status bar", "Position, widgets and the island", barPage},
+    {"dock", "dock_to_bottom", "Dock", "Pinned apps, running apps and auto-hide", dockPage},
     {"lockscreen", "lock_person", "Lock screen", "Clock, widgets and the login screen", lockScreenPage},
-    {"lock", "lock_clock", "Lock & idle", "When the screen locks and sleeps", lockPage},
-    {"keybinds", "keyboard", "Keybinds", "Remap, disable and add shortcuts", keybindsPage},
-    {"packages", "deployed_code", "Packages & Updates", "Updates and software from repos, AUR and Flathub", packagesPage},
+    {"accessibility", "accessibility_new", "Accessibility", "Motion, transparency and the cursor", accessibilityPage},
+    {"lock", "security", "Security & privacy", "Screen lock, idle and sleep", lockPage},
+    {"system", "settings_suggest", "System", "Date & time, languages and reset", systemPage},
+    {"keybinds", "keyboard", "Keyboard", "Shortcuts: remap, disable and add", keybindsPage},
+    {"packages", "system_update", "Software & updates", "Updates from the repos, the AUR and Flathub", packagesPage},
     {"about", "info", "About", "This device and the shell", aboutPage},
 };
+
+// Android's grouping of the settings list
+int pageGroup(const std::string& id) {
+    if (id == "network" || id == "bluetooth") return 0;
+    if (id == "defaults" || id == "notifications" || id == "tools" || id == "weather") return 1;
+    if (id == "battery" || id == "storage" || id == "sound" || id == "display") return 2;
+    if (id == "appearance" || id == "style" || id == "bar" || id == "dock" || id == "lockscreen") return 3;
+    if (id == "accessibility" || id == "lock") return 4;
+    return 5; // system, keyboard, updates, about
+}
 
 } // namespace
 
 void settingsPage(const std::string& id) {
+    if (id.starts_with("search:")) {
+        if (searchFor) searchFor(id.substr(7));
+        return;
+    }
     if (reshow) reshow(id);
 }
 
 void settingsClosed() {
     reshow = nullptr; // its pages are gone
+    searchFor = nullptr;
 }
 
 void settings(Flex* card, Popup& popup, const std::string& initial) {
@@ -1916,31 +2161,25 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
     auto* columns = card->add<Flex>(Flex::Direction::Row);
     columns->setAlignItems(Align::Start)->setSpacing(12);
 
-    // Navigation drawer; scrolls too when the screen is short
+    // Navigation, as Android 17's settings list: a large title, a search
+    // field, then the pages in rounded groups, each with its icon in a tonal
+    // circle and a one-line summary. Scrolls when the screen is short.
     auto* sideScroll = columns->add<ScrollView>();
     sideScroll->maxHeight = window ? 1e6f : 680;
-    sideScroll->fixedWidth = 244;
+    sideScroll->fixedWidth = 280;
     auto* side = sideScroll->add<Flex>(Flex::Direction::Column);
-    side->setAlignItems(Align::Stretch)->setSpacing(2)->setPadding({4, 12, 4, 8});
-    auto* brand = side->add<Flex>(Flex::Direction::Row);
-    brand->setSpacing(12)->setPadding({4, 0});
+    side->setAlignItems(Align::Stretch)->setSpacing(10)->setPadding({4, 10, 4, 8});
+    auto* brand = side->add<Label>("Settings");
+    brand->setSize(34)->setWeight(400);
     brand->alignSelf = Align::Start;
-    // The app's icon: installed in the icon theme, or shipped beside the binary
-    brand->add<ImageView>(36, [](float scale, int& w, int& h) -> GLuint {
-        const int px = static_cast<int>(std::lround(36 * scale));
-        auto* t = Images::get().icon("material3ui-settings", px);
-        if (!t) {
-            const std::string file = paths::dataFile("icons/material3ui-settings.svg");
-            if (!file.empty()) t = Images::get().icon(file, px);
-        }
-        if (!t) return 0;
-        w = t->width;
-        h = t->height;
-        return t->id;
-    });
-    brand->add<Label>("Settings")->setSize(28)->setWeight(600);
-    auto* gap = side->add<Node>();
-    gap->minHeight = 14;
+    auto* searchBox = side->add<Flex>(Flex::Direction::Row);
+    pill(searchBox->setBackground(ColorRef("on_surface", 0.1f), false))->setPadding({16, 4, 8, 4})->setSpacing(8);
+    searchBox->add<Icon>("search", 20)->setColor("on_surface_variant", false);
+    auto* search = searchBox->add<TextField>();
+    search->setPlaceholder("Search settings");
+    search->bare = true;
+    search->grow = true;
+    search->minWidth = 120;
 
     // The page: a fixed header with the close button, then what scrolls
     auto* right = columns->add<Flex>(Flex::Direction::Column);
@@ -1949,19 +2188,14 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
         right->grow = true;
     else
         right->fixedWidth = 740;
+    // The page's large title, as Android 17's pages open
     auto* hero = right->add<Flex>(Flex::Direction::Row);
-    hero->setSpacing(16)->setPadding({8, 4, 0, 8})->setAlignItems(Align::Start);
-    auto* badge = hero->add<Flex>(Flex::Direction::Row);
-    badge->setJustify(Align::Center)->setRadius(Radii(22))->setBackground("primary_container", false);
-    badge->fixedWidth = 60;
-    badge->fixedHeight = 60;
-    auto* badgeIcon = badge->add<Icon>("settings", 30);
-    badgeIcon->setFill(true)->setColor("on_primary_container", false);
+    hero->setSpacing(16)->setPadding({12, 10, 0, 10})->setAlignItems(Align::Start);
     auto* heroTexts = hero->add<Flex>(Flex::Direction::Column);
-    heroTexts->setAlignItems(Align::Start)->setSpacing(2);
+    heroTexts->setAlignItems(Align::Start)->setSpacing(4);
     heroTexts->grow = true;
     auto* heroTitle = heroTexts->add<Label>();
-    heroTitle->setSize(32)->setWeight(600);
+    heroTitle->setSize(36)->setWeight(400);
     auto* heroBlurb = heroTexts->add<Label>();
     heroBlurb->setSize(14)->setColor("on_surface_variant", false);
     // Close: a tonal round button in the corner
@@ -1984,15 +2218,16 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
         Flex* chip; // the icon's round tonal container
         Icon* icon;
         Label* label;
+        Label* summary;
         int hue;    // 0 primary, 1 secondary, 2 tertiary
     };
     auto items = std::make_shared<std::vector<NavItem>>();
     auto show = std::make_shared<std::function<void(size_t)>>();
-    *show = [content, scroll, items, badgeIcon, heroTitle, heroBlurb, sideScroll, side, &popup](size_t index) {
+    auto shown = std::make_shared<size_t>(0);
+    *show = [content, scroll, items, heroTitle, heroBlurb, sideScroll, side, shown, &popup](size_t index) {
+        *shown = index;
         const auto& def = kPages[index];
         content->clearChildren();
-        // Expressive header: the page's icon in a tonal shape, a large title
-        badgeIcon->setText(def.icon);
         heroTitle->setText(def.title);
         heroBlurb->setText(def.blurb);
         def.build(content, popup);
@@ -2013,6 +2248,7 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
             it.chip->setBackground(on ? ColorRef("primary") : ColorRef(kChip[it.hue]));
             it.icon->setFill(on)->setColor(on ? "on_primary" : kOnChip[it.hue]);
             it.label->setWeight(on ? 600 : 500)->setColor(on ? "on_secondary_container" : "on_surface", false);
+            it.summary->setColor(on ? "on_secondary_container" : "on_surface_variant", false);
         }
         // Keep the active item in view (after the next layout)
         Button* active = (*items)[index].button;
@@ -2022,29 +2258,174 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
         });
     };
     size_t first = 0;
+    // Android's groups: connections, apps, device, style, access, system
+    std::vector<Segments*> groups;
+    for (int g = 0; g < 6; ++g) {
+        auto* seg = side->add<Segments>();
+        seg->collapseWhenEmpty = true; // searching can empty it
+        groups.push_back(seg);
+    }
     for (size_t i = 0; i < std::size(kPages); ++i) {
-        auto* b = side->add<Button>(Flex::Direction::Row);
-        pill(b)->setPadding({8, 6, 16, 6})->setSpacing(12);
-        b->pressedRadius = 12;
+        auto* b = groups[static_cast<size_t>(pageGroup(kPages[i].id))]->add<Button>(Flex::Direction::Row);
+        b->setPadding({10, 10, 12, 10})->setSpacing(12);
+        b->pressedRadius = 10;
         auto* chip = b->add<Flex>(Flex::Direction::Row);
         pill(chip)->setJustify(Align::Center);
-        chip->fixedWidth = chip->fixedHeight = 36;
+        chip->fixedWidth = chip->fixedHeight = 38;
         auto* icon = chip->add<Icon>(kPages[i].icon, 20);
-        auto* label = b->add<Label>(kPages[i].title);
-        label->setSize(15)->setWeight(500)->setColor("on_surface_variant", false);
+        auto* texts = b->add<Flex>(Flex::Direction::Column);
+        texts->setAlignItems(Align::Start)->setSpacing(1);
+        texts->grow = true;
+        auto* label = texts->add<Label>(kPages[i].title);
+        label->setSize(15)->setWeight(500)->setMaxWidth(190);
+        auto* summary = texts->add<Label>(kPages[i].blurb);
+        summary->setSize(12)->setMaxWidth(190);
         b->onClicked = [show, i](uint32_t) {
             // The page rebuild must not run inside the click that asked for it
             EventLoop::get().defer([show, i] { (*show)(i); });
         };
-        items->push_back({b, chip, icon, label, static_cast<int>(i % 3)});
+        items->push_back({b, chip, icon, label, summary, static_cast<int>(i % 3)});
         if (initial == kPages[i].id) first = i;
     }
+    // Universal search, as Android's: every setting by name, not just the
+    // pages. The index is read from the pages themselves, built out of view
+    // once (their row titles and section headings).
+    struct Hit {
+        std::string text;
+        size_t page;
+    };
+    auto index = std::make_shared<std::vector<Hit>>();
+    auto buildIndex = [index, &popup] {
+        if (!index->empty()) return;
+        for (size_t i = 0; i < std::size(kPages); ++i) {
+            Flex scratch(Flex::Direction::Column);
+            kPages[i].build(&scratch, popup);
+            std::set<std::string> seen;
+            std::function<void(const Node&)> walk = [&](const Node& n) {
+                const auto* l = dynamic_cast<const Label*>(&n);
+                if (l && !dynamic_cast<const Icon*>(&n) && l->text().size() > 2 &&
+                    ((l->size() == 15 && l->weight() == 500) || (l->size() == 14 && l->weight() == 600)) &&
+                    seen.insert(l->text()).second)
+                    index->push_back({l->text(), i});
+                for (const auto& c : n.children()) walk(*c);
+            };
+            walk(scratch);
+        }
+    };
+    auto lower = [](std::string t) {
+        for (auto& c : t) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return t;
+    };
+    // Opens a page and, given a setting, scrolls to it and lights it up
+    auto openAt = [show, content, scroll](size_t page, const std::string& setting) {
+        EventLoop::get().defer([show, content, scroll, page, setting] {
+            (*show)(page);
+            if (setting.empty()) return;
+            EventLoop::get().addTimer(60, [content, scroll, setting] {
+                std::function<Label*(Node&)> find = [&](Node& n) -> Label* {
+                    if (auto* l = dynamic_cast<Label*>(&n); l && l->text() == setting) return l;
+                    for (auto& c : n.children())
+                        if (auto* hit = find(*c)) return hit;
+                    return nullptr;
+                };
+                Label* label = find(*content);
+                if (!label) return;
+                scroll->scrollTo(label->rect().y - content->rect().y - 40);
+                // The row it names, briefly highlighted
+                if (auto* row = dynamic_cast<Flex*>(label->parentNode() ? label->parentNode()->parentNode() : nullptr)) {
+                    row->setBackground(ColorRef("primary", 0.22f));
+                    EventLoop::get().addTimer(1400, [content, row] {
+                        // Still on screen? (the page may have changed)
+                        std::function<bool(Node&)> has = [&](Node& n) {
+                            if (&n == row) return true;
+                            for (auto& c : n.children())
+                                if (has(*c)) return true;
+                            return false;
+                        };
+                        if (has(*content)) row->setBackground(ColorRef::none());
+                    });
+                }
+            });
+        });
+    };
+    const auto current = shown; // the page to return to when the search clears
+    search->onChanged = [=](const std::string& t) {
+        const std::string q = lower(t);
+        if (q.empty()) {
+            for (auto& it : *items) it.button->setVisible(true);
+            EventLoop::get().defer([show, current] { (*show)(*current); });
+            return;
+        }
+        buildIndex();
+        // Pages, then settings, that match
+        std::vector<size_t> pages;
+        std::vector<const Hit*> settings;
+        std::set<size_t> withHits;
+        for (size_t i = 0; i < std::size(kPages); ++i)
+            if (lower(kPages[i].title).find(q) != std::string::npos || lower(kPages[i].blurb).find(q) != std::string::npos) {
+                pages.push_back(i);
+                withHits.insert(i);
+            }
+        for (const auto& h : *index)
+            if (lower(h.text).find(q) != std::string::npos) {
+                settings.push_back(&h);
+                withHits.insert(h.page);
+            }
+        for (size_t i = 0; i < items->size(); ++i) (*items)[i].button->setVisible(withHits.contains(i));
+        EventLoop::get().defer([=] {
+            content->clearChildren();
+            heroTitle->setText("Search");
+            heroBlurb->setText(withHits.empty() ? "No results for “" + t + "”"
+                                                : std::format("{} result{}", pages.size() + settings.size(),
+                                                              pages.size() + settings.size() == 1 ? "" : "s"));
+            auto result = [&](Node* g, const std::string& icon, const std::string& title, const std::string& where,
+                              size_t page, const std::string& setting) {
+                auto* b = g->add<Button>(Flex::Direction::Row);
+                b->setPadding({20, 12})->setSpacing(16);
+                b->pressedRadius = 10;
+                b->add<Icon>(icon, 22)->setColor("on_surface_variant", false);
+                auto* texts = b->add<Flex>(Flex::Direction::Column);
+                texts->setAlignItems(Align::Start)->setSpacing(1);
+                texts->grow = true;
+                texts->add<Label>(title)->setSize(15)->setWeight(500)->setMaxWidth(440);
+                texts->add<Label>(where)->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(440);
+                b->onClicked = [openAt, page, setting](uint32_t button) {
+                    if (button == BTN_LEFT) openAt(page, setting);
+                };
+            };
+            if (!pages.empty()) {
+                auto* g = group(content, "Pages");
+                for (size_t i : pages) result(g, kPages[i].icon, kPages[i].title, kPages[i].blurb, i, "");
+            }
+            if (!settings.empty()) {
+                auto* g = group(content, "Settings");
+                for (size_t k = 0; k < settings.size() && k < 40; ++k)
+                    result(g, kPages[settings[k]->page].icon, settings[k]->text, kPages[settings[k]->page].title,
+                           settings[k]->page, settings[k]->text);
+            }
+            scroll->scrollTo(0, false);
+        });
+    };
+    searchFor = [search](const std::string& t) {
+        search->setText(t);
+        if (search->onChanged) search->onChanged(t);
+    };
+    search->onSubmit = [=](const std::string& t) {
+        const std::string q = lower(t);
+        if (q.empty()) return;
+        buildIndex();
+        for (size_t i = 0; i < std::size(kPages); ++i)
+            if (lower(kPages[i].title).find(q) != std::string::npos) return openAt(i, "");
+        for (const auto& h : *index)
+            if (lower(h.text).find(q) != std::string::npos) return openAt(h.page, h.text);
+    };
     // Only called from inside this popup (a page's reset button)
     reshow = [show](const std::string& id) {
         for (size_t i = 0; i < std::size(kPages); ++i)
             if (id == kPages[i].id) (*show)(i);
     };
     (*show)(first);
+    if (initial.starts_with("search:")) EventLoop::get().defer([q = initial.substr(7)] { if (searchFor) searchFor(q); });
 }
 
 } // namespace m3::shell::panels

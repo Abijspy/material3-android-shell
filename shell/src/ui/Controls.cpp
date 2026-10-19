@@ -405,7 +405,7 @@ void TextField::restartBlink() {
 
 void TextField::onPress(uint32_t, float x, float) {
     // Put the caret at the nearest character boundary
-    const float local = x - rect().x - 20 + m_scroll;
+    const float local = x - rect().x - (bare ? 4 : 20) + m_scroll;
     size_t best = 0;
     float bestDist = std::abs(local);
     for (size_t i = 1; i <= m_text.size(); ++i) {
@@ -515,10 +515,11 @@ bool TextField::onKey(const KeyEvent& e) {
 
 void TextField::doPaint(Renderer& r) {
     const auto& b = rect();
-    r.rect(b, Theme::get().color("surface_container_highest"), Radii(b.h / 2),
-           m_focused ? 2 : 0, Theme::get().color("primary"));
+    if (!bare)
+        r.rect(b, Theme::get().color("surface_container_highest"), Radii(b.h / 2), m_focused ? 2 : 0,
+               Theme::get().color("primary"));
 
-    const float padX = 20;
+    const float padX = bare ? 4 : 20;
     const RectF inner{b.x + padX, b.y, b.w - padX * 2, b.h};
     const float cx = caretX(m_cursor);
     // Scroll so the caret stays inside the field

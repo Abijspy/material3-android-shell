@@ -194,6 +194,8 @@ public:
     Label* setFamily(const std::string& family);
     Label* setMaxLines(int lines); // wraps within maxWidth
     const std::string& text() const { return m_text; }
+    float size() const { return m_size; }
+    int weight() const { return m_weight; }
 
 protected:
     SizeF doMeasure(SizeF available) override;

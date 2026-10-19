@@ -1,6 +1,7 @@
 #include "services/Effects.h"
 
 #include "core/Config.h"
+#include "core/Process.h"
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "services/Hyprland.h"
@@ -49,6 +50,14 @@ void Effects::apply() {
     if (!h.available()) return;
     auto& t = Theme::get();
     const auto& c = Config::get();
+    // Accessibility → cursor size: Hyprland's cursor and GTK's follow it
+    if (const int cursor = c.value<int>("/accessibility/cursorSize", 0); cursor > 0 && cursor != m_cursor) {
+        m_cursor = cursor;
+        run({"sh", "-c", std::format("t=$(gsettings get org.gnome.desktop.interface cursor-theme | tr -d \"'\"); "
+                                     "hyprctl setcursor \"${{t:-Adwaita}}\" {0}; "
+                                     "gsettings set org.gnome.desktop.interface cursor-size {0}", cursor)},
+            nullptr);
+    }
     const int size = std::clamp(c.value<int>("/appearance/blur/size", 12), 1, 20);
     const int passes = std::clamp(c.value<int>("/appearance/blur/passes", 3), 1, 4);
     // Pixels fainter than this are left sharp: the clear space around a

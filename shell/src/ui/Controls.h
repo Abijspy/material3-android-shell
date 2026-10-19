@@ -119,6 +119,7 @@ private:
 // scrolling to keep the caret visible.
 class TextField : public Node {
 public:
+    bool bare = false; // no pill of its own (it sits in one, like a search bar)
     TextField();
     ~TextField() override;
 
