@@ -24,7 +24,7 @@ void bluetoothPrompt(ui::Flex* parent);
 std::string bluetoothGlyph(const std::string& bluezIcon);
 void battery(ui::Flex* card, Popup& popup);
 void run(ui::Flex* card, Popup& popup);
-void quickSettings(ui::Flex* card, Popup& popup, const std::string& view = {}); // view: "wifi", "bluetooth"
+void quickSettings(ui::Flex* card, Popup& popup, const std::string& view = {}); // view: "wifi", "bluetooth", "edit"
 void notifications(ui::Flex* card, Popup& popup);
 void power(ui::Flex* card, Popup& popup);
 void launcher(ui::Flex* card, Popup& popup, const std::string& initial);

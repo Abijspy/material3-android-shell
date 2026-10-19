@@ -3,6 +3,8 @@
 #include "services/Mpris.h"
 #include "services/Network.h"
 #include "services/Notifications.h"
+#include "services/Wallpaper.h"
+#include "core/Config.h"
 #include "core/EventLoop.h"
 #include "core/Process.h"
 #include "shell/PanelKit.h"
@@ -204,7 +206,276 @@ void wifiView(Flex* body, const std::function<void()>& back, bool details) {
 
 namespace {
 
-void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, const std::function<void()>& showBluetooth) {
+// ── Tiles ──
+//
+// Every tile Quick Settings can show. Which ones, in what order and at what
+// size live in config.json (/quickSettings/tiles: [{"id", "large"}]), edited
+// from the panel's pencil button.
+
+struct TileDef {
+    const char* id;
+    const char* icon;
+    const char* title;
+    std::function<bool()> active;
+    std::function<std::string()> status;    // under the title on large tiles
+    std::function<std::string()> glyph;     // an icon that follows the state, if any
+    std::function<void(Popup&)> press;
+    int details = 0;                        // 1 Wi-Fi list, 2 Bluetooth list
+};
+
+const std::vector<TileDef>& tileDefs() {
+    static const std::vector<TileDef> defs = {
+        {"wifi", "wifi", "Wi-Fi", [] { return Network::get().wifiEnabled(); },
+         [] {
+             auto& n = Network::get();
+             return !n.wifiEnabled() ? std::string("Off") : n.kind() == Network::Kind::Wifi ? n.name() : std::string("On");
+         },
+         {}, [](Popup&) { Network::get().setWifiEnabled(!Network::get().wifiEnabled()); }, 1},
+        {"bluetooth", "bluetooth", "Bluetooth", [] { return Bluetooth::get().powered(); },
+         [] {
+             auto& b = Bluetooth::get();
+             return !b.available() ? std::string("Unavailable") : !b.powered() ? std::string("Off")
+                    : b.connected().empty() ? std::string("On") : b.connected().front();
+         },
+         {}, [](Popup&) { Bluetooth::get().setPowered(!Bluetooth::get().powered()); }, 2},
+        {"dnd", "do_not_disturb_on", "Do not disturb", [] { return Notifications::get().doNotDisturb(); },
+         [] { return std::string(Notifications::get().doNotDisturb() ? "On" : "Off"); }, {},
+         [](Popup&) { Notifications::get().setDoNotDisturb(!Notifications::get().doNotDisturb()); }},
+        {"caffeine", "coffee", "Caffeine", [] { return Idle::get().inhibited(); },
+         [] { return std::string(Idle::get().inhibited() ? "Staying awake" : "Off"); }, {},
+         [](Popup&) { Idle::get().setInhibited(!Idle::get().inhibited()); }},
+        {"nightlight", "nightlight", "Night light", [] { return g_nightLight; },
+         [] { return std::string(g_nightLight ? "4500 K" : "Off"); }, {},
+         [](Popup&) {
+             g_nightLight = !g_nightLight;
+             spawn(g_nightLight ? "pkill -x hyprsunset; hyprsunset -t 4500" : "pkill -x hyprsunset");
+         }},
+        {"mic", "mic", "Microphone",
+         [] {
+             const auto* s = Audio::get().source();
+             return s && !s->muted;
+         },
+         [] {
+             const auto* s = Audio::get().source();
+             return std::string(!s ? "None" : s->muted ? "Muted" : "On");
+         },
+         [] {
+             const auto* s = Audio::get().source();
+             return std::string(s && !s->muted ? "mic" : "mic_off");
+         },
+         [](Popup&) { Audio::get().toggleMuted(true); }},
+        {"sound", "volume_up", "Sound",
+         [] {
+             const auto* s = Audio::get().sink();
+             return s && !s->muted;
+         },
+         [] {
+             const auto* s = Audio::get().sink();
+             return std::string(!s ? "None" : s->muted ? "Muted" : "On");
+         },
+         [] {
+             const auto* s = Audio::get().sink();
+             return std::string(s && !s->muted ? "volume_up" : "volume_off");
+         },
+         [](Popup&) { Audio::get().toggleMuted(); }},
+        {"darkmode", "dark_mode", "Dark theme", [] { return Config::get().value<bool>("/background/darkmode", true); },
+         [] { return std::string(Config::get().value<bool>("/background/darkmode", true) ? "On" : "Off"); }, {},
+         [](Popup&) {
+             Config::get().set("/background/darkmode", !Config::get().value<bool>("/background/darkmode", true));
+             Wallpaper::get().recolour();
+         }},
+        {"airplane", "flight", "Airplane mode",
+         [] { return !Network::get().wifiEnabled() && !Bluetooth::get().powered(); },
+         [] { return std::string(!Network::get().wifiEnabled() && !Bluetooth::get().powered() ? "On" : "Off"); }, {},
+         [](Popup&) {
+             // Off again turns Wi-Fi back on; Bluetooth stays as the user leaves it
+             const bool on = !Network::get().wifiEnabled() && !Bluetooth::get().powered();
+             Network::get().setWifiEnabled(on);
+             if (!on) Bluetooth::get().setPowered(false);
+         }},
+        {"powersaver", "eco", "Power saver", [] { return Power::get().profile() == "power-saver"; },
+         [] { return std::string(Power::get().profile() == "power-saver" ? "On" : "Off"); }, {},
+         [](Popup&) { Power::get().setProfile(Power::get().profile() == "power-saver" ? "balanced" : "power-saver"); }},
+        {"screenshot", "screenshot_region", "Screenshot", [] { return false; }, [] { return std::string("Region"); }, {},
+         [](Popup& popup) {
+             popup.close();
+             spawn("material3ui msg screenshot region");
+         }},
+    };
+    return defs;
+}
+
+const TileDef* findTile(const std::string& id) {
+    for (const auto& d : tileDefs())
+        if (id == d.id) return &d;
+    return nullptr;
+}
+
+struct Placed {
+    std::string id;
+    bool large = false;
+};
+
+std::vector<Placed> tileLayout() {
+    std::vector<Placed> out;
+    const auto saved = Config::get().value<nlohmann::json>("/quickSettings/tiles", nullptr);
+    if (saved.is_array())
+        for (const auto& t : saved)
+            if (t.is_object() && findTile(t.value("id", ""))) out.push_back({t.value("id", ""), t.value("large", false)});
+    if (out.empty() && !saved.is_array())
+        out = {{"wifi", true}, {"bluetooth", true}, {"dnd", false}, {"caffeine", false}, {"nightlight", false}, {"mic", false}};
+    return out;
+}
+
+void setTileLayout(const std::vector<Placed>& tiles) {
+    auto j = nlohmann::json::array();
+    for (const auto& t : tiles) j.push_back({{"id", t.id}, {"large", t.large}});
+    Config::get().set("/quickSettings/tiles", j);
+}
+
+// Lays tiles on a 4-column grid (a large tile takes two) inside `parent`
+// and returns a function that brings them up to date
+std::function<void()> buildTiles(Node* parent, const std::vector<Placed>& tiles, Popup* popup, kit::Live* live,
+                                 const std::function<void()>& showWifi, const std::function<void()>& showBluetooth) {
+    // Card 440 − padding 40 = 400: four 94 px columns, 8 px apart
+    constexpr float kCol = (400 - 3 * 8) / 4.0f;
+    std::vector<std::function<void()>> updates;
+    Flex* row = nullptr;
+    int used = 4;
+    for (const auto& t : tiles) {
+        const auto* def = findTile(t.id);
+        if (!def) continue;
+        const int span = t.large ? 2 : 1;
+        if (used + span > 4) {
+            row = parent->add<Flex>(Flex::Direction::Row);
+            row->setSpacing(8)->setAlignItems(Align::Stretch);
+            used = 0;
+        }
+        used += span;
+        auto onPress = [def, popup, live](uint32_t button) {
+            if (button != BTN_LEFT || !popup) return;
+            def->press(*popup);
+            if (live) live->syncSoon(); // night light and the like have no service to say so
+        };
+        if (t.large) {
+            auto* tile = row->add<Tile>(def->icon, def->title);
+            tile->grow = false;
+            tile->fixedWidth = kCol * 2 + 8;
+            tile->onClicked = onPress;
+            if (def->details == 1 && showWifi) {
+                tile->enableDetails();
+                tile->onDetails = showWifi;
+            }
+            if (def->details == 2 && showBluetooth) {
+                tile->enableDetails();
+                tile->onDetails = showBluetooth;
+            }
+            updates.push_back([tile, def] { tile->set(def->active(), def->status()); });
+        } else {
+            auto* tile = row->add<SmallTile>(def->icon, kCol);
+            tile->onClicked = onPress;
+            updates.push_back([tile, def] { tile->set(def->active(), def->glyph ? def->glyph() : ""); });
+        }
+    }
+    return [updates] {
+        for (const auto& u : updates) u();
+    };
+}
+
+// The editor: a live preview, your tiles (size, order, remove), and the
+// rest to add
+void editView(Flex* body, const std::function<void()>& back) {
+    body->clearChildren();
+    auto* live = body->add<Live>();
+    live->setSpacing(10);
+    live->sync = [live, back] {
+        live->clearChildren();
+        auto* head = live->add<Flex>(Flex::Direction::Row);
+        head->setSpacing(8);
+        iconButton(head, "arrow_back", back);
+        auto* title = head->add<Label>("Edit tiles");
+        title->setSize(20)->setWeight(500);
+        title->grow = true;
+        auto* reset = head->add<Button>();
+        pill(reset->setBackground("surface_container_highest", false))->setPadding({14, 8});
+        reset->add<Label>("Reset")->setSize(13)->setWeight(500);
+        reset->onClicked = [live](uint32_t) {
+            Config::get().set("/quickSettings/tiles", nullptr);
+            live->syncSoon();
+        };
+
+        auto tiles = tileLayout();
+        // How the panel will look, as it is now
+        auto* preview = live->add<Flex>(Flex::Direction::Column);
+        preview->setSpacing(8)->setAlignItems(Align::Start);
+        buildTiles(preview, tiles, nullptr, nullptr, {}, {})();
+
+        auto* scroll = live->add<ScrollView>();
+        scroll->maxHeight = 300;
+        auto* list = scroll->add<Flex>(Flex::Direction::Column);
+        list->setAlignItems(Align::Stretch)->setSpacing(4);
+        auto save = [live](const std::vector<Placed>& t) {
+            setTileLayout(t);
+            live->syncSoon();
+        };
+        caption(list, "Your tiles");
+        for (size_t i = 0; i < tiles.size(); ++i) {
+            const auto* def = findTile(tiles[i].id);
+            auto* r = list->add<Flex>(Flex::Direction::Row);
+            r->setPadding({14, 6, 6, 6})->setSpacing(6)->setRadius(Radii(18))->setBackground("surface_container_highest", false);
+            r->add<Icon>(def->icon, 20)->setColor("on_surface_variant", false);
+            auto* name = r->add<Label>(def->title);
+            name->setSize(14)->setMaxWidth(150);
+            name->grow = true;
+            // Size: a tonal chip that flips between Large and Small
+            auto* size = r->add<Button>();
+            pill(size->setBackground(tiles[i].large ? "secondary_container" : "surface_container_high", false))->setPadding({12, 6});
+            size->add<Label>(tiles[i].large ? "Large" : "Small")->setSize(12)->setWeight(500);
+            size->onClicked = [tiles, i, save](uint32_t) mutable {
+                tiles[i].large = !tiles[i].large;
+                save(tiles);
+            };
+            iconButton(r, "keyboard_arrow_up", [tiles, i, save]() mutable {
+                if (i == 0) return;
+                std::swap(tiles[i], tiles[i - 1]);
+                save(tiles);
+            }, 18);
+            iconButton(r, "keyboard_arrow_down", [tiles, i, save]() mutable {
+                if (i + 1 >= tiles.size()) return;
+                std::swap(tiles[i], tiles[i + 1]);
+                save(tiles);
+            }, 18);
+            iconButton(r, "remove_circle", [tiles, i, save]() mutable {
+                tiles.erase(tiles.begin() + static_cast<long>(i));
+                save(tiles);
+            }, 18);
+        }
+        if (tiles.empty()) caption(list, "No tiles: add some below");
+        bool more = false;
+        for (const auto& def : tileDefs()) {
+            if (std::ranges::any_of(tiles, [&](const Placed& p) { return p.id == def.id; })) continue;
+            if (!more) caption(list, "Add tiles");
+            more = true;
+            auto* r = list->add<Button>(Flex::Direction::Row);
+            r->setPadding({14, 10})->setSpacing(10)->setRadius(Radii(18));
+            r->pressedRadius = 10;
+            r->add<Icon>(def.icon, 20)->setColor("on_surface_variant", false);
+            auto* name = r->add<Label>(def.title);
+            name->setSize(14);
+            name->grow = true;
+            r->add<Icon>("add_circle", 20)->setColor("primary", false);
+            const std::string id = def.id;
+            r->onClicked = [tiles, id, save](uint32_t) mutable {
+                tiles.push_back({id, false});
+                save(tiles);
+            };
+        }
+    };
+    live->sync();
+}
+
+void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, const std::function<void()>& showBluetooth,
+              const std::function<void()>& showEdit) {
     body->clearChildren();
     auto* live = body->add<Live>();
 
@@ -227,6 +498,7 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
             if (button == BTN_LEFT) fn();
         };
     };
+    roundButton("edit", showEdit);
     roundButton("settings", [] {
         if (open) open("settings");
     });
@@ -251,37 +523,10 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
     volume->onChanged = [](float v) { Audio::get().setVolume(v); };
     volume->onIconClicked = [] { Audio::get().toggleMuted(); };
 
-    // Two large tiles, then four small ones (card 440 − padding 40 = 400)
-    auto row1 = live->add<Flex>(Flex::Direction::Row);
-    row1->setSpacing(8)->setAlignItems(Align::Stretch);
-    auto* wifi = row1->add<Tile>("wifi", "Wi-Fi");
-    auto* bt = row1->add<Tile>("bluetooth", "Bluetooth");
-    for (Tile* t : {wifi, bt}) {
-        t->grow = false;
-        t->fixedWidth = 196;
-    }
-    auto row2 = live->add<Flex>(Flex::Direction::Row);
-    row2->setSpacing(8);
-    constexpr float kSmall = (400 - 3 * 8) / 4.0f;
-    auto* dnd = row2->add<SmallTile>("do_not_disturb_on", kSmall);
-    auto* caffeine = row2->add<SmallTile>("coffee", kSmall);
-    auto* night = row2->add<SmallTile>("nightlight", kSmall);
-    auto* mic = row2->add<SmallTile>("mic", kSmall);
-
-    wifi->enableDetails();
-    wifi->onDetails = showWifi;
-    wifi->onClicked = [](uint32_t) { Network::get().setWifiEnabled(!Network::get().wifiEnabled()); };
-    bt->onClicked = [](uint32_t) { Bluetooth::get().setPowered(!Bluetooth::get().powered()); };
-    bt->enableDetails();
-    bt->onDetails = showBluetooth;
-    dnd->onClicked = [](uint32_t) { Notifications::get().setDoNotDisturb(!Notifications::get().doNotDisturb()); };
-    caffeine->onClicked = [](uint32_t) { Idle::get().setInhibited(!Idle::get().inhibited()); };
-    night->onClicked = [live](uint32_t) {
-        g_nightLight = !g_nightLight;
-        spawn(g_nightLight ? "pkill -x hyprsunset; hyprsunset -t 4500" : "pkill -x hyprsunset");
-        live->syncSoon();
-    };
-    mic->onClicked = [](uint32_t) { Audio::get().toggleMuted(true); };
+    // Your tiles, as arranged in the editor
+    auto* grid = live->add<Flex>(Flex::Direction::Column);
+    grid->setSpacing(8)->setAlignItems(Align::Start);
+    const auto updateTiles = buildTiles(grid, tileLayout(), &popup, live, showWifi, showBluetooth);
 
     // Battery: charge, what it is doing, and the power mode
     auto* battery = live->add<Flex>(Flex::Direction::Row);
@@ -338,7 +583,7 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
         }
         if (light) light->setValue(Brightness::get().value());
         auto& n = Network::get();
-        wifi->set(n.wifiEnabled(), !n.wifiEnabled() ? "Off" : n.kind() == Network::Kind::Wifi ? n.name() : "On");
+        updateTiles();
         (void)lease;
         net->setVisible(n.kind() != Network::Kind::None);
         netIcon->setText(n.icon());
@@ -347,15 +592,7 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
         netLink->setText(summary.empty() ? (n.kind() == Network::Kind::Wifi ? std::format("Signal {}%", n.strength()) : "Connected") : summary);
         netDown->setText(formatRate(n.details().rxRate));
         netUp->setText(formatRate(n.details().txRate));
-        auto& b = Bluetooth::get();
-        bt->set(b.powered(), !b.available() ? "Unavailable" : !b.powered() ? "Off"
-                           : b.connected().empty() ? "On" : b.connected().front());
         clock->setText(nowTime());
-        dnd->set(Notifications::get().doNotDisturb());
-        caffeine->set(Idle::get().inhibited());
-        night->set(g_nightLight);
-        const auto* src = a.source();
-        mic->set(src && !src->muted, src && !src->muted ? "mic" : "mic_off");
         auto& pw = Power::get();
         battery->setVisible(pw.hasBattery() || !pw.profile().empty());
         batIcon->setText(pw.hasBattery() ? pw.icon() : "power");
@@ -386,6 +623,7 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
     live->watch(Idle::get().changed);
     live->watch(Mpris::get().changed);
     live->watch(Power::get().changed);
+    live->watch(Config::get().changed); // dark theme, and tiles edited elsewhere
     live->sync();
 }
 
@@ -400,15 +638,18 @@ void quickSettings(Flex* card, Popup& popup, const std::string& view) {
     // Switching views destroys the button that asked for it: defer
     auto showWifi = [body, showMain] { EventLoop::get().defer([body, showMain] { wifiView(body, *showMain); }); };
     auto showBluetooth = [body, showMain] { EventLoop::get().defer([body, showMain] { bluetoothView(body, *showMain); }); };
-    *showMain = [body, &popup, showWifi, showBluetooth] {
-        EventLoop::get().defer([body, &popup, showWifi, showBluetooth] { mainView(body, popup, showWifi, showBluetooth); });
+    auto showEdit = [body, showMain] { EventLoop::get().defer([body, showMain] { editView(body, *showMain); }); };
+    *showMain = [body, &popup, showWifi, showBluetooth, showEdit] {
+        EventLoop::get().defer([body, &popup, showWifi, showBluetooth, showEdit] { mainView(body, popup, showWifi, showBluetooth, showEdit); });
     };
     if (view == "wifi")
         wifiView(body, *showMain);
     else if (view == "bluetooth")
         bluetoothView(body, *showMain);
+    else if (view == "edit")
+        editView(body, *showMain);
     else
-        mainView(body, popup, showWifi, showBluetooth);
+        mainView(body, popup, showWifi, showBluetooth, showEdit);
     // Night light state from the running processes
     m3::run({"pgrep", "-x", "hyprsunset"}, [](int code, const std::string&) { g_nightLight = code == 0; });
 }
