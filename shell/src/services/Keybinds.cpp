@@ -133,7 +133,8 @@ void Keybinds::load() {
         m_labels = j.value("labels", nlohmann::json::object());
         m_custom.clear();
         for (const auto& c : j.value("custom", nlohmann::json::array()))
-            m_custom.push_back({c.value("keys", ""), c.value("command", ""), c.value("label", "")});
+            m_custom.push_back({c.value("keys", ""), c.value("command", ""), c.value("label", ""), c.value("action", ""),
+                                c.value("mouse", false)});
     } catch (const std::exception& e) {
         log::warn("keybinds.json: {}", e.what());
     }
@@ -228,8 +229,9 @@ void Keybinds::resetAll() {
     commit();
 }
 
-void Keybinds::addCustom(const std::string& keys, const std::string& command, const std::string& label) {
-    m_custom.push_back({normalize(keys), command, label.empty() ? command : label});
+void Keybinds::addCustom(const std::string& keys, const std::string& command, const std::string& label,
+                         const std::string& action, bool mouse) {
+    m_custom.push_back({normalize(keys), command, label.empty() ? (command.empty() ? action : command) : label, action, mouse});
     commit();
 }
 
@@ -240,7 +242,8 @@ void Keybinds::removeCustom(size_t index) {
 
 void Keybinds::commit() {
     nlohmann::json custom = nlohmann::json::array();
-    for (const auto& c : m_custom) custom.push_back({{"keys", c.keys}, {"command", c.command}, {"label", c.label}});
+    for (const auto& c : m_custom)
+        custom.push_back({{"keys", c.keys}, {"command", c.command}, {"label", c.label}, {"action", c.action}, {"mouse", c.mouse}});
     std::error_code ec;
     fs::create_directories(paths::configDir(), ec);
     std::ofstream(storeFile()) << nlohmann::json{{"overrides", m_overrides}, {"labels", m_labels}, {"custom", custom}}.dump(2);
@@ -257,7 +260,8 @@ void Keybinds::commit() {
     }
     lua += "\t},\n\tcustom = {\n";
     for (const auto& c : m_custom)
-        lua += "\t\t{ keys = " + luaString(c.keys) + ", command = " + luaString(c.command) + ", label = " + luaString(c.label) + " },\n";
+        lua += "\t\t{ keys = " + luaString(c.keys) + ", command = " + luaString(c.command) + ", label = " + luaString(c.label) +
+               (c.action.empty() ? "" : ", action = " + luaString(c.action)) + (c.mouse ? ", mouse = true" : "") + " },\n";
     lua += "\t},\n}\n";
     fs::create_directories(fs::path(luaFile()).parent_path(), ec);
     std::ofstream(luaFile()) << lua;

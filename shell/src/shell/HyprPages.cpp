@@ -8,6 +8,9 @@
 #include "core/Signal.h"
 #include "services/HyprOptions.h"
 #include "services/Hyprland.h"
+#include "services/Search.h"
+#include "core/Paths.h"
+#include "core/Process.h"
 #include "shell/CurveEditor.h"
 #include "shell/MonitorLayout.h"
 #include "shell/SettingsKit.h"
@@ -19,6 +22,8 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <fstream>
+#include <regex>
 #include <sstream>
 
 namespace m3::shell::panels {
@@ -998,7 +1003,163 @@ void monitorSections(Flex* page) {
     live->sync();
 }
 
+
+// ── Startup apps and environment ──
+
+// What a shipped module sets up, read from its file: lines like
+// hl.exec_cmd("…") or hl.env("NAME", "value")
+std::vector<std::vector<std::string>> shipped(const std::string& module, const std::regex& line) {
+    std::vector<std::vector<std::string>> out;
+    std::ifstream in(paths::home() + "/.config/hypr/material3ui/" + module);
+    for (std::string l; std::getline(in, l);) {
+        std::smatch m;
+        if (l.find("--") != std::string::npos && l.find("--") < l.find("hl.")) continue; // commented out
+        if (std::regex_search(l, m, line)) {
+            std::vector<std::string> parts;
+            for (size_t i = 1; i < m.size(); ++i) parts.push_back(m[i].str());
+            out.push_back(parts);
+        }
+    }
+    return out;
+}
+
+// An app's command for running it: the Exec line without %U and the like
+std::string runnable(const std::string& exec) {
+    return std::regex_replace(std::regex_replace(exec, std::regex(" ?%[a-zA-Z]"), ""), std::regex("\\s+$"), "");
+}
+
+void startupSections(Flex* page) {
+    auto* live = page->add<kit::Live>();
+    live->setSpacing(6);
+    live->sync = [live] {
+        live->clearChildren();
+        auto& h = HyprOptions::get();
+        auto list = h.startups();
+
+        auto* mine = group(live, "Your startup apps", "Run once Hyprland has started, in this order");
+        if (list.empty()) row(mine, "info", "None yet", "Add an app or a command below");
+        for (size_t i = 0; i < list.size(); ++i) {
+            const auto& st = list[i];
+            auto r = row(mine, "rocket_launch", st.label.empty() ? st.command : st.label, st.label.empty() ? "" : st.command);
+            iconButton(r.row, "play_arrow", [cmd = st.command] { spawn(cmd); });
+            confirmButton(r.row, "startup:" + st.command, "delete", [i] {
+                auto l = HyprOptions::get().startups();
+                if (i < l.size()) l.erase(l.begin() + static_cast<long>(i));
+                HyprOptions::get().setStartups(l);
+            });
+            auto* sw = r.row->add<Switch>();
+            sw->setChecked(st.enabled, false);
+            sw->onToggled = [i](bool on) {
+                auto l = HyprOptions::get().startups();
+                if (i < l.size()) l[i].enabled = on;
+                HyprOptions::get().setStartups(l);
+            };
+        }
+
+        // Add: an installed app, or any command
+        auto add = row(mine, "add", "Add an app");
+        std::vector<std::pair<std::string, std::string>> apps;
+        for (const auto& a : Apps::get().all())
+            if (!a.exec.empty()) apps.push_back({a.name + "\n" + runnable(a.exec), a.name});
+        std::ranges::sort(apps, [](const auto& a, const auto& b) { return a.second < b.second; });
+        dropdown(add.row, mine, "Choose", apps, [](const std::string& v) {
+            const auto nl = v.find('\n');
+            auto l = HyprOptions::get().startups();
+            l.push_back({v.substr(nl + 1), v.substr(0, nl), true});
+            HyprOptions::get().setStartups(l);
+        });
+        auto cmd = row(mine, "terminal", "Add a command", "Enter to add");
+        auto* f = cmd.row->add<TextField>();
+        f->setPlaceholder("e.g. nm-applet --indicator");
+        f->fixedWidth = 280;
+        f->onSubmit = [](const std::string& text) {
+            if (text.empty()) return;
+            auto l = HyprOptions::get().startups();
+            l.push_back({text, "", true});
+            HyprOptions::get().setStartups(l);
+        };
+
+        const auto builtIn = shipped("autostart.lua", std::regex("hl\\.exec_cmd\\(\"([^\"]+)\"\\)"));
+        if (!builtIn.empty()) {
+            auto* g = group(live, "Started by Material3UI", "From autostart.lua and shell.lua: the session's plumbing");
+            for (const auto& b : builtIn) {
+                auto r = row(g, "", b[0]);
+                r.title->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(600);
+            }
+        }
+    };
+    live->conns.push_back(HyprOptions::get().changed.connect([live] { live->syncSoon(); }));
+    live->sync();
+}
+
+void environmentSections(Flex* page) {
+    auto* live = page->add<kit::Live>();
+    live->setSpacing(6);
+    live->sync = [live] {
+        live->clearChildren();
+        auto vars = HyprOptions::get().environment();
+        auto* mine = group(live, "Your variables", "Apps started from now on see them; restart an app, or log in again, for the rest");
+        if (vars.empty()) row(mine, "info", "None yet");
+        for (size_t i = 0; i < vars.size(); ++i) {
+            const auto& [k, v] = vars[i];
+            auto r = row(mine, "data_object", k);
+            auto* f = r.row->add<TextField>();
+            f->setText(v);
+            f->fixedWidth = 280;
+            f->onSubmit = [i](const std::string& text) {
+                auto l = HyprOptions::get().environment();
+                if (i < l.size()) l[i].second = text;
+                HyprOptions::get().setEnvironment(l);
+            };
+            confirmButton(r.row, "env:" + k, "delete", [i] {
+                auto l = HyprOptions::get().environment();
+                if (i < l.size()) l.erase(l.begin() + static_cast<long>(i));
+                HyprOptions::get().setEnvironment(l);
+            });
+        }
+        auto add = row(mine, "add", "Add a variable");
+        auto* name = add.row->add<TextField>();
+        name->setPlaceholder("NAME");
+        name->fixedWidth = 150;
+        auto* value = add.row->add<TextField>();
+        value->setPlaceholder("value, then Enter");
+        value->fixedWidth = 190;
+        auto submit = [name, value](const std::string&) {
+            std::string k;
+            for (char c : name->text())
+                if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') k += c;
+            if (k.empty()) return;
+            auto l = HyprOptions::get().environment();
+            std::erase_if(l, [&](const auto& p) { return p.first == k; });
+            l.push_back({k, value->text()});
+            HyprOptions::get().setEnvironment(l);
+        };
+        name->onSubmit = submit;
+        value->onSubmit = submit;
+
+        const auto builtIn = shipped("env.lua", std::regex("hl\\.env\\(\"([^\"]+)\",\\s*\"([^\"]*)\"\\)"));
+        if (!builtIn.empty()) {
+            auto* g = group(live, "Set by Material3UI", "From env.lua: Wayland backends, portals and theming");
+            for (const auto& b : builtIn) {
+                auto r = row(g, "", b[0]);
+                r.title->setSize(13)->setColor("on_surface_variant", false);
+                r.row->add<Label>(b[1])->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(320);
+            }
+        }
+    };
+    live->conns.push_back(HyprOptions::get().changed.connect([live] { live->syncSoon(); }));
+    live->sync();
+}
+
 } // namespace
+
+void hyprStartupPage(Flex* page, Popup&) {
+    startupSections(page);
+}
+
+void hyprEnvironmentPage(Flex* page, Popup&) {
+    environmentSections(page);
+}
 
 void hyprMonitorsPage(Flex* page, Popup&) {
     monitorSections(page);

@@ -57,11 +57,24 @@ function M.bind(keys, dispatcher, flags, label)
 	hl.bind(target or keys, dispatcher, flags)
 end
 
--- Binds added in the editor; each runs a command
+-- Binds added in the editor: a command, or any action (a dispatcher written
+-- as Lua, e.g. "hl.dsp.window.pin()"); mouse ones drag (bindm)
 function M.apply_custom()
 	for _, c in ipairs(custom.custom or {}) do
-		if c.keys and c.command then
-			hl.bind(c.keys, hl.dsp.exec_cmd(c.command), { description = "Custom: " .. (c.label or c.command) })
+		local dispatcher
+		if c.action and c.action ~= "" then
+			local make = load("return " .. c.action)
+			if make then
+				local ok, d = pcall(make)
+				if ok then dispatcher = d end
+			end
+		elseif c.command and c.command ~= "" then
+			dispatcher = hl.dsp.exec_cmd(c.command)
+		end
+		if c.keys and dispatcher then
+			local flags = { description = "Custom: " .. (c.label or c.command or c.action) }
+			if c.mouse then flags.mouse = true end
+			pcall(hl.bind, c.keys, dispatcher, flags)
 		end
 	end
 end

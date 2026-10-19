@@ -26,6 +26,8 @@ public:
     };
     struct Custom {
         std::string keys, command, label;
+        std::string action; // a Lua dispatcher (hl.dsp…), used instead of the command
+        bool mouse = false; // a mouse drag bind (bindm)
     };
 
     static Keybinds& get();
@@ -42,7 +44,8 @@ public:
     void disable(const std::string& id, const std::string& label);
     void reset(const std::string& id);
     void resetAll();
-    void addCustom(const std::string& keys, const std::string& command, const std::string& label);
+    void addCustom(const std::string& keys, const std::string& command, const std::string& label,
+                   const std::string& action = {}, bool mouse = false);
     void removeCustom(size_t index);
 
     // Combos: "CTRL + SUPER + t" → "SUPER + CTRL + t"; ids are lowercased

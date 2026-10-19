@@ -16,6 +16,7 @@ enum Modifier : uint32_t {
 // (XKB_KEY_Escape, XKB_KEY_a…); `text` is what it types, if anything.
 struct KeyEvent {
     uint32_t sym = 0;
+    uint32_t baseSym = 0; // the key's own symbol, ignoring Shift and the rest
     std::string text;
     uint32_t mods = 0;
     bool repeat = false;

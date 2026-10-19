@@ -99,6 +99,18 @@ public:
     void keepMonitor(const std::string& key, const nlohmann::json& fields);
     void forgetMonitor(const std::string& key);
 
+    // Commands Hyprland runs once it has started (exec-once), in order
+    struct Startup {
+        std::string command, label;
+        bool enabled = true;
+    };
+    std::vector<Startup> startups() const;
+    void setStartups(const std::vector<Startup>& list);
+    // Environment variables for the session (apps started from now on see
+    // them; a few need the next login)
+    std::vector<std::pair<std::string, std::string>> environment() const;
+    void setEnvironment(const std::vector<std::pair<std::string, std::string>>& vars);
+
     // The Lua for a value (for the generated file and live applies)
     static std::string lua(const Option& o, const nlohmann::json& value);
 

@@ -334,6 +334,10 @@ void Display::sendKey(uint32_t key, bool repeat) {
     const xkb_keycode_t code = key + 8; // evdev → xkb
     ui::KeyEvent ev;
     ev.sym = xkb_state_key_get_one_sym(m_xkbState, code);
+    // The first level of the key's first layout: "1" for Shift+1, as binds name it
+    const xkb_keysym_t* base = nullptr;
+    if (xkb_keymap_key_get_syms_by_level(m_keymap, code, 0, 0, &base) > 0) ev.baseSym = base[0];
+    else ev.baseSym = ev.sym;
     char buf[64];
     if (xkb_state_key_get_utf8(m_xkbState, code, buf, sizeof buf) > 0) ev.text = buf;
     auto active = [&](const char* mod) {

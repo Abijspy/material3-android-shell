@@ -25,6 +25,8 @@ constexpr const char* kBaseline = "/hyprland/baseline";
 constexpr const char* kAnimations = "/hyprland/animations"; // leaf → {enabled, speed, curve, style}
 constexpr const char* kCurves = "/hyprland/curves";         // name → [x0, y0, x1, y1]
 constexpr const char* kMonitors = "/hyprland/monitors";     // key → {mode, position, scale, …}
+constexpr const char* kStartup = "/hyprland/autostart";     // [{command, label, enabled}]
+constexpr const char* kEnv = "/hyprland/env";               // [[name, value]]
 
 std::string quoted(const std::string& s); // below
 
@@ -662,11 +664,47 @@ void HyprOptions::forgetMonitor(const std::string& key) {
     changed.emit();
 }
 
+std::vector<HyprOptions::Startup> HyprOptions::startups() const {
+    std::vector<Startup> out;
+    for (const auto& s : Config::get().value<nlohmann::json>(kStartup, nlohmann::json::array()))
+        out.push_back({s.value("command", ""), s.value("label", ""), s.value("enabled", true)});
+    return out;
+}
+
+void HyprOptions::setStartups(const std::vector<Startup>& list) {
+    nlohmann::json out = nlohmann::json::array();
+    for (const auto& s : list) out.push_back({{"command", s.command}, {"label", s.label}, {"enabled", s.enabled}});
+    Config::get().set(kStartup, out);
+    save();
+    changed.emit();
+}
+
+std::vector<std::pair<std::string, std::string>> HyprOptions::environment() const {
+    std::vector<std::pair<std::string, std::string>> out;
+    for (const auto& v : Config::get().value<nlohmann::json>(kEnv, nlohmann::json::array()))
+        if (v.is_array() && v.size() == 2) out.push_back({v[0].get<std::string>(), v[1].get<std::string>()});
+    return out;
+}
+
+void HyprOptions::setEnvironment(const std::vector<std::pair<std::string, std::string>>& vars) {
+    nlohmann::json out = nlohmann::json::array();
+    for (const auto& [k, v] : vars) {
+        out.push_back({k, v});
+        // Live too, for whatever Hyprland starts from now on
+        Hyprland::get().request(std::format("eval hl.env({}, {})", quoted(k), quoted(v)));
+    }
+    Config::get().set(kEnv, out);
+    save();
+    changed.emit();
+}
+
 void HyprOptions::save() {
     // Every kept option, as a function shell.lua calls after the config
     const auto custom = Config::get().value<nlohmann::json>(kStore, nlohmann::json::object());
     std::string body;
-    // Monitors first: everything else is laid out on them
+    // The session's environment, before anything starts
+    for (const auto& [k, v] : environment()) body += std::format("\tpcall(hl.env, {}, {})\n", quoted(k), quoted(v));
+    // Monitors next: everything else is laid out on them
     for (auto& [key, fields] : Config::get().value<nlohmann::json>(kMonitors, nlohmann::json::object()).items())
         body += "\tpcall(hl.monitor, " + monitorLua(key, fields) + ")\n";
     // Curves next: the animations below may use them
@@ -697,8 +735,15 @@ void HyprOptions::save() {
     out << "-- Hyprland options changed in Material3UI Settings. Generated: edit them\n"
            "-- there (each has a reset), or delete this file to drop them all.\n"
            "-- shell.lua runs this after the rest of the config, so it wins.\n"
-           "return function()\n"
-        << body << "end\n";
+           "-- `stage` is \"load\", \"start\" (once, after Hyprland starts) or \"reload\".\n"
+           "return function(stage)\n"
+        << body;
+    // Startup apps: once, when Hyprland has started
+    std::string starts;
+    for (const auto& s : startups())
+        if (s.enabled && !s.command.empty()) starts += "\t\tpcall(hl.exec_cmd, " + quoted(s.command) + ")\n";
+    if (!starts.empty()) out << "\tif stage == \"start\" then\n" << starts << "\tend\n";
+    out << "end\n";
     out.close();
     std::filesystem::rename(file + ".tmp", file, ec);
 }

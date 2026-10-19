@@ -90,11 +90,17 @@ end
 -- Settings → Hyprland: every option changed there, written to
 -- hyprland_custom.lua. Applied now and again once the whole config has run
 -- (start and every reload), so the Settings app wins over other files.
-local function settings_app_options()
+local function settings_app_options(stage)
 	package.loaded["material3ui.hyprland_custom"] = nil
 	local ok, apply = pcall(require, "material3ui.hyprland_custom")
-	if ok and type(apply) == "function" then pcall(apply) end
+	if ok and type(apply) == "function" then pcall(apply, stage) end
 end
-settings_app_options()
-hl.on("hyprland.start", settings_app_options)
-hl.on("config.reloaded", settings_app_options)
+settings_app_options("load")
+hl.on("hyprland.start", function() settings_app_options("start") end)
+hl.on("config.reloaded", function() settings_app_options("reload") end)
+
+-- Hyprland Settings → Keybinds captures shortcuts in this empty submap, so
+-- Hyprland's own binds don't take the keys first (F35: no keyboard has it)
+hl.define_submap("material3ui_capture", function()
+	hl.bind("F35", hl.dsp.submap("reset"))
+end)

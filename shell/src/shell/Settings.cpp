@@ -20,6 +20,7 @@
 #include "services/Weather.h"
 #include "shell/Dock.h"
 #include "shell/HyprPages.h"
+#include "shell/KeyCapture.h"
 #include "shell/LockLayout.h"
 #include "shell/PanelKit.h"
 #include "shell/SettingsKit.h"
@@ -1570,7 +1571,7 @@ void systemPage(Flex* page, Popup&) {
     auto kb = row(more, "keyboard", "Keyboard", "Shortcuts: remap, disable and add");
     pillButton(kb.row, "Open", false, [] {
         EventLoop::get().defer([] {
-            reshowPage("keybinds");
+            reshowPage("hypr-keybinds");
         });
     });
     auto up = row(more, "system_update", "Software & updates", "Updates from the repos, the AUR and Flathub");
@@ -2413,62 +2414,18 @@ void lockPage(Flex* page, Popup&) {
 }
 
 // Key capture: click, then press a key
-class KeyField : public Button {
-public:
-    std::string key;
-    std::function<void()> onCaptured;
-    explicit KeyField(std::string k) : Button(Direction::Row), key(std::move(k)) {
-        pill(this)->setPadding({16, 9})->setBackground("surface_container_highest", false);
-        m_label = add<Label>();
-        m_label->setSize(14)->setWeight(500);
-        sync();
-        onClicked = [this](uint32_t) {
-            m_capturing = true;
-            focus();
-            sync();
-        };
-    }
-    bool focusable() const override { return true; }
-    void onFocus(bool f) override {
-        if (!f) m_capturing = false;
-        sync();
-    }
-    bool onKey(const KeyEvent& e) override {
-        if (!m_capturing) return false;
-        char name[64];
-        if (xkb_keysym_get_name(e.sym, name, sizeof name) <= 0) return true;
-        const std::string n = name;
-        // Modifiers alone are chips, not keys
-        if (n.starts_with("Shift") || n.starts_with("Control") || n.starts_with("Alt") || n.starts_with("Meta") ||
-            (n.starts_with("Super") && n != "Super_L"))
-            return true;
-        key = n.size() == 1 ? std::string(1, static_cast<char>(std::toupper(static_cast<unsigned char>(n[0])))) : n;
-        m_capturing = false;
-        sync();
-        if (onCaptured) onCaptured();
-        return true;
-    }
-
-private:
-    void sync() {
-        m_label->setText(m_capturing ? "Press a key…" : key.empty() ? "Click, then press a key" : Keybinds::pretty(key));
-        setBorder(m_capturing ? 2 : 0, "primary");
-    }
-    Label* m_label;
-    bool m_capturing = false;
-};
-
-// Modifier chips plus a key field, with live conflict warnings
+// Modifier chips plus the key, with live conflict warnings. Pressing the
+// shortcut (KeyCapture) fills in both; the chips still toggle by hand.
 struct ComboEditor {
     Flex* root;
     std::shared_ptr<std::array<bool, 4>> mods;
-    KeyField* key;
+    std::shared_ptr<std::string> key;
     std::string combo() const {
         static const char* names[] = {"SUPER", "CTRL", "ALT", "SHIFT"};
         std::string c;
         for (int i = 0; i < 4; ++i)
             if ((*mods)[static_cast<size_t>(i)]) c += std::string(names[i]) + " + ";
-        return c + key->key;
+        return c + *key;
     }
 };
 
@@ -2478,23 +2435,30 @@ ComboEditor comboEditor(Node* parent, const std::string& initial, const std::str
     auto* rowFlex = col->add<Flex>(Flex::Direction::Row);
     rowFlex->setSpacing(6);
     auto mods = std::make_shared<std::array<bool, 4>>();
-    const std::string norm = Keybinds::normalize(initial.empty() ? "SUPER + " : initial);
-    std::string key = norm.substr(norm.rfind(" + ") == std::string::npos ? 0 : norm.rfind(" + ") + 3);
+    auto key = std::make_shared<std::string>();
     static const char* names[] = {"SUPER", "CTRL", "ALT", "SHIFT"};
     static const char* labels[] = {"Super", "Ctrl", "Alt", "Shift"};
-    for (int i = 0; i < 4; ++i) (*mods)[static_cast<size_t>(i)] = norm.find(names[i]) != std::string::npos;
-    if (key == names[0] || key == names[1] || key == names[2] || key == names[3]) key.clear();
+    // Splits a combo into the chips and the key
+    auto load = [mods, key](const std::string& combo) {
+        const std::string norm = Keybinds::normalize(combo);
+        const auto cut = norm.rfind(" + ");
+        *key = norm.substr(cut == std::string::npos ? 0 : cut + 3);
+        for (int i = 0; i < 4; ++i) (*mods)[static_cast<size_t>(i)] = norm.find(names[i]) != std::string::npos;
+        for (const char* n : names)
+            if (*key == n) key->clear();
+    };
+    load(initial.empty() ? "SUPER + " : initial);
     auto* warn = col->add<Label>();
     warn->setSize(12)->setColor("error", false)->setMaxWidth(600);
-    auto* keyField = std::make_unique<KeyField>(key).release();
-    ComboEditor ed{col, mods, keyField};
+    ComboEditor ed{col, mods, key};
     auto refresh = [warn, ed, exceptId] {
-        const auto hits = ed.key->key.empty() ? std::vector<std::string>{} : Keybinds::get().conflictsFor(ed.combo(), exceptId);
+        const auto hits = ed.key->empty() ? std::vector<std::string>{} : Keybinds::get().conflictsFor(ed.combo(), exceptId);
         std::string text;
         for (const auto& h : hits) text += (text.empty() ? "" : ", ") + h;
         warn->setText(hits.empty() ? "" : "Also used by: " + text + ". Both will run.");
         warn->setVisible(!hits.empty());
     };
+    auto paints = std::make_shared<std::vector<std::function<void()>>>();
     for (int i = 0; i < 4; ++i) {
         auto* chip = rowFlex->add<Button>();
         pill(chip)->setPadding({14, 8});
@@ -2506,6 +2470,7 @@ ComboEditor comboEditor(Node* parent, const std::string& initial, const std::str
             l->setColor(on ? "on_secondary_container" : "on_surface");
         };
         paint();
+        paints->push_back(paint);
         chip->onClicked = [mods, i, paint, refresh](uint32_t) {
             (*mods)[static_cast<size_t>(i)] = !(*mods)[static_cast<size_t>(i)];
             paint();
@@ -2513,12 +2478,66 @@ ComboEditor comboEditor(Node* parent, const std::string& initial, const std::str
         };
     }
     rowFlex->add<Label>("+")->setSize(15)->setColor("on_surface_variant", false);
-    rowFlex->adopt(std::unique_ptr<Node>(keyField));
-    keyField->grow = true;
-    keyField->onCaptured = refresh;
+    auto* capture = rowFlex->add<KeyCapture>(initial);
+    capture->grow = true;
+    capture->onCaptured = [load, paints, refresh](const std::string& combo) {
+        load(combo);
+        for (auto& p : *paints) p();
+        refresh();
+    };
     refresh();
     return ed;
 }
+
+// What a custom bind can do. `lua` takes one "%s" for its argument; `arg`
+// says which: none, a command, a direction, a workspace or a name
+struct BindAction {
+    const char* group;
+    const char* label;
+    const char* lua; // "" runs a command
+    enum Arg { None, Command, Direction, Workspace, Name } arg = None;
+    bool mouse = false;
+};
+const std::vector<BindAction>& bindActions() {
+    static const std::vector<BindAction> all = {
+        {"Apps", "Run a command", "", BindAction::Command},
+        {"Windows", "Close the window", "hl.dsp.window.close()"},
+        {"Windows", "Force-quit the window", "hl.dsp.window.kill()"},
+        {"Windows", "Fullscreen", "hl.dsp.window.fullscreen(\"fullscreen\")"},
+        {"Windows", "Maximize", "hl.dsp.window.fullscreen(\"maximized\")"},
+        {"Windows", "Float or tile", "hl.dsp.window.float({ action = \"toggle\" })"},
+        {"Windows", "Pin on every workspace", "hl.dsp.window.pin()"},
+        {"Windows", "Centre the window", "hl.dsp.window.center()"},
+        {"Windows", "Pseudo-tile", "hl.dsp.window.pseudo({ action = \"toggle\" })"},
+        {"Windows", "Switch the split", "hl.dsp.layout(\"togglesplit\")"},
+        {"Windows", "Next window", "hl.dsp.window.cycle_next()"},
+        {"Focus", "Focus in a direction", "hl.dsp.focus({ direction = \"%s\" })", BindAction::Direction},
+        {"Focus", "Focus the urgent or last window", "hl.dsp.focus({ urgent_or_last = true })"},
+        {"Focus", "Focus the next monitor", "hl.dsp.focus({ monitor = \"+1\" })"},
+        {"Move", "Move the window in a direction", "hl.dsp.window.move({ direction = \"%s\" })", BindAction::Direction},
+        {"Move", "Swap with the window in a direction", "hl.dsp.window.swap({ direction = \"%s\" })", BindAction::Direction},
+        {"Move", "Move the window to a workspace", "hl.dsp.window.move({ workspace = \"%s\" })", BindAction::Workspace},
+        {"Move", "Move the window to the next monitor", "hl.dsp.window.move({ monitor = \"+1\" })"},
+        {"Workspaces", "Go to a workspace", "hl.dsp.focus({ workspace = \"%s\" })", BindAction::Workspace},
+        {"Workspaces", "Next workspace", "hl.dsp.focus({ workspace = \"e+1\" })"},
+        {"Workspaces", "Previous workspace", "hl.dsp.focus({ workspace = \"e-1\" })"},
+        {"Workspaces", "Show or hide a special workspace", "hl.dsp.workspace.toggle_special(\"%s\")", BindAction::Name},
+        {"Workspaces", "Send the window to a special workspace", "hl.dsp.window.move({ workspace = \"special:%s\" })", BindAction::Name},
+        {"Groups", "Group or ungroup", "hl.dsp.group.toggle()"},
+        {"Groups", "Next tab in the group", "hl.dsp.group.next()"},
+        {"Mouse", "Drag the window", "hl.dsp.window.drag()", BindAction::None, true},
+        {"Mouse", "Resize the window", "hl.dsp.window.resize()", BindAction::None, true},
+        {"Session", "Turn the screens off or on", "hl.dsp.dpms(\"toggle\")"},
+        {"Session", "Leave Hyprland", "hl.dsp.exit()"},
+    };
+    return all;
+}
+
+// The new-bind form, kept while the page rebuilds around it
+struct BindForm {
+    size_t action = 0;
+    std::string name, arg = "left", mouseButton = "mouse:272";
+};
 
 void keybindsPage(Flex* page, Popup&) {
     auto& kb = Keybinds::get();
@@ -2529,7 +2548,8 @@ void keybindsPage(Flex* page, Popup&) {
     }
     auto* live = page->add<Live>();
     auto editing = std::make_shared<std::string>(); // id being edited, "+" for a new custom bind
-    live->sync = [live, editing] {
+    auto form = std::make_shared<BindForm>();
+    live->sync = [live, editing, form] {
         live->clearChildren();
         auto& kb = Keybinds::get();
         auto* intro = live->add<Label>("Click a bind to change its keys. Changes apply at once and survive updates.");
@@ -2570,7 +2590,7 @@ void keybindsPage(Flex* page, Popup&) {
                     Keybinds::get().reset(bind.id);
                 });
                 pillButton(actions, "Save", true, [ed, bind, editing] {
-                    if (ed.key->key.empty()) return;
+                    if (ed.key->empty()) return;
                     editing->clear();
                     Keybinds::get().remap(bind.id, ed.combo(), bind.label);
                 });
@@ -2586,33 +2606,94 @@ void keybindsPage(Flex* page, Popup&) {
             }
         }
 
-        auto* custom = group(live, "Custom", "Run any command from a key combination");
+        auto* custom = group(live, "Your binds", "Any action or command, from a key combination or a mouse drag");
         for (size_t i = 0; i < kb.custom().size(); ++i) {
             const auto& c = kb.custom()[i];
-            auto r = row(custom, "terminal", c.label, c.command + "  ·  " + Keybinds::pretty(c.keys));
-            iconButton(r.row, "delete", [i] { Keybinds::get().removeCustom(i); });
+            auto r = row(custom, c.mouse ? "mouse" : c.action.empty() ? "terminal" : "bolt", c.label,
+                         (c.action.empty() ? c.command : std::string()) + (c.action.empty() ? "  ·  " : "") + Keybinds::pretty(c.keys));
+            confirmButton(r.row, "bind:" + c.keys, "delete", [i] { Keybinds::get().removeCustom(i); });
         }
         if (*editing == "+") {
-            auto* form = custom->add<Flex>(Flex::Direction::Column);
-            form->setAlignItems(Align::Stretch)->setSpacing(8)->setPadding({20, 8});
-            auto* name = form->add<TextField>();
-            name->setPlaceholder("Name (e.g. Open VS Code)");
-            auto* cmd = form->add<TextField>();
-            cmd->setPlaceholder("Command (e.g. code)");
-            auto ed = comboEditor(form, "", "");
-            auto* actions = form->add<Flex>(Flex::Direction::Row);
-            actions->setSpacing(8)->setJustify(Align::End);
-            pillButton(actions, "Cancel", false, [editing, live] {
+            const auto& actions = bindActions();
+            const BindAction& act = actions[form->action];
+            auto* box = custom->add<Flex>(Flex::Direction::Column);
+            box->setAlignItems(Align::Stretch)->setSpacing(10)->setPadding({20, 10});
+            auto* name = box->add<TextField>();
+            name->setPlaceholder("Name (e.g. Pin the window)");
+            name->setText(form->name);
+            name->onChanged = [form](const std::string& t) { form->name = t; };
+
+            // The action, in groups
+            auto* pick = box->add<Flex>(Flex::Direction::Row);
+            pick->setSpacing(10);
+            pick->add<Label>("Does")->setSize(14)->setColor("on_surface_variant", false);
+            auto* drop = pick->add<Button>(Flex::Direction::Row);
+            pill(drop->setBackground("secondary_container", false))->setPadding({14, 8})->setSpacing(6);
+            drop->add<Label>(act.label)->setSize(14)->setWeight(500)->setColor("on_secondary_container", false);
+            drop->add<Icon>("expand_more", 18)->setColor("on_secondary_container", false);
+            auto* menu = box->add<Flex>(Flex::Direction::Column);
+            menu->setSpacing(2)->setAlignItems(Align::Stretch)->setVisible(false);
+            std::string lastGroup;
+            for (size_t i = 0; i < actions.size(); ++i) {
+                if (lastGroup != actions[i].group) {
+                    lastGroup = actions[i].group;
+                    menu->add<Label>(lastGroup)->setSize(12)->setWeight(600)->setColor("primary", false);
+                }
+                auto* item = menu->add<Button>(Flex::Direction::Row);
+                pill(item)->setPadding({14, 7});
+                item->add<Label>(actions[i].label)->setSize(14);
+                item->onClicked = [form, live, i](uint32_t button) {
+                    if (button != BTN_LEFT) return;
+                    form->action = i;
+                    const auto kind = bindActions()[i].arg;
+                    form->arg = kind == BindAction::Direction ? "left" : kind == BindAction::Workspace ? "1" : kind == BindAction::Name ? "magic" : "";
+                    live->syncSoon();
+                };
+            }
+            drop->onClicked = [menu](uint32_t button) {
+                if (button == BTN_LEFT) menu->setVisible(!menu->visible());
+            };
+
+            // Its argument
+            if (act.arg == BindAction::Direction) {
+                connectedGroup<std::string>(box, form->arg, {{"left", "Left"}, {"right", "Right"}, {"up", "Up"}, {"down", "Down"}},
+                                            [form](std::string v) { form->arg = v; });
+            } else if (act.arg != BindAction::None) {
+                auto* f = box->add<TextField>();
+                f->setPlaceholder(act.arg == BindAction::Command ? "Command (e.g. code)" : act.arg == BindAction::Workspace ? "Workspace (e.g. 3)" : "Name (e.g. magic)");
+                f->setText(form->arg);
+                f->onChanged = [form](const std::string& t) { form->arg = t; };
+            }
+
+            // The keys, or for a drag, the modifiers and a mouse button
+            auto ed = comboEditor(box, act.mouse ? "SUPER + " + form->mouseButton : "", "");
+            if (act.mouse) {
+                connectedGroup<std::string>(box, form->mouseButton,
+                                            {{"mouse:272", "Left button"}, {"mouse:273", "Right button"}, {"mouse:274", "Middle button"}},
+                                            [form, ed](std::string v) {
+                                                form->mouseButton = v;
+                                                *ed.key = v;
+                                            });
+            }
+            auto* buttons = box->add<Flex>(Flex::Direction::Row);
+            buttons->setSpacing(8)->setJustify(Align::End);
+            pillButton(buttons, "Cancel", false, [editing, live] {
                 editing->clear();
                 live->syncSoon();
             });
-            pillButton(actions, "Add", true, [ed, name, cmd, editing] {
-                if (ed.key->key.empty() || cmd->text().empty()) return;
+            pillButton(buttons, "Add", true, [ed, form, editing] {
+                const BindAction& a = bindActions()[form->action];
+                if (ed.key->empty() || (a.arg != BindAction::None && form->arg.empty())) return;
+                std::string lua = a.lua;
+                if (const auto at = lua.find("%s"); at != std::string::npos) lua.replace(at, 2, form->arg);
+                const std::string label = form->name.empty() ? a.label : form->name;
                 editing->clear();
-                Keybinds::get().addCustom(ed.combo(), cmd->text(), name->text());
+                if (a.arg == BindAction::Command) Keybinds::get().addCustom(ed.combo(), form->arg, label);
+                else Keybinds::get().addCustom(ed.combo(), "", label, lua, a.mouse);
+                *form = BindForm{};
             });
         } else {
-            auto r = row(custom, "add", "Add a bind");
+            auto r = row(custom, "add", "Add a bind", "Press the keys you want; Hyprland's own binds pause while you do");
             pillButton(r.row, "Add", true, [editing, live] {
                 *editing = "+";
                 live->syncSoon();
@@ -2813,6 +2894,15 @@ void aboutPage(Flex* page, Popup&) {
     row(credits, "auto_awesome", "end-4, DankMaterialShell, Ambxst, pC, P3DROVFX, Vynx", "Design and interaction references");
 }
 
+// Settings' Keyboard entry: shortcuts are Hyprland's, in Hyprland Settings
+void keyboardPage(Flex* page, Popup&) {
+    auto* g = group(page, "Keyboard shortcuts", "Remap the shell's shortcuts and add your own: actions, commands and mouse drags");
+    auto r = row(g, "keyboard_command_key", "Keybinds", "In Hyprland Settings, with the keyboard layout and repeat rate");
+    pillButton(r.row, "Open", true, [] {
+        if (open) open("hyprsettings hypr-keybinds");
+    }, "open_in_new");
+}
+
 struct PageDef {
     const char* id;
     const char* icon;
@@ -2849,6 +2939,9 @@ const PageDef kPages[] = {
     {"hypr-decoration", "auto_awesome", "Decoration", "Corners, opacity, blur, shadows and glow", hyprDecorationPage},
     {"hypr-monitors", "desktop_windows", "Displays", "Arrangement, resolution, scale, rotation, VRR and HDR", hyprMonitorsPage},
     {"hypr-animations", "animation", "Animations", "Every animation's length, curve and style, and a curve editor", hyprAnimationsPage},
+    {"hypr-keybinds", "keyboard_command_key", "Keybinds", "Press a shortcut to set it; any action or command, mouse drags too", keybindsPage},
+    {"hypr-startup", "rocket_launch", "Startup apps", "Apps and commands to run when Hyprland starts", hyprStartupPage},
+    {"hypr-environment", "data_object", "Environment", "Variables for the session's apps", hyprEnvironmentPage},
     {"hypr-layouts", "dashboard", "Layouts", "Dwindle, master and scrolling tiling", hyprLayoutsPage},
     {"hypr-input", "keyboard_alt", "Input devices", "Keyboard layouts, pointer, touchpad, touch and tablets", hyprInputPage},
     {"hypr-gestures", "swipe", "Gestures", "Workspace swipes and the scrolling layout", hyprGesturesPage},
@@ -2858,7 +2951,7 @@ const PageDef kPages[] = {
     {"hypr-render", "memory", "Rendering", "Direct scanout, colour management and OpenGL", hyprRenderPage},
     {"hypr-debug", "bug_report", "Debug", "Logs, overlays and damage tracking", hyprDebugPage},
     {"mouse", "touchpad_mouse", "Mouse & touchpad", "Tap to click, scrolling, gestures and pointer speed", mousePage},
-    {"keybinds", "keyboard", "Keyboard", "Shortcuts: remap, disable and add", keybindsPage},
+    {"keybinds", "keyboard", "Keyboard", "Shortcuts are in Hyprland Settings", keyboardPage},
     {"packages", "system_update", "Software & updates", "Updates from the repos, the AUR and Flathub", packagesPage},
     {"about", "info", "About", "This device and the shell", aboutPage},
 };
@@ -2882,6 +2975,7 @@ int pageGroup(const std::string& id) {
     if (id == "hypr-monitors" || id == "hypr-windows" || id == "hypr-decoration" || id == "hypr-animations") return 0;
     if (id == "hypr-layouts" || id == "hypr-input" || id == "hypr-gestures" || id == "hypr-cursor" || id == "hypr-groups")
         return 1;
+    if (id == "hypr-keybinds" || id == "hypr-startup" || id == "hypr-environment") return 3;
     if (id.starts_with("hypr-")) return 2;
     if (id == "network" || id == "bluetooth") return 0;
     if (id == "defaults" || id == "notifications" || id == "tools" || id == "weather") return 1;

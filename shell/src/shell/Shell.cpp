@@ -526,7 +526,7 @@ void Shell::registerIpc() {
         openSettings(a.empty() ? "" : a[0]);
         return std::string(m_settings && !m_settings->closing() ? "open" : "closed");
     });
-    ipc.add("hyprsettings", "hyprsettings [hypr-windows|hypr-decoration|hypr-animations|hypr-layouts|hypr-input|hypr-gestures|"
+    ipc.add("hyprsettings", "hyprsettings [hypr-monitors|hypr-windows|hypr-decoration|hypr-animations|hypr-keybinds|hypr-startup|hypr-environment|hypr-layouts|hypr-input|hypr-gestures|"
                             "hypr-cursor|hypr-groups|hypr-misc|hypr-render|hypr-debug]: Hyprland Settings",
             [this](const IpcServer::Args& a) {
         openHyprSettings(a.empty() ? "" : a[0]);
