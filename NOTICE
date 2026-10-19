@@ -24,3 +24,8 @@ see the LICENSE file for details.
 The native C++ shell in shell/ follows the architecture of Noctalia
 (https://github.com/noctalia-dev/noctalia, MIT). It is an independent implementation;
 no Noctalia source code is included.
+
+shell/data/icons/hyprland-logo.svg is the Hyprland logo, cropped to its drop from
+assets/header.svg in Hyprland (https://github.com/hyprwm/Hyprland), Copyright (c)
+Hyprland contributors, under the BSD-3-Clause license. It is used only to name
+Hyprland in Settings → About and does not imply endorsement.

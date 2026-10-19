@@ -2883,10 +2883,34 @@ void aboutPage(Flex* page, Popup&) {
     auto& stats = SystemStats::get();
     auto lease = stats.lease(); // one sample for memory and uptime
     row(sys, "computer", host, "Device name");
-    row(sys, "deployed_code", os.empty() ? "Linux" : os, std::string("Kernel ") + u.release);
+    // The distribution's logo (LOGO= in os-release, in pixmaps or the icon
+    // theme) and Hyprland's, in place of the glyphs, where there is one
+    auto useLogo = [](const Row& r, const std::string& nameOrPath) {
+        r.row->remove(r.row->children()[0].get());
+        // The glyphs' size, so the text lines up with the other rows
+        r.row->adopt(std::make_unique<ImageView>(22, [nameOrPath](float scale, int& w, int& h) -> GLuint {
+                         auto* t = Images::get().icon(nameOrPath, static_cast<int>(std::lround(22 * scale)));
+                         if (!t) return 0;
+                         w = t->width;
+                         h = t->height;
+                         return t->id;
+                     }),
+                     0);
+    };
+    auto osRow = row(sys, "deployed_code", os.empty() ? "Linux" : os, std::string("Kernel ") + u.release);
+    if (std::string mark = readFirstLine("/etc/os-release", "LOGO="); !mark.empty()) {
+        if (mark.size() >= 2 && mark.front() == '"') mark = mark.substr(1, mark.size() - 2);
+        for (const char* ext : {".svg", ".png"})
+            if (std::filesystem::exists("/usr/share/pixmaps/" + mark + ext)) {
+                mark = "/usr/share/pixmaps/" + mark + ext;
+                break;
+            }
+        if (Images::get().icon(mark, 22)) useLogo(osRow, mark);
+    }
     row(sys, "memory", cpu.empty() ? "CPU" : cpu, std::format("{} logical cores", stats.cores()));
     row(sys, "memory_alt", formatBytes(stats.memTotal()), "Memory");
-    row(sys, "grid_view", "Hyprland " + hypr, "Compositor");
+    auto wm = row(sys, "grid_view", "Hyprland " + hypr, "Compositor");
+    if (const auto mark = paths::dataFile("icons/hyprland-logo.svg"); !mark.empty()) useLogo(wm, mark);
 
     auto* credits = group(page, "Credits");
     row(credits, "favorite", "NAnDoroid-shell by na-ive", "The project Material3UI grew from");
