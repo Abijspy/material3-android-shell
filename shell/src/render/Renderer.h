@@ -41,6 +41,11 @@ public:
     // Full-colour premultiplied BGRA texture (Cairo's ARGB32 layout)
     void image(GLuint texture, const RectF& r, float opacity = 1, Radii radii = {});
 
+    // Blurs what has been drawn under `r` so far, strongest (`radius`
+    // logical px) at its top edge or its bottom edge and sharp at the
+    // other: scrolled content softening as it meets a pane's edge
+    void blurEdge(const RectF& r, float radius, bool strongAtTop);
+
     // Multiplies every colour drawn until popped (fades, disabled states)
     void pushOpacity(float o);
     void popOpacity();
@@ -78,7 +83,12 @@ private:
         GLuint id = 0;
         GLint viewport, rect, opacity, tex, radii, px;
     } m_imageProg;
+    struct BlurProgram {
+        GLuint id = 0;
+        GLint viewport, rect, tex, texel, radius, top;
+    } m_blurProg;
     GLuint m_quad = 0;
+    GLuint m_backdrop = 0; // blurEdge's copy of the frame under it
 
     int m_bufferWidth = 0, m_bufferHeight = 0;
     float m_scale = 1;

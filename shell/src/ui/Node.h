@@ -114,6 +114,8 @@ protected:
     virtual SizeF doMeasure(SizeF available);
     virtual void doArrange();
     virtual void doPaint(Renderer&) {}
+    // After the children, inside this node's clip (effects over its content)
+    virtual void doPaintOver(Renderer&) {}
     virtual bool doAnimating() const { return false; }
     virtual bool clipsChildren() const { return false; }
 

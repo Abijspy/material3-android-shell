@@ -2978,6 +2978,7 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
     // field, then the pages in rounded groups, each with its icon in a tonal
     // circle and a one-line summary. Scrolls when the screen is short.
     auto* sideScroll = columns->add<ScrollView>();
+    sideScroll->blurEdges = true;
     sideScroll->maxHeight = window ? 1e6f : 680;
     sideScroll->fixedWidth = 280;
     auto* side = sideScroll->add<Flex>(Flex::Direction::Column);
@@ -3022,6 +3023,7 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
     close->setVisible(!window); // the window's title bar has its own
 
     auto* scroll = right->add<ScrollView>();
+    scroll->blurEdges = true;
     scroll->maxHeight = window ? 1e6f : 600;
     auto* content = scroll->add<Flex>(Flex::Direction::Column);
     content->setAlignItems(Align::Stretch)->setSpacing(6)->setPadding({4, 4, 12, 12});

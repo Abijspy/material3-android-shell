@@ -85,6 +85,9 @@ public:
     // The scrollbar floats over the content instead of taking a gutter
     // (fixed-width grids, like Quick Settings' tiles)
     bool overlayBar = false;
+    // Content softens into a blur at the top and bottom edges while there
+    // is more of it beyond them (Settings' panes)
+    bool blurEdges = false;
 
     Node* content() const { return children().empty() ? nullptr : children().front().get(); }
     void scrollTo(float y, bool animate = true);
@@ -101,6 +104,7 @@ protected:
     SizeF doMeasure(SizeF available) override;
     void doArrange() override;
     void doPaint(Renderer& r) override;
+    void doPaintOver(Renderer& r) override;
     bool clipsChildren() const override { return true; }
     bool doAnimating() const override { return m_offset.running() || m_bar.running(); }
 

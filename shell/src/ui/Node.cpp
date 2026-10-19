@@ -105,6 +105,7 @@ void Node::paint(Renderer& r) {
     doPaint(r);
     if (clipsChildren()) r.pushClip(m_rect);
     for (auto& c : m_children) c->paint(r);
+    doPaintOver(r);
     if (clipsChildren()) r.popClip();
     if (moved) r.popTranslate();
     if (o < 1) r.popOpacity();

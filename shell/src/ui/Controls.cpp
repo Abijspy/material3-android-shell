@@ -293,6 +293,19 @@ void ScrollView::doPaint(Renderer& r) {
     if (m_bar.running()) requestRedraw();
 }
 
+void ScrollView::doPaintOver(Renderer& r) {
+    if (!blurEdges || !overflows()) return;
+    const RectF& b = rect();
+    constexpr float edge = 40, radius = 10;
+    // Each edge blurs in as content passes it, so a page at rest at the
+    // top is sharp there
+    const float off = std::clamp(m_offset.value(), 0.0f, maxOffset());
+    const float above = std::min(off / edge, 1.0f), below = std::min((maxOffset() - off) / edge, 1.0f);
+    const float w = b.w - gutter(); // the scrollbar stays sharp
+    if (above > 0) r.blurEdge({b.x, b.y, w, edge}, radius * above, true);
+    if (below > 0) r.blurEdge({b.x, b.bottom() - edge, w, edge}, radius * below, false);
+}
+
 void ScrollView::onHover(bool hovered) {
     m_hovered = hovered;
     if (m_grab < 0) m_bar.set(hovered ? 1 : 0);
