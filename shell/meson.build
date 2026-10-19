@@ -131,4 +131,6 @@ install_data('data/wallpapers/default_wallpaper.png', 'data/wallpapers/midnight-
 executable('material3ui', sources, protocol_sources,
   include_directories: include_directories('src'),
   dependencies: [wayland_client, wayland_egl, egl, glesv2, pangocairo, cairo, json, xkbcommon, libsystemd, libpulse, librsvg, gdk_pixbuf, polkit_agent, pam],
+  # Function names in crash.log's backtraces
+  link_args: ['-rdynamic'],
   install: true)

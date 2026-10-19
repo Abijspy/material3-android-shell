@@ -1,3 +1,4 @@
+#include "core/Guard.h"
 #include "wayland/Surface.h"
 
 #include "core/EventLoop.h"
@@ -27,21 +28,21 @@ namespace m3::wl {
 namespace {
 
 const wl_callback_listener kFrame = {
-    .done = [](void* data, wl_callback*, uint32_t) { static_cast<Surface*>(data)->frameDone(); },
+    .done = [](void* data, wl_callback*, uint32_t) { m3::guard("a Wayland event", [&] { static_cast<Surface*>(data)->frameDone(); }); },
 };
 
 const wl_surface_listener kSurface = {
     .enter = [](void*, wl_surface*, wl_output*) {},
     .leave = [](void*, wl_surface*, wl_output*) {},
     .preferred_buffer_scale = [](void* data, wl_surface*, int32_t scale) {
-        static_cast<Surface*>(data)->preferredScale(static_cast<float>(scale), false);
+        m3::guard("a Wayland event", [&] { static_cast<Surface*>(data)->preferredScale(static_cast<float>(scale), false); });
     },
     .preferred_buffer_transform = [](void*, wl_surface*, uint32_t) {},
 };
 
 const wp_fractional_scale_v1_listener kFractional = {
     .preferred_scale = [](void* data, wp_fractional_scale_v1*, uint32_t scale120) {
-        static_cast<Surface*>(data)->preferredScale(static_cast<float>(scale120) / 120.0f, true);
+        m3::guard("a Wayland event", [&] { static_cast<Surface*>(data)->preferredScale(static_cast<float>(scale120) / 120.0f, true); });
     },
 };
 

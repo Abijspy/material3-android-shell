@@ -1,3 +1,4 @@
+#include "core/Guard.h"
 #include "wayland/LayerSurface.h"
 
 #include "wayland/Display.h"
@@ -14,14 +15,14 @@ namespace {
 
 const zwlr_layer_surface_v1_listener kLayer = {
     .configure = [](void* data, zwlr_layer_surface_v1*, uint32_t serial, uint32_t w, uint32_t h) {
-        static_cast<LayerSurface*>(data)->configure(serial, w, h);
+        m3::guard("a Wayland event", [&] { static_cast<LayerSurface*>(data)->configure(serial, w, h); });
     },
-    .closed = [](void* data, zwlr_layer_surface_v1*) { static_cast<LayerSurface*>(data)->closed(); },
+    .closed = [](void* data, zwlr_layer_surface_v1*) { m3::guard("a Wayland event", [&] { static_cast<LayerSurface*>(data)->closed(); }); },
 };
 
 const ext_session_lock_surface_v1_listener kLockSurface = {
     .configure = [](void* data, ext_session_lock_surface_v1*, uint32_t serial, uint32_t w, uint32_t h) {
-        static_cast<LockSurface*>(data)->configure(serial, w, h);
+        m3::guard("a Wayland event", [&] { static_cast<LockSurface*>(data)->configure(serial, w, h); });
     },
 };
 

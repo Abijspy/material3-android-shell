@@ -1,8 +1,10 @@
 #include "services/Tray.h"
 
+#include "core/Guard.h"
 #include "core/Log.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <ctime>
 #include <systemd/sd-bus.h>
 #include <unistd.h>
@@ -32,7 +34,9 @@ const char* kIntrospect = R"(<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Ob
 )";
 
 int onWatcherMessage(sd_bus_message* m, void* userdata, sd_bus_error*) {
-    return static_cast<Tray*>(userdata)->handleWatcher(m);
+    int r = -EIO; // a method that throws answers with an error instead
+    guard("a tray item", [&] { r = static_cast<Tray*>(userdata)->handleWatcher(m); });
+    return r;
 }
 
 // "service" as items register it: a bus name, a bus name + path, or a path

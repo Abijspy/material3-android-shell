@@ -1,5 +1,7 @@
 #include "dbus/Bus.h"
 
+#include "core/Guard.h"
+
 #include "core/Log.h"
 
 #include <cstring>
@@ -101,18 +103,20 @@ bool readNext(sd_bus_message* m, Value& out) {
 int onReply(sd_bus_message* m, void* userdata, sd_bus_error*) {
     std::unique_ptr<Bus::Reply> reply(static_cast<Bus::Reply*>(userdata));
     if (!*reply) return 0;
-    if (sd_bus_message_is_method_error(m, nullptr)) {
-        const sd_bus_error* e = sd_bus_message_get_error(m);
-        (*reply)(Value::array(), e && e->name ? e->name : "error");
-    } else {
-        (*reply)(readAll(m), "");
-    }
+    guard("a D-Bus reply", [&] {
+        if (sd_bus_message_is_method_error(m, nullptr)) {
+            const sd_bus_error* e = sd_bus_message_get_error(m);
+            (*reply)(Value::array(), e && e->name ? e->name : "error");
+        } else {
+            (*reply)(readAll(m), "");
+        }
+    });
     return 0;
 }
 
 int onSignal(sd_bus_message* m, void* userdata, sd_bus_error*) {
     auto& handler = *static_cast<Bus::Handler*>(userdata);
-    handler(readAll(m), m);
+    guard("a D-Bus signal", [&] { handler(readAll(m), m); });
     sd_bus_message_rewind(m, 1);
     return 0;
 }

@@ -1,8 +1,10 @@
 #include "services/Notifications.h"
 
+#include "core/Guard.h"
 #include "core/Log.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <systemd/sd-bus.h>
 
 namespace m3 {
@@ -13,7 +15,9 @@ const char* kName = "org.freedesktop.Notifications";
 const char* kPath = "/org/freedesktop/Notifications";
 
 int onMessage(sd_bus_message* m, void* ud, sd_bus_error*) {
-    return static_cast<Notifications*>(ud)->handle(m);
+    int r = -EIO; // a method that throws answers with an error instead
+    guard("a notification", [&] { r = static_cast<Notifications*>(ud)->handle(m); });
+    return r;
 }
 
 const char* kIntrospect = R"(<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"

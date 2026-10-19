@@ -1,3 +1,4 @@
+#include "core/Guard.h"
 #include "wayland/Window.h"
 
 #include "wayland/Display.h"
@@ -12,7 +13,7 @@ namespace m3::wl {
 namespace {
 
 const xdg_surface_listener kXdgSurface = {
-    .configure = [](void* data, xdg_surface*, uint32_t serial) { static_cast<Window*>(data)->surfaceConfigure(serial); },
+    .configure = [](void* data, xdg_surface*, uint32_t serial) { m3::guard("a Wayland event", [&] { static_cast<Window*>(data)->surfaceConfigure(serial); }); },
 };
 
 // Newer xdg-shell adds events (bounds, capabilities) we don't need
@@ -23,9 +24,9 @@ const xdg_toplevel_listener kToplevel = {
     // maximised (so apps drop their shadows), which says nothing about the
     // maximise button. The window tracks what it asked for itself.
     .configure = [](void* data, xdg_toplevel*, int32_t w, int32_t h, wl_array*) {
-        static_cast<Window*>(data)->toplevelConfigure(w, h);
+        m3::guard("a Wayland event", [&] { static_cast<Window*>(data)->toplevelConfigure(w, h); });
     },
-    .close = [](void* data, xdg_toplevel*) { static_cast<Window*>(data)->close(); },
+    .close = [](void* data, xdg_toplevel*) { m3::guard("a Wayland event", [&] { static_cast<Window*>(data)->close(); }); },
     .configure_bounds = [](void*, xdg_toplevel*, int32_t, int32_t) {},
     .wm_capabilities = [](void*, xdg_toplevel*, wl_array*) {},
 };

@@ -1,5 +1,7 @@
 #include "core/EventLoop.h"
 
+#include "core/Guard.h"
+
 #include <algorithm>
 #include <cerrno>
 #include <cstdlib>
@@ -10,6 +12,7 @@
 #include <unistd.h>
 
 namespace m3 {
+
 
 EventLoop& EventLoop::get() {
     static EventLoop instance;
@@ -35,7 +38,7 @@ void EventLoop::drainPosted() {
         std::lock_guard lock(m_postMutex);
         posted.swap(m_posted);
     }
-    for (auto& fn : posted) fn();
+    for (auto& fn : posted) guard("a worker's result", fn);
 }
 
 void EventLoop::add(EventSource* source) {
@@ -91,7 +94,7 @@ void EventLoop::runTimers() {
             it->second.due = now + std::chrono::milliseconds(it->second.intervalMs);
         else
             m_timers.erase(it);
-        fn();
+        guard("a timer", fn);
     }
 }
 
@@ -106,7 +109,7 @@ int EventLoop::run() {
         const auto t0 = Clock::now();
         auto deferred = std::move(m_deferred);
         m_deferred.clear();
-        for (auto& fn : deferred) fn();
+        for (auto& fn : deferred) guard("a deferred task", fn);
         const auto t1 = Clock::now();
 
         std::erase(m_sources, nullptr);
@@ -135,7 +138,7 @@ int EventLoop::run() {
             // Skip sources removed by an earlier dispatch this iteration
             if (std::find(m_sources.begin(), m_sources.end(), polled[i]) == m_sources.end()) continue;
             // Always called: sources like Wayland must finish a prepared read
-            polled[i]->dispatch(fds[i + 1].revents);
+            guard("an event source", [&] { polled[i]->dispatch(fds[i + 1].revents); });
         }
         // Worker-thread results run once every source (Wayland's prepared
         // read included) has been dispatched

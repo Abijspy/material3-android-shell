@@ -1,3 +1,4 @@
+#include "core/Guard.h"
 #include "wayland/Display.h"
 
 #include "core/Log.h"
@@ -40,9 +41,9 @@ bool debugFocus() {
 
 const wl_registry_listener kRegistry = {
     .global = [](void* data, wl_registry* r, uint32_t name, const char* iface, uint32_t version) {
-        static_cast<Display*>(data)->addGlobal(r, name, iface, version);
+        m3::guard("a Wayland event", [&] { static_cast<Display*>(data)->addGlobal(r, name, iface, version); });
     },
-    .global_remove = [](void* data, wl_registry*, uint32_t name) { static_cast<Display*>(data)->removeGlobal(name); },
+    .global_remove = [](void* data, wl_registry*, uint32_t name) { m3::guard("a Wayland event", [&] { static_cast<Display*>(data)->removeGlobal(name); }); },
 };
 
 const wl_output_listener kOutput = {
@@ -55,7 +56,7 @@ const wl_output_listener kOutput = {
 };
 
 const wl_seat_listener kSeat = {
-    .capabilities = [](void* data, wl_seat*, uint32_t caps) { static_cast<Display*>(data)->seatCapabilities(caps); },
+    .capabilities = [](void* data, wl_seat*, uint32_t caps) { m3::guard("a Wayland event", [&] { static_cast<Display*>(data)->seatCapabilities(caps); }); },
     .name = [](void*, wl_seat*, const char*) {},
 };
 
@@ -65,20 +66,20 @@ const wl_seat_listener kSeat = {
 #pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 const wl_pointer_listener kPointer = {
     .enter = [](void* data, wl_pointer*, uint32_t serial, wl_surface* s, wl_fixed_t x, wl_fixed_t y) {
-        static_cast<Display*>(data)->pointerEnter(serial, s, wl_fixed_to_double(x), wl_fixed_to_double(y));
+        m3::guard("a Wayland event", [&] { static_cast<Display*>(data)->pointerEnter(serial, s, wl_fixed_to_double(x), wl_fixed_to_double(y)); });
     },
-    .leave = [](void* data, wl_pointer*, uint32_t, wl_surface* s) { static_cast<Display*>(data)->pointerLeave(s); },
+    .leave = [](void* data, wl_pointer*, uint32_t, wl_surface* s) { m3::guard("a Wayland event", [&] { static_cast<Display*>(data)->pointerLeave(s); }); },
     .motion = [](void* data, wl_pointer*, uint32_t, wl_fixed_t x, wl_fixed_t y) {
-        static_cast<Display*>(data)->pointerMotion(wl_fixed_to_double(x), wl_fixed_to_double(y));
+        m3::guard("a Wayland event", [&] { static_cast<Display*>(data)->pointerMotion(wl_fixed_to_double(x), wl_fixed_to_double(y)); });
     },
     .button = [](void* data, wl_pointer*, uint32_t serial, uint32_t, uint32_t button, uint32_t state) {
-        static_cast<Display*>(data)->setButtonSerial(serial);
-        static_cast<Display*>(data)->pointerButton(button, state == WL_POINTER_BUTTON_STATE_PRESSED);
+        m3::guard("a Wayland event", [&] { static_cast<Display*>(data)->setButtonSerial(serial); });
+        m3::guard("a Wayland event", [&] { static_cast<Display*>(data)->pointerButton(button, state == WL_POINTER_BUTTON_STATE_PRESSED); });
     },
     .axis = [](void* data, wl_pointer*, uint32_t, uint32_t axis, wl_fixed_t value) {
-        static_cast<Display*>(data)->pointerAxis(axis, wl_fixed_to_double(value));
+        m3::guard("a Wayland event", [&] { static_cast<Display*>(data)->pointerAxis(axis, wl_fixed_to_double(value)); });
     },
-    .frame = [](void* data, wl_pointer*) { static_cast<Display*>(data)->pointerFrame(); },
+    .frame = [](void* data, wl_pointer*) { m3::guard("a Wayland event", [&] { static_cast<Display*>(data)->pointerFrame(); }); },
     .axis_source = [](void*, wl_pointer*, uint32_t) {},
     .axis_stop = [](void*, wl_pointer*, uint32_t, uint32_t) {},
     .axis_discrete = [](void*, wl_pointer*, uint32_t, int32_t) {},
@@ -94,22 +95,22 @@ const xdg_wm_base_listener kWmBase = {
 const wl_keyboard_listener kKeyboard = {
     .keymap = [](void* data, wl_keyboard*, uint32_t format, int32_t fd, uint32_t size) {
         if (format == WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1)
-            static_cast<Display*>(data)->keymap(fd, size);
+            m3::guard("a Wayland event", [&] { static_cast<Display*>(data)->keymap(fd, size); });
         else
             close(fd);
     },
     .enter = [](void* data, wl_keyboard*, uint32_t, wl_surface* s, wl_array*) {
-        static_cast<Display*>(data)->keyboardEnter(s);
+        m3::guard("a Wayland event", [&] { static_cast<Display*>(data)->keyboardEnter(s); });
     },
-    .leave = [](void* data, wl_keyboard*, uint32_t, wl_surface* s) { static_cast<Display*>(data)->keyboardLeave(s); },
+    .leave = [](void* data, wl_keyboard*, uint32_t, wl_surface* s) { m3::guard("a Wayland event", [&] { static_cast<Display*>(data)->keyboardLeave(s); }); },
     .key = [](void* data, wl_keyboard*, uint32_t, uint32_t, uint32_t key, uint32_t state) {
-        static_cast<Display*>(data)->key(key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
+        m3::guard("a Wayland event", [&] { static_cast<Display*>(data)->key(key, state == WL_KEYBOARD_KEY_STATE_PRESSED); });
     },
     .modifiers = [](void* data, wl_keyboard*, uint32_t, uint32_t dep, uint32_t lat, uint32_t lock, uint32_t group) {
-        static_cast<Display*>(data)->modifiers(dep, lat, lock, group);
+        m3::guard("a Wayland event", [&] { static_cast<Display*>(data)->modifiers(dep, lat, lock, group); });
     },
     .repeat_info = [](void* data, wl_keyboard*, int32_t rate, int32_t delay) {
-        static_cast<Display*>(data)->repeatInfo(rate, delay);
+        m3::guard("a Wayland event", [&] { static_cast<Display*>(data)->repeatInfo(rate, delay); });
     },
 };
 #pragma GCC diagnostic pop

@@ -1,8 +1,10 @@
 #include "services/Network.h"
 
+#include "core/Guard.h"
 #include "core/Log.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -681,7 +683,11 @@ void Bluetooth::registerAgent() {
     m_agentRegistered = true; // one attempt at a time; reset on failure
     if (!m_agentObject)
         sd_bus_add_object(bus.raw(), &m_agentObject, kAgentPath,
-                          [](sd_bus_message* m, void* self, sd_bus_error*) { return static_cast<Bluetooth*>(self)->handleAgent(m); },
+                          [](sd_bus_message* m, void* self, sd_bus_error*) {
+                              int r = -EIO; // a method that throws answers with an error instead
+                              guard("the pairing agent", [&] { r = static_cast<Bluetooth*>(self)->handleAgent(m); });
+                              return r;
+                          },
                           this);
     // KeyboardDisplay: we can both show codes and take them
     bus.call(kBlueZ, "/org/bluez", "org.bluez.AgentManager1", "RegisterAgent",
