@@ -7,6 +7,8 @@
 #include "core/Config.h"
 #include "core/EventLoop.h"
 #include "core/Process.h"
+#include "services/Auth.h"
+#include "core/Paths.h"
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
 #include "ui/Controls.h"
@@ -14,6 +16,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <ctime>
 #include <format>
 #include <linux/input-event-codes.h>
@@ -669,7 +672,19 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
     when->grow = true;
     auto* clock = when->add<Label>(nowTime());
     clock->setSize(44)->setWeight(400);
-    when->add<Label>(today())->setSize(14)->setWeight(500)->setColor("on_surface_variant", false);
+    // The date, then the battery (a tap opens its popup)
+    auto* dateRow = when->add<Flex>(Flex::Direction::Row);
+    dateRow->setSpacing(10);
+    dateRow->add<Label>(today())->setSize(14)->setWeight(500)->setColor("on_surface_variant", false);
+    auto* battery = dateRow->add<Button>(Flex::Direction::Row);
+    pill(battery)->setPadding({6, 2})->setSpacing(2);
+    battery->pressedRadius = 6;
+    auto* batteryIcon = battery->add<Icon>("battery_full", 18);
+    auto* batteryText = battery->add<Label>();
+    batteryText->setSize(14)->setWeight(500)->setColor("on_surface_variant", false);
+    battery->onClicked = [](uint32_t button) {
+        if (button == BTN_LEFT && open) open("battery");
+    };
     auto roundButton = [&](const char* icon, std::function<void()> fn) {
         auto* b = head->add<Button>();
         pill(b->setBackground(ColorRef("on_surface", 0.1f), false))->setPadding(Insets(11));
@@ -679,6 +694,17 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
             if (button == BTN_LEFT) fn();
         };
     };
+    // You: your picture, opening Settings → Users
+    {
+        const std::string user = std::getenv("USER") ? std::getenv("USER") : "";
+        auto* me = head->add<Button>();
+        pill(me)->setPadding(Insets(0));
+        me->pressedRadius = 14;
+        me->add<AvatarView>(paths::home() + "/.face", auth::realName(user), 44);
+        me->onClicked = [](uint32_t button) {
+            if (button == BTN_LEFT && open) open("settings users");
+        };
+    }
     roundButton("edit", showEdit);
     roundButton("settings", [] {
         if (open) open("settings");
@@ -720,6 +746,11 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
         }
         if (light) light->setValue(Brightness::get().value());
         updateTiles();
+        auto& pw = Power::get();
+        battery->setVisible(pw.hasBattery());
+        batteryIcon->setText(pw.icon());
+        batteryIcon->setColor(pw.percent() <= 15 && !pw.charging() ? "error" : "on_surface_variant");
+        batteryText->setText(std::to_string(pw.percent()) + "%");
         clock->setText(nowTime());
         media->setVisible(Mpris::get().active() != nullptr);
     };

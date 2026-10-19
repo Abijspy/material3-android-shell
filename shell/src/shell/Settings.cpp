@@ -31,6 +31,8 @@
 #include <format>
 #include <fstream>
 #include <sys/statvfs.h>
+#include <pwd.h>
+#include <grp.h>
 #include <linux/input-event-codes.h>
 #include <map>
 #include <memory>
@@ -1310,6 +1312,193 @@ void monitorPage(Flex* page, Popup&) {
     };
     list->watch(SystemStats::get().changed);
     list->sync();
+}
+
+// ── Users ──
+
+namespace {
+
+struct UserInfo {
+    std::string name, realName, home;
+    bool admin = false;
+};
+
+// People's accounts: uid 1000 and up, with a login shell
+std::vector<UserInfo> localUsers() {
+    std::vector<UserInfo> out;
+    std::set<std::string> wheel;
+    if (const struct group* g = getgrnam("wheel")) // struct: Settings has its own group()
+        for (char** m = g->gr_mem; m && *m; ++m) wheel.insert(*m);
+    setpwent();
+    while (const struct passwd* p = getpwent()) {
+        if (p->pw_uid < 1000 || p->pw_uid >= 60000) continue;
+        const std::string shell = p->pw_shell ? p->pw_shell : "";
+        if (shell.ends_with("nologin") || shell.ends_with("false")) continue;
+        std::string real = p->pw_gecos ? p->pw_gecos : "";
+        real = real.substr(0, real.find(','));
+        out.push_back({p->pw_name, real.empty() ? p->pw_name : real, p->pw_dir ? p->pw_dir : "", wheel.contains(p->pw_name)});
+    }
+    endpwent();
+    return out;
+}
+
+// Runs a root script through the polkit dialog; `input` goes to its stdin
+// (passwords never appear in a command line). `done` gets how it ended.
+void asRoot(const std::string& script, const std::string& input, std::function<void(const std::string&)> done) {
+    m3::run({"pkexec", "/usr/bin/sh", "-c", script + " 2>&1"},
+            [done = std::move(done)](int code, const std::string& out) {
+        std::string last;
+        std::stringstream ss(out);
+        for (std::string l; std::getline(ss, l);)
+            if (!l.empty()) last = l;
+        done(code == 0 ? "" : code == 126 || code == 127 ? "Cancelled: no password given" : (last.empty() ? "Didn't work" : last));
+    },
+            input);
+}
+
+std::string shellQuote(const std::string& s) {
+    std::string q = "'";
+    for (char c : s) q += c == '\'' ? std::string("'\\''") : std::string(1, c);
+    return q + "'";
+}
+
+bool validUsername(const std::string& u) {
+    if (u.empty() || u.size() > 32 || !(std::islower(static_cast<unsigned char>(u[0])) || u[0] == '_')) return false;
+    return std::ranges::all_of(u, [](char c) { return std::islower(static_cast<unsigned char>(c)) || std::isdigit(static_cast<unsigned char>(c)) || c == '_' || c == '-'; });
+}
+
+} // namespace
+
+void usersPage(Flex* page, Popup&) {
+    auto alive = page->add<AliveGuard>()->alive;
+    auto* live = page->add<Live>();
+    live->setSpacing(6);
+    auto status = std::make_shared<std::string>();
+    // What a change did, shown under the page's groups
+    auto report = [alive, status, live](const std::string& doneText) {
+        return [alive, status, live, doneText](const std::string& err) {
+            if (!*alive) return;
+            *status = err.empty() ? doneText : err;
+            live->syncSoon();
+        };
+    };
+    live->sync = [live, status, report] {
+        live->clearChildren();
+        const std::string me = std::getenv("USER") ? std::getenv("USER") : "";
+        const auto users = localUsers();
+        const auto self = std::ranges::find(users, me, &UserInfo::name);
+        const size_t admins = static_cast<size_t>(std::ranges::count_if(users, &UserInfo::admin));
+
+        // You: picture, name and password
+        auto* you = group(live, "You");
+        auto head = row(you, "", self != users.end() ? self->realName : me,
+                        me + (self != users.end() && self->admin ? "  ·  Administrator" : ""));
+        head.row->adopt(std::make_unique<AvatarView>(paths::home() + "/.face", self != users.end() ? self->realName : me, 56), 0);
+        pillButton(head.row, "Change picture", false, [live] {
+            // A picture of your choice becomes ~/.face (login screens read it too)
+            m3::run({"zenity", "--file-selection", "--title=Choose your picture",
+                     "--file-filter=Images | *.png *.jpg *.jpeg *.webp *.svg"},
+                    [live](int code, const std::string& out) {
+                if (code != 0 || out.empty()) return;
+                std::string path = out;
+                while (!path.empty() && (path.back() == '\n' || path.back() == '\r')) path.pop_back();
+                std::error_code ec;
+                std::filesystem::copy_file(path, paths::home() + "/.face", std::filesystem::copy_options::overwrite_existing, ec);
+                live->syncSoon();
+            });
+        }, "add_a_photo");
+
+        auto nameRow = row(you, "badge", "Name", "Enter to save");
+        auto* name = nameRow.row->add<TextField>();
+        name->fixedWidth = 260;
+        name->setText(self != users.end() ? self->realName : "");
+        name->onSubmit = [me, report](const std::string& t) {
+            if (t.empty() || t.find_first_of(":,\n") != std::string::npos) return;
+            asRoot("usermod -c " + shellQuote(t) + " " + shellQuote(me), "", report("Name saved"));
+        };
+
+        auto pwRow = row(you, "password", "Password", "Type it twice");
+        auto* pw1 = pwRow.row->add<TextField>();
+        pw1->setSecret(true)->setPlaceholder("New password");
+        pw1->fixedWidth = 170;
+        auto* pw2 = pwRow.row->add<TextField>();
+        pw2->setSecret(true)->setPlaceholder("Again");
+        pw2->fixedWidth = 150;
+        auto changePw = [me, pw1, pw2, status, live, report] {
+            if (pw1->text().empty() || pw1->text() != pw2->text()) {
+                *status = pw1->text().empty() ? "Type a new password" : "The two passwords don't match";
+                live->syncSoon();
+                return;
+            }
+            asRoot("chpasswd", me + ":" + pw1->text() + "\n", report("Password changed"));
+        };
+        pw2->onSubmit = [changePw](const std::string&) { changePw(); };
+        pillButton(pwRow.row, "Change", true, changePw);
+
+        // Every profile, and who may administer the system
+        auto* all = group(live, "Profiles on this device", "Administrators can install software and change system settings");
+        for (const auto& u : users) {
+            auto r = row(all, "", u.realName, u.name + (u.name == me ? "  ·  You" : ""));
+            r.row->adopt(std::make_unique<AvatarView>(u.home + "/.face", u.realName, 40), 0);
+            r.row->add<Label>("Administrator")->setSize(13)->setColor("on_surface_variant", false);
+            auto* sw = r.row->add<Switch>();
+            sw->setChecked(u.admin, false);
+            const std::string who = u.name;
+            const bool lastAdmin = u.admin && admins <= 1;
+            sw->onToggled = [who, lastAdmin, status, live, report](bool on) {
+                // Nobody left to run sudo would lock the system's settings away
+                if (!on && lastAdmin) {
+                    *status = "There must be at least one administrator";
+                    live->syncSoon();
+                    return;
+                }
+                asRoot(std::string("gpasswd ") + (on ? "-a " : "-d ") + shellQuote(who) + " wheel", "",
+                       report(on ? who + " is an administrator" : who + " is no longer an administrator"));
+            };
+        }
+
+        // A new profile
+        auto* add = group(live, "Add a profile");
+        auto fields = add->add<Flex>(Flex::Direction::Column);
+        fields->setPadding({20, 14})->setSpacing(10)->setAlignItems(Align::Stretch);
+        auto* full = fields->add<TextField>();
+        full->setPlaceholder("Full name");
+        auto* user = fields->add<TextField>();
+        user->setPlaceholder("Username (lower case: letters, digits, - and _)");
+        auto* np1 = fields->add<TextField>();
+        np1->setSecret(true)->setPlaceholder("Password");
+        auto* np2 = fields->add<TextField>();
+        np2->setSecret(true)->setPlaceholder("Password again");
+        auto* adminRow = fields->add<Flex>(Flex::Direction::Row);
+        adminRow->setSpacing(10);
+        auto* adminLabel = adminRow->add<Label>("Administrator");
+        adminLabel->setSize(14);
+        adminLabel->grow = true;
+        auto* adminSw = adminRow->add<Switch>();
+        auto* actions = fields->add<Flex>(Flex::Direction::Row);
+        actions->setJustify(Align::End);
+        pillButton(actions, "Add profile", true, [full, user, np1, np2, adminSw, status, live, report] {
+            const std::string u = user->text();
+            std::string problem = !validUsername(u) ? "Usernames start with a letter and use lower-case letters, digits, - and _"
+                                : getpwnam(u.c_str()) ? "That username is taken"
+                                : np1->text().empty() ? "Give the profile a password"
+                                : np1->text() != np2->text() ? "The two passwords don't match"
+                                : full->text().find_first_of(":,\n") != std::string::npos ? "The name can't contain : or ,"
+                                                                                       : "";
+            if (!problem.empty()) {
+                *status = problem;
+                live->syncSoon();
+                return;
+            }
+            // One prompt: the account with its home, then its password from stdin
+            const std::string script = "useradd -m -c " + shellQuote(full->text().empty() ? u : full->text()) +
+                                       (adminSw->checked() ? " -G wheel " : " ") + shellQuote(u) + " && chpasswd";
+            asRoot(script, u + ":" + np1->text() + "\n", report("Profile " + u + " added"));
+        }, "person_add");
+
+        if (!status->empty()) caption(live, *status);
+    };
+    live->sync();
 }
 
 // ── Accessibility ──
@@ -2641,6 +2830,7 @@ const PageDef kPages[] = {
     {"lockscreen", "lock_person", "Lock screen", "Clock, widgets and the login screen", lockScreenPage},
     {"accessibility", "accessibility_new", "Accessibility", "Motion, transparency and the cursor", accessibilityPage},
     {"lock", "security", "Security & privacy", "Screen lock, idle and sleep", lockPage},
+    {"users", "account_circle", "Users", "Your profile, password, administrators and new profiles", usersPage},
     {"system", "settings_suggest", "System", "Date & time, languages and reset", systemPage},
     {"mouse", "touchpad_mouse", "Mouse & touchpad", "Tap to click, scrolling, gestures and pointer speed", mousePage},
     {"keybinds", "keyboard", "Keyboard", "Shortcuts: remap, disable and add", keybindsPage},
@@ -2654,7 +2844,7 @@ int pageGroup(const std::string& id) {
     if (id == "defaults" || id == "notifications" || id == "tools" || id == "weather") return 1;
     if (id == "battery" || id == "storage" || id == "monitor" || id == "sound" || id == "display") return 2;
     if (id == "appearance" || id == "style" || id == "bar" || id == "dock" || id == "lockscreen") return 3;
-    if (id == "accessibility" || id == "lock") return 4;
+    if (id == "accessibility" || id == "lock" || id == "users") return 4;
     return 5; // system, keyboard, updates, about
 }
 

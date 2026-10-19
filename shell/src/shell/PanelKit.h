@@ -129,6 +129,21 @@ private:
     bool m_compact = false;
 };
 
+// A user's picture, round (~/.face, as login screens use); without one,
+// their initial on a tonal circle
+class AvatarView : public ui::Flex {
+public:
+    AvatarView(std::string picture, const std::string& name, float size);
+    ~AvatarView() override;
+
+protected:
+    void doPaint(Renderer& r) override;
+
+private:
+    std::string m_picture; // "" when there is none
+    std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
+};
+
 // Round icon button (close, back, power…)
 ui::Button* iconButton(ui::Node* parent, const std::string& icon, std::function<void()> onClick, float size = 20);
 

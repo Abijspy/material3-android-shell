@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <filesystem>
 #include <format>
 #include <linux/input-event-codes.h>
 
@@ -230,6 +231,36 @@ void MediaCard::doPaint(Renderer& r) {
         }))
         r.image(t->id, b, 1, radii);
     r.rect(b, ColorRef("surface", 0.62f).resolve(), radii);
+}
+
+// ── AvatarView ──
+
+AvatarView::AvatarView(std::string picture, const std::string& name, float size) : Flex(Direction::Row) {
+    std::error_code ec;
+    if (!picture.empty() && std::filesystem::exists(picture, ec)) m_picture = std::move(picture);
+    pill(this)->setJustify(Align::Center)->setBackground("primary_container", false);
+    fixedWidth = fixedHeight = size;
+    if (m_picture.empty()) {
+        // The first letter, upper-cased (ASCII; other scripts keep theirs)
+        std::string initial = name.empty() ? "?" : name.substr(0, 1);
+        initial[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(initial[0])));
+        add<Label>(initial)->setSize(size * 0.45f)->setWeight(600)->setColor("on_primary_container", false);
+    }
+}
+
+AvatarView::~AvatarView() {
+    *m_alive = false;
+}
+
+void AvatarView::doPaint(Renderer& r) {
+    Flex::doPaint(r);
+    if (m_picture.empty()) return;
+    const auto& b = rect();
+    const int px = static_cast<int>(std::lround(b.w * r.scale()));
+    if (auto* t = Images::get().picture(m_picture, px, px, true, [this, alive = m_alive] {
+            if (*alive) requestRedraw();
+        }))
+        r.image(t->id, b, 1, Radii(b.w / 2));
 }
 
 Button* iconButton(Node* parent, const std::string& icon, std::function<void()> onClick, float size) {
