@@ -263,6 +263,37 @@ void recolour() {
 // ── Pages ──
 
 void networkPage(Flex* page, Popup&) {
+    // What you change most first: Wi-Fi, then wired adapters; the details
+    // of the current connection below them
+    wifiView(panelGroup(page, "Wi-Fi networks", "Tap one to connect; saved networks connect at once"), {}, false);
+
+    // Wired adapters: their state, and a button to connect or disconnect
+    auto* wiredLive = page->add<Live>();
+    wiredLive->setSpacing(6);
+    wiredLive->sync = [wiredLive] {
+        wiredLive->clearChildren();
+        auto* g = group(wiredLive, "Ethernet");
+        const auto& all = Network::get().wired();
+        if (all.empty()) {
+            auto r = row(g, "settings_ethernet", "No Ethernet adapter", "Plug in a network cable, or a USB Ethernet adapter");
+            r.title->setColor("on_surface_variant", false);
+            return;
+        }
+        for (const auto& w : all) {
+            std::string state = !w.cable() ? "Cable unplugged" : w.connecting() ? "Connecting…" : !w.connected() ? "Disconnected" : "Connected";
+            if (w.connected() && w.speed > 0) state += std::format("  ·  {} Mb/s", w.speed);
+            if (w.connected() && !w.ipv4.empty()) state += "  ·  " + w.ipv4;
+            auto r = row(g, "lan", "Ethernet (" + w.iface + ")", state);
+            const std::string path = w.path;
+            if (w.connected() || w.connecting())
+                pillButton(r.row, "Disconnect", false, [path] { Network::get().disconnectWired(path); });
+            else if (w.cable())
+                pillButton(r.row, "Connect", true, [path] { Network::get().connectWired(path); });
+        }
+    };
+    wiredLive->watch(Network::get().changed);
+    wiredLive->sync();
+
     auto* live = page->add<Live>();
     live->setSpacing(6);
 
@@ -346,35 +377,6 @@ void networkPage(Flex* page, Popup&) {
     live->watch(Network::get().changed);
     live->watch(Network::get().detailsChanged);
     live->sync();
-
-    // Wired adapters: their state, and a button to connect or disconnect
-    auto* wiredLive = page->add<Live>();
-    wiredLive->setSpacing(6);
-    wiredLive->sync = [wiredLive] {
-        wiredLive->clearChildren();
-        auto* g = group(wiredLive, "Ethernet");
-        const auto& all = Network::get().wired();
-        if (all.empty()) {
-            auto r = row(g, "settings_ethernet", "No Ethernet adapter", "Plug in a network cable, or a USB Ethernet adapter");
-            r.title->setColor("on_surface_variant", false);
-            return;
-        }
-        for (const auto& w : all) {
-            std::string state = !w.cable() ? "Cable unplugged" : w.connecting() ? "Connecting…" : !w.connected() ? "Disconnected" : "Connected";
-            if (w.connected() && w.speed > 0) state += std::format("  ·  {} Mb/s", w.speed);
-            if (w.connected() && !w.ipv4.empty()) state += "  ·  " + w.ipv4;
-            auto r = row(g, "lan", "Ethernet (" + w.iface + ")", state);
-            const std::string path = w.path;
-            if (w.connected() || w.connecting())
-                pillButton(r.row, "Disconnect", false, [path] { Network::get().disconnectWired(path); });
-            else if (w.cable())
-                pillButton(r.row, "Connect", true, [path] { Network::get().connectWired(path); });
-        }
-    };
-    wiredLive->watch(Network::get().changed);
-    wiredLive->sync();
-
-    wifiView(panelGroup(page, "Wi-Fi networks", "Tap one to connect; saved networks connect at once"), {}, false);
 }
 
 void bluetoothPage(Flex* page, Popup&) {
