@@ -9,6 +9,8 @@
 #                         rules to the login screen.
 #    preview              Show the greeter inside your current session.
 #    status               Show what is installed and when it was last synced.
+#    outdated             Exit 0 when this checkout's greeter differs from the
+#                         installed one (1: up to date, 2: not installed).
 #    uninstall            Remove the greeter and restore the previous greetd config.
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
@@ -27,8 +29,12 @@ die()  { echo -e "\033[38;2;231;130;132m✗ $1\033[0m" >&2; exit "${2:-1}"; }
 
 as_root() { if [[ "$EUID" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
 
-# The user whose appearance is mirrored (the one who ran sudo, if any).
-target_user() { echo "${SUDO_USER:-$(id -un)}"; }
+# The user whose appearance is mirrored (the one who ran sudo or pkexec, if any).
+target_user() {
+    if [[ -n "${SUDO_USER:-}" ]]; then echo "$SUDO_USER"
+    elif [[ -n "${PKEXEC_UID:-}" ]]; then getent passwd "$PKEXEC_UID" | cut -d: -f1
+    else id -un; fi
+}
 target_home() { getent passwd "$(target_user)" | cut -d: -f6; }
 
 # ── install ──────────────────────────────────────────────────────────────────
@@ -83,8 +89,8 @@ cmd_install() {
         "user = \"greeter\"" | as_root tee "$GREETD_CONF" >/dev/null
     ok "greetd configured"
 
-    if [[ "$EUID" -eq 0 && -n "${SUDO_USER:-}" ]]; then
-        sudo -u "$SUDO_USER" "$BIN" sync || true
+    if [[ "$EUID" -eq 0 && "$user" != root ]]; then
+        runuser -u "$user" -- "$BIN" sync || true
     else
         "$BIN" sync || true
     fi
@@ -231,6 +237,16 @@ cmd_status() {
     fi
 }
 
+cmd_outdated() {
+    [[ -f "$SHARE/greet-run.sh" ]] || exit 2
+    local f
+    for f in hyprland.lua greet-hyprland.sh greet-run.sh; do
+        cmp -s "$SRC/$f" "$SHARE/$f" || exit 0
+    done
+    cmp -s "$SRC/material3ui-greeter" "$BIN" || exit 0
+    exit 1
+}
+
 cmd_uninstall() {
     if [[ -f "$GREETD_CONF.material3ui-backup" ]]; then
         as_root mv "$GREETD_CONF.material3ui-backup" "$GREETD_CONF"
@@ -248,6 +264,7 @@ case "${1:-}" in
     sync) shift; out="$(cmd_sync "$@")"; [[ "$QUIET" == 1 || "${1:-}" == --quiet ]] || ok "Synced: $out" ;;
     preview) cmd_preview ;;
     status) cmd_status ;;
+    outdated) cmd_outdated ;;
     uninstall) cmd_uninstall ;;
-    *) sed -n '3,11p' "$0" | sed 's/^#  \{0,1\}//'; exit 2 ;;
+    *) sed -n '3,13p' "$0" | sed 's/^#  \{0,1\}//'; exit 2 ;;
 esac

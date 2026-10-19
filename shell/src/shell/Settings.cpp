@@ -2420,17 +2420,53 @@ void lockScreenPage(Flex* page, Popup& popup) {
     live->conns.push_back(Config::get().changed.connect([live] { live->syncSoon(); }));
     live->sync();
 
-    auto* login = group(page, "Login screen", "greetd's greeter, installed with install.sh --greeter");
-    const bool installed = access("/var/lib/material3ui-greeter", F_OK) == 0;
+    auto* login = group(page, "Login screen", "Material3UI's greeter for greetd");
+    const bool installed = access("/usr/share/material3ui-greeter/greet-run.sh", F_OK) == 0;
     switchRow(login, "sync", "Match the lock screen", "Copies the clock, widgets, weather, wallpaper and colours when they change",
               "/lock/syncGreeter", true);
-    auto status = row(login, "login", installed ? "Login screen installed" : "Login screen not installed",
-                      installed ? "Sync copies your look to it now" : "Run: greeter/material3ui-greeter install --enable");
-    if (installed) pillButton(status.row, "Sync now", false, [] {
-        m3::run({"material3ui-greeter", "sync"}, [](int code, const std::string& out) {
-            m3::run({"notify-send", "-a", "Settings", code == 0 ? "Login screen synced" : "Login screen sync failed", out}, nullptr);
-        });
-    }, "sync");
+    if (installed) {
+        auto status = row(login, "palette", "Sync appearance", "Copies your look to the login screen now");
+        pillButton(status.row, "Sync now", false, [] {
+            m3::run({"material3ui-greeter", "sync"}, [](int code, const std::string& out) {
+                m3::run({"notify-send", "-a", "Settings", code == 0 ? "Login screen synced" : "Login screen sync failed", out}, nullptr);
+            });
+        }, "sync");
+    }
+    // Its files come from the checkout: compare, then install them with root
+    const std::string tool = Packages::get().installDir() + "/greeter/material3ui-greeter";
+    if (access(tool.c_str(), X_OK) == 0) {
+        auto update = row(login, installed ? "system_update_alt" : "login",
+                          installed ? "Login screen updates" : "Use the Material3UI login screen",
+                          installed ? "Checking…" : "Replaces your display manager with greetd at the next boot");
+        auto* holder = update.row->add<Flex>(Flex::Direction::Row);
+        auto* sub = update.subtitle;
+        const auto alive = holder->add<AliveGuard>()->alive;
+        auto act = [tool, installed, sub, alive] {
+            sub->setText(installed ? "Updating…" : "Installing…");
+            // How it ended, once it has
+            auto conn = std::make_shared<Connection>();
+            *conn = Packages::get().changed.connect([alive, sub, conn] {
+                if (Packages::get().busy() || !*alive) return;
+                sub->setText(Packages::get().status());
+                conn->disconnect();
+            });
+            const bool hasGreetd = access("/usr/bin/greetd", X_OK) == 0;
+            Packages::get().runAsRoot(installed ? "Updating the login screen…" : "Installing the login screen…",
+                                      (hasGreetd ? "" : "pacman -S --needed --noconfirm greetd acl && ") + std::string("'") + tool +
+                                          (installed ? "' install" : "' install --enable"),
+                                      installed ? "Login screen updated" : "Login screen installed: it starts at the next boot");
+        };
+        if (!installed) {
+            pillButton(holder, "Install", true, act, "download");
+        } else {
+            m3::run({tool, "outdated"}, [alive, holder, sub, act](int code, const std::string&) {
+                if (!*alive) return;
+                const bool outdated = code == 0;
+                sub->setText(outdated ? "A newer version came with the last shell update" : "Up to date with the installed shell");
+                pillButton(holder, outdated ? "Update" : "Reinstall", outdated, act, outdated ? "system_update_alt" : "refresh");
+            });
+        }
+    }
     auto preview = row(login, "visibility", "Preview", "Locks the screen now: unlock with your password");
     pillButton(preview.row, "Lock now", true, [&popup] {
         // The app stays open behind it; a popup makes way

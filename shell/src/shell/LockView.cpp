@@ -32,6 +32,45 @@ Button* arrow(Node* parent, const char* icon, std::function<void()> fn) {
     return b;
 }
 
+// Clicks anywhere outside an open menu land here and close it
+class Scrim : public Node {
+public:
+    std::function<void()> onClicked;
+    bool interactive() const override { return true; }
+    void onClick(uint32_t) override {
+        if (onClicked) onClicked();
+    }
+};
+
+// One choice in a greeter menu: icon, title, optional subtitle and a check
+Button* menuItem(Flex* menu, const char* icon, const std::string& title, const std::string& sub, bool selected,
+                 std::function<void()> fn) {
+    auto* b = menu->add<Button>(Flex::Direction::Row);
+    b->setPadding({16, 12})->setSpacing(16)->setRadius(Radii(20));
+    b->alignSelf = Align::Stretch;
+    b->pressedRadius = 12;
+    if (selected) b->setBackground("secondary_container", false);
+    b->add<Icon>(icon, 22)->setColor(selected ? "on_secondary_container" : "on_surface_variant", false);
+    auto* texts = b->add<Flex>(Flex::Direction::Column);
+    texts->setAlignItems(Align::Start)->setSpacing(1);
+    texts->grow = true;
+    texts->add<Label>(title)->setSize(15)->setWeight(selected ? 600 : 500)->setColor(selected ? "on_secondary_container" : "on_surface", false);
+    if (!sub.empty()) texts->add<Label>(sub)->setSize(13)->setColor(selected ? "on_secondary_container" : "on_surface_variant", false);
+    if (selected) b->add<Icon>("check", 22)->setColor("on_secondary_container", false);
+    b->onClicked = [fn = std::move(fn)](uint32_t button) {
+        if (button == BTN_LEFT) fn();
+    };
+    return b;
+}
+
+// A session's subtitle: what kind of session the command starts
+std::string sessionNote(const std::string& exec) {
+    if (exec.find("uwsm") != std::string::npos) return "Started through uwsm (systemd units)";
+    if (exec.find("start-hyprland") != std::string::npos || exec.find("Hyprland") != std::string::npos)
+        return "Material3UI's home";
+    return exec;
+}
+
 std::string initial(const std::string& name) {
     if (name.empty()) return "?";
     // First UTF-8 character, upper-cased if ASCII
@@ -270,6 +309,10 @@ LockView::LockView(Options options) : Flex(Direction::Column), m_options(std::mo
     for (size_t i = 0; i < m_options.users.size(); ++i)
         if (m_options.users[i].id == m_options.user) m_userIndex = i;
 
+    // The greeter's bottom bar takes the last row; grow spacers keep the
+    // face centred above it
+    if (m_options.greeter) add<Node>()->grow = true;
+
     // Clock and widgets on the grid set in Settings → Lock screen (shared
     // with the greeter through its synced copy of config.json)
     auto* grid = add<LockGrid>();
@@ -319,27 +362,112 @@ LockView::LockView(Options options) : Flex(Direction::Column), m_options(std::mo
     m_status->setSize(14)->setColor("on_surface_variant", false);
     m_status->minHeight = 32;
 
-    if (m_options.greeter) {
-        // Session picker and power buttons along the bottom
-        auto* bottom = add<Flex>(Direction::Row);
-        bottom->setSpacing(8)->setPadding({0, 24});
-        if (!m_options.sessions.empty()) {
-            arrow(bottom, "chevron_left", [this] { cycle(m_options.sessions, m_sessionIndex, -1, m_session); });
-            m_session = bottom->add<Label>(m_options.sessions.front().label);
-            m_session->setSize(15)->setColor("on_surface", false);
-            arrow(bottom, "chevron_right", [this] { cycle(m_options.sessions, m_sessionIndex, 1, m_session); });
-        }
-        auto* sep = bottom->add<Node>();
-        sep->minWidth = 32;
-        for (auto [icon, action] : {std::pair{"bedtime", "suspend"}, {"restart_alt", "reboot"}, {"power_settings_new", "poweroff"}})
-            arrow(bottom, icon, [this, a = std::string(action)] {
-                if (onPower) onPower(a);
-            });
-    }
-
+    if (m_options.greeter) buildBottomBar();
 }
 
 LockView::~LockView() = default;
+
+void LockView::buildBottomBar() {
+    auto* bar = add<Flex>(Direction::Row);
+    bar->alignSelf = Align::Stretch;
+    bar->setPadding({32, 0, 32, 28})->setSpacing(12);
+
+    if (!m_options.sessions.empty()) {
+        // Remembered session first (the greeter sorts it there)
+        m_sessionChip = bar->add<Button>(Direction::Row);
+        pill(m_sessionChip->setBackground(ColorRef("surface_container_high", 0.8f), false))->setPadding({16, 10, 12, 10})->setSpacing(10);
+        m_sessionChip->blurBehind = true;
+        m_sessionChip->add<Icon>("desktop_windows", 20)->setColor("on_surface_variant", false);
+        m_session = m_sessionChip->add<Label>(m_options.sessions[m_sessionIndex].label);
+        m_session->setSize(15)->setWeight(500)->setColor("on_surface", false);
+        if (m_options.sessions.size() > 1) {
+            m_sessionExpand = m_sessionChip->add<Icon>("expand_more", 20);
+            m_sessionExpand->setColor("on_surface_variant", false);
+        }
+        m_sessionChip->onClicked = [this](uint32_t button) {
+            if (button != BTN_LEFT || m_options.sessions.size() < 2) return;
+            m_open == Menu::Session ? closeMenu() : openMenu(Menu::Session);
+        };
+    }
+    bar->add<Node>()->grow = true;
+    m_powerButton = bar->add<Button>(Direction::Row);
+    pill(m_powerButton->setBackground(ColorRef("surface_container_high", 0.8f), false))->setJustify(Align::Center);
+    m_powerButton->blurBehind = true;
+    m_powerButton->fixedWidth = m_powerButton->fixedHeight = 48;
+    m_powerButton->add<Icon>("power_settings_new", 22)->setColor("on_surface", false);
+    m_powerButton->onClicked = [this](uint32_t button) {
+        if (button != BTN_LEFT) return;
+        m_open == Menu::Power ? closeMenu() : openMenu(Menu::Power);
+    };
+
+    auto* scrim = add<Scrim>();
+    scrim->floating = true;
+    scrim->setVisible(false);
+    scrim->onClicked = [this] { closeMenu(); };
+    m_scrim = scrim;
+}
+
+void LockView::openMenu(Menu menu) {
+    if (m_menu) remove(m_menu);
+    m_open = menu;
+    m_menu = add<Flex>(Direction::Column);
+    m_menu->floating = true;
+    m_menu->blurBehind = true;
+    m_menu->setBackground(ColorRef("surface_container", 0.92f), false)->setRadius(Radii(28))->setPadding(Insets(8))->setSpacing(2);
+    m_menu->setAlignItems(Align::Stretch);
+    m_menu->minWidth = 300;
+    auto* head = m_menu->add<Flex>(Direction::Row);
+    head->setPadding({16, 10, 16, 6});
+    head->add<Label>(menu == Menu::Session ? "Session" : "Power")->setSize(14)->setWeight(600)->setColor("primary", false);
+    if (menu == Menu::Session) {
+        for (size_t i = 0; i < m_options.sessions.size(); ++i) {
+            const auto& s = m_options.sessions[i];
+            menuItem(m_menu, "desktop_windows", s.label, sessionNote(s.id), i == m_sessionIndex, [this, i] {
+                m_sessionIndex = i;
+                if (m_session) m_session->setText(m_options.sessions[i].label);
+                closeMenu();
+            });
+        }
+    } else {
+        for (auto [icon, label, sub, action] : {std::tuple{"bedtime", "Sleep", "Keeps everything in memory", "suspend"},
+                                                {"restart_alt", "Restart", "Turns the computer off and on again", "reboot"},
+                                                {"power_settings_new", "Shut down", "Turns the computer off", "poweroff"}})
+            menuItem(m_menu, icon, label, sub, false, [this, a = std::string(action)] {
+                closeMenu();
+                if (onPower) onPower(a);
+            });
+    }
+    m_scrim->setVisible(true);
+    if (m_sessionExpand) m_sessionExpand->setText(menu == Menu::Session ? "expand_less" : "expand_more");
+    // Rises into place from the bar
+    m_menu->setOpacity(0, false);
+    m_menu->setTranslateY(16, false);
+    m_menu->setOpacity(1);
+    m_menu->setTranslateY(0);
+    requestLayout();
+}
+
+void LockView::closeMenu() {
+    if (m_menu) remove(m_menu);
+    m_menu = nullptr;
+    m_open = Menu::None;
+    if (m_scrim) m_scrim->setVisible(false);
+    if (m_sessionExpand) m_sessionExpand->setText("expand_more");
+    requestLayout();
+}
+
+void LockView::doArrange() {
+    Flex::doArrange();
+    if (m_scrim) m_scrim->arrange(rect());
+    if (!m_menu) return;
+    // Above the button that opened it, lined up with its outer edge
+    const auto* anchor = m_open == Menu::Session ? static_cast<Node*>(m_sessionChip) : m_powerButton;
+    const RectF a = anchor->rect();
+    const SizeF s = m_menu->measure({std::min(440.0f, rect().w - 32), rect().h});
+    const float w = std::max(s.w, 300.0f);
+    const float x = m_open == Menu::Session ? a.x : a.x + a.w - w;
+    m_menu->arrange({std::clamp(x, rect().x + 16, rect().x + rect().w - 16 - w), a.y - 12 - s.h, w, s.h});
+}
 
 void LockView::cycle(std::vector<Choice>& list, size_t& index, int step, Label* label) {
     if (list.empty()) return;

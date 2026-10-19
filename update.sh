@@ -105,8 +105,10 @@ if [[ -d "$CONFIG_HOME/quickshell/material3ui" ]]; then
     pkill -x quickshell 2>/dev/null || true
     echo "Moved the old Quickshell shell to $backup"
 fi
-if [[ -d /usr/share/material3ui-greeter ]]; then
-    if sudo -n true 2>/dev/null; then
+if [[ -d /usr/share/material3ui-greeter ]] && "$PROJECT_ROOT/greeter/material3ui-greeter" outdated; then
+    if [[ "${M3_SUDO:-}" == pkexec ]]; then
+        pkexec "$PROJECT_ROOT/greeter/material3ui-greeter" install && echo "Login screen updated."
+    elif sudo -n true 2>/dev/null; then
         "$PROJECT_ROOT/greeter/material3ui-greeter" install && echo "Login screen updated."
     else
         echo "Login screen: run '$PROJECT_ROOT/greeter/material3ui-greeter install' to update it (needs sudo)."

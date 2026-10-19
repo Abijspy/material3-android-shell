@@ -51,13 +51,25 @@ public:
 
 protected:
     void doPaint(Renderer& r) override;
+    void doArrange() override;
 
 private:
+    enum class Menu { None, Session, Power };
     void cycle(std::vector<Choice>& list, size_t& index, int step, ui::Label* label);
+    // Greeter: the session chip and power button along the bottom, each
+    // opening a card of choices above it
+    void buildBottomBar();
+    void openMenu(Menu menu);
+    void closeMenu();
 
     Options m_options;
     size_t m_userIndex = 0, m_sessionIndex = 0;
     ui::Label *m_name, *m_status, *m_session = nullptr;
+    ui::Button *m_sessionChip = nullptr, *m_powerButton = nullptr;
+    ui::Icon* m_sessionExpand = nullptr;
+    ui::Node* m_scrim = nullptr; // catches clicks outside an open menu
+    ui::Flex* m_menu = nullptr;
+    Menu m_open = Menu::None;
     ui::Flex* m_pill;
     ui::Label* m_avatarLetter;
     ui::TextField* m_field;

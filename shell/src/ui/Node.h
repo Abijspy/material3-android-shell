@@ -92,6 +92,8 @@ public:
     bool grow = false; // takes leftover main-axis space in a Flex
     // Cross-axis alignment within a Flex; unset follows the parent's alignItems
     std::optional<Align> alignSelf;
+    // Left out of a Flex's flow: the owner places it (menus over a layout)
+    bool floating = false;
 
     // The compositor blurs what is behind this node's rect (translucent
     // cards); the surface collects these into its blur region after layout

@@ -181,6 +181,10 @@ nlohmann::json readState() {
 
 } // namespace
 
+std::string Packages::installDir() const {
+    return readState().value("install_dir", "");
+}
+
 std::string Packages::channel() const {
     return readState().value("channel", "stable");
 }

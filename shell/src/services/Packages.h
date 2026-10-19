@@ -46,6 +46,8 @@ public:
     // How the shell itself updates: "stable" (release tags) or "canary"
     // (the newest commits on main), as install_state.json records it
     std::string channel() const;
+    // The git checkout install.sh made (empty if unknown)
+    std::string installDir() const;
     void setChannel(const std::string& channel);
     // Runs `script` with root, asking through polkit; `done` gets success
     void runAsRoot(const std::string& label, const std::string& script, const std::string& doneText);
