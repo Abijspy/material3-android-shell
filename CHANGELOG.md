@@ -1,5 +1,9 @@
 # Changelog
 
+## v5.0.2 — 2026-10-19
+
+- **About shows the logos:** your distribution's beside its name (from its own os-release, so every distro shows its own) and Hyprland's beside the compositor.
+
 ## v5.0.1 — 2026-10-19
 
 - **Both settings apps on the dock.** Material3UI Settings and Hyprland Settings are pinned: on new installs, and once on existing ones (unpin either and it stays off). Hyprland Settings is in the app launcher too.
