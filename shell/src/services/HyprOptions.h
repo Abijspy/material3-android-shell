@@ -51,6 +51,19 @@ public:
         bool custom = false;
     };
 
+    // A connected monitor as Hyprland runs it now, and what Settings keeps
+    // for it. `key` names it in rules: "desc:<description>" when it has one
+    // (stays right whichever port it moves to), else its connector.
+    struct Monitor {
+        std::string name, description, key;
+        int width = 0, height = 0, x = 0, y = 0, transform = 0, bitdepth = 8;
+        double refresh = 0, scale = 1, sdrBrightness = 1, sdrSaturation = 1;
+        bool disabled = false, vrr = false, focused = false;
+        std::string mirrorOf, cm;
+        std::vector<std::string> modes; // "1920x1080@60.01Hz"
+        nlohmann::json kept = nlohmann::json::object(); // Settings' fields for it
+    };
+
     static HyprOptions& get();
 
     // Reads the options from the compositor (cheap: two socket requests)
@@ -78,6 +91,13 @@ public:
     std::string setCurve(const std::string& name, double x0, double y0, double x1, double y1);
     // Only curves made in Settings can go (the config may use the others)
     void removeCurve(const std::string& name);
+
+    // Monitors: read live; apply changes live (risky ones are confirmed by
+    // the page before keepMonitor saves them); forget drops Settings' rule
+    std::vector<Monitor> monitors() const;
+    std::string applyMonitor(const std::string& key, const nlohmann::json& fields);
+    void keepMonitor(const std::string& key, const nlohmann::json& fields);
+    void forgetMonitor(const std::string& key);
 
     // The Lua for a value (for the generated file and live applies)
     static std::string lua(const Option& o, const nlohmann::json& value);

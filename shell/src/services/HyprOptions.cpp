@@ -24,6 +24,21 @@ constexpr const char* kStore = "/hyprland/options";
 constexpr const char* kBaseline = "/hyprland/baseline";
 constexpr const char* kAnimations = "/hyprland/animations"; // leaf → {enabled, speed, curve, style}
 constexpr const char* kCurves = "/hyprland/curves";         // name → [x0, y0, x1, y1]
+constexpr const char* kMonitors = "/hyprland/monitors";     // key → {mode, position, scale, …}
+
+std::string quoted(const std::string& s); // below
+
+// A monitor rule's fields as Lua
+std::string monitorLua(const std::string& key, const nlohmann::json& fields) {
+    std::string out = "{ output = " + quoted(key);
+    for (auto& [k, v] : fields.items()) {
+        out += ", " + k + " = ";
+        if (v.is_string()) out += quoted(v.get<std::string>());
+        else if (v.is_boolean()) out += v.get<bool>() ? "true" : "false";
+        else out += v.dump();
+    }
+    return out + " }";
+}
 
 // Hyprland's animation tree: each leaf and the one it inherits from
 const std::map<std::string, std::string> kParents = {
@@ -587,11 +602,74 @@ std::string HyprOptions::undo() {
     return o->name;
 }
 
+std::vector<HyprOptions::Monitor> HyprOptions::monitors() const {
+    std::vector<Monitor> out;
+    const auto reply = Hyprland::get().requestJson("monitors all");
+    if (!reply || !reply->is_array()) return out;
+    const auto kept = Config::get().value<nlohmann::json>(kMonitors, nlohmann::json::object());
+    for (const auto& m : *reply) {
+        Monitor x;
+        x.name = m.value("name", "");
+        x.description = m.value("description", "");
+        x.key = x.description.empty() ? x.name : "desc:" + x.description;
+        x.width = m.value("width", 0);
+        x.height = m.value("height", 0);
+        x.refresh = m.value("refreshRate", 0.0);
+        x.x = m.value("x", 0);
+        x.y = m.value("y", 0);
+        x.scale = m.value("scale", 1.0);
+        x.transform = m.value("transform", 0);
+        x.disabled = m.value("disabled", false);
+        x.vrr = m.value("vrr", false);
+        x.focused = m.value("focused", false);
+        x.mirrorOf = m.value("mirrorOf", "none");
+        if (x.mirrorOf == "none") x.mirrorOf.clear();
+        // 10-bit formats name their channels in tens: XRGB2101010
+        x.bitdepth = m.value("currentFormat", "").find("2101010") != std::string::npos ? 10 : 8;
+        x.cm = m.value("colorManagementPreset", "srgb");
+        x.sdrBrightness = m.value("sdrBrightness", 1.0);
+        x.sdrSaturation = m.value("sdrSaturation", 1.0);
+        for (const auto& mode : m.value("availableModes", nlohmann::json::array())) x.modes.push_back(mode.get<std::string>());
+        if (kept.contains(x.key)) x.kept = kept[x.key];
+        out.push_back(std::move(x));
+    }
+    return out;
+}
+
+std::string HyprOptions::applyMonitor(const std::string& key, const nlohmann::json& fields) {
+    const std::string reply = Hyprland::get().request("eval hl.monitor(" + monitorLua(key, fields) + ")");
+    if (reply.empty() || reply.starts_with("ok")) return {};
+    const auto at = reply.rfind("': ");
+    return at == std::string::npos ? reply : sentence(reply.substr(at + 3));
+}
+
+void HyprOptions::keepMonitor(const std::string& key, const nlohmann::json& fields) {
+    auto kept = Config::get().value<nlohmann::json>(kMonitors, nlohmann::json::object());
+    if (!kept.contains(key)) kept[key] = nlohmann::json::object();
+    for (auto& [k, v] : fields.items()) kept[key][k] = v;
+    Config::get().set(kMonitors, kept);
+    save();
+    changed.emit();
+}
+
+void HyprOptions::forgetMonitor(const std::string& key) {
+    auto kept = Config::get().value<nlohmann::json>(kMonitors, nlohmann::json::object());
+    kept.erase(key);
+    Config::get().set(kMonitors, kept);
+    save();
+    // Rules can't be taken back live: the config, without this one, again
+    Hyprland::get().request("reload");
+    changed.emit();
+}
+
 void HyprOptions::save() {
     // Every kept option, as a function shell.lua calls after the config
     const auto custom = Config::get().value<nlohmann::json>(kStore, nlohmann::json::object());
     std::string body;
-    // Curves first: the animations below may use them
+    // Monitors first: everything else is laid out on them
+    for (auto& [key, fields] : Config::get().value<nlohmann::json>(kMonitors, nlohmann::json::object()).items())
+        body += "\tpcall(hl.monitor, " + monitorLua(key, fields) + ")\n";
+    // Curves next: the animations below may use them
     for (auto& [name, p] : Config::get().value<nlohmann::json>(kCurves, nlohmann::json::object()).items())
         if (p.is_array() && p.size() == 4)
             body += std::format("\tpcall(hl.curve, {}, {{ type = \"bezier\", points = {{ {{{}, {}}}, {{{}, {}}} }} }})\n",

@@ -5,9 +5,11 @@
 #include "shell/HyprPages.h"
 
 #include "core/EventLoop.h"
+#include "core/Signal.h"
 #include "services/HyprOptions.h"
 #include "services/Hyprland.h"
 #include "shell/CurveEditor.h"
+#include "shell/MonitorLayout.h"
 #include "shell/SettingsKit.h"
 
 #include <cmath>
@@ -761,7 +763,246 @@ void animationSections(Flex* page) {
     live->sync();
 }
 
+
+// ── Displays ──
+
+// A change that could leave the screen unusable waits to be kept: it
+// reverts by itself unless confirmed within the countdown
+struct Pending {
+    std::string key;
+    nlohmann::json before, after; // the fields, as they were and as asked
+    EventLoop::TimerId timer = 0;
+    int left = 0;
+    Signal<> changed;
+};
+Pending& pending() {
+    static Pending p;
+    return p;
+}
+
+void settle(bool keep) {
+    auto& p = pending();
+    if (p.key.empty()) return;
+    if (p.timer) EventLoop::get().cancel(p.timer);
+    p.timer = 0;
+    if (keep) HyprOptions::get().keepMonitor(p.key, p.after);
+    else HyprOptions::get().applyMonitor(p.key, p.before);
+    p.key.clear();
+    p.changed.emit();
+}
+
+void tick() {
+    auto& p = pending();
+    if (p.key.empty()) return;
+    if (--p.left <= 0) return settle(false);
+    p.timer = EventLoop::get().addTimer(1000, tick);
+    p.changed.emit();
+}
+
+// The fields a monitor has now, for the ones a change touches
+nlohmann::json current(const HyprOptions::Monitor& m, const nlohmann::json& fields) {
+    nlohmann::json out = nlohmann::json::object();
+    for (auto& [k, v] : fields.items()) {
+        if (k == "mode") out[k] = std::format("{}x{}@{:.2f}", m.width, m.height, m.refresh);
+        else if (k == "position") out[k] = std::format("{}x{}", m.x, m.y);
+        else if (k == "scale") out[k] = m.scale;
+        else if (k == "transform") out[k] = m.transform;
+        else if (k == "bitdepth") out[k] = m.bitdepth;
+        else if (k == "cm") out[k] = m.cm;
+        else if (k == "mirror") out[k] = m.mirrorOf;
+        else if (k == "disabled") out[k] = m.disabled;
+        else out[k] = m.kept.contains(k) ? m.kept[k] : v;
+    }
+    return out;
+}
+
+// Applies; risky changes start the countdown, the rest are kept at once
+void changeMonitor(const HyprOptions::Monitor& m, const nlohmann::json& fields, bool risky) {
+    auto& p = pending();
+    if (!p.key.empty() && p.key != m.key) settle(false);
+    const nlohmann::json before = current(m, fields);
+    if (!HyprOptions::get().applyMonitor(m.key, fields).empty()) return;
+    if (!risky) return HyprOptions::get().keepMonitor(m.key, fields);
+    if (p.key.empty()) {
+        p.key = m.key;
+        p.before = before;
+        p.after = fields;
+    } else {
+        // Another change in the same countdown: revert to the first state
+        for (auto& [k, v] : before.items())
+            if (!p.before.contains(k)) p.before[k] = v;
+        for (auto& [k, v] : fields.items()) p.after[k] = v;
+    }
+    if (p.timer) EventLoop::get().cancel(p.timer);
+    p.left = 15;
+    p.timer = EventLoop::get().addTimer(1000, tick);
+    p.changed.emit();
+}
+
+std::string modeLabel(const std::string& mode) {
+    // "1920x1080@60.01Hz" → "1920 × 1080 · 60 Hz"
+    const auto x = mode.find('x'), at = mode.find('@');
+    if (x == std::string::npos || at == std::string::npos) return mode;
+    const double hz = std::atof(mode.substr(at + 1).c_str());
+    return mode.substr(0, x) + " × " + mode.substr(x + 1, at - x - 1) + " · " + std::format("{:.0f} Hz", hz);
+}
+
+void monitorSections(Flex* page) {
+    auto* live = page->add<kit::Live>();
+    live->setSpacing(6);
+    live->sync = [live] {
+        live->clearChildren();
+        const auto monitors = HyprOptions::get().monitors();
+        if (monitors.empty()) {
+            row(group(live, "Displays"), "info", "No displays found", "These settings need a running Hyprland");
+            return;
+        }
+
+        // Waiting to be kept: the countdown, first
+        if (auto& p = pending(); !p.key.empty()) {
+            auto* g = group(live, "Keep these display settings?");
+            auto r = row(g, "timer", std::format("Going back in {} s", p.left), "If the screen looks wrong, wait or press Revert");
+            pillButton(r.row, "Revert", false, [] { settle(false); }, "undo");
+            pillButton(r.row, "Keep", true, [] { settle(true); }, "check");
+        }
+
+        // The arrangement, to scale
+        std::vector<MonitorLayout::Screen> screens;
+        for (const auto& m : monitors) {
+            if (m.disabled) continue;
+            const bool turned = m.transform % 2 == 1;
+            const float w = static_cast<float>(turned ? m.height : m.width) / static_cast<float>(m.scale);
+            const float h = static_cast<float>(turned ? m.width : m.height) / static_cast<float>(m.scale);
+            screens.push_back({m.key, m.name, std::format("{} × {}", m.width, m.height), static_cast<float>(m.x),
+                               static_cast<float>(m.y), w, h, m.focused});
+        }
+        auto* arrangement = group(live, "Arrangement", monitors.size() > 1 ? "Drag a display to place it beside the others" : "");
+        auto* holder = arrangement->add<Flex>(Flex::Direction::Column);
+        holder->setPadding(Insets(12))->setAlignItems(Align::Stretch);
+        auto* layout = holder->add<MonitorLayout>(screens);
+        layout->onMoved = [monitors](const std::string& key, int x, int y) {
+            for (const auto& m : monitors)
+                if (m.key == key) changeMonitor(m, {{"position", std::format("{}x{}", x, y)}}, true);
+        };
+
+        for (const auto& m : monitors) {
+            const bool builtIn = m.name.starts_with("eDP") || m.name.starts_with("LVDS") || m.name.starts_with("DSI");
+            auto* g = group(live, builtIn ? "Built-in display · " + m.name : m.description.empty() ? m.name : m.description,
+                            builtIn ? m.description : m.name);
+
+            auto on = row(g, "monitor", "Use this display");
+            auto* sw = on.row->add<Switch>();
+            sw->setChecked(!m.disabled, false);
+            const size_t enabled = static_cast<size_t>(std::ranges::count_if(monitors, [](const auto& x) { return !x.disabled; }));
+            sw->onToggled = [m, enabled, sw](bool v) {
+                // The last display stays on: nothing could turn it back
+                if (!v && enabled <= 1) return sw->setChecked(true);
+                changeMonitor(m, {{"disabled", !v}}, true);
+            };
+            if (m.disabled) continue;
+
+            // Resolution and refresh rate
+            auto res = row(g, "aspect_ratio", "Resolution and refresh rate");
+            std::vector<std::pair<std::string, std::string>> modes = {
+                {"preferred", "Preferred"}, {"highrr", "Highest refresh rate"}, {"highres", "Highest resolution"}};
+            for (const auto& mode : m.modes) modes.push_back({mode.substr(0, mode.size() - 2), modeLabel(mode)});
+            dropdown(res.row, g, std::format("{} × {} · {:.0f} Hz", m.width, m.height, m.refresh), modes,
+                     [m](const std::string& v) { changeMonitor(m, {{"mode", v}}, true); });
+
+            // Scale
+            auto sc = row(g, "zoom_out_map", "Scale", "Bigger text and controls at higher values");
+            std::vector<std::pair<std::string, std::string>> scales;
+            for (double v : {1.0, 1.25, 4.0 / 3, 1.5, 1.6, 5.0 / 3, 1.75, 2.0, 2.5, 3.0})
+                scales.push_back({std::format("{:.6f}", v), std::format("{:.0f}%", v * 100)});
+            dropdown(sc.row, g, std::format("{:.0f}%", m.scale * 100), scales,
+                     [m](const std::string& v) { changeMonitor(m, {{"scale", std::atof(v.c_str())}}, true); });
+
+            // Rotation, and mirrored
+            auto rot = row(g, "screen_rotation", "Rotation");
+            connectedGroup<int>(rot.row, m.transform % 4, {{0, "Normal"}, {1, "90°"}, {2, "180°"}, {3, "270°"}},
+                                [m](int v) { changeMonitor(m, {{"transform", v + (m.transform >= 4 ? 4 : 0)}}, true); });
+            auto flip = row(g, "flip", "Flipped", "Mirror the picture left to right");
+            auto* flipSw = flip.row->add<Switch>();
+            flipSw->setChecked(m.transform >= 4, false);
+            flipSw->onToggled = [m](bool v) { changeMonitor(m, {{"transform", m.transform % 4 + (v ? 4 : 0)}}, true); };
+
+            // Variable refresh rate
+            auto vrr = row(g, "speed", "Variable refresh rate", m.vrr ? "Active now" : "Not active now");
+            const int vrrNow = m.kept.contains("vrr") ? m.kept["vrr"].get<int>() : -1;
+            static const std::vector<std::pair<std::string, std::string>> vrrModes = {
+                {"-1", "Follow the default"}, {"0", "Off"}, {"1", "On"}, {"2", "Fullscreen only"}, {"3", "Fullscreen games"}};
+            std::string vrrLabel = "Follow the default";
+            for (const auto& [v, l] : vrrModes)
+                if (std::atoi(v.c_str()) == vrrNow) vrrLabel = l;
+            dropdown(vrr.row, g, vrrLabel, vrrModes, [m](const std::string& v) { changeMonitor(m, {{"vrr", std::atoi(v.c_str())}}, false); });
+
+            // Colour: 10-bit, the colour mode, and SDR in HDR
+            auto bits = row(g, "palette", "10-bit colour", "Smoother gradients, where the display and cable support it");
+            auto* bitsSw = bits.row->add<Switch>();
+            bitsSw->setChecked(m.bitdepth == 10, false);
+            bitsSw->onToggled = [m](bool v) { changeMonitor(m, {{"bitdepth", v ? 10 : 8}}, true); };
+
+            static const std::vector<std::pair<std::string, std::string>> cms = {
+                {"auto", "Automatic"}, {"srgb", "sRGB (standard)"}, {"wide", "Wide gamut (BT.2020)"},
+                {"edid", "As the display reports"}, {"hdr", "HDR"}, {"hdredid", "HDR, as the display reports"},
+                {"dcip3", "DCI-P3"}, {"dp3", "Display P3"}, {"adobe", "Adobe RGB"}};
+            std::string cmLabel = m.cm;
+            for (const auto& [v, l] : cms)
+                if (v == m.cm) cmLabel = l;
+            auto cm = row(g, "hdr_strong", "Colour mode", "HDR needs a display that supports it");
+            dropdown(cm.row, g, cmLabel, cms, [m](const std::string& v) { changeMonitor(m, {{"cm", v}}, true); });
+            if (m.cm.starts_with("hdr")) {
+                // Ordinary (SDR) apps on an HDR screen
+                auto bright = row(g, "brightness_6", "Brightness of SDR apps", std::format("{:.0f}%", m.sdrBrightness * 100));
+                auto* bs = bright.row->add<Slider>();
+                bs->fixedWidth = 200;
+                bs->setRange(0.5f, 2.0f)->setStep(0.05f / 1.5f);
+                bs->setValue(static_cast<float>(m.sdrBrightness), false);
+                auto* bsub = bright.subtitle;
+                bs->onChanged = [bsub](float v) { bsub->setText(std::format("{:.0f}%", v * 100)); };
+                bs->onCommitted = [m](float v) { changeMonitor(m, {{"sdrbrightness", std::round(v * 20) / 20}}, false); };
+                auto sat = row(g, "invert_colors", "Saturation of SDR apps", std::format("{:.0f}%", m.sdrSaturation * 100));
+                auto* ss = sat.row->add<Slider>();
+                ss->fixedWidth = 200;
+                ss->setRange(0.5f, 1.5f)->setStep(0.05f);
+                ss->setValue(static_cast<float>(m.sdrSaturation), false);
+                auto* ssub = sat.subtitle;
+                ss->onChanged = [ssub](float v) { ssub->setText(std::format("{:.0f}%", v * 100)); };
+                ss->onCommitted = [m](float v) { changeMonitor(m, {{"sdrsaturation", std::round(v * 20) / 20}}, false); };
+            }
+
+            // Mirroring another display
+            if (monitors.size() > 1) {
+                auto mir = row(g, "screen_share", "Mirror", "Show another display's picture here");
+                std::vector<std::pair<std::string, std::string>> others = {{"", "Don't mirror"}};
+                for (const auto& o : monitors)
+                    if (o.key != m.key) others.push_back({o.name, o.name});
+                dropdown(mir.row, g, m.mirrorOf.empty() ? "Don't mirror" : m.mirrorOf, others,
+                         [m](const std::string& v) { changeMonitor(m, {{"mirror", v}}, true); });
+            }
+
+            if (!m.kept.empty()) {
+                const std::string key = m.key;
+                auto reset = row(g, "restart_alt", "Settings' changes for this display", "Back to what the config files set");
+                pillButton(reset.row, "Forget", false, [key] { HyprOptions::get().forgetMonitor(key); }, "restart_alt");
+            }
+        }
+    };
+    live->conns.push_back(pending().changed.connect([live] { live->syncSoon(); }));
+    live->conns.push_back(HyprOptions::get().changed.connect([live] { live->syncSoon(); }));
+    // Plugged in or out, or rearranged: read them again (after Hyprland settles)
+    live->conns.push_back(Hyprland::get().event.connect([live](const std::string& name, const std::string&) {
+        if (name.starts_with("monitor") || name == "configreloaded")
+            EventLoop::get().addTimer(300, [live] { live->syncSoon(); });
+    }));
+    live->sync();
+}
+
 } // namespace
+
+void hyprMonitorsPage(Flex* page, Popup&) {
+    monitorSections(page);
+}
 
 void hyprAnimationsPage(Flex* page, Popup&) {
     buildPage(page, "hypr-animations");

@@ -372,7 +372,7 @@ void displayPage(Flex* page, Popup&) {
     sliderRow(night, "thermostat", "Colour temperature", "/nightLight/temperature", 4500, 2500, 6500, 100,
               [](double v) { return std::format("{:.0f} K", v); }, [applyNight](double) { applyNight(); });
 
-    auto* mons = group(page, "Monitors", "Arrangement and modes are set in your Hyprland config (monitors.lua)");
+    auto* mons = group(page, "Monitors", "Arrange them and set their resolution, scale, rotation, VRR and HDR in Hyprland Settings");
     if (auto j = Hyprland::get().requestJson("monitors"); j && j->is_array()) {
         for (const auto& m : *j)
             row(mons, "monitor", m.value("description", "").empty() ? m.value("name", "") : std::format("{}  ·  {}", m.value("name", ""), m.value("description", "")),
@@ -381,6 +381,10 @@ void displayPage(Flex* page, Popup&) {
     } else {
         row(mons, "monitor", "Monitor details need Hyprland");
     }
+    auto arrange = row(mons, "desktop_windows", "Arrangement and modes");
+    pillButton(arrange.row, "Open", false, [] {
+        if (open) open("hyprsettings hypr-monitors");
+    }, "open_in_new");
 }
 
 // Installed font families from fontconfig, read once (monospace or all)
@@ -2843,6 +2847,7 @@ const PageDef kPages[] = {
     // Hyprland itself: every compositor option, live
     {"hypr-windows", "space_dashboard", "Windows & borders", "Gaps, borders, their colours and snapping", hyprWindowsPage},
     {"hypr-decoration", "auto_awesome", "Decoration", "Corners, opacity, blur, shadows and glow", hyprDecorationPage},
+    {"hypr-monitors", "desktop_windows", "Displays", "Arrangement, resolution, scale, rotation, VRR and HDR", hyprMonitorsPage},
     {"hypr-animations", "animation", "Animations", "Every animation's length, curve and style, and a curve editor", hyprAnimationsPage},
     {"hypr-layouts", "dashboard", "Layouts", "Dwindle, master and scrolling tiling", hyprLayoutsPage},
     {"hypr-input", "keyboard_alt", "Input devices", "Keyboard layouts, pointer, touchpad, touch and tablets", hyprInputPage},
@@ -2874,7 +2879,7 @@ const std::vector<PageDef>& pagesOf(bool hypr) {
 
 int pageGroup(const std::string& id) {
     // Hyprland Settings: how it looks, how windows behave, the internals
-    if (id == "hypr-windows" || id == "hypr-decoration" || id == "hypr-animations") return 0;
+    if (id == "hypr-monitors" || id == "hypr-windows" || id == "hypr-decoration" || id == "hypr-animations") return 0;
     if (id == "hypr-layouts" || id == "hypr-input" || id == "hypr-gestures" || id == "hypr-cursor" || id == "hypr-groups")
         return 1;
     if (id.starts_with("hypr-")) return 2;

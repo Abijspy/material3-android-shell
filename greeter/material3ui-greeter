@@ -269,6 +269,12 @@ except OSError: pass
 try:
     lua += [l.rstrip() for l in open(os.path.join(hypr, "user_persistence.lua")) if l.lstrip().startswith("hl.monitor(")]
 except OSError: pass
+# Hyprland Settings → Displays keeps its rules here, applied last: they win
+try:
+    for l in open(os.path.join(hypr, "hyprland_custom.lua")):
+        m = re.match(r"\s*pcall\(hl\.monitor, (\{.*\})\)\s*$", l)
+        if m: lua.append("hl.monitor(%s)" % m.group(1))
+except OSError: pass
 with open(os.path.join(data, "hyprland-local.lua.tmp"), "w") as f:
     f.write("-- Synced from %s by material3ui-greeter\n%s\n" % (user, "\n".join(lua)))
 os.replace(os.path.join(data, "hyprland-local.lua.tmp"), os.path.join(data, "hyprland-local.lua"))

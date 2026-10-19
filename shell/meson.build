@@ -102,6 +102,7 @@ sources = files(
   'src/shell/Rich.cpp',
   'src/shell/CurveEditor.cpp',
   'src/shell/HyprPages.cpp',
+  'src/shell/MonitorLayout.cpp',
   'src/shell/Settings.cpp',
   'src/shell/SettingsKit.cpp',
   'src/shell/Tools.cpp',
