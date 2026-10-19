@@ -196,10 +196,24 @@ void Switch::doPaint(Renderer& r) {
     const Color off = Theme::get().color("surface_container_highest");
     const Color border = Theme::get().color("outline");
     r.rect(track, Color::mix(off, on, t), Radii(16), 2 * (1 - t), border);
-    const float d = 16 + 8 * t; // thumb grows 16 → 24
+    // M3 switch with icons (as Android 16): a full-size thumb carrying ✕
+    // when off and ✓ when on
+    const float d = 24;
     const float cx = track.x + 16 + (52 - 32) * t;
     const Color thumb = Color::mix(Theme::get().color("outline"), Theme::get().color("on_primary"), t);
     r.rect({cx - d / 2, track.y + 16 - d / 2, d, d}, thumb, Radii(d / 2));
+    TextStyle st;
+    st.family = Theme::get().iconFamily();
+    st.icon = true;
+    st.size = 16;
+    st.weight = 600;
+    const bool checked = t >= 0.5f;
+    const auto& tex = TextEngine::get().texture(checked ? "check" : "close", st, r.scale());
+    const float s = r.scale();
+    r.mask(tex.id,
+           {std::round((cx - tex.logical.width / 2) * s) / s, std::round((track.y + 16 - tex.logical.height / 2) * s) / s,
+            tex.logical.width, tex.logical.height},
+           Theme::get().color(checked ? "on_primary_container" : "surface_container_highest"));
     if (m_t.running()) requestRedraw();
 }
 

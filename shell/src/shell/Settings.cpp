@@ -52,7 +52,8 @@ namespace {
 // apart, large outer and small inner corners), choices are connected button
 // groups, and pressed controls spring into a tighter shape.
 
-constexpr float kOuter = 24, kInner = 6;
+// M3 Expressive: large outer corners, tight inner ones
+constexpr float kOuter = 28, kInner = 6;
 
 // Rebuilds a page by id (after a reset, so its controls show the defaults)
 std::function<void(const std::string&)> reshow;
@@ -2007,10 +2008,10 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
     auto* hero = right->add<Flex>(Flex::Direction::Row);
     hero->setSpacing(16)->setPadding({8, 4, 0, 8})->setAlignItems(Align::Start);
     auto* badge = hero->add<Flex>(Flex::Direction::Row);
-    badge->setJustify(Align::Center)->setRadius(Radii(18))->setBackground("primary_container", false);
-    badge->fixedWidth = 56;
-    badge->fixedHeight = 56;
-    auto* badgeIcon = badge->add<Icon>("settings", 28);
+    badge->setJustify(Align::Center)->setRadius(Radii(22))->setBackground("primary_container", false);
+    badge->fixedWidth = 60;
+    badge->fixedHeight = 60;
+    auto* badgeIcon = badge->add<Icon>("settings", 30);
     badgeIcon->setFill(true)->setColor("on_primary_container", false);
     auto* heroTexts = hero->add<Flex>(Flex::Direction::Column);
     heroTexts->setAlignItems(Align::Start)->setSpacing(2);
@@ -2035,8 +2036,10 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
 
     struct NavItem {
         Button* button;
+        Flex* chip; // the icon's round tonal container
         Icon* icon;
         Label* label;
+        int hue;    // 0 primary, 1 secondary, 2 tertiary
     };
     auto items = std::make_shared<std::vector<NavItem>>();
     auto show = std::make_shared<std::function<void(size_t)>>();
@@ -2058,8 +2061,13 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
             const bool on = i == index;
             auto& it = (*items)[i];
             it.button->setBackground(on ? ColorRef("secondary_container") : ColorRef::none());
-            it.icon->setFill(on)->setColor(on ? "on_secondary_container" : "on_surface_variant");
-            it.label->setWeight(on ? 600 : 500)->setColor(on ? "on_secondary_container" : "on_surface_variant");
+            // Android 16's settings list: each icon in a tonal circle, the
+            // current page's solid
+            static const char* kChip[] = {"primary_container", "secondary_container", "tertiary_container"};
+            static const char* kOnChip[] = {"on_primary_container", "on_secondary_container", "on_tertiary_container"};
+            it.chip->setBackground(on ? ColorRef("primary") : ColorRef(kChip[it.hue]));
+            it.icon->setFill(on)->setColor(on ? "on_primary" : kOnChip[it.hue]);
+            it.label->setWeight(on ? 600 : 500)->setColor(on ? "on_secondary_container" : "on_surface", false);
         }
         // Keep the active item in view (after the next layout)
         Button* active = (*items)[index].button;
@@ -2071,17 +2079,19 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
     size_t first = 0;
     for (size_t i = 0; i < std::size(kPages); ++i) {
         auto* b = side->add<Button>(Flex::Direction::Row);
-        pill(b)->setPadding({16, 12})->setSpacing(14);
+        pill(b)->setPadding({8, 6, 16, 6})->setSpacing(12);
         b->pressedRadius = 12;
-        auto* icon = b->add<Icon>(kPages[i].icon, 22);
-        icon->setColor("on_surface_variant", false);
+        auto* chip = b->add<Flex>(Flex::Direction::Row);
+        pill(chip)->setJustify(Align::Center);
+        chip->fixedWidth = chip->fixedHeight = 36;
+        auto* icon = chip->add<Icon>(kPages[i].icon, 20);
         auto* label = b->add<Label>(kPages[i].title);
         label->setSize(15)->setWeight(500)->setColor("on_surface_variant", false);
         b->onClicked = [show, i](uint32_t) {
             // The page rebuild must not run inside the click that asked for it
             EventLoop::get().defer([show, i] { (*show)(i); });
         };
-        items->push_back({b, icon, label});
+        items->push_back({b, chip, icon, label, static_cast<int>(i % 3)});
         if (initial == kPages[i].id) first = i;
     }
     // Only called from inside this popup (a page's reset button)
