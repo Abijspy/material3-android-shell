@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.4.4 — 2026-10-19
+
+- **Smoother scrolling everywhere.** Touchpads move lists exactly with your fingers and glide to a stop when you lift them mid-swipe; mouse wheel notches ease into each other instead of stuttering. Sliders and buttons that react to scrolling (volume) still step as before.
+- **Settings blurs its edges:** in both panes, content softens into a smooth blur at the top and bottom while there is more to scroll to; the scrollbar stays sharp.
+
 ## v4.4.3 — 2026-10-19
 
 - **Wavy loaders, as Material 3 Expressive.** While Software & updates checks or installs, the status icon becomes a wavy arc that spins and breathes on a faint track, and a wavy stretch sweeps along a bar beneath it. The lock and login screens show the same loader in the submit button while your password is checked.
