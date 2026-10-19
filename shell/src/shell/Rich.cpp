@@ -182,19 +182,6 @@ private:
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };
 
-ImageView::Provider artProvider(const std::string& url) {
-    if (!url.starts_with("file://")) return {};
-    const std::string path = url.substr(7);
-    return [path](float scale, int& w, int& h) -> GLuint {
-        const int px = static_cast<int>(std::lround(96 * scale));
-        auto* t = Images::get().picture(path, px, px, true);
-        if (!t) return 0;
-        w = t->width;
-        h = t->height;
-        return t->id;
-    };
-}
-
 } // namespace
 
 // ── Dashboard ──
@@ -237,24 +224,8 @@ void dashboard(Flex* card0, Popup&) {
     auto* wxDays = wx->add<Flex>(Flex::Direction::Row);
     wxDays->setSpacing(4)->setAlignItems(Align::Stretch);
 
-    // Now playing
-    auto* media = card(right);
-    auto* mediaRow = media->add<Flex>(Flex::Direction::Row);
-    mediaRow->setSpacing(14);
-    auto* art = mediaRow->add<ImageView>(72, ImageView::Provider{});
-    art->cover = true;
-    auto* texts = mediaRow->add<Flex>(Flex::Direction::Column);
-    texts->setAlignItems(Align::Start)->setSpacing(2);
-    texts->grow = true;
-    auto* title = texts->add<Label>();
-    title->setSize(16)->setWeight(600)->setMaxWidth(200)->setMaxLines(2);
-    auto* artist = texts->add<Label>();
-    artist->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(200);
-    auto* controls = media->add<Flex>(Flex::Direction::Row);
-    controls->setSpacing(8)->setJustify(Align::Center);
-    iconButton(controls, "skip_previous", [] { Mpris::get().previous(); }, 26);
-    auto* play = iconButton(controls, "play_arrow", [] { Mpris::get().playPause(); }, 30);
-    iconButton(controls, "skip_next", [] { Mpris::get().next(); }, 26);
+    // Now playing: the M3 Expressive player
+    right->add<MediaCard>();
 
     // System at a glance
     auto* sys = card(right);
@@ -265,7 +236,6 @@ void dashboard(Flex* card0, Popup&) {
     up->setSize(13)->setColor("on_surface_variant", false);
     up->alignSelf = Align::Start;
 
-    auto lastArt = std::make_shared<std::string>("\x01");
     right->sync = [=] {
         const std::time_t now = std::time(nullptr);
         std::tm tm{};
@@ -275,18 +245,6 @@ void dashboard(Flex* card0, Popup&) {
         clock->setText(buf);
         std::strftime(buf, sizeof buf, "%A, %-d %B %Y", &tm);
         date->setText(buf);
-
-        const auto* p = Mpris::get().active();
-        title->setText(p ? p->title : "Nothing playing");
-        artist->setText(p ? (p->artist.empty() ? p->identity : p->artist) : "Start music in any player");
-        static_cast<Icon*>(play->children()[0].get())->setText(p && p->status == "Playing" ? "pause" : "play_arrow");
-        const std::string url = p ? p->artUrl : "";
-        if (url != *lastArt) {
-            *lastArt = url;
-            auto provider = artProvider(url);
-            art->setVisible(static_cast<bool>(provider));
-            art->setProvider(std::move(provider));
-        }
 
         auto& s = SystemStats::get();
         cpu.value->setText(std::format("{:.0f}%{}", s.cpu(), s.temperature() > 0 ? std::format(" · {:.0f}°C", s.temperature()) : ""));

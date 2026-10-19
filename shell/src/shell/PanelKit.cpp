@@ -1,7 +1,14 @@
 #include "shell/PanelKit.h"
 
 #include "core/EventLoop.h"
+#include "render/Images.h"
+#include "services/Mpris.h"
+#include "ui/Controls.h"
+#include "ui/Theme.h"
 
+#include <chrono>
+#include <cmath>
+#include <format>
 #include <linux/input-event-codes.h>
 
 namespace m3::shell::kit {
@@ -56,6 +63,173 @@ void Meter::doPaint(Renderer& r) {
     RectF fill = rect();
     fill.w *= m_value;
     if (fill.w > 0) r.rect(fill, m_color.resolve(), round);
+}
+
+// ── WavyProgress ──
+
+void WavyProgress::set(float value, bool playing) {
+    m_value = std::clamp(value, 0.0f, 1.0f);
+    if (playing != m_playing) {
+        m_playing = playing;
+        m_amp.set(playing ? 1.0f : 0.0f);
+    }
+    requestRedraw();
+}
+
+void WavyProgress::onPress(uint32_t button, float x, float) {
+    if (button != BTN_LEFT || rect().w <= 0) return;
+    m_drag = std::clamp((x - rect().x) / rect().w, 0.0f, 1.0f);
+    requestRedraw();
+}
+
+void WavyProgress::onDrag(float x, float) {
+    if (m_drag < 0) return;
+    m_drag = std::clamp((x - rect().x) / rect().w, 0.0f, 1.0f);
+    requestRedraw();
+}
+
+void WavyProgress::onRelease() {
+    if (m_drag < 0) return;
+    const float at = m_drag;
+    m_drag = -1;
+    m_value = at;
+    if (onSeek) onSeek(at);
+    requestRedraw();
+}
+
+void WavyProgress::doPaint(Renderer& r) {
+    const auto& b = rect();
+    const float cy = b.y + b.h / 2, stroke = 4, gap = 6;
+    const float f = m_drag >= 0 ? m_drag : m_value;
+    const float split = b.x + f * b.w;
+    const Color active = Theme::get().color("primary");
+    const Color rest = Theme::get().color("on_surface").withAlpha(0.25f);
+    // The wave: dots along a sine that travels while playing
+    const float amp = 3.5f * m_amp.value();
+    const double t = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    const float phase = static_cast<float>(std::fmod(t * 4.0, 2 * M_PI));
+    constexpr float wavelength = 28;
+    const float end = split - gap;
+    for (float x = b.x + stroke / 2; x <= end; x += 1.5f) {
+        const float y = cy + amp * std::sin(2 * static_cast<float>(M_PI) * (x - b.x) / wavelength - phase);
+        r.rect({x - stroke / 2, y - stroke / 2, stroke, stroke}, active, Radii(stroke / 2));
+    }
+    // The rest: a straight track and a stop dot at its end
+    const float from = split + gap;
+    if (from < b.right()) r.rect({from, cy - stroke / 2, b.right() - from, stroke}, rest, Radii(stroke / 2));
+    r.rect({b.right() - stroke, cy - stroke / 2, stroke, stroke}, active, Radii(stroke / 2));
+    // The handle where playback is
+    r.rect({split - 2, cy - 10, 4, 20}, active, Radii(2));
+    if (m_playing || m_amp.running()) requestRedraw();
+}
+
+// ── MediaCard ──
+
+namespace {
+std::string clockText(long long us) {
+    const long long s = std::max(0LL, us / 1000000);
+    return s >= 3600 ? std::format("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60) : std::format("{}:{:02}", s / 60, s % 60);
+}
+} // namespace
+
+MediaCard::MediaCard(bool compact) : Flex(Direction::Column) {
+    setPadding(Insets(compact ? 16 : 20))->setSpacing(compact ? 6 : 10)->setAlignItems(Align::Stretch)->setRadius(Radii(28));
+    setBackground(ColorRef("on_surface", 0.1f), false);
+    // Compact: one row of text and controls; full: the text stacked above them
+    Flex* textHost = this;
+    Flex* topRow = nullptr;
+    if (compact) {
+        topRow = add<Flex>(Direction::Row);
+        topRow->setSpacing(8);
+        textHost = topRow->add<Flex>(Direction::Column);
+        textHost->setAlignItems(Align::Start);
+        textHost->grow = true;
+    }
+    m_app = textHost->add<Label>();
+    m_app->setSize(12)->setWeight(500)->setColor("on_surface_variant", false);
+    m_title = textHost->add<Label>();
+    m_title->setSize(compact ? 16 : 20)->setWeight(600)->setMaxWidth(compact ? 200 : 340)->setMaxLines(compact ? 1 : 2);
+    m_artist = textHost->add<Label>();
+    m_artist->setSize(compact ? 13 : 14)->setColor("on_surface_variant", false)->setMaxWidth(compact ? 200 : 340);
+    if (compact) m_app->setVisible(false);
+    m_progressBox = add<Flex>(Direction::Column);
+    m_progressBox->setAlignItems(Align::Stretch)->setSpacing(2);
+    m_progress = m_progressBox->add<WavyProgress>();
+    m_progress->onSeek = [](float f) { Mpris::get().seek(f); };
+    auto* times = m_progressBox->add<Flex>(Direction::Row);
+    m_elapsed = times->add<Label>();
+    m_elapsed->setSize(12)->setColor("on_surface_variant", false);
+    m_elapsed->grow = true;
+    m_left = times->add<Label>();
+    m_left->setSize(12)->setColor("on_surface_variant", false);
+
+    auto* controls = compact ? topRow->add<Flex>(Direction::Row) : add<Flex>(Direction::Row);
+    controls->setSpacing(compact ? 4 : 20)->setJustify(Align::Center);
+    m_prev = iconButton(controls, "skip_previous", [] { Mpris::get().previous(); }, compact ? 24 : 28);
+    // Play: a circle while paused, a rounded square while playing
+    m_play = controls->add<Button>(Direction::Row);
+    m_play->setJustify(Align::Center)->setBackground("primary", false);
+    m_play->fixedWidth = m_play->fixedHeight = compact ? 52 : 64;
+    m_compact = compact;
+    m_play->pressedRadius = 12;
+    m_playIcon = m_play->add<Icon>("play_arrow", 32);
+    m_playIcon->setFill(true)->setColor("on_primary", false);
+    m_play->onClicked = [](uint32_t button) {
+        if (button == BTN_LEFT) Mpris::get().playPause();
+    };
+    m_next = iconButton(controls, "skip_next", [] { Mpris::get().next(); }, compact ? 24 : 28);
+
+    m_conn = Mpris::get().changed.connect([this] { sync(); });
+    m_lease = Mpris::get().watchPosition();
+    m_tick = EventLoop::get().addTimer(1000, [this] { sync(); }, true);
+    sync();
+}
+
+MediaCard::~MediaCard() {
+    *m_alive = false;
+    if (m_tick) EventLoop::get().cancel(m_tick);
+}
+
+void MediaCard::sync() {
+    auto& m = Mpris::get();
+    const auto* p = m.active();
+    m_app->setText(p ? p->identity : "Media");
+    m_title->setText(p && !p->title.empty() ? p->title : "Nothing playing");
+    m_artist->setText(p ? (p->artist.empty() ? p->album : p->artist) : "Start music in any player");
+    m_artist->setVisible(!m_artist->text().empty());
+    const bool playing = p && p->status == "Playing";
+    const bool timed = p && p->length > 0;
+    m_progressBox->setVisible(timed);
+    if (timed) {
+        const long long at = p->positionNow();
+        m_progress->set(static_cast<float>(static_cast<double>(at) / static_cast<double>(p->length)), playing);
+        m_progress->onSeek = p->canSeek ? std::function<void(float)>([](float f) { Mpris::get().seek(f); }) : nullptr;
+        m_elapsed->setText(clockText(at));
+        m_left->setText("-" + clockText(p->length - at));
+    }
+    m_playIcon->setText(playing ? "pause" : "play_arrow");
+    const float size = m_compact ? 52 : 64;
+    m_play->setRadius(Radii(playing ? size * 0.3f : size / 2));
+    m_prev->setOpacity(p && p->canPrevious ? 1.0f : 0.4f);
+    m_next->setOpacity(p && p->canNext ? 1.0f : 0.4f);
+    const std::string art = p ? m.artPath(*p) : "";
+    if (art != m_art) {
+        m_art = art;
+        requestRedraw();
+    }
+}
+
+void MediaCard::doPaint(Renderer& r) {
+    if (m_art.empty()) return Flex::doPaint(r);
+    // The cover fills the card, under a tint that keeps the text readable
+    const auto& b = rect();
+    const Radii radii = effectiveRadius();
+    const int w = static_cast<int>(std::lround(b.w * r.scale())), h = static_cast<int>(std::lround(b.h * r.scale()));
+    if (auto* t = Images::get().picture(m_art, w, h, true, [this, alive = m_alive] {
+            if (*alive) requestRedraw();
+        }))
+        r.image(t->id, b, 1, radii);
+    r.rect(b, ColorRef("surface", 0.62f).resolve(), radii);
 }
 
 Button* iconButton(Node* parent, const std::string& icon, std::function<void()> onClick, float size) {

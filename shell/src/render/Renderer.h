@@ -39,7 +39,7 @@ public:
     void rect(const RectF& r, const Color& fill, Radii radii = {}, float borderWidth = 0, Color border = {});
     void mask(GLuint texture, const RectF& r, const Color& tint);
     // Full-colour premultiplied BGRA texture (Cairo's ARGB32 layout)
-    void image(GLuint texture, const RectF& r, float opacity = 1);
+    void image(GLuint texture, const RectF& r, float opacity = 1, Radii radii = {});
 
     // Multiplies every colour drawn until popped (fades, disabled states)
     void pushOpacity(float o);
@@ -76,7 +76,7 @@ private:
     } m_maskProg;
     struct ImageProgram {
         GLuint id = 0;
-        GLint viewport, rect, opacity, tex;
+        GLint viewport, rect, opacity, tex, radii, px;
     } m_imageProg;
     GLuint m_quad = 0;
 

@@ -1,6 +1,8 @@
 #pragma once
 
+#include "core/EventLoop.h"
 #include "core/Signal.h"
+#include "ui/Animation.h"
 #include "ui/Node.h"
 
 #include <functional>
@@ -73,6 +75,58 @@ private:
         }
         return {widest, y + line};
     }
+};
+
+// M3 Expressive wavy progress: the played part a wave that moves while
+// playing and lies flat when paused, the rest a straight track with a stop
+// dot. Click or drag to seek.
+class WavyProgress : public ui::Node {
+public:
+    void set(float value, bool playing);
+    std::function<void(float)> onSeek; // released at this fraction
+
+    bool interactive() const override { return static_cast<bool>(onSeek); }
+    void onPress(uint32_t button, float x, float y) override;
+    void onDrag(float x, float y) override;
+    void onRelease() override;
+
+protected:
+    SizeF doMeasure(SizeF available) override { return {available.w, 24}; }
+    void doPaint(Renderer& r) override;
+    bool doAnimating() const override { return m_playing || m_amp.running(); }
+
+private:
+    float m_value = 0, m_drag = -1;
+    bool m_playing = false;
+    ui::Tween m_amp{0, ui::motion::mediumMs, ui::Easing::standard()}; // wave height: 0 flat
+};
+
+// The media player, as Android 17's: the album art fills the card under a
+// tint; the title and artist, wavy progress with times, and the controls,
+// whose play button is a circle when paused and a rounded square while
+// playing. Follows the active MPRIS player by itself.
+class MediaCard : public ui::Flex {
+public:
+    // Compact (Quick Settings): the text beside the controls, half the height
+    explicit MediaCard(bool compact = false);
+    ~MediaCard() override;
+
+protected:
+    void doPaint(Renderer& r) override;
+
+private:
+    void sync();
+    ui::Label *m_app, *m_title, *m_artist, *m_elapsed, *m_left;
+    ui::Flex* m_progressBox;
+    WavyProgress* m_progress;
+    ui::Button *m_play, *m_prev, *m_next;
+    ui::Icon* m_playIcon;
+    std::string m_art; // the cover file, "" for none
+    Connection m_conn;
+    std::shared_ptr<void> m_lease;
+    EventLoop::TimerId m_tick = 0; // the times move on each second
+    std::shared_ptr<bool> m_alive = std::make_shared<bool>(true); // for the cover's decode
+    bool m_compact = false;
 };
 
 // Round icon button (close, back, power…)

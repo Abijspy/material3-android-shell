@@ -226,9 +226,9 @@ SizeF ScrollView::doMeasure(SizeF available) {
     const float cap = available.h > 48 ? std::min(maxHeight, available.h) : maxHeight;
     SizeF c = content()->measure({available.w, 1e6f});
     // Overflowing: the content gives up a gutter for the scrollbar
-    if (c.h > cap) c = content()->measure({available.w - kGutter, 1e6f});
+    if (c.h > cap) c = content()->measure({available.w - gutter(), 1e6f});
     m_contentHeight = c.h;
-    return {c.w + (c.h > cap ? kGutter : 0), std::min(c.h, cap)};
+    return {c.w + (c.h > cap ? gutter() : 0), std::min(c.h, cap)};
 }
 
 float ScrollView::maxOffset() const {
@@ -247,7 +247,7 @@ void ScrollView::placeContent() {
     if (!content() || rect().w <= 0) return;
     const float off = std::clamp(m_offset.value(), 0.0f, maxOffset());
     m_placedOffset = off;
-    content()->arrange({rect().x, rect().y - off, rect().w - (overflows() ? kGutter : 0), m_contentHeight});
+    content()->arrange({rect().x, rect().y - off, rect().w - (overflows() ? gutter() : 0), m_contentHeight});
 }
 
 bool ScrollView::onScroll(int d) {
@@ -260,7 +260,7 @@ void ScrollView::doArrange() {
     if (!content()) return;
     SizeF c = content()->measure({rect().w, 1e6f});
     const bool over = c.h > rect().h + 0.5f;
-    if (over) c = content()->measure({rect().w - kGutter, 1e6f});
+    if (over) c = content()->measure({rect().w - gutter(), 1e6f});
     m_contentHeight = c.h;
     placeContent();
 }

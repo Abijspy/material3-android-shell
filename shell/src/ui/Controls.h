@@ -82,6 +82,9 @@ private:
 class ScrollView : public Node {
 public:
     float maxHeight = 400;
+    // The scrollbar floats over the content instead of taking a gutter
+    // (fixed-width grids, like Quick Settings' tiles)
+    bool overlayBar = false;
 
     Node* content() const { return children().empty() ? nullptr : children().front().get(); }
     void scrollTo(float y, bool animate = true);
@@ -103,6 +106,7 @@ protected:
 
 private:
     static constexpr float kGutter = 14;
+    float gutter() const { return overlayBar ? 0 : kGutter; }
     float maxOffset() const;
     void placeContent();
     bool overflows() const { return m_contentHeight > rect().h + 0.5f; }

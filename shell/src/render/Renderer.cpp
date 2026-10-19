@@ -84,11 +84,25 @@ precision mediump float;
 #endif
 uniform vec4 u_rect;
 uniform float u_opacity;
+uniform vec4 u_radii;   // tl tr br bl; 0: square corners
+uniform float u_px;
 uniform sampler2D u_tex;
 varying vec2 v_local;
+
+float sdRoundBox(vec2 p, vec2 halfSize, float r) {
+    vec2 q = abs(p) - halfSize + r;
+    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+}
+
 void main() {
+    // Rounded like a rect (album art filling a card), anti-aliased the same way
+    vec2 halfSize = u_rect.zw * 0.5;
+    vec2 p = v_local - halfSize;
+    float r = p.x < 0.0 ? (p.y < 0.0 ? u_radii.x : u_radii.w) : (p.y < 0.0 ? u_radii.y : u_radii.z);
+    r = min(r, min(halfSize.x, halfSize.y));
+    float coverage = clamp(0.5 - sdRoundBox(p, halfSize, r) / u_px, 0.0, 1.0);
     // Cairo stores premultiplied ARGB32 as BGRA bytes on little-endian
-    gl_FragColor = texture2D(u_tex, v_local / u_rect.zw).bgra * u_opacity;
+    gl_FragColor = texture2D(u_tex, v_local / u_rect.zw).bgra * u_opacity * coverage;
 }
 )";
 
@@ -174,6 +188,8 @@ bool Renderer::buildPrograms() {
     im.viewport = glGetUniformLocation(im.id, "u_viewport");
     im.rect = glGetUniformLocation(im.id, "u_rect");
     im.opacity = glGetUniformLocation(im.id, "u_opacity");
+    im.radii = glGetUniformLocation(im.id, "u_radii");
+    im.px = glGetUniformLocation(im.id, "u_px");
     im.tex = glGetUniformLocation(im.id, "u_tex");
 
     auto& r = m_rectProg;
@@ -264,7 +280,7 @@ void Renderer::mask(GLuint texture, const RectF& r, const Color& tint) {
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
-void Renderer::image(GLuint texture, const RectF& r, float opacity) {
+void Renderer::image(GLuint texture, const RectF& r, float opacity, Radii radii) {
     const float o = m_opacity.back() * opacity;
     if (!texture || o <= 0) return;
     auto& p = m_imageProg;
@@ -273,6 +289,8 @@ void Renderer::image(GLuint texture, const RectF& r, float opacity) {
     const auto [ox, oy] = m_offsets.back();
     glUniform4f(p.rect, r.x + ox, r.y + oy, r.w, r.h);
     glUniform1f(p.opacity, o);
+    glUniform4f(p.radii, radii.tl, radii.tr, radii.br, radii.bl);
+    glUniform1f(p.px, 1.0f / m_scale);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
     glUniform1i(p.tex, 0);

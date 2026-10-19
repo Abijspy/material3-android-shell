@@ -652,7 +652,11 @@ void editView(Flex* body, const std::function<void()>& back) {
 void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, const std::function<void()>& showBluetooth,
               const std::function<void()>& showEdit) {
     body->clearChildren();
-    auto* live = body->add<Live>();
+    // Taller than the screen (a small one, music playing): it scrolls
+    auto* scroller = body->add<ScrollView>();
+    scroller->maxHeight = 1e6f;
+    scroller->overlayBar = true;
+    auto* live = scroller->add<Live>();
 
     // M3 Expressive, as Android 16/17's shade: a large clock and the date,
     // round tonal buttons on the right
@@ -735,20 +739,8 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
     net->onClicked = [showWifi](uint32_t) { showWifi(); };
     auto lease = Network::get().watchTraffic();
 
-    // Now playing
-    auto* media = live->add<Flex>(Flex::Direction::Row);
-    media->setPadding({20, 12})->setSpacing(12)->setRadius(Radii(28))->setBackground(ColorRef("on_surface", 0.1f), false);
-    media->add<Icon>("music_note", 24)->setColor("primary");
-    auto* mediaText = media->add<Flex>(Flex::Direction::Column);
-    mediaText->setAlignItems(Align::Start);
-    mediaText->grow = true;
-    auto* track = mediaText->add<Label>();
-    track->setSize(14)->setWeight(500)->setMaxWidth(200);
-    auto* artist = mediaText->add<Label>();
-    artist->setSize(12)->setColor("on_surface_variant", false)->setMaxWidth(200);
-    iconButton(media, "skip_previous", [] { Mpris::get().previous(); });
-    auto* play = iconButton(media, "play_arrow", [] { Mpris::get().playPause(); });
-    iconButton(media, "skip_next", [] { Mpris::get().next(); });
+    // Now playing: the M3 Expressive player, while something plays
+    auto* media = live->add<MediaCard>(true);
 
     live->sync = [=] {
         auto& a = Audio::get();
@@ -781,13 +773,7 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
             button->setBackground(on ? ColorRef("primary") : ColorRef::none());
             static_cast<Icon*>(button->children()[0].get())->setFill(on)->setColor(on ? "on_primary" : "on_surface_variant");
         }
-        const auto* p = Mpris::get().active();
-        media->setVisible(p != nullptr);
-        if (p) {
-            track->setText(p->title);
-            artist->setText(p->artist.empty() ? p->identity : p->artist);
-            static_cast<Icon*>(play->children()[0].get())->setText(p->status == "Playing" ? "pause" : "play_arrow");
-        }
+        media->setVisible(Mpris::get().active() != nullptr);
     };
     live->watch(Audio::get().changed);
     live->watch(Brightness::get().changed);
