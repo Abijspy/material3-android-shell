@@ -1,5 +1,11 @@
 # Changelog
 
+## v5.0.1 — 2026-10-19
+
+- **Both settings apps on the dock.** Material3UI Settings and Hyprland Settings are pinned: on new installs, and once on existing ones (unpin either and it stays off). Hyprland Settings is in the app launcher too.
+- **Hyprland Settings at the top** of Material3UI Settings' sidebar, just under the search (and Material3UI Settings at the top of Hyprland Settings').
+- **The installer no longer offers EasyEffects and Cloudflare WARP.**
+
 ## v5.0.0 — 2026-10-19
 
 **Hyprland Settings: one app for the whole compositor.** A second settings app, alongside Material3UI Settings and linked from it, for everything Hyprland does. It brings in the features of [HyprMod](https://github.com/BlueManCZ/hyprmod), rebuilt natively in the shell's own Material 3 Expressive design. Every change applies live, is saved at once, undoes with Ctrl+Z, and resets per option to what your config files had.
