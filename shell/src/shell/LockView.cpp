@@ -350,10 +350,13 @@ LockView::LockView(Options options) : Flex(Direction::Column), m_options(std::mo
     m_field->onSubmit = [this](const std::string& text) {
         if (!m_busy && onSubmit) onSubmit(text);
     };
-    auto* go = m_pill->add<Button>();
+    auto* go = m_go = m_pill->add<Button>();
     pill(go->setBackground("primary", false))->setJustify(Align::Center);
     go->fixedWidth = go->fixedHeight = 48;
-    go->add<Icon>("arrow_forward", 24)->setColor("on_primary", false);
+    m_goArrow = go->add<Icon>("arrow_forward", 24);
+    m_goArrow->setColor("on_primary", false);
+    m_goLoader = go->add<kit::WavyLoader>(34);
+    m_goLoader->setVisible(false);
     go->onClicked = [this](uint32_t) {
         if (!m_busy && onSubmit) onSubmit(m_field->text());
     };
@@ -488,14 +491,23 @@ const std::string& LockView::session() const {
     return m_options.sessions.empty() ? none : m_options.sessions[m_sessionIndex].id;
 }
 
+void LockView::showChecking(bool on) {
+    // The arrow gives way to M3 Expressive's wavy loader on a softer fill
+    m_goArrow->setVisible(!on);
+    m_goLoader->setVisible(on);
+    m_go->setBackground(on ? "primary_container" : "primary");
+}
+
 void LockView::setBusy(bool busy) {
     m_busy = busy;
+    showChecking(busy);
     m_status->setColor("on_surface_variant");
     if (busy) m_status->setText("Checking…");
 }
 
 void LockView::fail(const std::string& message) {
     m_busy = false;
+    showChecking(false);
     m_field->setText("");
     m_status->setText(message);
     m_status->setColor("error");
@@ -506,6 +518,7 @@ void LockView::fail(const std::string& message) {
 
 void LockView::setPrompt(const std::string& text, bool secret) {
     m_busy = false;
+    showChecking(false);
     m_field->setText("");
     m_field->setSecret(secret);
     m_field->setPlaceholder(text);

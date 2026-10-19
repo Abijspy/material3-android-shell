@@ -71,6 +71,10 @@ private:
     ui::Flex* m_menu = nullptr;
     Menu m_open = Menu::None;
     ui::Flex* m_pill;
+    ui::Button* m_go;       // submit: an arrow, or the wavy loader while checking
+    ui::Icon* m_goArrow;
+    ui::Node* m_goLoader;
+    void showChecking(bool on);
     ui::Label* m_avatarLetter;
     ui::TextField* m_field;
     bool m_busy = false;
