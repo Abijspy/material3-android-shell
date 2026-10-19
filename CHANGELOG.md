@@ -1,5 +1,12 @@
 # Changelog
 
+## v4.3.2 — 2026-10-19
+
+- **Music player, as Material 3 Expressive.** The album art fills the card under a tint, with the title and artist, a wavy progress line that moves while playing and lies flat when paused (click or drag it to seek, with elapsed and remaining time), and a play button that's a circle while paused and a rounded square while playing. Full size in the Dashboard, compact in Quick Settings. Cover art from the web (Spotify, browsers) now shows too.
+- **Touchpad settings** (Settings → System → Mouse & touchpad): tap to click, natural scrolling, ignore while typing, click with fingers, tap and drag, drag lock and scroll speed, plus pointer speed and acceleration. They apply at once.
+- **Dock menu:** right-click an icon for Open or New window, Pin to dock or Unpin, and Close window (or close all of its windows).
+- **Quick Settings scrolls** when it's taller than the screen, as on a small screen with music playing.
+
 ## v4.3.1 — 2026-10-19
 
 - **Crash-proof shell.**
