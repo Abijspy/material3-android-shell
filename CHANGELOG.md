@@ -1,5 +1,9 @@
 # Changelog
 
+## v5.1.1 — 2026-10-19
+
+- **Live tooltips.** A tooltip on the bar follows what it describes while it shows: the volume as you change it (or muting), the Wi-Fi network you join, Bluetooth turning on or off, the battery charging and notifications arriving.
+
 ## v5.1.0 — 2026-10-19
 
 - **Tooltips on the dock and the bar.** Rest the pointer on a dock icon to see the app's name (and how many windows it has open), or on the bar to see what each thing is: the workspace, your Wi-Fi network, Bluetooth, the volume, notifications, the battery, the playing track, tray apps and the panel buttons. Material 3's plain tooltips, a moment after you stop, gliding straight to the next one as you move along.
