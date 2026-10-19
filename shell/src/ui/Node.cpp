@@ -279,7 +279,9 @@ void Flex::doArrange() {
     if (visibleCount > 1) used += m_spacing * static_cast<float>(visibleCount - 1);
 
     const float leftover = contentMain - used;
-    const float growShare = growCount > 0 ? std::max(0.0f, leftover) / static_cast<float>(growCount) : 0;
+    // Room to spare goes to the growing children; too little, and they give
+    // it back (wrapping content then fits) rather than spill past the edge
+    const float growShare = growCount > 0 ? leftover / static_cast<float>(growCount) : 0;
     float pos = 0;
     if (growCount == 0 && leftover > 0) {
         if (m_justify == Align::Center) pos = leftover / 2;
@@ -291,7 +293,7 @@ void Flex::doArrange() {
         if (!c->shown()) continue;
         float m = row ? sizes[i].w : sizes[i].h;
         float x = row ? sizes[i].h : sizes[i].w; // cross size
-        if (c->grow) m += growShare;
+        if (c->grow) m = std::max(0.0f, m + growShare);
         float crossPos = 0;
         switch (m_alignItems) {
         case Align::Stretch: x = contentCross; break;

@@ -136,10 +136,10 @@ void lockEditor(Flex* card, Popup& popup) {
         titles->add<Label>("The login screen shows the same layout")->setSize(13)->setColor("on_surface_variant", false);
         auto button = [top](const char* icon, const char* label, bool primary, std::function<void()> fn) {
             auto* b = top->add<Button>();
-            pill(b->setBackground(primary ? "primary" : "secondary_container", false))->setPadding({16, 9})->setSpacing(6);
+            pill(b->setBackground(primary ? ColorRef("primary") : ColorRef("on_surface", 0.1f), false))->setPadding({16, 9})->setSpacing(6);
             b->pressedRadius = 10;
-            b->add<Icon>(icon, 18)->setColor(primary ? "on_primary" : "on_secondary_container", false);
-            b->add<Label>(label)->setSize(14)->setWeight(500)->setColor(primary ? "on_primary" : "on_secondary_container", false);
+            b->add<Icon>(icon, 18)->setColor(primary ? "on_primary" : "on_surface", false);
+            b->add<Label>(label)->setSize(14)->setWeight(500)->setColor(primary ? "on_primary" : "on_surface", false);
             b->onClicked = [fn = std::move(fn)](uint32_t btn) {
                 if (btn == BTN_LEFT) fn();
             };
@@ -160,10 +160,12 @@ void lockEditor(Flex* card, Popup& popup) {
         button("check", "Done", true, [&popup] { popup.close(); });
 
         // What the selection allows
-        auto* actions = live->add<Flex>(Flex::Direction::Row);
-        actions->setSpacing(8)->setPadding({16, 10})->setRadius(Radii(20))->setBackground("surface_container_high", false);
-        actions->minHeight = 56;
         const int c = sel->first, r = sel->second;
+        // A row of controls; a column when it lists widgets to add
+        const bool adding = c >= 0 && !at(c, r);
+        auto* actions = live->add<Flex>(adding ? Flex::Direction::Column : Flex::Direction::Row);
+        actions->setSpacing(6)->setPadding({18, 8, 8, 8})->setRadius(Radii(28))->setBackground(ColorRef("on_surface", 0.1f), false);
+        actions->minHeight = 56;
         if (c < 0) {
             actions->add<Icon>("touch_app", 20)->setColor("on_surface_variant", false);
             actions->add<Label>("Click a cell to add a widget, or a widget to move or remove it")->setSize(14)->setColor("on_surface_variant", false);
@@ -183,29 +185,40 @@ void lockEditor(Flex* card, Popup& popup) {
             if (r > 0) iconButton(actions, "arrow_upward", [mv] { mv(0, -1); });
             if (r < kRows - 1) iconButton(actions, "arrow_downward", [mv] { mv(0, 1); });
             if (c < kCols - 1) iconButton(actions, "arrow_forward", [mv] { mv(1, 0); });
-            auto* rm = actions->add<Button>();
-            pill(rm->setBackground("error_container", false))->setPadding({14, 8})->setSpacing(6);
-            rm->add<Icon>("delete", 18)->setColor("on_error_container", false);
-            rm->add<Label>("Remove")->setSize(13)->setWeight(500)->setColor("on_error_container", false);
-            rm->onClicked = [sel, c, r](uint32_t) {
+            iconButton(actions, "delete", [sel, c, r] {
                 *sel = {-1, -1};
                 lockgrid::remove(c, r);
-            };
+            });
         } else {
-            actions->add<Label>(std::format("Add to the {}:", cellName(c, r)))->setSize(14)->setWeight(600);
+            // As Android's editors add: each free widget an icon chip with
+            // its name under it
+            actions->setAlignItems(Align::Start)->setPadding({18, 10});
+            actions->add<Label>(std::format("Add to the {}", cellName(c, r)))->setSize(14)->setWeight(600);
+            auto* avail = actions->add<Flow>();
+            avail->spacing = 6;
             size_t free = 0;
             for (const auto& d : widgets()) {
                 if (std::ranges::any_of(items, [&](const Item& o) { return o.id == d.id; })) continue;
                 ++free;
-                auto* b = actions->add<Button>();
-                pill(b->setBackground("tertiary_container", false))->setPadding({12, 7})->setSpacing(6);
-                b->pressedRadius = 8;
-                b->add<Icon>(d.icon, 18)->setColor("on_tertiary_container", false);
-                b->add<Label>(d.name)->setSize(13)->setWeight(500)->setColor("on_tertiary_container", false);
+                auto* item = avail->add<Button>(Flex::Direction::Column);
+                item->setPadding({4, 6})->setSpacing(4)->setRadius(Radii(18));
+                item->pressedRadius = 12;
+                item->fixedWidth = 96;
+                auto* icon = item->add<Flex>(Flex::Direction::Row);
+                pill(icon->setBackground(ColorRef("on_surface", 0.1f), false))->setJustify(Align::Center);
+                icon->fixedWidth = 60;
+                icon->fixedHeight = 44;
+                icon->alignSelf = Align::Center;
+                icon->add<Icon>(d.icon, 22)->setColor("on_surface", false);
+                auto* label = item->add<Label>(d.name);
+                label->setSize(12)->setMaxWidth(90)->setColor("on_surface_variant", false);
+                label->alignSelf = Align::Center;
                 const std::string id = d.id;
-                b->onClicked = [id, c, r](uint32_t) { lockgrid::put(id, c, r); };
+                item->onClicked = [id, c, r](uint32_t button) {
+                    if (button == BTN_LEFT) lockgrid::put(id, c, r);
+                };
             }
-            if (free == 0) actions->add<Label>("every widget is placed; remove one first")->setSize(14)->setColor("on_surface_variant", false);
+            if (free == 0) caption(actions, "Every widget is placed; remove one first");
         }
 
         // The lock screen, at full size
