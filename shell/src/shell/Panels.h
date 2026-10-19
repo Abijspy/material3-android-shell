@@ -36,9 +36,11 @@ void dashboard(ui::Flex* card, Popup& popup);
 void wallpapers(ui::Flex* card, Popup& popup);
 void overview(ui::Flex* card, Popup& popup);
 void settings(ui::Flex* card, Popup& popup, const std::string& page);
+// Hyprland Settings: the compositor's options, a window of its own
+void hyprSettings(ui::Flex* card, Popup& popup, const std::string& page);
 // The open Settings app: show a page; forget it once its window closes
 void settingsPage(const std::string& id);
-void settingsClosed();
+void settingsClosed(bool hypr = false);
 void clipboard(ui::Flex* card, Popup& popup);
 void screenshot(ui::Flex* card, Popup& popup);
 // The Wi-Fi network list (Quick Settings and Settings); back may be empty.

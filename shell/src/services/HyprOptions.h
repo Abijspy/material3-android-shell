@@ -35,6 +35,22 @@ public:
         bool custom = false;     // set in Settings (kept in hyprland_custom.lua)
     };
 
+    // An animation leaf (windowsIn, fade…): its own values when overridden,
+    // else its parent's (effective values are filled in either way)
+    struct Animation {
+        std::string name, parent; // parent "" for global
+        bool overridden = false, enabled = true;
+        double speed = 1;         // deciseconds, as Hyprland counts
+        std::string curve, style;
+        bool custom = false;      // set in Settings
+    };
+    // A named bezier from (0,0) to (1,1) through two control points
+    struct Curve {
+        std::string name;
+        double x0 = 0, y0 = 0, x1 = 1, y1 = 1;
+        bool custom = false;
+    };
+
     static HyprOptions& get();
 
     // Reads the options from the compositor (cheap: two socket requests)
@@ -52,6 +68,17 @@ public:
     bool canUndo() const { return !m_undo.empty(); }
     std::string undo();
 
+    const std::vector<Animation>& animations() const { return m_animations; }
+    const std::vector<Curve>& curves() const { return m_curves; }
+    const Animation* animation(const std::string& name) const;
+    std::string setAnimation(const std::string& name, bool enabled, double speed, const std::string& curve,
+                             const std::string& style);
+    // Stops overriding: takes the parent's values again
+    std::string resetAnimation(const std::string& name);
+    std::string setCurve(const std::string& name, double x0, double y0, double x1, double y1);
+    // Only curves made in Settings can go (the config may use the others)
+    void removeCurve(const std::string& name);
+
     // The Lua for a value (for the generated file and live applies)
     static std::string lua(const Option& o, const nlohmann::json& value);
 
@@ -63,12 +90,20 @@ private:
     std::string apply(const Option& o, const nlohmann::json& value);
     void save();
 
+    enum class What { Option, Animation, Curve };
     struct Step {
+        What what = What::Option;
         std::string name;
         std::optional<nlohmann::json> custom; // what Settings kept before
         nlohmann::json value;                 // what Hyprland used before
     };
+    void loadAnimations();
+    void effective(); // fills inherited animations from their parents
+    std::string applyAnimation(const Animation& a);
+    void remember(const Step& step);
     std::vector<Option> m_options;
+    std::vector<Animation> m_animations;
+    std::vector<Curve> m_curves;
     std::vector<Step> m_undo;
 };
 

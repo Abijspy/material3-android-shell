@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <sstream>
 
@@ -21,6 +22,24 @@ constexpr const char* kStore = "/hyprland/options";
 // The value an option had from the config files before Settings first
 // changed it: what a reset goes back to
 constexpr const char* kBaseline = "/hyprland/baseline";
+constexpr const char* kAnimations = "/hyprland/animations"; // leaf → {enabled, speed, curve, style}
+constexpr const char* kCurves = "/hyprland/curves";         // name → [x0, y0, x1, y1]
+
+// Hyprland's animation tree: each leaf and the one it inherits from
+const std::map<std::string, std::string> kParents = {
+    {"global", ""},
+    {"windows", "global"}, {"windowsIn", "windows"}, {"windowsOut", "windows"}, {"windowsMove", "windows"},
+    {"layers", "global"}, {"layersIn", "layers"}, {"layersOut", "layers"},
+    {"fade", "global"}, {"fadeIn", "fade"}, {"fadeOut", "fade"}, {"fadeSwitch", "fade"}, {"fadeShadow", "fade"},
+    {"fadeDim", "fade"}, {"fadeDpms", "fade"}, {"fadeGlow", "fade"}, {"fadeLayers", "fade"},
+    {"fadeLayersIn", "fadeLayers"}, {"fadeLayersOut", "fadeLayers"}, {"fadePopups", "fade"},
+    {"fadePopupsIn", "fadePopups"}, {"fadePopupsOut", "fadePopups"},
+    {"border", "global"}, {"borderangle", "global"}, {"glowangle", "global"}, {"shadowangle", "global"},
+    {"workspaces", "global"}, {"workspacesIn", "workspaces"}, {"workspacesOut", "workspaces"},
+    {"specialWorkspace", "workspaces"}, {"specialWorkspaceIn", "specialWorkspace"},
+    {"specialWorkspaceOut", "specialWorkspace"},
+    {"zoomFactor", "global"}, {"monitorAdded", "global"},
+};
 
 // Strings with a fixed set of values Hyprland doesn't list itself
 const std::map<std::string, std::vector<std::string>> kStringChoices = {
@@ -254,6 +273,175 @@ void HyprOptions::load() {
         out.push_back(std::move(o));
     }
     m_options = std::move(out);
+    loadAnimations();
+    changed.emit();
+}
+
+void HyprOptions::loadAnimations() {
+    const auto reply = Hyprland::get().requestJson("animations");
+    if (!reply || !reply->is_array() || reply->size() < 2) return;
+    const auto kept = Config::get().value<nlohmann::json>(kAnimations, nlohmann::json::object());
+    const auto keptCurves = Config::get().value<nlohmann::json>(kCurves, nlohmann::json::object());
+    m_animations.clear();
+    for (const auto& a : (*reply)[0]) {
+        Animation x;
+        x.name = a.value("name", "");
+        if (x.name.starts_with("__")) continue; // Hyprland's own
+        const auto p = kParents.find(x.name);
+        x.parent = p != kParents.end() ? p->second : "global";
+        x.overridden = a.value("overridden", false);
+        x.enabled = a.value("enabled", true);
+        x.speed = a.value("speed", 1.0);
+        x.curve = a.value("bezier", "");
+        x.style = a.value("style", "");
+        x.custom = kept.contains(x.name);
+        m_animations.push_back(std::move(x));
+    }
+    effective();
+    m_curves.clear();
+    for (const auto& b : (*reply)[1]) {
+        Curve c;
+        c.name = b.value("name", "");
+        c.x0 = b.value("X0", 0.0);
+        c.y0 = b.value("Y0", 0.0);
+        c.x1 = b.value("X1", 1.0);
+        c.y1 = b.value("Y1", 1.0);
+        c.custom = keptCurves.contains(c.name);
+        m_curves.push_back(std::move(c));
+    }
+    std::ranges::sort(m_curves, [](const Curve& a, const Curve& b) { return a.name < b.name; });
+}
+
+void HyprOptions::effective() {
+    // Parents before children: walk the tree from the root down
+    std::map<std::string, Animation*> byName;
+    for (auto& a : m_animations) byName[a.name] = &a;
+    std::function<void(Animation&)> resolve = [&](Animation& a) {
+        if (a.overridden || a.parent.empty()) return;
+        auto it = byName.find(a.parent);
+        if (it == byName.end()) return;
+        resolve(*it->second);
+        a.enabled = it->second->enabled;
+        a.speed = it->second->speed;
+        a.curve = it->second->curve;
+        // A parent's style only carries over within the same family
+        if (a.style.empty()) a.style = it->second->style;
+    };
+    for (auto& a : m_animations) resolve(a);
+}
+
+const HyprOptions::Animation* HyprOptions::animation(const std::string& name) const {
+    for (const auto& a : m_animations)
+        if (a.name == name) return &a;
+    return nullptr;
+}
+
+std::string HyprOptions::applyAnimation(const Animation& a) {
+    std::string lua = std::format("eval hl.animation({{ leaf = {}, enabled = {}", quoted(a.name), a.enabled ? "true" : "false");
+    if (a.enabled) {
+        lua += std::format(", speed = {}", a.speed);
+        if (!a.curve.empty()) lua += ", bezier = " + quoted(a.curve);
+        if (!a.style.empty()) lua += ", style = " + quoted(a.style);
+    }
+    const std::string reply = Hyprland::get().request(lua + " })");
+    if (reply.empty() || reply.starts_with("ok")) return {};
+    const auto at = reply.rfind(": ");
+    return at == std::string::npos ? reply : sentence(reply.substr(at + 2));
+}
+
+void HyprOptions::remember(const Step& step) {
+    m_undo.push_back(step);
+    if (m_undo.size() > 100) m_undo.erase(m_undo.begin());
+}
+
+std::string HyprOptions::setAnimation(const std::string& name, bool enabled, double speed, const std::string& curve,
+                                      const std::string& style) {
+    Animation* a = nullptr;
+    for (auto& x : m_animations)
+        if (x.name == name) a = &x;
+    if (!a) return "Unknown animation";
+    Animation next = *a;
+    next.overridden = true;
+    next.enabled = enabled;
+    next.speed = std::clamp(speed, 0.1, 100.0);
+    next.curve = curve;
+    next.style = style;
+    if (auto err = applyAnimation(next); !err.empty()) return err;
+    auto kept = Config::get().value<nlohmann::json>(kAnimations, nlohmann::json::object());
+    Step step{What::Animation, name, std::nullopt,
+              {{"overridden", a->overridden}, {"enabled", a->enabled}, {"speed", a->speed}, {"curve", a->curve}, {"style", a->style}}};
+    if (kept.contains(name)) step.custom = kept[name];
+    remember(step);
+    kept[name] = {{"enabled", enabled}, {"speed", next.speed}, {"curve", curve}, {"style", style}};
+    Config::get().set(kAnimations, kept);
+    *a = next;
+    a->custom = true;
+    effective();
+    save();
+    changed.emit();
+    return {};
+}
+
+std::string HyprOptions::resetAnimation(const std::string& name) {
+    Animation* a = nullptr;
+    for (auto& x : m_animations)
+        if (x.name == name) a = &x;
+    if (!a) return "Unknown animation";
+    auto kept = Config::get().value<nlohmann::json>(kAnimations, nlohmann::json::object());
+    Step step{What::Animation, name, std::nullopt,
+              {{"overridden", a->overridden}, {"enabled", a->enabled}, {"speed", a->speed}, {"curve", a->curve}, {"style", a->style}}};
+    if (kept.contains(name)) step.custom = kept[name];
+    remember(step);
+    kept.erase(name);
+    Config::get().set(kAnimations, kept);
+    // Hyprland can't un-override a leaf live: give it the parent's values
+    // now; from the next reload it inherits again (or takes the config's)
+    a->custom = false;
+    a->overridden = false;
+    a->style.clear();
+    effective();
+    applyAnimation(*a);
+    save();
+    changed.emit();
+    return {};
+}
+
+std::string HyprOptions::setCurve(const std::string& name, double x0, double y0, double x1, double y1) {
+    if (name.empty()) return "A curve needs a name";
+    const std::string reply = Hyprland::get().request(std::format(
+        "eval hl.curve({}, {{ type = \"bezier\", points = {{ {{{}, {}}}, {{{}, {}}} }} }})", quoted(name), x0, y0, x1, y1));
+    if (!reply.empty() && !reply.starts_with("ok")) return reply;
+    auto kept = Config::get().value<nlohmann::json>(kCurves, nlohmann::json::object());
+    Step step{What::Curve, name, std::nullopt, nullptr};
+    for (const auto& c : m_curves)
+        if (c.name == name) step.value = {c.x0, c.y0, c.x1, c.y1};
+    if (kept.contains(name)) step.custom = kept[name];
+    remember(step);
+    kept[name] = {x0, y0, x1, y1};
+    Config::get().set(kCurves, kept);
+    bool found = false;
+    for (auto& c : m_curves)
+        if (c.name == name) {
+            c = {name, x0, y0, x1, y1, true};
+            found = true;
+        }
+    if (!found) {
+        m_curves.push_back({name, x0, y0, x1, y1, true});
+        std::ranges::sort(m_curves, [](const Curve& a, const Curve& b) { return a.name < b.name; });
+    }
+    save();
+    changed.emit();
+    return {};
+}
+
+void HyprOptions::removeCurve(const std::string& name) {
+    auto kept = Config::get().value<nlohmann::json>(kCurves, nlohmann::json::object());
+    if (!kept.contains(name)) return;
+    kept.erase(name);
+    Config::get().set(kCurves, kept);
+    // Still defined until the next reload, but no longer kept or listed
+    std::erase_if(m_curves, [&](const Curve& c) { return c.name == name; });
+    save();
     changed.emit();
 }
 
@@ -301,8 +489,7 @@ std::string HyprOptions::set(const std::string& name, const nlohmann::json& give
     std::optional<nlohmann::json> kept;
     if (custom.contains(name)) kept = custom[name];
     if (auto err = apply(*o, value); !err.empty()) return err;
-    m_undo.push_back({name, kept, before});
-    if (m_undo.size() > 100) m_undo.erase(m_undo.begin());
+    remember({What::Option, name, kept, before});
     if (!kept) Config::get().set(std::string(kBaseline) + "/" + name, before);
     o->value = value;
     o->custom = true;
@@ -324,7 +511,7 @@ std::string HyprOptions::reset(const std::string& name) {
     auto baseline = Config::get().value<nlohmann::json>(kBaseline, nlohmann::json::object());
     const nlohmann::json target = baseline.contains(name) ? baseline[name] : o->fallback;
     if (auto err = apply(*o, target); !err.empty()) return err;
-    m_undo.push_back({name, kept, before});
+    remember({What::Option, name, kept, before});
     o->value = target;
     o->custom = false;
     custom.erase(name);
@@ -340,6 +527,45 @@ std::string HyprOptions::undo() {
     if (m_undo.empty()) return {};
     const Step step = m_undo.back();
     m_undo.pop_back();
+    if (step.what == What::Animation) {
+        for (auto& a : m_animations)
+            if (a.name == step.name) {
+                a.overridden = step.value.value("overridden", true);
+                a.enabled = step.value.value("enabled", true);
+                a.speed = step.value.value("speed", 1.0);
+                a.curve = step.value.value("curve", "");
+                a.style = step.value.value("style", "");
+                a.custom = step.custom.has_value();
+                applyAnimation(a);
+            }
+        auto kept = Config::get().value<nlohmann::json>(kAnimations, nlohmann::json::object());
+        if (step.custom) kept[step.name] = *step.custom;
+        else kept.erase(step.name);
+        Config::get().set(kAnimations, kept);
+        effective();
+        save();
+        changed.emit();
+        return step.name;
+    }
+    if (step.what == What::Curve) {
+        auto kept = Config::get().value<nlohmann::json>(kCurves, nlohmann::json::object());
+        if (step.custom) kept[step.name] = *step.custom;
+        else kept.erase(step.name);
+        Config::get().set(kCurves, kept);
+        if (step.value.is_array()) {
+            const auto& v = step.value;
+            Hyprland::get().request(std::format("eval hl.curve({}, {{ type = \"bezier\", points = {{ {{{}, {}}}, {{{}, {}}} }} }})",
+                                                quoted(step.name), v[0].get<double>(), v[1].get<double>(), v[2].get<double>(),
+                                                v[3].get<double>()));
+            for (auto& c : m_curves)
+                if (c.name == step.name) c = {step.name, v[0], v[1], v[2], v[3], step.custom.has_value()};
+        } else {
+            std::erase_if(m_curves, [&](const Curve& c) { return c.name == step.name; });
+        }
+        save();
+        changed.emit();
+        return step.name;
+    }
     Option* o = findMutable(step.name);
     if (!o) return {};
     if (auto err = apply(*o, step.value); !err.empty()) return err;
@@ -365,6 +591,20 @@ void HyprOptions::save() {
     // Every kept option, as a function shell.lua calls after the config
     const auto custom = Config::get().value<nlohmann::json>(kStore, nlohmann::json::object());
     std::string body;
+    // Curves first: the animations below may use them
+    for (auto& [name, p] : Config::get().value<nlohmann::json>(kCurves, nlohmann::json::object()).items())
+        if (p.is_array() && p.size() == 4)
+            body += std::format("\tpcall(hl.curve, {}, {{ type = \"bezier\", points = {{ {{{}, {}}}, {{{}, {}}} }} }})\n",
+                                quoted(name), p[0].get<double>(), p[1].get<double>(), p[2].get<double>(), p[3].get<double>());
+    for (auto& [leaf, a] : Config::get().value<nlohmann::json>(kAnimations, nlohmann::json::object()).items()) {
+        std::string args = std::format("leaf = {}, enabled = {}", quoted(leaf), a.value("enabled", true) ? "true" : "false");
+        if (a.value("enabled", true)) {
+            args += std::format(", speed = {}", a.value("speed", 1.0));
+            if (!a.value("curve", "").empty()) args += ", bezier = " + quoted(a.value("curve", ""));
+            if (!a.value("style", "").empty()) args += ", style = " + quoted(a.value("style", ""));
+        }
+        body += "\tpcall(hl.animation, { " + args + " })\n";
+    }
     for (auto& [name, value] : custom.items()) {
         const Option* o = find(name);
         if (!o) continue;

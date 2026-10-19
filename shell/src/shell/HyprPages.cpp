@@ -7,6 +7,7 @@
 #include "core/EventLoop.h"
 #include "services/HyprOptions.h"
 #include "services/Hyprland.h"
+#include "shell/CurveEditor.h"
 #include "shell/SettingsKit.h"
 
 #include <cmath>
@@ -78,12 +79,12 @@ const std::vector<Page>& catalogue() {
         {"hypr-misc",
          {{"Behaviour", {"misc:"}},
           {"Keybinds", {"binds:"}},
-          {"Animations", {"animations:"}},
           {"XWayland", {"xwayland:"}},
           {"Ecosystem", {"ecosystem:"}},
           {"Quirks", {"quirks:"}}}},
         {"hypr-render", {{"Rendering", {"render:"}}, {"OpenGL", {"opengl:"}}, {"Experimental", {"experimental:"}}}},
         {"hypr-debug", {{"Debug", {"debug:"}}}},
+        {"hypr-animations", {{"Animations", {"animations:"}}}},
     };
     return pages;
 }
@@ -497,7 +498,275 @@ void buildPage(Flex* page, const std::string& id) {
     live->sync();
 }
 
+
+// ── Animations ──
+
+// Animation leaves by family, with names people know them by
+struct Family {
+    const char* title;
+    std::vector<std::string> leaves;
+};
+const std::vector<Family> kFamilies = {
+    {"Windows", {"windows", "windowsIn", "windowsOut", "windowsMove"}},
+    {"Panels, menus and notifications", {"layers", "layersIn", "layersOut"}},
+    {"Workspaces", {"workspaces", "workspacesIn", "workspacesOut", "specialWorkspace", "specialWorkspaceIn", "specialWorkspaceOut"}},
+    {"Fades",
+     {"fade", "fadeIn", "fadeOut", "fadeSwitch", "fadeShadow", "fadeDim", "fadeLayers", "fadeLayersIn", "fadeLayersOut",
+      "fadePopups", "fadePopupsIn", "fadePopupsOut", "fadeDpms", "fadeGlow"}},
+    {"Borders and the rest", {"global", "border", "borderangle", "glowangle", "shadowangle", "zoomFactor", "monitorAdded"}},
+};
+const std::map<std::string, std::string> kLeafNames = {
+    {"global", "Everything (the default)"},
+    {"windows", "Windows"}, {"windowsIn", "Windows opening"}, {"windowsOut", "Windows closing"},
+    {"windowsMove", "Windows moving"},
+    {"layers", "Panels and menus"}, {"layersIn", "Panels appearing"}, {"layersOut", "Panels leaving"},
+    {"workspaces", "Workspaces"}, {"workspacesIn", "Workspace arriving"}, {"workspacesOut", "Workspace leaving"},
+    {"specialWorkspace", "Special workspace"}, {"specialWorkspaceIn", "Special workspace opening"},
+    {"specialWorkspaceOut", "Special workspace closing"},
+    {"fade", "Fades"}, {"fadeIn", "Fade in"}, {"fadeOut", "Fade out"}, {"fadeSwitch", "Focus change"},
+    {"fadeShadow", "Shadows"}, {"fadeDim", "Dimming"}, {"fadeLayers", "Panel fades"}, {"fadeLayersIn", "Panel fade in"},
+    {"fadeLayersOut", "Panel fade out"}, {"fadePopups", "Popup fades"}, {"fadePopupsIn", "Popup fade in"},
+    {"fadePopupsOut", "Popup fade out"}, {"fadeDpms", "Screen on and off"}, {"fadeGlow", "Glow"},
+    {"border", "Border colour"}, {"borderangle", "Gradient border turning"}, {"glowangle", "Glow turning"},
+    {"shadowangle", "Shadow turning"}, {"zoomFactor", "Zoom"}, {"monitorAdded", "Monitor plugged in"},
+};
+
+std::string leafName(const std::string& leaf) {
+    auto it = kLeafNames.find(leaf);
+    return it != kLeafNames.end() ? it->second : leaf;
+}
+
+// The styles a leaf's family takes ("" = Hyprland's default for it)
+std::vector<std::string> stylesFor(const std::string& leaf) {
+    if (leaf.starts_with("windows"))
+        return {"", "slide", "slide top", "slide bottom", "slide left", "slide right", "popin 80%", "popin 90%", "gnomed"};
+    if (leaf.starts_with("layers")) return {"", "slide", "popin", "fade"};
+    if (leaf.starts_with("workspaces") || leaf.starts_with("specialWorkspace"))
+        return {"", "slide", "slidevert", "fade", "slidefade 20%", "slidefadevert 20%"};
+    if (leaf == "borderangle" || leaf == "glowangle" || leaf == "shadowangle") return {"", "once", "loop"};
+    return {};
+}
+
+Bezier curveOf(const std::string& name) {
+    for (const auto& c : HyprOptions::get().curves())
+        if (c.name == name) return {c.x0, c.y0, c.x1, c.y1};
+    return {0, 0.75, 0.15, 1}; // Hyprland's "default"
+}
+
+// Hyprland counts speed in tenths of a second
+std::string seconds(double speed) {
+    return numberText(speed / 10, false) + " s";
+}
+
+// A dropdown below `anchor`'s row: a pill showing the choice, opening a list
+// inside `g`
+Button* dropdown(Node* tail, Node* g, const std::string& shown, const std::vector<std::pair<std::string, std::string>>& items,
+                 std::function<void(const std::string&)> pick, std::function<Node*(Node*, const std::string&)> lead = {}) {
+    auto* drop = tail->add<Button>(Flex::Direction::Row);
+    pill(drop->setBackground("surface_container_highest", false))->setPadding({14, 8})->setSpacing(6);
+    drop->add<Label>(shown)->setSize(14)->setWeight(500);
+    auto* chevron = drop->add<Icon>("expand_more", 18);
+    auto* menu = g->add<Flex>(Flex::Direction::Column);
+    menu->setPadding({20, 4, 20, 12})->setSpacing(2)->setAlignItems(Align::Stretch);
+    menu->setVisible(false);
+    for (const auto& [value, label] : items) {
+        auto* item = menu->add<Button>(Flex::Direction::Row);
+        pill(item)->setPadding({14, 8})->setSpacing(12);
+        if (lead) lead(item, value);
+        item->add<Label>(label)->setSize(14);
+        item->onClicked = [pick, value = value](uint32_t button) {
+            if (button == BTN_LEFT) pick(value);
+        };
+    }
+    drop->onClicked = [menu, chevron](uint32_t button) {
+        if (button != BTN_LEFT) return;
+        menu->setVisible(!menu->visible());
+        chevron->setText(menu->visible() ? "expand_less" : "expand_more");
+    };
+    return drop;
+}
+
+// One leaf's editor: on/off, speed, curve, style and a preview
+void leafEditor(Node* g, const HyprOptions::Animation& a) {
+    const std::string leaf = a.name;
+    // Every change sends the whole leaf, starting from what it is now
+    auto change = [leaf](const std::function<void(HyprOptions::Animation&)>& edit) {
+        const auto* now = HyprOptions::get().animation(leaf);
+        if (!now) return;
+        HyprOptions::Animation next = *now;
+        edit(next);
+        HyprOptions::get().setAnimation(leaf, next.enabled, next.speed, next.curve, next.style);
+    };
+
+    auto on = row(g, "", "On");
+    auto* sw = on.row->add<Switch>();
+    sw->setChecked(a.enabled, false);
+    sw->onToggled = [change](bool v) { change([v](auto& x) { x.enabled = v; }); };
+    if (!a.enabled) return;
+
+    auto speed = row(g, "", "Length", seconds(a.speed));
+    speed.subtitle->setVisible(true);
+    auto* sl = speed.row->add<Slider>();
+    sl->fixedWidth = 220;
+    sl->setRange(0.5f, 20)->setStep(0.5f / 19.5f);
+    sl->setValue(static_cast<float>(a.speed), false);
+    auto* length = speed.subtitle;
+    sl->onChanged = [length](float v) { length->setText(seconds(std::round(v * 2) / 2)); };
+    sl->onCommitted = [change](float v) { change([v](auto& x) { x.speed = std::round(v * 2) / 2; }); };
+
+    auto curve = row(g, "", "Curve");
+    std::vector<std::pair<std::string, std::string>> curves;
+    for (const auto& c : HyprOptions::get().curves()) curves.push_back({c.name, c.name});
+    dropdown(curve.row, g, a.curve.empty() ? "default" : a.curve, curves,
+             [change](const std::string& v) { change([v](auto& x) { x.curve = v; }); },
+             [](Node* item, const std::string& v) { return item->add<CurveThumb>(curveOf(v), 28); });
+
+    if (auto styles = stylesFor(leaf); !styles.empty()) {
+        auto style = row(g, "", "Style");
+        std::vector<std::pair<std::string, std::string>> items;
+        for (const auto& st : styles) items.push_back({st, st.empty() ? "Hyprland's default" : st});
+        dropdown(style.row, g, a.style.empty() ? "Hyprland's default" : a.style, items,
+                 [change](const std::string& v) { change([v](auto& x) { x.style = v; }); });
+    }
+
+    auto* preview = g->add<Flex>(Flex::Direction::Column);
+    preview->setPadding({20, 8, 20, 16})->setAlignItems(Align::Stretch);
+    const double speedNow = a.speed;
+    preview->add<CurvePreview>(std::make_shared<Bezier>(curveOf(a.curve)), [speedNow] { return speedNow / 10; });
+}
+
+// A curve's editor: the graph, presets, and the curve in motion
+void curveEditor(Node* g, const HyprOptions::Curve& c) {
+    auto* box = g->add<Flex>(Flex::Direction::Column);
+    box->setPadding({20, 8, 20, 16})->setSpacing(12)->setAlignItems(Align::Stretch);
+    auto points = std::make_shared<Bezier>(Bezier{c.x0, c.y0, c.x1, c.y1});
+    auto* values = box->add<Label>();
+    values->setSize(13)->setColor("on_surface_variant", false);
+    auto show = [values, points] {
+        const auto& p = *points;
+        values->setText(std::format("cubic-bezier({}, {}, {}, {})", numberText(p[0], false), numberText(p[1], false),
+                                    numberText(p[2], false), numberText(p[3], false)));
+    };
+    show();
+    auto* editor = box->add<CurveEditor>(points);
+    const std::string name = c.name;
+    editor->onChanged = show;
+    editor->onCommitted = [name, points] {
+        const auto& p = *points;
+        HyprOptions::get().setCurve(name, p[0], p[1], p[2], p[3]);
+    };
+    box->add<CurvePreview>(points, [] { return 0.6; });
+    // Starting points: Material's motion curves and the classics
+    static const std::vector<std::pair<const char*, Bezier>> presets = {
+        {"Standard", {0.2, 0, 0, 1}},          {"Emphasized in", {0.05, 0.7, 0.1, 1}},
+        {"Emphasized out", {0.3, 0, 0.8, 0.15}}, {"Overshoot", {0.34, 1.56, 0.64, 1}},
+        {"Ease", {0.25, 0.1, 0.25, 1}},        {"Ease out", {0, 0, 0.58, 1}},
+        {"Ease in and out", {0.42, 0, 0.58, 1}}, {"Linear", {0, 0, 1, 1}},
+    };
+    for (size_t start = 0; start < presets.size(); start += 4) {
+        auto* line = box->add<Flex>(Flex::Direction::Row);
+        line->setSpacing(8);
+        for (size_t i = start; i < std::min(presets.size(), start + 4); ++i) {
+            const auto [label, p] = presets[i];
+            auto* b = line->add<Button>(Flex::Direction::Row);
+            pill(b->setBackground("secondary_container", false))->setPadding({12, 8})->setSpacing(8);
+            b->add<CurveThumb>(p, 22);
+            b->add<Label>(label)->setSize(13)->setWeight(500)->setColor("on_secondary_container", false);
+            b->onClicked = [name, p = p](uint32_t button) {
+                if (button == BTN_LEFT) HyprOptions::get().setCurve(name, p[0], p[1], p[2], p[3]);
+            };
+        }
+    }
+}
+
+void animationSections(Flex* page) {
+    if (!HyprOptions::get().loaded()) HyprOptions::get().load();
+    auto openLeaf = std::make_shared<std::string>();
+    auto openCurve = std::make_shared<std::string>();
+    auto* live = page->add<kit::Live>();
+    live->setSpacing(6);
+    live->sync = [live, openLeaf, openCurve] {
+        live->clearChildren();
+        auto& h = HyprOptions::get();
+        if (h.animations().empty()) return;
+        for (const auto& family : kFamilies) {
+            auto* g = group(live, family.title);
+            for (const auto& leaf : family.leaves) {
+                const auto* a = h.animation(leaf);
+                if (!a) continue;
+                auto* r = g->add<Button>(Flex::Direction::Row);
+                r->setPadding({20, 12})->setSpacing(16);
+                r->minHeight = 60;
+                auto* texts = r->add<Flex>(Flex::Direction::Column);
+                texts->setAlignItems(Align::Start)->setSpacing(1);
+                texts->grow = true;
+                texts->add<Label>(leafName(leaf))->setSize(15)->setWeight(500);
+                std::string summary = !a->enabled ? "Off" : seconds(a->speed) + " · " + (a->curve.empty() ? "default" : a->curve);
+                if (a->enabled && !a->style.empty()) summary += " · " + a->style;
+                if (!a->overridden && !a->parent.empty()) summary = "Same as " + leafName(a->parent) + " · " + summary;
+                texts->add<Label>(summary)->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(380);
+                if (a->enabled) r->add<CurveThumb>(curveOf(a->curve), 36);
+                if (a->custom) iconButton(r, "restart_alt", [leaf] { HyprOptions::get().resetAnimation(leaf); });
+                r->add<Icon>(*openLeaf == leaf ? "expand_less" : "expand_more", 22)->setColor("on_surface_variant", false);
+                r->onClicked = [live, openLeaf, leaf](uint32_t button) {
+                    if (button != BTN_LEFT) return;
+                    *openLeaf = *openLeaf == leaf ? "" : leaf;
+                    live->syncSoon();
+                };
+                if (*openLeaf == leaf) leafEditor(g, *a);
+            }
+        }
+
+        auto* g = group(live, "Curves", "How each animation speeds up and slows down. Drag the two points; overshoot bounces");
+        for (const auto& c : h.curves()) {
+            auto* r = g->add<Button>(Flex::Direction::Row);
+            r->setPadding({20, 12})->setSpacing(16);
+            r->minHeight = 60;
+            r->add<CurveThumb>(Bezier{c.x0, c.y0, c.x1, c.y1}, 36);
+            auto* texts = r->add<Flex>(Flex::Direction::Column);
+            texts->setAlignItems(Align::Start)->setSpacing(1);
+            texts->grow = true;
+            texts->add<Label>(c.name)->setSize(15)->setWeight(500);
+            texts->add<Label>(std::format("{}, {}, {}, {}", numberText(c.x0, false), numberText(c.y0, false),
+                                          numberText(c.x1, false), numberText(c.y1, false)))
+                ->setSize(13)
+                ->setColor("on_surface_variant", false);
+            const std::string name = c.name;
+            if (c.custom) confirmButton(r, "curve:" + name, "delete", [name] { HyprOptions::get().removeCurve(name); });
+            r->add<Icon>(*openCurve == name ? "expand_less" : "expand_more", 22)->setColor("on_surface_variant", false);
+            r->onClicked = [live, openCurve, name](uint32_t button) {
+                if (button != BTN_LEFT) return;
+                *openCurve = *openCurve == name ? "" : name;
+                live->syncSoon();
+            };
+            if (*openCurve == name) curveEditor(g, c);
+        }
+        // A new curve, by name
+        auto add = row(g, "add", "New curve", "Name it, then shape it");
+        auto* f = add.row->add<TextField>();
+        f->setPlaceholder("myCurve");
+        f->fixedWidth = 180;
+        f->onSubmit = [live, openCurve](const std::string& text) {
+            std::string name;
+            for (char ch : text)
+                if (std::isalnum(static_cast<unsigned char>(ch)) || ch == '_') name += ch;
+            if (name.empty()) return;
+            if (HyprOptions::get().setCurve(name, 0.2, 0, 0, 1).empty()) {
+                *openCurve = name;
+                live->syncSoon();
+            }
+        };
+    };
+    live->conns.push_back(HyprOptions::get().changed.connect([live] { live->syncSoon(); }));
+    live->sync();
+}
+
 } // namespace
+
+void hyprAnimationsPage(Flex* page, Popup&) {
+    buildPage(page, "hypr-animations");
+    animationSections(page);
+}
 
 void hyprWindowsPage(Flex* page, Popup&) { buildPage(page, "hypr-windows"); }
 void hyprDecorationPage(Flex* page, Popup&) { buildPage(page, "hypr-decoration"); }

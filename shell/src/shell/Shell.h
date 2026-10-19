@@ -38,11 +38,13 @@ private:
     // The Settings app window: opened, or raised (and restored from
     // minimised) with `page` shown
     void openSettings(const std::string& page);
+    void openHyprSettings(const std::string& page);
     wl::Output* focusedOutput() const;
 
     std::map<wl::Output*, std::unique_ptr<Bar>> m_bars;
     std::unique_ptr<Popup> m_popup;
     std::unique_ptr<Popup> m_settings; // an app window, beside the popups
+    std::unique_ptr<Popup> m_hyprSettings; // Hyprland Settings, the same
     std::map<wl::Output*, std::unique_ptr<Desktop>> m_desktops;
     std::map<wl::Output*, std::unique_ptr<Dock>> m_docks;
     void syncDock(wl::Output* output);

@@ -21,5 +21,6 @@ void hyprGroupsPage(ui::Flex* page, Popup&);
 void hyprMiscPage(ui::Flex* page, Popup&);
 void hyprRenderPage(ui::Flex* page, Popup&);
 void hyprDebugPage(ui::Flex* page, Popup&);
+void hyprAnimationsPage(ui::Flex* page, Popup&);
 
 } // namespace m3::shell::panels

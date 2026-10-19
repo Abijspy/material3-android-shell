@@ -100,6 +100,7 @@ sources = files(
   'src/shell/Panels.cpp',
   'src/shell/QuickSettings.cpp',
   'src/shell/Rich.cpp',
+  'src/shell/CurveEditor.cpp',
   'src/shell/HyprPages.cpp',
   'src/shell/Settings.cpp',
   'src/shell/SettingsKit.cpp',
@@ -122,8 +123,8 @@ sources = files(
 
 install_data('data/pam/material3ui', install_dir: get_option('sysconfdir') / 'pam.d')
 # The Settings app: a launcher entry and its icon
-install_data('data/material3ui-settings.desktop', install_dir: get_option('datadir') / 'applications')
-install_data('data/icons/material3ui-settings.svg', install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps')
+install_data('data/material3ui-settings.desktop', 'data/material3ui-hyprland.desktop', install_dir: get_option('datadir') / 'applications')
+install_data('data/icons/material3ui-settings.svg', 'data/icons/material3ui-hyprland.svg', install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps')
 install_data('data/icons/material3ui-settings.svg', install_dir: get_option('datadir') / 'material3ui/icons')
 # Shipped data: emoji list, logo, wallpapers
 install_data('data/emojis.txt', install_dir: get_option('datadir') / 'material3ui')

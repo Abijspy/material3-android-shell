@@ -170,6 +170,8 @@ void Shell::holdDocks(bool held) {
 }
 
 void Shell::openSettings(const std::string& page) {
+    // Hyprland's own pages live in Hyprland Settings
+    if (page.starts_with("hypr-")) return openHyprSettings(page);
     if (m_settings && !m_settings->closing()) {
         if (!page.empty()) panels::settingsPage(page);
         // Raised, and back from minimised if it was
@@ -193,8 +195,31 @@ void Shell::openSettings(const std::string& page) {
     };
 }
 
+void Shell::openHyprSettings(const std::string& page) {
+    if (m_hyprSettings && !m_hyprSettings->closing()) {
+        if (!page.empty()) panels::settingsPage(page);
+        auto& h = Hyprland::get();
+        for (const auto& c : h.clients(true))
+            if (c.cls == "material3ui-hyprland") h.focusWindow(c.address);
+        return;
+    }
+    if (m_popup) m_popup->close();
+    Popup::Options opts;
+    opts.name = "hyprsettings";
+    opts.window = true;
+    opts.appId = "material3ui-hyprland"; // its own .desktop file and dock icon
+    opts.title = "Hyprland Settings";
+    opts.icon = "tune";
+    m_hyprSettings = std::make_unique<Popup>(nullptr, opts, [page](ui::Flex* card, Popup& p) { panels::hyprSettings(card, p, page); });
+    m_hyprSettings->onClosed = [this] {
+        panels::settingsClosed(true);
+        EventLoop::get().defer([this] { m_hyprSettings.reset(); });
+    };
+}
+
 void Shell::togglePopup(const std::string& name, wl::Output* output, float anchorX, const std::string& arg) {
     if (name == "settings") return openSettings(arg);
+    if (name == "hyprsettings") return openHyprSettings(arg);
     // The system monitor lives in Settings now (Ctrl+Alt+Delete, the bar's widget)
     if (name == "sysmon") return openSettings("monitor");
     if (m_popup && !m_popup->closing() && m_popup->name() == name && m_popup->output() == output) {
@@ -500,6 +525,12 @@ void Shell::registerIpc() {
             [this](const IpcServer::Args& a) {
         openSettings(a.empty() ? "" : a[0]);
         return std::string(m_settings && !m_settings->closing() ? "open" : "closed");
+    });
+    ipc.add("hyprsettings", "hyprsettings [hypr-windows|hypr-decoration|hypr-animations|hypr-layouts|hypr-input|hypr-gestures|"
+                            "hypr-cursor|hypr-groups|hypr-misc|hypr-render|hypr-debug]: Hyprland Settings",
+            [this](const IpcServer::Args& a) {
+        openHyprSettings(a.empty() ? "" : a[0]);
+        return std::string(m_hyprSettings && !m_hyprSettings->closing() ? "open" : "closed");
     });
     ipc.add("wallpaper", "wallpaper [next|prev|set <path>|pick]", [this](const IpcServer::Args& a) {
         auto& w = Wallpaper::get();

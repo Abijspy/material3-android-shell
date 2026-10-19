@@ -60,9 +60,15 @@ namespace {
 // groups, and pressed controls spring into a tighter shape.
 
 // Rebuilds a page by id (after a reset, so its controls show the defaults)
-std::function<void(const std::string&)> reshow;
+// One for each app: [0] Settings, [1] Hyprland Settings
+std::function<void(const std::string&)> reshow[2];
 // Types into the open Settings' search (`msg settings search:<words>`)
-std::function<void(const std::string&)> searchFor;
+std::function<void(const std::string&)> searchFor[2];
+// Rebuilds a page in whichever app shows it
+void reshowPage(const std::string& id) {
+    const bool hypr = id.starts_with("hypr-");
+    if (reshow[hypr]) reshow[hypr](id);
+}
 
 // Config-bound controls
 
@@ -530,7 +536,7 @@ void appearancePage(Flex* page, Popup& popup) {
                 Wallpaper::get().set(file);
                 // The page shows the new current one (not inside this click)
                 EventLoop::get().defer([] {
-                    if (reshow) reshow("appearance");
+                    reshowPage("appearance");
                 });
             };
         }
@@ -617,7 +623,7 @@ void stylePage(Flex* page, Popup&) {
             Config::get().set(key, nullptr);
         // Not inside the click: the rebuild destroys this button
         EventLoop::get().defer([] {
-            if (reshow) reshow("style");
+            reshowPage("style");
         });
     });
 }
@@ -1560,13 +1566,13 @@ void systemPage(Flex* page, Popup&) {
     auto kb = row(more, "keyboard", "Keyboard", "Shortcuts: remap, disable and add");
     pillButton(kb.row, "Open", false, [] {
         EventLoop::get().defer([] {
-            if (reshow) reshow("keybinds");
+            reshowPage("keybinds");
         });
     });
     auto up = row(more, "system_update", "Software & updates", "Updates from the repos, the AUR and Flathub");
     pillButton(up.row, "Open", false, [] {
         EventLoop::get().defer([] {
-            if (reshow) reshow("packages");
+            reshowPage("packages");
         });
     });
 
@@ -2837,6 +2843,7 @@ const PageDef kPages[] = {
     // Hyprland itself: every compositor option, live
     {"hypr-windows", "space_dashboard", "Windows & borders", "Gaps, borders, their colours and snapping", hyprWindowsPage},
     {"hypr-decoration", "auto_awesome", "Decoration", "Corners, opacity, blur, shadows and glow", hyprDecorationPage},
+    {"hypr-animations", "animation", "Animations", "Every animation's length, curve and style, and a curve editor", hyprAnimationsPage},
     {"hypr-layouts", "dashboard", "Layouts", "Dwindle, master and scrolling tiling", hyprLayoutsPage},
     {"hypr-input", "keyboard_alt", "Input devices", "Keyboard layouts, pointer, touchpad, touch and tablets", hyprInputPage},
     {"hypr-gestures", "swipe", "Gestures", "Workspace swipes and the scrolling layout", hyprGesturesPage},
@@ -2852,13 +2859,30 @@ const PageDef kPages[] = {
 };
 
 // Android's grouping of the settings list
+// The pages each app shows: Hyprland's own options in Hyprland Settings,
+// everything else in Settings
+const std::vector<PageDef>& pagesOf(bool hypr) {
+    static const auto pick = [](bool want) {
+        std::vector<PageDef> out;
+        for (const auto& p : kPages)
+            if (std::string_view(p.id).starts_with("hypr-") == want) out.push_back(p);
+        return out;
+    };
+    static const std::vector<PageDef> shell = pick(false), hyprland = pick(true);
+    return hypr ? hyprland : shell;
+}
+
 int pageGroup(const std::string& id) {
+    // Hyprland Settings: how it looks, how windows behave, the internals
+    if (id == "hypr-windows" || id == "hypr-decoration" || id == "hypr-animations") return 0;
+    if (id == "hypr-layouts" || id == "hypr-input" || id == "hypr-gestures" || id == "hypr-cursor" || id == "hypr-groups")
+        return 1;
+    if (id.starts_with("hypr-")) return 2;
     if (id == "network" || id == "bluetooth") return 0;
     if (id == "defaults" || id == "notifications" || id == "tools" || id == "weather") return 1;
     if (id == "battery" || id == "storage" || id == "monitor" || id == "sound" || id == "display") return 2;
     if (id == "appearance" || id == "style" || id == "bar" || id == "dock" || id == "lockscreen") return 3;
     if (id == "accessibility" || id == "lock" || id == "users") return 4;
-    if (id.starts_with("hypr-")) return 6;
     return 5; // system, keyboard, updates, about
 }
 
@@ -2866,18 +2890,20 @@ int pageGroup(const std::string& id) {
 
 void settingsPage(const std::string& id) {
     if (id.starts_with("search:")) {
-        if (searchFor) searchFor(id.substr(7));
+        if (searchFor[0]) searchFor[0](id.substr(7));
         return;
     }
-    if (reshow) reshow(id);
+    const bool hypr = id.starts_with("hypr-");
+    if (reshow[hypr]) reshow[hypr](id);
 }
 
-void settingsClosed() {
-    reshow = nullptr; // its pages are gone
-    searchFor = nullptr;
+void settingsClosed(bool hypr) {
+    reshow[hypr] = nullptr; // its pages are gone
+    searchFor[hypr] = nullptr;
 }
 
-void settings(Flex* card, Popup& popup, const std::string& initial) {
+template <bool Hypr>
+void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
     // Ctrl+Z steps back through Hyprland option changes
     popup.onKey = [](const KeyEvent& e) {
         if (!e.ctrl() || (e.sym != XKB_KEY_z && e.sym != XKB_KEY_Z) || !HyprOptions::get().canUndo()) return false;
@@ -2900,14 +2926,14 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
     sideScroll->fixedWidth = 280;
     auto* side = sideScroll->add<Flex>(Flex::Direction::Column);
     side->setAlignItems(Align::Stretch)->setSpacing(10)->setPadding({4, 10, 4, 8});
-    auto* brand = side->add<Label>("Settings");
+    auto* brand = side->add<Label>(Hypr ? "Hyprland" : "Settings");
     brand->setSize(34)->setWeight(400);
     brand->alignSelf = Align::Start;
     auto* searchBox = side->add<Flex>(Flex::Direction::Row);
     pill(searchBox->setBackground(ColorRef("on_surface", 0.1f), false))->setPadding({16, 4, 8, 4})->setSpacing(8);
     searchBox->add<Icon>("search", 20)->setColor("on_surface_variant", false);
     auto* search = searchBox->add<TextField>();
-    search->setPlaceholder("Search settings");
+    search->setPlaceholder(Hypr ? "Search Hyprland options" : "Search settings");
     search->bare = true;
     search->grow = true;
     search->minWidth = 120;
@@ -2958,7 +2984,7 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
     auto shown = std::make_shared<size_t>(0);
     *show = [content, scroll, items, heroTitle, heroBlurb, sideScroll, side, shown, &popup](size_t index) {
         *shown = index;
-        const auto& def = kPages[index];
+        const auto& def = pagesOf(Hypr)[index];
         content->clearChildren();
         heroTitle->setText(def.title);
         heroBlurb->setText(def.blurb);
@@ -2992,37 +3018,52 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
     size_t first = 0;
     // Android's groups: connections, apps, device, style, access, system
     std::vector<Segments*> groups;
-    for (int g = 0; g < 7; ++g) {
-        // Hyprland's own options under a heading of their own
-        if (g == 6) side->add<Label>("Hyprland")->setSize(13)->setWeight(600)->setColor("primary", false);
+    for (int g = 0; g < 6; ++g) {
         auto* seg = side->add<Segments>();
         seg->collapseWhenEmpty = true; // searching can empty it
         groups.push_back(seg);
     }
-    for (size_t i = 0; i < std::size(kPages); ++i) {
-        auto* b = groups[static_cast<size_t>(pageGroup(kPages[i].id))]->add<Button>(Flex::Direction::Row);
+    for (size_t i = 0; i < pagesOf(Hypr).size(); ++i) {
+        auto* b = groups[static_cast<size_t>(pageGroup(pagesOf(Hypr)[i].id))]->add<Button>(Flex::Direction::Row);
         b->setPadding({10, 10, 12, 10})->setSpacing(12);
         b->pressedRadius = 10;
         auto* chip = b->add<Flex>(Flex::Direction::Row);
         pill(chip)->setJustify(Align::Center);
         chip->fixedWidth = chip->fixedHeight = 38;
-        auto* icon = chip->add<Icon>(kPages[i].icon, 20);
+        auto* icon = chip->add<Icon>(pagesOf(Hypr)[i].icon, 20);
         auto* texts = b->add<Flex>(Flex::Direction::Column);
         texts->setAlignItems(Align::Start)->setSpacing(1);
         texts->grow = true;
-        auto* label = texts->add<Label>(kPages[i].title);
+        auto* label = texts->add<Label>(pagesOf(Hypr)[i].title);
         label->setSize(15)->setWeight(500)->setMaxWidth(190);
         // Wraps to a second line, as Android's summaries do, rather than
         // cutting off in the narrow sidebar
-        auto* summary = texts->add<Label>(kPages[i].blurb);
+        auto* summary = texts->add<Label>(pagesOf(Hypr)[i].blurb);
         summary->setSize(12)->setMaxWidth(190)->setMaxLines(2);
         b->onClicked = [show, i](uint32_t) {
             // The page rebuild must not run inside the click that asked for it
             EventLoop::get().defer([show, i] { (*show)(i); });
         };
         items->push_back({b, chip, icon, label, summary, static_cast<int>(i % 3)});
-        if (initial == kPages[i].id) first = i;
+        if (initial == pagesOf(Hypr)[i].id) first = i;
     }
+    // The other app, a window of its own: Hyprland's options from Settings,
+    // the shell's settings from Hyprland Settings
+    auto* other = side->add<Button>(Flex::Direction::Row);
+    pill(other->setBackground("secondary_container", false))->setPadding({16, 12, 14, 12})->setSpacing(12);
+    other->pressedRadius = 12;
+    other->add<Icon>(Hypr ? "settings" : "tune", 20)->setColor("on_secondary_container", false);
+    auto* otherTexts = other->add<Flex>(Flex::Direction::Column);
+    otherTexts->setAlignItems(Align::Start)->setSpacing(1);
+    otherTexts->grow = true;
+    otherTexts->add<Label>(Hypr ? "Material3UI Settings" : "Hyprland Settings")
+        ->setSize(15)->setWeight(600)->setColor("on_secondary_container", false);
+    otherTexts->add<Label>(Hypr ? "The shell: bar, dock, network, sound…" : "Every compositor option, animations and more")
+        ->setSize(12)->setColor("on_secondary_container", false)->setMaxWidth(170)->setMaxLines(2);
+    other->add<Icon>("open_in_new", 18)->setColor("on_secondary_container", false);
+    other->onClicked = [](uint32_t button) {
+        if (button == BTN_LEFT && open) open(Hypr ? "settings" : "hyprsettings");
+    };
     // Universal search, as Android's: every setting by name, not just the
     // pages. The index is read from the pages themselves, built out of view
     // once (their row titles and section headings).
@@ -3033,9 +3074,9 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
     auto index = std::make_shared<std::vector<Hit>>();
     auto buildIndex = [index, &popup] {
         if (!index->empty()) return;
-        for (size_t i = 0; i < std::size(kPages); ++i) {
+        for (size_t i = 0; i < pagesOf(Hypr).size(); ++i) {
             Flex scratch(Flex::Direction::Column);
-            kPages[i].build(&scratch, popup);
+            pagesOf(Hypr)[i].build(&scratch, popup);
             std::set<std::string> seen;
             std::function<void(const Node&)> walk = [&](const Node& n) {
                 const auto* l = dynamic_cast<const Label*>(&n);
@@ -3097,8 +3138,8 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
         std::vector<size_t> pages;
         std::vector<const Hit*> settings;
         std::set<size_t> withHits;
-        for (size_t i = 0; i < std::size(kPages); ++i)
-            if (lower(kPages[i].title).find(q) != std::string::npos || lower(kPages[i].blurb).find(q) != std::string::npos) {
+        for (size_t i = 0; i < pagesOf(Hypr).size(); ++i)
+            if (lower(pagesOf(Hypr)[i].title).find(q) != std::string::npos || lower(pagesOf(Hypr)[i].blurb).find(q) != std::string::npos) {
                 pages.push_back(i);
                 withHits.insert(i);
             }
@@ -3131,18 +3172,18 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
             };
             if (!pages.empty()) {
                 auto* g = group(content, "Pages");
-                for (size_t i : pages) result(g, kPages[i].icon, kPages[i].title, kPages[i].blurb, i, "");
+                for (size_t i : pages) result(g, pagesOf(Hypr)[i].icon, pagesOf(Hypr)[i].title, pagesOf(Hypr)[i].blurb, i, "");
             }
             if (!settings.empty()) {
                 auto* g = group(content, "Settings");
                 for (size_t k = 0; k < settings.size() && k < 40; ++k)
-                    result(g, kPages[settings[k]->page].icon, settings[k]->text, kPages[settings[k]->page].title,
+                    result(g, pagesOf(Hypr)[settings[k]->page].icon, settings[k]->text, pagesOf(Hypr)[settings[k]->page].title,
                            settings[k]->page, settings[k]->text);
             }
             scroll->scrollTo(0, false);
         });
     };
-    searchFor = [search](const std::string& t) {
+    searchFor[Hypr] = [search](const std::string& t) {
         search->setText(t);
         if (search->onChanged) search->onChanged(t);
     };
@@ -3150,18 +3191,26 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
         const std::string q = lower(t);
         if (q.empty()) return;
         buildIndex();
-        for (size_t i = 0; i < std::size(kPages); ++i)
-            if (lower(kPages[i].title).find(q) != std::string::npos) return openAt(i, "");
+        for (size_t i = 0; i < pagesOf(Hypr).size(); ++i)
+            if (lower(pagesOf(Hypr)[i].title).find(q) != std::string::npos) return openAt(i, "");
         for (const auto& h : *index)
             if (lower(h.text).find(q) != std::string::npos) return openAt(h.page, h.text);
     };
     // Only called from inside this popup (a page's reset button)
-    reshow = [show](const std::string& id) {
-        for (size_t i = 0; i < std::size(kPages); ++i)
-            if (id == kPages[i].id) (*show)(i);
+    reshow[Hypr] = [show](const std::string& id) {
+        for (size_t i = 0; i < pagesOf(Hypr).size(); ++i)
+            if (id == pagesOf(Hypr)[i].id) (*show)(i);
     };
     (*show)(first);
-    if (initial.starts_with("search:")) EventLoop::get().defer([q = initial.substr(7)] { if (searchFor) searchFor(q); });
+    if (initial.starts_with("search:")) EventLoop::get().defer([q = initial.substr(7)] { if (searchFor[Hypr]) searchFor[Hypr](q); });
+}
+
+void settings(Flex* card, Popup& popup, const std::string& initial) {
+    settingsApp<false>(card, popup, initial);
+}
+
+void hyprSettings(Flex* card, Popup& popup, const std::string& initial) {
+    settingsApp<true>(card, popup, initial);
 }
 
 } // namespace m3::shell::panels

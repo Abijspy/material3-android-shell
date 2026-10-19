@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Hyprland Settings: the Settings squircle, with three sliders -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3fb6c8"/>
+      <stop offset="1" stop-color="#1f5f8b"/>
+    </linearGradient>
+  </defs>
+  <path d="M64 4C108 4 124 20 124 64S108 124 64 124 4 108 4 64 20 4 64 4Z" fill="url(#bg)"/>
+  <g stroke="#d6f6ff" stroke-width="9" stroke-linecap="round">
+    <line x1="30" y1="40" x2="98" y2="40"/>
+    <line x1="30" y1="64" x2="98" y2="64"/>
+    <line x1="30" y1="88" x2="98" y2="88"/>
+  </g>
+  <g fill="#ffffff" stroke="#1f5f8b" stroke-width="5">
+    <circle cx="78" cy="40" r="11"/>
+    <circle cx="46" cy="64" r="11"/>
+    <circle cx="70" cy="88" r="11"/>
+  </g>
+</svg>
