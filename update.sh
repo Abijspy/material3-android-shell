@@ -6,7 +6,8 @@
 #  package on the stable channel, else one built from the checkout) and
 #  refresh configs. Uses the choices recorded by install.sh in
 #  ~/.config/material3ui/install_state.json. Installing the shell needs root:
-#  sudo, or M3_SUDO=pkexec when Settings runs it (the shell's polkit dialog).
+#  sudo, or M3_SUDO=pkexec; when Settings runs it, M3_ROOT is its update
+#  helper (material3ui-root DIR), already authorised: no further password.
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -85,12 +86,18 @@ if [[ -z "$PKG" ]]; then
         PKG="$("$PACKAGING/build-pkg.sh" material3ui --build "$BUILD" "$PKG_DIR" 2>/dev/null)" || PKG=""
     fi
 fi
-if [[ -n "$PKG" && -x "$PACKAGING/install-pkg.sh" ]]; then
-    "${M3_SUDO:-sudo}" "$PACKAGING/install-pkg.sh" "$PKG"
+# Root: Settings' update helper (one password for the whole update), else
+# M3_SUDO (a command, words allowed), else sudo
+read -ra ROOT <<<"${M3_ROOT:-}"
+read -ra SUDO <<<"${M3_SUDO:-sudo}"
+if [[ -n "$PKG" && ${#ROOT[@]} -gt 0 ]]; then
+    "${ROOT[@]}" install-pkg "$PKG"
+elif [[ -n "$PKG" && -x "$PACKAGING/install-pkg.sh" ]]; then
+    "${SUDO[@]}" "$PACKAGING/install-pkg.sh" "$PKG"
 else
     # No makepkg (base-devel), or a release from before the packages
     [[ -n "${BUILD:-}" ]] || { echo "No package to install." >&2; exit 1; }
-    "${M3_SUDO:-sudo}" meson install -C "$BUILD" --no-rebuild --quiet
+    "${SUDO[@]}" meson install -C "$BUILD" --no-rebuild --quiet
 fi
 mkdir -p "$HOME/.local/share/material3ui"
 rm -rf "$HOME/.local/share/material3ui/scripts"
@@ -133,7 +140,11 @@ if [[ -d "$CONFIG_HOME/quickshell/material3ui" ]]; then
     echo "Moved the old Quickshell shell to $backup"
 fi
 if [[ -d /usr/share/material3ui-greeter ]] && "$PROJECT_ROOT/greeter/material3ui-greeter" outdated; then
-    if [[ "${M3_SUDO:-}" == pkexec ]]; then
+    if [[ ${#ROOT[@]} -gt 0 ]]; then
+        # Fetched or built as you, installed and set up by the helper
+        greeter_pkg="$("$PROJECT_ROOT/greeter/material3ui-greeter" fetch)" &&
+            "${ROOT[@]}" install-pkg "$greeter_pkg" && "${ROOT[@]}" greeter-setup && echo "Login screen updated."
+    elif [[ "${M3_SUDO:-}" == pkexec ]]; then
         pkexec "$PROJECT_ROOT/greeter/material3ui-greeter" install && echo "Login screen updated."
     elif sudo -n true 2>/dev/null; then
         "$PROJECT_ROOT/greeter/material3ui-greeter" install && echo "Login screen updated."

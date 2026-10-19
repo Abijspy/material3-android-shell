@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Material3UI</vendor>
+  <vendor_url>https://github.com/Abijspy/material3-android-shell</vendor_url>
+  <!-- One password for a whole update from Software & updates -->
+  <action id="io.github.abijspy.material3ui.update">
+    <description>Install updates</description>
+    <message>Authentication is required to install updates</message>
+    <icon_name>system-software-update</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/material3ui/material3ui-update-root</annotate>
+  </action>
+</policyconfig>

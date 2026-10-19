@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────────────
+#  Material3UI's update helper. Settings starts it once through pkexec (one
+#  password for the whole update); it then runs the update's root steps,
+#  sent by material3ui-root through a private folder, and exits when the
+#  update ends, when nothing comes for 15 minutes, or when told to.
+#
+#    material3ui-update-root DIR
+#
+#  DIR belongs to the user who started it (mode 700) and holds two FIFOs:
+#  "in" takes requests (argv, NUL-joined, base64, one per line), "out"
+#  answers each with its exit code. Only these run:
+#    pacman …             the package manager (AUR helpers call it here)
+#    flatpak update …     system Flatpaks
+#    install-pkg FILE     a Material3UI package (taking over files a
+#                         source install left)
+#    greeter-setup        the login screen's setup, after its package
+#    -v, true             AUR helpers' "may I?" checks
+# ─────────────────────────────────────────────────────────────────────────────
+set -uo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/bin
+
+DIR="${1:-}"
+OWNER="${PKEXEC_UID:-}"
+[[ "$EUID" -eq 0 && -n "$OWNER" ]] || { echo "run through pkexec" >&2; exit 2; }
+# The folder must be the user's own, private, and hold the two FIFOs
+[[ -d "$DIR" && ! -L "$DIR" && "$(stat -c %u "$DIR")" == "$OWNER" && "$(stat -c %a "$DIR")" == 700 &&
+   -p "$DIR/in" && -p "$DIR/out" ]] || { echo "not an update folder: $DIR" >&2; exit 2; }
+
+install_pkg() {
+    local pkg="$1" name f
+    [[ "$pkg" == *.pkg.tar.zst && -f "$pkg" ]] || { echo "not a package: $pkg" >&2; return 2; }
+    name="$(bsdtar -xOf "$pkg" .PKGINFO | sed -n 's/^pkgname = //p')"
+    [[ "$name" == material3ui || "$name" == material3ui-greeter ]] || { echo "not Material3UI's: $name" >&2; return 2; }
+    local overwrite=()
+    if ! pacman -Qq "$name" >/dev/null 2>&1; then
+        while IFS= read -r f; do
+            [[ "$f" == .* || "$f" == */ ]] && continue
+            overwrite+=(--overwrite "/$f")
+        done < <(bsdtar -tf "$pkg")
+    fi
+    pacman -U --noconfirm "${overwrite[@]}" "$pkg"
+}
+
+touch "$DIR/ready"
+while true; do
+    line=""
+    # A writer opens, writes one line and closes; nobody for 15 minutes: done
+    read -r -t 900 line <> "$DIR/in" || break
+    [[ -n "$line" ]] || continue
+    mapfile -d '' -t argv < <(printf '%s' "$line" | base64 -d 2>/dev/null)
+    ((${#argv[@]})) || { echo 2 > "$DIR/out"; continue; }
+    case "${argv[0]}" in
+        exit) echo 0 > "$DIR/out"; break ;;
+        -v | --validate | true) code=0 ;;
+        pacman | /usr/bin/pacman) /usr/bin/pacman "${argv[@]:1}"; code=$? ;;
+        flatpak | /usr/bin/flatpak)
+            if [[ "${argv[1]:-}" == update ]]; then /usr/bin/flatpak "${argv[@]:1}"; code=$?; else code=126; fi ;;
+        install-pkg) install_pkg "${argv[1]:-}"; code=$? ;;
+        greeter-setup) /usr/bin/material3ui-greeter setup; code=$? ;;
+        *) echo "refused: ${argv[0]}" >&2; code=126 ;;
+    esac
+    echo "$code" > "$DIR/out"
+done
+rm -f "$DIR/ready"

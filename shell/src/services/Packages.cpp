@@ -14,6 +14,7 @@
 #include <regex>
 #include <fstream>
 #include <sstream>
+#include <unistd.h>
 
 namespace m3 {
 
@@ -227,15 +228,36 @@ void Packages::checkShell() {
 }
 
 void Packages::upgrade() {
-    // Official packages first, then the AUR (built as the user; its helper
-    // asks through pkexec to install), then Flatpaks (polkit itself)
-    std::string script = "pkexec pacman -Syu --noconfirm";
-    if (!m_helper.empty()) script += " && " + helperCommand("-Sua");
-    script += " && { command -v flatpak >/dev/null && flatpak update -y --noninteractive || true; }";
-    // Last, the shell itself: update.sh rebuilds it, installs through
-    // pkexec and restarts it (this process ends there; it notifies)
-    if (count(Source::Shell) > 0 && !m_shellDir.empty())
-        script += " && M3_SUDO=pkexec '" + m_shellDir + "/update.sh' all";
+    const bool shell = count(Source::Shell) > 0 && !m_shellDir.empty();
+    constexpr const char* helper = "/usr/lib/material3ui/material3ui-update-root";
+    if (access(helper, X_OK) != 0) {
+        // Before the helper is installed (the update that brings it): a
+        // password for each step, as before
+        std::string script = "pkexec pacman -Syu --noconfirm";
+        if (!m_helper.empty()) script += " && " + helperCommand("-Sua");
+        script += " && { command -v flatpak >/dev/null && flatpak update -y --noninteractive || true; }";
+        if (shell) script += " && M3_SUDO=pkexec '" + m_shellDir + "/update.sh' all";
+        runTask("Updating… this can take a while", script, "Updated");
+        return;
+    }
+    // One password for everything: the helper starts once through pkexec,
+    // in a private folder only it and this update use, and runs each root
+    // step (pacman, the AUR helper's installs, Flatpak, the shell's
+    // packages) until the update ends
+    std::string script =
+        "d=$(mktemp -d) && chmod 700 \"$d\" && mkfifo -m 600 \"$d/in\" \"$d/out\" || exit 1; "
+        "pkexec " + std::string(helper) + " \"$d\" & hp=$!; "
+        // Wait for the password (or a cancel: the helper never gets ready)
+        "while [ ! -e \"$d/ready\" ]; do kill -0 $hp 2>/dev/null || { rm -rf \"$d\"; exit 126; }; sleep 0.2; done; "
+        "R=\"/usr/lib/material3ui/material3ui-root $d\"; "
+        "trap '$R exit >/dev/null 2>&1; wait $hp 2>/dev/null; rm -rf \"$d\"' EXIT; "
+        "$R pacman -Syu --noconfirm";
+    if (!m_helper.empty())
+        script += " && " + m_helper + " -Sua --noconfirm --sudo /usr/lib/material3ui/material3ui-root --sudoflags \"$d\"" +
+                  (m_helper == "paru" ? " --skipreview" : " --answerclean None --answerdiff None --answeredit None");
+    script += " && { command -v flatpak >/dev/null && { $R flatpak update -y --noninteractive; flatpak update --user -y "
+              "--noninteractive; } || true; }";
+    if (shell) script += " && M3_ROOT=\"$R\" '" + m_shellDir + "/update.sh' all";
     runTask("Updating… this can take a while", script, "Updated");
 }
 

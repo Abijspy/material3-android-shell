@@ -7,6 +7,8 @@
 #                         FILE, else the release's package when this checkout
 #                         is a release, else one built from the checkout. Then
 #                         runs setup.
+#    fetch                Print the path of this checkout's package (the
+#                         release's, downloaded, or built here).
 #    setup [--enable]     Point greetd at the greeter and sync it. --enable also
 #                         switches the display manager to greetd.
 #    sync [--quiet]       Copy your wallpaper, colours, lock screen (clock and
@@ -339,6 +341,7 @@ cmd_uninstall() {
 
 case "${1:-}" in
     install) shift; cmd_install "$@" ;;
+    fetch) in_checkout || die "Run this from the repository's greeter/ directory."; fetch_or_build ;;
     setup) shift; cmd_setup "$@" ;;
     sync) shift; out="$(cmd_sync "$@")"; [[ "$QUIET" == 1 || "${1:-}" == --quiet ]] || ok "Synced: $out" ;;
     preview) cmd_preview ;;
