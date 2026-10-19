@@ -27,6 +27,9 @@ constexpr const char* kCurves = "/hyprland/curves";         // name → [x0, y0,
 constexpr const char* kMonitors = "/hyprland/monitors";     // key → {mode, position, scale, …}
 constexpr const char* kStartup = "/hyprland/autostart";     // [{command, label, enabled}]
 constexpr const char* kEnv = "/hyprland/env";               // [[name, value]]
+constexpr const char* kWindowRules = "/hyprland/window_rules";
+constexpr const char* kLayerRules = "/hyprland/layer_rules";
+constexpr const char* kWorkspaceRules = "/hyprland/workspace_rules";
 
 std::string quoted(const std::string& s); // below
 
@@ -698,6 +701,82 @@ void HyprOptions::setEnvironment(const std::vector<std::pair<std::string, std::s
     changed.emit();
 }
 
+std::string HyprOptions::luaLiteral(const nlohmann::json& v) {
+    if (v.is_string()) return quoted(v.get<std::string>());
+    if (v.is_boolean()) return v.get<bool>() ? "true" : "false";
+    if (v.is_number_integer()) return std::to_string(v.get<long long>());
+    if (v.is_number()) return std::format("{}", v.get<double>());
+    if (v.is_array()) {
+        std::string out = "{ ";
+        for (const auto& x : v) out += luaLiteral(x) + ", ";
+        return out + "}";
+    }
+    if (v.is_object()) {
+        std::string out = "{ ";
+        for (auto& [k, x] : v.items()) out += key(k) + " = " + luaLiteral(x) + ", ";
+        return out + "}";
+    }
+    return "nil";
+}
+
+namespace {
+const char* ruleStore(HyprOptions::RuleKind kind) {
+    return kind == HyprOptions::RuleKind::Window ? kWindowRules : kind == HyprOptions::RuleKind::Layer ? kLayerRules : kWorkspaceRules;
+}
+
+// A rule as the Lua call's argument
+nlohmann::json ruleSpec(HyprOptions::RuleKind kind, const nlohmann::json& r) {
+    nlohmann::json spec = nlohmann::json::object();
+    if (kind == HyprOptions::RuleKind::Workspace) {
+        spec["workspace"] = r.value("workspace", "");
+        for (const auto obj = r.value("fields", nlohmann::json::object()); auto& [k, v] : obj.items()) spec[k] = v;
+        return spec;
+    }
+    spec["name"] = "material3ui-" + r.value("id", "");
+    spec["enabled"] = r.value("enabled", true);
+    spec["match"] = r.value("match", nlohmann::json::object());
+    for (const auto obj = r.value("effects", nlohmann::json::object()); auto& [k, v] : obj.items()) spec[k] = v;
+    return spec;
+}
+
+const char* ruleCall(HyprOptions::RuleKind kind) {
+    return kind == HyprOptions::RuleKind::Window ? "hl.window_rule" : kind == HyprOptions::RuleKind::Layer ? "hl.layer_rule" : "hl.workspace_rule";
+}
+} // namespace
+
+nlohmann::json HyprOptions::rules(RuleKind kind) const {
+    return Config::get().value<nlohmann::json>(ruleStore(kind), nlohmann::json::array());
+}
+
+void HyprOptions::setRules(RuleKind kind, const nlohmann::json& list) {
+    const nlohmann::json before = rules(kind);
+    bool reload = false;
+    if (kind == RuleKind::Workspace) {
+        // Live only adds or changes; anything taken away needs the config again
+        for (const auto& r : list)
+            if (r.value("enabled", true) && !r.value("workspace", "").empty())
+                Hyprland::get().request(std::string("eval ") + ruleCall(kind) + "(" + luaLiteral(ruleSpec(kind, r)) + ")");
+        reload = before.size() > list.size() ||
+                 std::ranges::any_of(before, [&](const auto& b) {
+                     return std::ranges::none_of(list, [&](const auto& r) { return r == b; });
+                 });
+    } else {
+        for (const auto& r : list) {
+            if (r.value("match", nlohmann::json::object()).empty()) continue; // matches nothing yet
+            Hyprland::get().request(std::string("eval ") + ruleCall(kind) + "(" + luaLiteral(ruleSpec(kind, r)) + ")");
+        }
+        // Gone from the list: switched off by name
+        for (const auto& b : before)
+            if (std::ranges::none_of(list, [&](const auto& r) { return r.value("id", "") == b.value("id", ""); }))
+                Hyprland::get().request(std::string("eval ") + ruleCall(kind) + "({ name = " +
+                                        quoted("material3ui-" + b.value("id", "")) + ", enabled = false })");
+    }
+    Config::get().set(ruleStore(kind), list);
+    save();
+    if (reload) Hyprland::get().request("reload");
+    changed.emit();
+}
+
 void HyprOptions::save() {
     // Every kept option, as a function shell.lua calls after the config
     const auto custom = Config::get().value<nlohmann::json>(kStore, nlohmann::json::object());
@@ -705,14 +784,22 @@ void HyprOptions::save() {
     // The session's environment, before anything starts
     for (const auto& [k, v] : environment()) body += std::format("\tpcall(hl.env, {}, {})\n", quoted(k), quoted(v));
     // Monitors next: everything else is laid out on them
-    for (auto& [key, fields] : Config::get().value<nlohmann::json>(kMonitors, nlohmann::json::object()).items())
+    for (const auto obj = Config::get().value<nlohmann::json>(kMonitors, nlohmann::json::object()); auto& [key, fields] : obj.items())
         body += "\tpcall(hl.monitor, " + monitorLua(key, fields) + ")\n";
+    // Rules made in Settings
+    for (auto k : {RuleKind::Window, RuleKind::Layer, RuleKind::Workspace})
+        for (const auto& r : rules(k)) {
+            if (k == RuleKind::Workspace ? !r.value("enabled", true) || r.value("workspace", "").empty()
+                                         : r.value("match", nlohmann::json::object()).empty())
+                continue;
+            body += std::string("\tpcall(") + ruleCall(k) + ", " + luaLiteral(ruleSpec(k, r)) + ")\n";
+        }
     // Curves next: the animations below may use them
-    for (auto& [name, p] : Config::get().value<nlohmann::json>(kCurves, nlohmann::json::object()).items())
+    for (const auto obj = Config::get().value<nlohmann::json>(kCurves, nlohmann::json::object()); auto& [name, p] : obj.items())
         if (p.is_array() && p.size() == 4)
             body += std::format("\tpcall(hl.curve, {}, {{ type = \"bezier\", points = {{ {{{}, {}}}, {{{}, {}}} }} }})\n",
                                 quoted(name), p[0].get<double>(), p[1].get<double>(), p[2].get<double>(), p[3].get<double>());
-    for (auto& [leaf, a] : Config::get().value<nlohmann::json>(kAnimations, nlohmann::json::object()).items()) {
+    for (const auto obj = Config::get().value<nlohmann::json>(kAnimations, nlohmann::json::object()); auto& [leaf, a] : obj.items()) {
         std::string args = std::format("leaf = {}, enabled = {}", quoted(leaf), a.value("enabled", true) ? "true" : "false");
         if (a.value("enabled", true)) {
             args += std::format(", speed = {}", a.value("speed", 1.0));

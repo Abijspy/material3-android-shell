@@ -2940,6 +2940,9 @@ const PageDef kPages[] = {
     {"hypr-monitors", "desktop_windows", "Displays", "Arrangement, resolution, scale, rotation, VRR and HDR", hyprMonitorsPage},
     {"hypr-animations", "animation", "Animations", "Every animation's length, curve and style, and a curve editor", hyprAnimationsPage},
     {"hypr-keybinds", "keyboard_command_key", "Keybinds", "Press a shortcut to set it; any action or command, mouse drags too", keybindsPage},
+    {"hypr-window-rules", "rule", "Window rules", "Float, size and place apps' windows; per-app opacity and more", hyprWindowRulesPage},
+    {"hypr-layer-rules", "layers", "Layer rules", "Blur and animations for bars, launchers and notifications", hyprLayerRulesPage},
+    {"hypr-workspace-rules", "view_carousel", "Workspace rules", "Which monitor each workspace is on, its gaps and layout", hyprWorkspaceRulesPage},
     {"hypr-startup", "rocket_launch", "Startup apps", "Apps and commands to run when Hyprland starts", hyprStartupPage},
     {"hypr-environment", "data_object", "Environment", "Variables for the session's apps", hyprEnvironmentPage},
     {"hypr-layouts", "dashboard", "Layouts", "Dwindle, master and scrolling tiling", hyprLayoutsPage},
@@ -2975,7 +2978,7 @@ int pageGroup(const std::string& id) {
     if (id == "hypr-monitors" || id == "hypr-windows" || id == "hypr-decoration" || id == "hypr-animations") return 0;
     if (id == "hypr-layouts" || id == "hypr-input" || id == "hypr-gestures" || id == "hypr-cursor" || id == "hypr-groups")
         return 1;
-    if (id == "hypr-keybinds" || id == "hypr-startup" || id == "hypr-environment") return 3;
+    if (id == "hypr-keybinds" || id == "hypr-startup" || id == "hypr-environment" || id.ends_with("-rules")) return 3;
     if (id.starts_with("hypr-")) return 2;
     if (id == "network" || id == "bluetooth") return 0;
     if (id == "defaults" || id == "notifications" || id == "tools" || id == "weather") return 1;

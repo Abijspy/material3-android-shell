@@ -23,6 +23,7 @@
 #include <memory>
 #include <set>
 #include <fstream>
+#include <random>
 #include <regex>
 #include <sstream>
 
@@ -1151,7 +1152,401 @@ void environmentSections(Flex* page) {
     live->sync();
 }
 
+
+// ── Rules ──
+
+// One setting a rule can carry, for the editor
+struct Field {
+    const char* key;
+    const char* label;
+    const char* group;
+    enum Type { Bool, Int, Float, Text, Vec2 } type;
+    const char* hint = "";
+};
+
+const std::vector<Field>& windowEffects() {
+    static const std::vector<Field> f = {
+        {"float", "Float", "Placement", Field::Bool},
+        {"tile", "Tile", "Placement", Field::Bool},
+        {"fullscreen", "Open fullscreen", "Placement", Field::Bool},
+        {"maximize", "Open maximized", "Placement", Field::Bool},
+        {"center", "Centre", "Placement", Field::Bool},
+        {"pin", "Pin on every workspace", "Placement", Field::Bool},
+        {"pseudo", "Pseudo-tile", "Placement", Field::Bool},
+        {"workspace", "Open on workspace", "Placement", Field::Text, "3, name:web, special:magic; add \"silent\" to stay"},
+        {"monitor", "Open on monitor", "Placement", Field::Text, "a name (DP-1) or number"},
+        {"size", "Size", "Placement", Field::Vec2, "width height: pixels, % or monitor_w*0.5"},
+        {"move", "Position", "Placement", Field::Vec2, "x y: pixels, % or expressions"},
+        {"min_size", "Smallest size", "Placement", Field::Vec2},
+        {"max_size", "Largest size", "Placement", Field::Vec2},
+        {"persistent_size", "Remember its size", "Placement", Field::Bool},
+        {"group", "Grouping", "Placement", Field::Text, "set, new, lock, barred, deny, invade, override, unset"},
+        {"fullscreen_state", "Fullscreen state", "Placement", Field::Text, "internal client, e.g. 0 2"},
+        {"opacity", "Opacity", "Look", Field::Text, "active [inactive [fullscreen]], e.g. 0.9 0.8"},
+        {"rounding", "Corner radius", "Look", Field::Int},
+        {"rounding_power", "Corner shape", "Look", Field::Float},
+        {"border_size", "Border width", "Look", Field::Int},
+        {"border_color", "Border colour", "Look", Field::Text, "rgba(RRGGBBAA)"},
+        {"decorate", "Decorations (borders, shadow)", "Look", Field::Bool},
+        {"no_blur", "No blur", "Look", Field::Bool},
+        {"no_shadow", "No shadow", "Look", Field::Bool},
+        {"no_dim", "Never dim", "Look", Field::Bool},
+        {"dim_around", "Dim everything around it", "Look", Field::Bool},
+        {"opaque", "Opaque", "Look", Field::Bool},
+        {"xray", "X-ray blur", "Look", Field::Bool},
+        {"animation", "Animation style", "Look", Field::Text, "e.g. popin 80%, slide"},
+        {"no_anim", "No animations", "Look", Field::Bool},
+        {"nearest_neighbor", "Sharp scaling (nearest neighbour)", "Look", Field::Bool},
+        {"tonemap", "Tone mapping", "Look", Field::Text},
+        {"no_initial_focus", "Don't focus when it opens", "Focus", Field::Bool},
+        {"no_focus", "Never focus", "Focus", Field::Bool},
+        {"stay_focused", "Keep the focus", "Focus", Field::Bool},
+        {"focus_on_activate", "Focus when it asks", "Focus", Field::Bool},
+        {"no_follow_mouse", "Ignore focus-follows-mouse", "Focus", Field::Bool},
+        {"suppress_event", "Ignore its requests", "Focus", Field::Text, "fullscreen maximize activate activatefocus fullscreenoutput"},
+        {"confine_pointer", "Keep the pointer inside", "Focus", Field::Bool},
+        {"allows_input", "Accept input (XWayland)", "Focus", Field::Bool},
+        {"no_shortcuts_inhibit", "Don't let it take shortcuts", "Focus", Field::Bool},
+        {"idle_inhibit", "Keep the screen on", "Behaviour", Field::Text, "none, always, focus, fullscreen"},
+        {"immediate", "Allow tearing (games)", "Behaviour", Field::Bool},
+        {"no_vrr", "No variable refresh rate", "Behaviour", Field::Bool},
+        {"render_unfocused", "Keep rendering when unfocused", "Behaviour", Field::Bool},
+        {"no_screen_share", "Hide from screen sharing", "Behaviour", Field::Bool},
+        {"content", "Content type", "Behaviour", Field::Text, "none, photo, video, game"},
+        {"keep_aspect_ratio", "Keep its aspect ratio", "Behaviour", Field::Bool},
+        {"no_max_size", "Ignore its largest size", "Behaviour", Field::Bool},
+        {"force_rgbx", "Ignore its transparency", "Behaviour", Field::Bool},
+        {"sync_fullscreen", "Fullscreen in step with the app", "Behaviour", Field::Bool},
+        {"no_close_for", "Can't be closed for (ms)", "Behaviour", Field::Int},
+        {"no_auto_hdr", "No automatic HDR", "Behaviour", Field::Bool},
+        {"scroll_mouse", "Mouse scroll speed", "Behaviour", Field::Float},
+        {"scroll_touchpad", "Touchpad scroll speed", "Behaviour", Field::Float},
+        {"scrolling_width", "Column width (scrolling layout)", "Behaviour", Field::Float},
+        {"tag", "Tag", "Behaviour", Field::Text, "+name adds, -name removes"},
+    };
+    return f;
+}
+
+const std::vector<Field>& layerEffects() {
+    static const std::vector<Field> f = {
+        {"blur", "Blur behind it", "Look", Field::Bool},
+        {"blur_popups", "Blur its popups", "Look", Field::Bool},
+        {"ignore_alpha", "Don't blur below opacity", "Look", Field::Float, "0–1"},
+        {"xray", "X-ray blur", "Look", Field::Bool},
+        {"dim_around", "Dim everything around it", "Look", Field::Bool},
+        {"no_anim", "No animations", "Look", Field::Bool},
+        {"animation", "Animation style", "Look", Field::Text, "slide, popin, fade"},
+        {"order", "Stacking order", "Behaviour", Field::Int},
+        {"above_lock", "Above the lock screen", "Behaviour", Field::Int, "0 no, 1 yes, 2 and interactive"},
+        {"no_screen_share", "Hide from screen sharing", "Behaviour", Field::Bool},
+    };
+    return f;
+}
+
+const std::vector<Field>& workspaceFields() {
+    static const std::vector<Field> f = {
+        {"monitor", "On monitor", "Placement", Field::Text, "DP-1, desc:…"},
+        {"default", "The monitor's first workspace", "Placement", Field::Bool},
+        {"persistent", "Always exists", "Placement", Field::Bool},
+        {"default_name", "Name", "Placement", Field::Text},
+        {"on_created_empty", "When opened empty, run", "Placement", Field::Text, "a command"},
+        {"layout", "Layout", "Look", Field::Text, "dwindle, master, scrolling, monocle"},
+        {"gaps_in", "Gaps between windows", "Look", Field::Int},
+        {"gaps_out", "Gaps at the edges", "Look", Field::Int},
+        {"float_gaps", "Gaps for floating windows", "Look", Field::Int},
+        {"border_size", "Border width", "Look", Field::Int},
+        {"no_border", "No borders", "Look", Field::Bool},
+        {"no_rounding", "No rounded corners", "Look", Field::Bool},
+        {"decorate", "Decorations", "Look", Field::Bool},
+        {"no_shadow", "No shadows", "Look", Field::Bool},
+        {"animation", "Animation style", "Look", Field::Text},
+    };
+    return f;
+}
+
+// What a window or layer rule can test
+const std::vector<std::pair<std::string, std::string>>& windowMatches() {
+    static const std::vector<std::pair<std::string, std::string>> m = {
+        {"class", "App (class)"}, {"title", "Title"}, {"initial_class", "First class"}, {"initial_title", "First title"},
+        {"tag", "Tag"}, {"xwayland", "XWayland"}, {"float", "Floating"}, {"fullscreen", "Fullscreen"},
+        {"pin", "Pinned"}, {"focus", "Focused"}, {"group", "In a group"}, {"modal", "A dialog (modal)"},
+        {"workspace", "On workspace"}, {"content", "Content type"}, {"xdg_tag", "XDG tag"}};
+    return m;
+}
+
+std::string newId() {
+    static std::mt19937 rng{std::random_device{}()};
+    return std::format("{:08x}", rng());
+}
+
+const Field* fieldOf(const std::vector<Field>& fields, const std::string& key) {
+    for (const auto& f : fields)
+        if (key == f.key) return &f;
+    return nullptr;
+}
+
+std::string valueText(const nlohmann::json& v) {
+    if (v.is_string()) return v.get<std::string>();
+    if (v.is_array() && v.size() == 2) {
+        auto one = [](const nlohmann::json& x) { return x.is_string() ? x.get<std::string>() : x.dump(); };
+        return one(v[0]) + " " + one(v[1]);
+    }
+    return v.dump();
+}
+
+// A rule's settings: each with its control and a remove, then "Add"
+void specEditor(Node* g, const std::vector<Field>& fields, nlohmann::json values,
+                std::function<void(const nlohmann::json&)> commit) {
+    auto set = [values, commit](const std::string& key, const nlohmann::json& v) {
+        auto next = values;
+        if (v.is_null()) next.erase(key);
+        else next[key] = v;
+        commit(next);
+    };
+    for (auto& [key, value] : values.items()) {
+        const Field* f = fieldOf(fields, key);
+        auto r = row(g, "", f ? f->label : key, f && *f->hint ? f->hint : "");
+        r.title->setMaxWidth(260);
+        r.subtitle->setMaxWidth(260);
+        const std::string k = key;
+        const auto type = f ? f->type : Field::Text;
+        if (type == Field::Bool) {
+            auto* sw = r.row->add<Switch>();
+            sw->setChecked(value.is_boolean() ? value.get<bool>() : true, false);
+            sw->onToggled = [set, k](bool on) { set(k, on); };
+        } else {
+            auto* t = r.row->add<TextField>();
+            t->setText(valueText(value));
+            t->fixedWidth = type == Field::Vec2 ? 220 : 200;
+            t->onSubmit = [set, k, type](const std::string& text) {
+                try {
+                    if (type == Field::Int) return set(k, std::stoll(text));
+                    if (type == Field::Float) return set(k, std::stod(text));
+                    if (type == Field::Vec2) {
+                        std::istringstream in(text);
+                        std::string a, b;
+                        in >> a >> b;
+                        if (b.empty()) return;
+                        // Plain numbers as numbers; expressions (50%, monitor_w*0.5) as text
+                        auto num = [](const std::string& x) -> nlohmann::json {
+                            char* end = nullptr;
+                            const double d = std::strtod(x.c_str(), &end);
+                            return end && *end == 0 ? nlohmann::json(d) : nlohmann::json(x);
+                        };
+                        return set(k, nlohmann::json{num(a), num(b)});
+                    }
+                    set(k, text);
+                } catch (...) {
+                }
+            };
+        }
+        iconButton(r.row, "close", [set, k] { set(k, nullptr); }, 18);
+    }
+    // Add a setting: the ones not set yet, by group
+    auto add = row(g, "add", "Add a setting");
+    std::vector<std::pair<std::string, std::string>> items;
+    for (const auto& f : fields)
+        if (!values.contains(f.key)) items.push_back({f.key, std::string(f.group) + " · " + f.label});
+    dropdown(add.row, g, "Choose", items, [set, &fields](const std::string& key) {
+        const Field* f = fieldOf(fields, key);
+        const auto type = f ? f->type : Field::Text;
+        set(key, type == Field::Bool    ? nlohmann::json(true)
+                 : type == Field::Int   ? nlohmann::json(0)
+                 : type == Field::Float ? nlohmann::json(1.0)
+                 : type == Field::Vec2  ? nlohmann::json{800, 600}
+                                        : nlohmann::json(""));
+    });
+}
+
+// What a rule matches: property and pattern pairs (patterns are regexes)
+void matchEditor(Node* g, bool layer, nlohmann::json match, std::function<void(const nlohmann::json&)> commit) {
+    auto set = [match, commit](const std::string& key, const nlohmann::json& v) {
+        auto next = match;
+        if (v.is_null()) next.erase(key);
+        else next[key] = v;
+        commit(next);
+    };
+    for (auto& [key, value] : match.items()) {
+        std::string label = key;
+        for (const auto& [k, l] : windowMatches())
+            if (k == key) label = l;
+        if (key == "namespace") label = "Layer (namespace)";
+        auto r = row(g, "filter_alt", label);
+        auto* t = r.row->add<TextField>();
+        t->setText(valueText(value));
+        t->fixedWidth = 240;
+        const std::string k = key;
+        t->onSubmit = [set, k](const std::string& text) {
+            // Booleans read as booleans: xwayland, float, fullscreen…
+            if (text == "true" || text == "false") return set(k, text == "true");
+            set(k, text);
+        };
+        iconButton(r.row, "close", [set, k] { set(k, nullptr); }, 18);
+    }
+    if (layer) {
+        // The layers on screen now (bars, launchers, notifications)
+        auto pick = row(g, "layers", "A layer on screen");
+        std::vector<std::pair<std::string, std::string>> spaces;
+        if (auto j = Hyprland::get().requestJson("layers"); j && j->is_object())
+            for (auto& [mon, m] : j->items())
+                for (const auto obj = m.value("levels", nlohmann::json::object()); auto& [lvl, list] : obj.items())
+                    for (const auto& l : list) {
+                        const std::string ns = l.value("namespace", "");
+                        if (!ns.empty() && std::ranges::none_of(spaces, [&](const auto& p) { return p.first == ns; }))
+                            spaces.push_back({ns, ns});
+                    }
+        dropdown(pick.row, g, "Choose", spaces, [set](const std::string& ns) { set("namespace", "^(" + ns + ")$"); });
+        return;
+    }
+    // An open window: its app, exactly
+    auto pick = row(g, "select_window", "From an open window");
+    std::vector<std::pair<std::string, std::string>> wins;
+    for (const auto& c : Hyprland::get().clients(true))
+        if (!c.cls.empty() && std::ranges::none_of(wins, [&](const auto& p) { return p.first == c.cls; }))
+            wins.push_back({c.cls, c.cls + " — " + c.title.substr(0, 40)});
+    dropdown(pick.row, g, "Choose", wins, [set](const std::string& cls) {
+        std::string escaped;
+        for (char ch : cls) {
+            if (std::string_view(".^$|()[]{}*+?\\").find(ch) != std::string_view::npos) escaped += '\\';
+            escaped += ch;
+        }
+        set("class", "^(" + escaped + ")$");
+    });
+    auto add = row(g, "add", "Add a condition");
+    std::vector<std::pair<std::string, std::string>> props;
+    for (const auto& [k, l] : windowMatches())
+        if (!match.contains(k)) props.push_back({k, l});
+    dropdown(add.row, g, "Choose", props, [set](const std::string& k) {
+        set(k, k == "xwayland" || k == "float" || k == "fullscreen" || k == "pin" || k == "focus" || k == "group" || k == "modal"
+                   ? nlohmann::json(true)
+                   : nlohmann::json(".*"));
+    });
+}
+
+// One line saying what a rule does
+std::string summary(const nlohmann::json& r, bool workspace) {
+    std::string what;
+    if (workspace) {
+        what = "Workspace " + r.value("workspace", "?");
+    } else {
+        for (const auto obj = r.value("match", nlohmann::json::object()); auto& [k, v] : obj.items())
+            what += (what.empty() ? "" : ", ") + k + " " + valueText(v);
+        if (what.empty()) what = "Matches nothing yet";
+    }
+    std::string does;
+    for (const auto obj = r.value(workspace ? "fields" : "effects", nlohmann::json::object()); auto& [k, v] : obj.items())
+        does += (does.empty() ? "" : ", ") + (v.is_boolean() ? k : k + " " + valueText(v));
+    return what + (does.empty() ? "" : "  →  " + does);
+}
+
+void ruleSections(Flex* page, HyprOptions::RuleKind kind) {
+    using K = HyprOptions::RuleKind;
+    auto open = std::make_shared<std::string>();
+    auto* live = page->add<kit::Live>();
+    live->setSpacing(6);
+    live->sync = [live, open, kind] {
+        live->clearChildren();
+        auto& h = HyprOptions::get();
+        const auto list = h.rules(kind);
+        const bool ws = kind == K::Workspace;
+        auto* g = group(live, ws ? "Your workspace rules" : kind == K::Window ? "Your window rules" : "Your layer rules",
+                        ws ? "Where workspaces live and how they look"
+                        : kind == K::Window ? "Apply to windows as they open; apps are matched by regular expressions"
+                                            : "For bars, launchers and notifications (layers)");
+        if (list.empty()) row(g, "info", "None yet", "Add one below");
+        for (size_t i = 0; i < list.size(); ++i) {
+            const auto r = list[i];
+            const std::string id = r.value("id", "");
+            auto* b = g->add<Button>(Flex::Direction::Row);
+            b->setPadding({20, 12})->setSpacing(16);
+            b->minHeight = 60;
+            auto* texts = b->add<Flex>(Flex::Direction::Column);
+            texts->setAlignItems(Align::Start)->setSpacing(1);
+            texts->grow = true;
+            texts->add<Label>(ws ? "Workspace " + r.value("workspace", "") : r.value("name", "Rule"))->setSize(15)->setWeight(500);
+            texts->add<Label>(summary(r, ws))->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(420)->setMaxLines(2);
+            auto* sw = b->add<Switch>();
+            sw->setChecked(r.value("enabled", true), false);
+            sw->onToggled = [kind, i](bool on) {
+                auto l = HyprOptions::get().rules(kind);
+                if (i < l.size()) l[i]["enabled"] = on;
+                HyprOptions::get().setRules(kind, l);
+            };
+            confirmButton(b, "rule:" + id, "delete", [kind, i] {
+                auto l = HyprOptions::get().rules(kind);
+                if (i < l.size()) l.erase(l.begin() + static_cast<long>(i));
+                HyprOptions::get().setRules(kind, l);
+            });
+            b->add<Icon>(*open == id ? "expand_less" : "expand_more", 22)->setColor("on_surface_variant", false);
+            b->onClicked = [live, open, id](uint32_t button) {
+                if (button != BTN_LEFT) return;
+                *open = *open == id ? "" : id;
+                live->syncSoon();
+            };
+            if (*open != id) continue;
+
+            // The editor: its name or workspace, what it matches, what it does
+            auto replace = [kind, i](const std::function<void(nlohmann::json&)>& edit) {
+                auto l = HyprOptions::get().rules(kind);
+                if (i >= l.size()) return;
+                edit(l[i]);
+                HyprOptions::get().setRules(kind, l);
+            };
+            auto name = row(g, "", ws ? "Workspace" : "Name", ws ? "1, name:web, special:magic" : "");
+            auto* nf = name.row->add<TextField>();
+            nf->setText(ws ? r.value("workspace", "") : r.value("name", ""));
+            nf->fixedWidth = 240;
+            nf->onSubmit = [replace, ws](const std::string& t) { replace([&](auto& x) { x[ws ? "workspace" : "name"] = t; }); };
+            if (!ws) {
+                auto* head = g->add<Flex>(Flex::Direction::Row);
+                head->setPadding({20, 10, 20, 2});
+                head->add<Label>("Applies to")->setSize(13)->setWeight(600)->setColor("primary", false);
+                matchEditor(g, kind == K::Layer, r.value("match", nlohmann::json::object()),
+                            [replace](const nlohmann::json& m) { replace([&](auto& x) { x["match"] = m; }); });
+            }
+            auto* head = g->add<Flex>(Flex::Direction::Row);
+            head->setPadding({20, 10, 20, 2});
+            head->add<Label>(ws ? "Settings" : "Does")->setSize(13)->setWeight(600)->setColor("primary", false);
+            specEditor(g, ws ? workspaceFields() : kind == K::Window ? windowEffects() : layerEffects(),
+                       r.value(ws ? "fields" : "effects", nlohmann::json::object()),
+                       [replace, ws](const nlohmann::json& v) { replace([&](auto& x) { x[ws ? "fields" : "effects"] = v; }); });
+        }
+        auto add = row(g, "add", ws ? "Add a workspace rule" : "Add a rule");
+        pillButton(add.row, "Add", true, [live, open, kind, ws] {
+            auto l = HyprOptions::get().rules(kind);
+            const std::string id = newId();
+            nlohmann::json r = {{"id", id}, {"enabled", true}};
+            if (ws) {
+                r["workspace"] = "1";
+                r["fields"] = nlohmann::json::object();
+            } else {
+                r["name"] = "New rule";
+                r["match"] = nlohmann::json::object();
+                r["effects"] = nlohmann::json::object();
+            }
+            l.push_back(r);
+            HyprOptions::get().setRules(kind, l);
+            *open = id;
+            live->syncSoon();
+        }, "add");
+    };
+    live->conns.push_back(HyprOptions::get().changed.connect([live] { live->syncSoon(); }));
+    live->sync();
+}
+
 } // namespace
+
+void hyprWindowRulesPage(Flex* page, Popup&) {
+    ruleSections(page, HyprOptions::RuleKind::Window);
+}
+
+void hyprLayerRulesPage(Flex* page, Popup&) {
+    ruleSections(page, HyprOptions::RuleKind::Layer);
+}
+
+void hyprWorkspaceRulesPage(Flex* page, Popup&) {
+    ruleSections(page, HyprOptions::RuleKind::Workspace);
+}
 
 void hyprStartupPage(Flex* page, Popup&) {
     startupSections(page);

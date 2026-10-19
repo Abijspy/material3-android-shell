@@ -111,6 +111,18 @@ public:
     std::vector<std::pair<std::string, std::string>> environment() const;
     void setEnvironment(const std::vector<std::pair<std::string, std::string>>& vars);
 
+    // Rules made in Settings, as JSON: window and layer rules are
+    // {id, name, enabled, match: {prop: value}, effects: {key: value}};
+    // workspace rules {id, workspace, enabled, fields: {key: value}}
+    enum class RuleKind { Window, Layer, Workspace };
+    nlohmann::json rules(RuleKind kind) const;
+    // Replaces the list: applies the changes live (window and layer rules by
+    // name, so edits and removals take effect; a removed workspace rule
+    // needs a reload) and keeps them
+    void setRules(RuleKind kind, const nlohmann::json& list);
+    // A JSON value as a Lua literal (objects become tables)
+    static std::string luaLiteral(const nlohmann::json& v);
+
     // The Lua for a value (for the generated file and live applies)
     static std::string lua(const Option& o, const nlohmann::json& value);
 
