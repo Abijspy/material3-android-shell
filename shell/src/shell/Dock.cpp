@@ -251,13 +251,11 @@ void Dock::refresh() {
         for (const auto& w : e.windows) focused = focused || lower(w.cls) == activeClass;
         auto* icon = m_card->add<DockIcon>(e.icon, size, static_cast<int>(e.windows.size()), focused);
         const Entry copy = e;
-        icon->onClicked = [copy, focused](uint32_t button) {
+        icon->onClicked = [copy, focused, icon](uint32_t button) {
+            // Right click: the menu (open, pin or unpin, close) above the icon
             if (button == BTN_RIGHT) {
-                auto ids = pinned();
-                const auto it = std::ranges::find(ids, copy.id);
-                if (it != ids.end()) ids.erase(it);
-                else ids.push_back(copy.id);
-                setPinned(ids);
+                const std::string cls = copy.windows.empty() ? copy.cls : copy.windows.front().cls;
+                if (panels::openAboveDock) panels::openAboveDock("dockmenu", copy.id + "|" + cls, icon->rect().x + icon->rect().w / 2);
                 return;
             }
             if (button == BTN_MIDDLE || copy.windows.empty()) {

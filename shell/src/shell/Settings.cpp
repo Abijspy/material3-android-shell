@@ -1152,6 +1152,29 @@ void accessibilityPage(Flex* page, Popup&) {
                    {{24, "Default"}, {32, "Large"}, {48, "Larger"}, {64, "Largest"}});
 }
 
+// ── Mouse & touchpad ──
+
+// Hyprland's input options, written for it by the Effects service
+void mousePage(Flex* page, Popup&) {
+    auto* pad = group(page, "Touchpad");
+    switchRow(pad, "touch_app", "Tap to click", "A light tap clicks, without pressing down", "/input/tapToClick", true);
+    switchRow(pad, "swap_vert", "Natural scrolling", "Content follows your fingers, as on a phone", "/input/naturalScroll", true);
+    switchRow(pad, "keyboard_alt", "Ignore while typing", "No stray clicks from your palm", "/input/disableWhileTyping", true);
+    switchRow(pad, "ads_click", "Click with fingers",
+              "Two fingers right-click, three middle-click; off: the touchpad's bottom corners", "/input/clickFinger", true);
+    switchRow(pad, "drag_pan", "Tap and drag", "Tap, then tap again and slide to drag", "/input/tapAndDrag", true);
+    switchRow(pad, "lock", "Drag lock", "A drag carries on after you lift your finger, until the next tap", "/input/dragLock", false);
+    sliderRow(pad, "unfold_more", "Scroll speed", "/input/scrollFactor", 0.7, 0.2, 2.0, 0.1,
+              [](double v) { return std::format("{:.1f}×", v); });
+
+    auto* pointer = group(page, "Pointer", "For the touchpad and mice alike");
+    sliderRow(pointer, "speed", "Pointer speed", "/input/sensitivity", 0.0, -1.0, 1.0, 0.1, [](double v) {
+        return std::abs(v) < 0.05 ? std::string("Default") : std::format("{}{:.0f} %", v > 0 ? "+" : "", v * 100);
+    });
+    choiceRow<std::string>(pointer, "trending_up", "Acceleration", "Adaptive speeds up quick movements", "/input/accelProfile",
+                           "adaptive", {{"adaptive", "Adaptive"}, {"flat", "Flat"}});
+}
+
 // ── System ──
 
 void systemPage(Flex* page, Popup&) {
@@ -2433,6 +2456,7 @@ const PageDef kPages[] = {
     {"accessibility", "accessibility_new", "Accessibility", "Motion, transparency and the cursor", accessibilityPage},
     {"lock", "security", "Security & privacy", "Screen lock, idle and sleep", lockPage},
     {"system", "settings_suggest", "System", "Date & time, languages and reset", systemPage},
+    {"mouse", "touchpad_mouse", "Mouse & touchpad", "Tap to click, scrolling, gestures and pointer speed", mousePage},
     {"keybinds", "keyboard", "Keyboard", "Shortcuts: remap, disable and add", keybindsPage},
     {"packages", "system_update", "Software & updates", "Updates from the repos, the AUR and Flathub", packagesPage},
     {"about", "info", "About", "This device and the shell", aboutPage},

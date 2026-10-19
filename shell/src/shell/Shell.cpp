@@ -91,6 +91,9 @@ bool Shell::start() {
     });
 
     // "settings dock" opens a panel with an argument (here, a Settings page)
+    panels::openAboveDock = [this](const std::string& name, const std::string& arg, float anchorX) {
+        EventLoop::get().defer([this, name, arg, anchorX] { togglePopup(name, focusedOutput(), anchorX, arg); });
+    };
     panels::open = [this](const std::string& what) {
         EventLoop::get().defer([this, what] {
             const auto sp = what.find(' ');
@@ -206,6 +209,10 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
     } else if (name == "bluetooth") {
         opts.width = 340;
         build = panels::bluetooth;
+    } else if (name == "dockmenu") {
+        opts.width = 270;
+        opts.aboveDock = true;
+        build = [arg](ui::Flex* card, Popup& p) { panels::dockMenu(card, p, arg); };
     } else if (name == "btpair") {
         opts.width = 420;
         opts.anchorX = -1;

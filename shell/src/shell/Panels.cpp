@@ -4,7 +4,11 @@
 
 #include "core/Process.h"
 #include "core/Signal.h"
+#include "render/Images.h"
 #include "services/Audio.h"
+#include "services/Hyprland.h"
+#include "services/Search.h"
+#include "shell/Dock.h"
 #include "services/Network.h"
 #include "ui/Controls.h"
 
@@ -385,6 +389,71 @@ void bluetoothView(Flex* body, const std::function<void()>& back) {
     };
     live->watch(Bluetooth::get().changed);
     live->sync();
+}
+
+// ── Dock menu ──
+
+void dockMenu(Flex* card, Popup& popup, const std::string& arg) {
+    const auto nl = arg.find('|');
+    const std::string id = arg.substr(0, nl), cls = nl == std::string::npos ? "" : arg.substr(nl + 1);
+    auto lower = [](std::string t) {
+        for (auto& c : t) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return t;
+    };
+    auto bare = [](std::string t) { return t.ends_with(".desktop") ? t.substr(0, t.size() - 8) : t; };
+    const Apps::App* app = nullptr;
+    for (const auto& a : Apps::get().all())
+        if (a.id == id || bare(a.id) == id) app = &a;
+    std::vector<std::string> windows; // their addresses
+    for (const auto& c : Hyprland::get().clients(true))
+        if (!cls.empty() && lower(c.cls) == lower(cls)) windows.push_back(c.address);
+    auto ids = Dock::pinned();
+    const bool pinned = std::ranges::find(ids, id) != ids.end();
+
+    card->setPadding(Insets(10))->setSpacing(2);
+    // The app: its icon and name
+    auto* head = card->add<Flex>(Flex::Direction::Row);
+    head->setPadding({10, 8, 10, 10})->setSpacing(12);
+    const std::string icon = app ? app->icon : Apps::get().iconForClass(cls);
+    head->add<ImageView>(28, [icon](float scale, int& w, int& h) -> GLuint {
+        auto* t = Images::get().icon(icon, static_cast<int>(std::lround(28 * scale)));
+        if (!t) return 0;
+        w = t->width;
+        h = t->height;
+        return t->id;
+    });
+    head->add<Label>(app ? app->name : cls)->setSize(15)->setWeight(600)->setMaxWidth(180);
+
+    auto item = [&](const char* glyph, const std::string& label, bool danger, std::function<void()> fn) {
+        auto* b = card->add<Button>(Flex::Direction::Row);
+        pill(b)->setPadding({14, 10})->setSpacing(12);
+        b->pressedRadius = 10;
+        b->add<Icon>(glyph, 20)->setColor(danger ? "error" : "on_surface_variant", false);
+        b->add<Label>(label)->setSize(14)->setColor(danger ? "error" : "on_surface", false);
+        b->onClicked = [fn = std::move(fn), &popup](uint32_t button) {
+            if (button != BTN_LEFT) return;
+            fn();
+            popup.close();
+        };
+    };
+    if (app) {
+        const Apps::App copy = *app;
+        item(windows.empty() ? "open_in_new" : "add", windows.empty() ? "Open" : "New window", false,
+             [copy] { Apps::get().launch(copy); });
+    }
+    item(pinned ? "keep_off" : "keep", pinned ? "Unpin from dock" : "Pin to dock", false, [id, pinned] {
+        auto now = Dock::pinned();
+        if (pinned)
+            std::erase(now, id);
+        else
+            now.push_back(id);
+        Dock::setPinned(now);
+    });
+    if (!windows.empty())
+        item("close", windows.size() == 1 ? "Close window" : std::format("Close all {} windows", windows.size()), true, [windows] {
+            for (const auto& a : windows)
+                Hyprland::get().dispatch("hl.dsp.window.close({ window = \"address:" + a + "\" })", "closewindow address:" + a);
+        });
 }
 
 // ── Battery ──

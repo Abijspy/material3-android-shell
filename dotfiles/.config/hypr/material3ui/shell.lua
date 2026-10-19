@@ -69,3 +69,9 @@ hl.window_rule({
 if fx.size then
 	hl.config({ decoration = { blur = { size = fx.size, passes = fx.passes or 3 } } })
 end
+
+-- Settings → System → Mouse & touchpad, written to input_custom.lua
+local ok_in, input = pcall(require, "material3ui.input_custom")
+if ok_in and type(input) == "table" then
+	hl.config({ input = input })
+end

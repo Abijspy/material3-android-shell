@@ -19,6 +19,8 @@ private:
 
     std::string m_applied; // legacy configs: what the keywords last set
     int m_cursor = 0;      // the cursor size last applied
+    void applyInput();     // Settings → Mouse & touchpad, as input_custom.lua
+    std::string m_inputApplied; // legacy configs: what the keywords last set
 };
 
 } // namespace m3

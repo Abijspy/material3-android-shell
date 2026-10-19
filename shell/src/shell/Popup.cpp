@@ -25,6 +25,7 @@ public:
     bool centreV = false;
     bool fill = false;
     bool fromBottom = false; // the bar is on the bottom edge: drop up from it
+    float bottomGap = 8;     // room kept under the card (the dock's, for its menus)
 
 protected:
     SizeF doMeasure(SizeF available) override { return available; }
@@ -42,7 +43,7 @@ protected:
         const float h = std::min(s.h, r.h - margin * 2);
         // Centred with the clamped height: a card taller than the screen
         // must not start above its top edge
-        const float y = centreV ? std::max(r.y + margin, r.y + (r.h - h) / 3) : fromBottom ? r.bottom() - margin - h : r.y + margin;
+        const float y = centreV ? std::max(r.y + margin, r.y + (r.h - h) / 3) : fromBottom ? r.bottom() - bottomGap - h : r.y + margin;
         card->arrange({x, y, s.w, h});
     }
 };
@@ -124,7 +125,9 @@ Popup::Popup(wl::Output* output, Options options, const std::function<void(Flex*
     root->anchorX = m_options.anchorX;
     root->centreV = m_options.centredVertically;
     root->fill = m_options.fill;
-    root->fromBottom = Config::get().value<std::string>("/statusBar/position", "top") == "bottom";
+    root->fromBottom = m_options.aboveDock || Config::get().value<std::string>("/statusBar/position", "top") == "bottom";
+    // The dock's height: its icons and the padding round them
+    if (m_options.aboveDock) root->bottomGap = static_cast<float>(Config::get().value<double>("/dock/iconSize", 44)) + 52;
     m_drop = root->fromBottom && !m_options.centredVertically ? 1.0f : -1.0f;
     m_card = root->add<Flex>(Flex::Direction::Column);
     m_card->setPadding(Insets(20))->setSpacing(12)->setAlignItems(Align::Stretch);

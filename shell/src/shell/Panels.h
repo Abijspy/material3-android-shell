@@ -12,6 +12,8 @@ namespace m3::shell::panels {
 void audio(ui::Flex* card, Popup& popup);
 void network(ui::Flex* card, Popup& popup);
 void bluetooth(ui::Flex* card, Popup& popup);
+// A dock icon's right-click menu; `arg` is "<desktop id>|<window class>"
+void dockMenu(ui::Flex* card, Popup& popup, const std::string& arg);
 // A pairing question asked while no device list is open
 void bluetoothPair(ui::Flex* card, Popup& popup);
 // Paired and nearby devices, scanning while shown, with the pairing prompt
@@ -48,6 +50,8 @@ std::string formatRate(double bytesPerSecond);
 
 // Set by the shell: open another panel by name (Quick Settings → power menu…)
 inline std::function<void(const std::string& name)> open;
+// Set by the shell: a panel risen just above the dock, centred on `anchorX`
+inline std::function<void(const std::string& name, const std::string& arg, float anchorX)> openAboveDock;
 // Set by the shell: lock the session
 inline std::function<void()> lock;
 // Set by the shell: turn the bars' edit mode on or off

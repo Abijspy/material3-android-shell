@@ -31,6 +31,7 @@ public:
         float width = 360; // 0: as wide as the content
         bool centredVertically = false;
         bool fill = false; // the card takes the whole output (overview)
+        bool aboveDock = false; // rises from the bottom edge, clear of the dock (its menus)
         // An app window instead of a layer popup
         bool window = false;
         std::string appId, title, icon; // icon: a theme icon for the title bar
