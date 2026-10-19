@@ -384,9 +384,9 @@ std::function<void()> buildTiles(Node* parent, const std::vector<Placed>& tiles,
 // ── Editor ──
 //
 // As Android 17's: the tiles in a neutral state. Hold and drag one to move
-// it; tap one to select it, and its corner badge removes it while the
-// handle on its right edge switches it between large and small. The tiles
-// not in use sit below; a tap adds one.
+// it; tap one to select it: its corner badge removes it, and dragging the
+// handle on its right edge stretches it to large or shrinks it to small.
+// The tiles not in use sit below; a tap adds one.
 
 // Takes the press over a tile in the editor: a tap selects, a drag moves
 // the whole tile with the pointer and drops it where it is released
@@ -433,6 +433,47 @@ protected:
 private:
     bool m_down = false, m_dragging = false;
     float m_x0 = 0, m_y0 = 0, m_x = 0, m_y = 0;
+};
+
+// The selected tile's right edge: drag it out to make the tile large, in to
+// make it small. The tile follows the pointer, then snaps to the nearer size.
+class ResizeHandle : public Node {
+public:
+    Node* tile = nullptr;            // whose width follows the drag
+    float small = 0, large = 0;      // the two widths it snaps between
+    std::function<void(bool)> onResized; // large?
+
+    bool interactive() const override { return true; }
+    void onPress(uint32_t button, float x, float) override {
+        m_down = button == BTN_LEFT && tile;
+        m_x0 = x;
+        m_w0 = tile ? tile->rect().w : 0;
+    }
+    void onDrag(float x, float) override {
+        if (!m_down) return;
+        tile->fixedWidth = std::clamp(m_w0 + x - m_x0, small, large);
+        tile->requestLayout();
+    }
+    void onRelease() override {
+        if (!m_down) return;
+        m_down = false;
+        const float w = tile->fixedWidth.value_or(m_w0);
+        const bool toLarge = w > (small + large) / 2;
+        tile->fixedWidth = toLarge ? large : small;
+        tile->requestLayout();
+        if (onResized) onResized(toLarge);
+    }
+
+protected:
+    SizeF doMeasure(SizeF) override { return {}; }
+    void doArrange() override {
+        // The grip: a short pill centred in the handle
+        if (!children().empty()) children()[0]->arrange({rect().x + 8, rect().y + 7, 6, rect().h - 14});
+    }
+
+private:
+    bool m_down = false;
+    float m_x0 = 0, m_w0 = 0;
 };
 
 // One tile in the editor: the tile, the catcher over it, and (selected) the
@@ -556,16 +597,16 @@ void editView(Flex* body, const std::function<void()>& back) {
                     *selected = -1;
                     save(tiles);
                 };
-                // Resize: the handle on the right edge
-                auto* handle = edit->add<Button>();
-                handle->setJustify(Align::Center);
+                // Resize: drag the handle on the right edge
+                auto* handle = edit->add<ResizeHandle>();
                 auto* grip = handle->add<Flex>(Flex::Direction::Row);
                 pill(grip->setBackground("primary", false));
-                grip->fixedWidth = 6;
-                grip->fixedHeight = 26;
-                handle->onClicked = [tiles, index, save](uint32_t button) mutable {
-                    if (button != BTN_LEFT) return;
-                    tiles[static_cast<size_t>(index)].large = !tiles[static_cast<size_t>(index)].large;
+                handle->tile = edit->children()[0].get();
+                handle->small = kCol;
+                handle->large = kCol * 2 + 8;
+                handle->onResized = [tiles, index, save](bool large) mutable {
+                    if (tiles[static_cast<size_t>(index)].large == large) return;
+                    tiles[static_cast<size_t>(index)].large = large;
                     save(tiles);
                 };
             }
