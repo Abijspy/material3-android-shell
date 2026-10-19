@@ -4,10 +4,12 @@
 // Hyprland options show up without a change here.
 #include "shell/HyprPages.h"
 
+#include "core/Config.h"
 #include "core/EventLoop.h"
 #include "core/Signal.h"
 #include "services/HyprOptions.h"
 #include "services/Hyprland.h"
+#include "services/Packages.h"
 #include "services/Search.h"
 #include "core/Paths.h"
 #include "core/Process.h"
@@ -26,6 +28,7 @@
 #include <random>
 #include <regex>
 #include <sstream>
+#include <unistd.h>
 
 namespace m3::shell::panels {
 
@@ -1534,7 +1537,258 @@ void ruleSections(Flex* page, HyprOptions::RuleKind kind) {
     live->sync();
 }
 
+
+// ── Cursor theme, profiles and plugins ──
+
+// Installed cursor themes: Xcursor ("cursors") or hyprcursor ("manifest.hl")
+std::vector<std::pair<std::string, std::string>> cursorThemes() {
+    std::vector<std::pair<std::string, std::string>> out;
+    const std::string home = paths::home();
+    for (const std::string dir : {home + "/.local/share/icons", home + "/.icons", std::string("/usr/share/icons")}) {
+        std::error_code ec;
+        for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
+            const auto p = e.path();
+            const bool x = std::filesystem::is_directory(p / "cursors", ec), hc = std::filesystem::exists(p / "manifest.hl", ec);
+            const std::string id = p.filename().string();
+            if ((!x && !hc) || id == "default" || std::ranges::any_of(out, [&](const auto& t) { return t.first == id; })) continue;
+            // The theme's own name, from index.theme or the manifest
+            std::string name = id;
+            for (const char* f : {"index.theme", "manifest.hl"}) {
+                std::ifstream in(p / f);
+                for (std::string l; std::getline(in, l);)
+                    if (l.starts_with("Name") && l.find('=') != std::string::npos) {
+                        name = l.substr(l.find('=') + 1);
+                        while (!name.empty() && name.front() == ' ') name.erase(0, 1);
+                        break;
+                    }
+            }
+            out.push_back({id, name + (hc ? " (hyprcursor)" : "")});
+        }
+    }
+    std::ranges::sort(out, [](const auto& a, const auto& b) { return a.second < b.second; });
+    return out;
+}
+
+void cursorThemeSection(Flex* page) {
+    // Rebuilt with the config: the size is also set in Accessibility
+    auto* live = page->add<kit::Live>();
+    live->setSpacing(6);
+    live->sync = [live] {
+        live->clearChildren();
+        auto* g = group(live, "Cursor theme", "Applies at once: point at things to see it");
+        const std::string now = Config::get().value<std::string>("/accessibility/cursorTheme", "");
+        auto theme = row(g, "arrow_selector_tool", "Theme");
+        const auto themes = cursorThemes();
+        std::string shown = now.empty() ? "System default" : now;
+        for (const auto& [id, name] : themes)
+            if (id == now) shown = name;
+        std::vector<std::pair<std::string, std::string>> items = {{"", "System default"}};
+        items.insert(items.end(), themes.begin(), themes.end());
+        dropdown(theme.row, g, shown, items, [](const std::string& id) {
+            Config::get().set("/accessibility/cursorTheme", id.empty() ? nlohmann::json(nullptr) : nlohmann::json(id));
+        });
+        auto size = row(g, "open_in_full", "Size", "Also in Accessibility");
+        connectedGroup<int>(size.row, Config::get().value<int>("/accessibility/cursorSize", 24),
+                            {{24, "Default"}, {32, "Large"}, {48, "Larger"}, {64, "Largest"}},
+                            [](int v) { Config::get().set("/accessibility/cursorSize", v); });
+    };
+    live->conns.push_back(Config::get().changed.connect([live] { live->syncSoon(); }));
+    live->sync();
+}
+
+void profileSections(Flex* page) {
+    auto* live = page->add<kit::Live>();
+    live->setSpacing(6);
+    live->sync = [live] {
+        live->clearChildren();
+        auto& h = HyprOptions::get();
+        const auto list = h.profiles();
+        auto* g = group(live, "Profiles", "Everything Hyprland Settings keeps (options, animations, displays, rules, startup apps and variables), under a name");
+        if (list.empty()) row(g, "info", "No profiles yet", "Save the current settings below; a keybind can switch them: material3ui msg hypr profile next");
+        for (const auto& p : list) {
+            const bool active = p == h.activeProfile();
+            auto r = row(g, active ? "radio_button_checked" : "radio_button_unchecked", p, active ? "In use" : "");
+            if (active) static_cast<Icon*>(r.row->children()[0].get())->setColor("primary", false);
+            if (!active) pillButton(r.row, "Apply", true, [p] { HyprOptions::get().applyProfile(p); }, "check");
+            else pillButton(r.row, "Save over", false, [p] { HyprOptions::get().saveProfile(p); }, "save");
+            confirmButton(r.row, "profile:" + p, "delete", [p] { HyprOptions::get().deleteProfile(p); });
+        }
+        auto save = row(g, "add", "Save the current settings", "Enter a name, then Enter");
+        auto* f = save.row->add<TextField>();
+        f->setPlaceholder("e.g. Gaming");
+        f->fixedWidth = 220;
+        f->onSubmit = [](const std::string& text) {
+            std::string name;
+            for (char c : text)
+                if (c != '/' && c != '\\') name += c;
+            if (!name.empty()) HyprOptions::get().saveProfile(name);
+        };
+        auto folder = row(g, "folder_open", "Profiles folder", HyprOptions::profilesDir());
+        pillButton(folder.row, "Open", false, [] {
+            std::error_code ec;
+            std::filesystem::create_directories(HyprOptions::profilesDir(), ec);
+            spawn("xdg-open '" + HyprOptions::profilesDir() + "'");
+        }, "open_in_new");
+    };
+    live->conns.push_back(HyprOptions::get().changed.connect([live] { live->syncSoon(); }));
+    live->sync();
+}
+
+// A command in a terminal, kept open to read its output
+void inTerminal(const std::string& command) {
+    spawn("${TERMINAL:-kitty} -e sh -c '" + command + "; echo; read -p \"Press Enter to close\" _'");
+}
+
+void pluginSections(Flex* page) {
+    auto* live = page->add<kit::Live>();
+    live->setSpacing(6);
+    auto hyprpm = std::make_shared<std::string>("…"); // `hyprpm list`, once read
+    live->sync = [live, hyprpm] {
+        live->clearChildren();
+        // Loaded now
+        auto* loaded = group(live, "Loaded plugins", "Their options appear under Behaviour → Other once loaded");
+        const std::string list = Hyprland::get().request("plugin list");
+        std::istringstream in(list);
+        bool any = false;
+        for (std::string l; std::getline(in, l);)
+            if (l.starts_with("Plugin ")) {
+                any = true;
+                row(loaded, "extension", l.substr(7, l.find(" by ") == std::string::npos ? std::string::npos : l.find(" by ") - 7));
+            }
+        if (!any) row(loaded, "extension_off", "No plugins loaded");
+
+        // Plugins to get: well-known ones, built and enabled by hyprpm
+        const bool haveHyprpm = access("/usr/bin/hyprpm", X_OK) == 0 || access("/usr/local/bin/hyprpm", X_OK) == 0;
+        struct Known {
+            const char *name, *about, *repo;
+        };
+        static const std::vector<Known> known = {
+            {"hyprexpo", "An overview of every workspace, in a grid", "https://github.com/hyprwm/hyprland-plugins"},
+            {"hyprbars", "Title bars with buttons on windows", "https://github.com/hyprwm/hyprland-plugins"},
+            {"hyprtrails", "Smooth trails behind moving windows", "https://github.com/hyprwm/hyprland-plugins"},
+            {"hyprwinwrap", "Any app as the wallpaper", "https://github.com/hyprwm/hyprland-plugins"},
+            {"borders-plus-plus", "Extra borders around windows", "https://github.com/hyprwm/hyprland-plugins"},
+            {"csgo-vulkan-fix", "Stretched resolutions for Source games", "https://github.com/hyprwm/hyprland-plugins"},
+            {"xtra-dispatchers", "More actions for keybinds", "https://github.com/hyprwm/hyprland-plugins"},
+            {"dynamic-cursors", "A cursor that tilts, stretches and shakes to grow", "https://github.com/VirtCode/hypr-dynamic-cursors"},
+            {"hyprgrass", "Touchscreen gestures", "https://github.com/horriblename/hyprgrass"},
+            {"hyprsplit", "Separate workspaces on each monitor", "https://github.com/shezdy/hyprsplit"},
+        };
+        auto* get = group(live, "Get plugins",
+                          "Downloaded and built for your Hyprland in a terminal (the first one fetches Hyprland's headers and asks for your password)");
+        if (!haveHyprpm) {
+            auto r = row(get, "download", "Install the plugin manager first", "hyprpm, and the tools it builds plugins with");
+            pillButton(r.row, "Install", true, [] {
+                Packages::get().runAsRoot("Installing hyprpm…", "pacman -S --needed --noconfirm hyprpm cmake meson cpio pkgconf git gcc",
+                                          "hyprpm installed: plugins can be added now");
+            }, "download");
+        }
+        for (const auto& k : known) {
+            const bool installed = hyprpm->find(std::string("Plugin ") + k.name) != std::string::npos;
+            auto r = row(get, "extension", k.name, std::string(k.about) + "  ·  " + std::string(k.repo).substr(19));
+            if (installed) {
+                r.row->template add<Label>("Installed")->setSize(13)->setWeight(500)->setColor("primary", false);
+            } else if (haveHyprpm) {
+                const std::string repo = k.repo, name = k.name;
+                pillButton(r.row, "Install", false, [repo, name] {
+                    // Headers for this Hyprland, the repository (once), then the plugin on
+                    inTerminal("hyprpm update && { hyprpm list | grep -q " + repo + " || hyprpm add " + repo +
+                               "; } && hyprpm enable " + name + " && hyprpm reload -n");
+                }, "download");
+            }
+        }
+        if (haveHyprpm) {
+            auto refresh = row(get, "refresh", "Installed something?", "Read the plugins again");
+            pillButton(refresh.row, "Refresh", false, [hyprpm, live] {
+                run({"hyprpm", "list"}, [hyprpm, live](int, const std::string& out) {
+                    *hyprpm = out;
+                    live->syncSoon();
+                });
+            }, "refresh");
+        }
+
+        // hyprpm: repositories and their plugins
+        auto* pm = group(live, "Plugin manager (hyprpm)", "Builds plugins for your Hyprland version");
+        if (!haveHyprpm) {
+            row(pm, "info", "hyprpm isn't installed", "Install it above to add plugins from their repositories");
+        } else if (*hyprpm == "…") {
+            row(pm, "hourglass_empty", "Reading plugins…");
+        } else {
+            // "Repository name (url):" then "│ Plugin name" "└─ enabled: true"
+            std::istringstream lines(*hyprpm);
+            std::string plugin;
+            bool listed = false;
+            for (std::string l; std::getline(lines, l);) {
+                const std::string clean = std::regex_replace(l, std::regex("\x1b\\[[0-9;]*m"), "");
+                std::smatch m;
+                if (std::regex_search(clean, m, std::regex("Repository (\\S+)"))) {
+                    auto* head = pm->add<Flex>(Flex::Direction::Row);
+                    head->setPadding({20, 10, 20, 2});
+                    head->add<Label>(m[1].str())->setSize(13)->setWeight(600)->setColor("primary", false);
+                } else if (std::regex_search(clean, m, std::regex("Plugin (\\S+)"))) {
+                    plugin = m[1].str();
+                } else if (std::regex_search(clean, m, std::regex("enabled: (true|false)")) && !plugin.empty()) {
+                    listed = true;
+                    auto r = row(pm, "extension", plugin);
+                    auto* sw = r.row->add<Switch>();
+                    sw->setChecked(m[1].str() == "true", false);
+                    const std::string name = plugin;
+                    sw->onToggled = [name, hyprpm, live](bool on) {
+                        run({"sh", "-c", std::format("hyprpm {} '{}' && hyprpm reload -n", on ? "enable" : "disable", name)},
+                            [hyprpm, live](int, const std::string&) {
+                                *hyprpm = "…";
+                                live->syncSoon();
+                            });
+                    };
+                    plugin.clear();
+                }
+            }
+            if (!listed) row(pm, "info", "No plugins added yet");
+            auto add = row(pm, "add", "Add a repository", "A plugin repository's git URL; builds in a terminal");
+            auto* f = add.row->add<TextField>();
+            f->setPlaceholder("https://github.com/hyprwm/hyprland-plugins");
+            f->fixedWidth = 300;
+            f->onSubmit = [](const std::string& url) {
+                if (!url.empty()) inTerminal("hyprpm add " + url);
+            };
+            auto up = row(pm, "update", "Update plugins", "Rebuilds them for the running Hyprland");
+            pillButton(up.row, "Update", false, [] { inTerminal("hyprpm update"); }, "refresh");
+        }
+
+        // Any plugin file, now and at every start
+        auto* file = group(live, "Load a plugin file", "A .so you built yourself");
+        auto r = row(file, "upload_file", "Path to the .so", "Enter loads it now; the switch keeps it for every start");
+        auto* f = r.row->add<TextField>();
+        f->setPlaceholder("/path/to/plugin.so");
+        f->fixedWidth = 280;
+        f->onSubmit = [live](const std::string& path) {
+            if (path.empty()) return;
+            Hyprland::get().request("plugin load " + path);
+            // And at every start, through the startup apps
+            auto l = HyprOptions::get().startups();
+            const std::string cmd = "hyprctl plugin load '" + path + "'";
+            if (std::ranges::none_of(l, [&](const auto& s) { return s.command == cmd; })) l.push_back({cmd, "Plugin: " + path, true});
+            HyprOptions::get().setStartups(l);
+            live->syncSoon();
+        };
+    };
+    if (access("/usr/bin/hyprpm", X_OK) == 0 || access("/usr/local/bin/hyprpm", X_OK) == 0)
+        run({"hyprpm", "list"}, [hyprpm, live](int, const std::string& out) {
+            *hyprpm = out;
+            live->syncSoon();
+        });
+    live->sync();
+}
+
 } // namespace
+
+void hyprProfilesPage(Flex* page, Popup&) {
+    profileSections(page);
+}
+
+void hyprPluginsPage(Flex* page, Popup&) {
+    pluginSections(page);
+}
 
 void hyprWindowRulesPage(Flex* page, Popup&) {
     ruleSections(page, HyprOptions::RuleKind::Window);
@@ -1568,7 +1822,10 @@ void hyprAnimationsPage(Flex* page, Popup&) {
 void hyprWindowsPage(Flex* page, Popup&) { buildPage(page, "hypr-windows"); }
 void hyprDecorationPage(Flex* page, Popup&) { buildPage(page, "hypr-decoration"); }
 void hyprInputPage(Flex* page, Popup&) { buildPage(page, "hypr-input"); }
-void hyprCursorPage(Flex* page, Popup&) { buildPage(page, "hypr-cursor"); }
+void hyprCursorPage(Flex* page, Popup&) {
+    cursorThemeSection(page);
+    buildPage(page, "hypr-cursor");
+}
 void hyprGesturesPage(Flex* page, Popup&) { buildPage(page, "hypr-gestures"); }
 void hyprLayoutsPage(Flex* page, Popup&) { buildPage(page, "hypr-layouts"); }
 void hyprGroupsPage(Flex* page, Popup&) { buildPage(page, "hypr-groups"); }

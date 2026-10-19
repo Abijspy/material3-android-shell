@@ -170,13 +170,26 @@ void Effects::apply() {
     const auto& c = Config::get();
     applyInput();
     applyAccessibility();
-    // Accessibility → cursor size: Hyprland's cursor and GTK's follow it
-    if (const int cursor = c.value<int>("/accessibility/cursorSize", 0); cursor > 0 && cursor != m_cursor) {
+    // The cursor: its theme (Hyprland Settings → Cursor) and size
+    // (Accessibility). Hyprland's own, GTK's, and the variables apps
+    // started from now on read
+    const std::string theme = c.value<std::string>("/accessibility/cursorTheme", "");
+    // Back from a chosen theme to the system's: "default" again, not
+    // whatever GTK was last told
+    const bool cleared = theme.empty() && !m_cursorTheme.empty();
+    if (const int cursor = c.value<int>("/accessibility/cursorSize", 0);
+        (cursor > 0 || !theme.empty() || cleared) && (cursor != m_cursor || theme != m_cursorTheme)) {
         m_cursor = cursor;
-        run({"sh", "-c", std::format("t=$(gsettings get org.gnome.desktop.interface cursor-theme | tr -d \"'\"); "
-                                     "hyprctl setcursor \"${{t:-Adwaita}}\" {0}; "
-                                     "gsettings set org.gnome.desktop.interface cursor-size {0}", cursor)},
-            nullptr);
+        m_cursorTheme = theme;
+        const int px = cursor > 0 ? cursor : 24;
+        const std::string set = cleared ? "default" : theme;
+        std::string script = set.empty() ? "t=$(gsettings get org.gnome.desktop.interface cursor-theme | tr -d \"'\"); t=${t:-Adwaita}; "
+                                         : "t='" + set + "'; gsettings set org.gnome.desktop.interface cursor-theme \"$t\"; ";
+        script += std::format("hyprctl setcursor \"$t\" {0}; gsettings set org.gnome.desktop.interface cursor-size {0}; "
+                              "hyprctl eval \"hl.env('XCURSOR_THEME', '$t') hl.env('XCURSOR_SIZE', '{0}') "
+                              "hl.env('HYPRCURSOR_THEME', '$t') hl.env('HYPRCURSOR_SIZE', '{0}')\"",
+                              px);
+        run({"sh", "-c", script}, nullptr);
     }
     const int size = std::clamp(c.value<int>("/appearance/blur/size", 12), 1, 20);
     const int passes = std::clamp(c.value<int>("/appearance/blur/passes", 3), 1, 4);

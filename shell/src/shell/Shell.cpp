@@ -463,7 +463,7 @@ void Shell::registerIpc() {
         Config::get().set("/accessibility/zoom", z);
         return std::format("zoom {:.1f}×", z);
     });
-    ipc.add("hypr", "hypr options | get <name> | set <name> <json> | reset <name> | undo: Hyprland options as Settings keeps them",
+    ipc.add("hypr", "hypr options | get <name> | set <name> <json> | reset <name> | undo | profile list|apply|next|previous|save|delete: Hyprland Settings",
             [](const IpcServer::Args& a) {
         auto& h = HyprOptions::get();
         if (!h.loaded()) h.load();
@@ -479,6 +479,33 @@ void Shell::registerIpc() {
             std::string out = std::format("{} options, {} set in Settings:", h.options().size(), custom);
             for (auto [k, n] : kinds) out += std::format(" {} {}", n, names[k]);
             return out;
+        }
+        if (cmd == "profile") {
+            const std::string sub = a.size() > 1 ? a[1] : "list";
+            std::string name;
+            for (size_t i = 2; i < a.size(); ++i) name += (i > 2 ? " " : "") + a[i];
+            if (sub == "list") {
+                std::string out;
+                for (const auto& p : h.profiles()) out += (p == h.activeProfile() ? "* " : "  ") + p + "\n";
+                return out.empty() ? std::string("no profiles (save one in Hyprland Settings → Profiles)") : out;
+            }
+            if (sub == "apply") {
+                const auto err = h.applyProfile(name);
+                return err.empty() ? "applied " + h.activeProfile() : "error: " + err;
+            }
+            if (sub == "next" || sub == "previous" || sub == "prev") {
+                const auto p = h.cycleProfile(sub == "next" ? 1 : -1);
+                return p.empty() ? std::string("no profiles") : "applied " + p;
+            }
+            if (sub == "save" && !name.empty()) {
+                h.saveProfile(name);
+                return "saved " + name;
+            }
+            if (sub == "delete" && !name.empty()) {
+                h.deleteProfile(name);
+                return "deleted " + name;
+            }
+            return std::string("usage: hypr profile list|apply <name>|next|previous|save <name>|delete <name>");
         }
         if (cmd == "undo") {
             const std::string name = h.undo();

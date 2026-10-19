@@ -18,7 +18,8 @@ private:
     void apply();
 
     std::string m_applied; // legacy configs: what the keywords last set
-    int m_cursor = 0;      // the cursor size last applied
+    int m_cursor = 0;
+    std::string m_cursorTheme; // what setcursor last applied      // the cursor size last applied
     void applyInput();     // Settings → Mouse & touchpad, as input_custom.lua
     void applyAccessibility(); // the magnifier and colour correction
     std::string m_a11yApplied;

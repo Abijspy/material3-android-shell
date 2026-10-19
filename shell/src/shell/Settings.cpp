@@ -2951,6 +2951,8 @@ const PageDef kPages[] = {
     {"hypr-cursor", "arrow_selector_tool", "Cursor", "Hiding, warping, zoom and hardware cursors", hyprCursorPage},
     {"hypr-groups", "tab_group", "Window groups", "Tabbed groups and the group bar", hyprGroupsPage},
     {"hypr-misc", "tune", "Behaviour", "Focus, swallowing, keybind and XWayland behaviour", hyprMiscPage},
+    {"hypr-plugins", "extension", "Plugins", "Loaded plugins, hyprpm and plugin files", hyprPluginsPage},
+    {"hypr-profiles", "switch_account", "Profiles", "Save and switch whole setups by name", hyprProfilesPage},
     {"hypr-render", "memory", "Rendering", "Direct scanout, colour management and OpenGL", hyprRenderPage},
     {"hypr-debug", "bug_report", "Debug", "Logs, overlays and damage tracking", hyprDebugPage},
     {"mouse", "touchpad_mouse", "Mouse & touchpad", "Tap to click, scrolling, gestures and pointer speed", mousePage},

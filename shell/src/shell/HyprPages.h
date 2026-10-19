@@ -24,6 +24,8 @@ void hyprDebugPage(ui::Flex* page, Popup&);
 void hyprAnimationsPage(ui::Flex* page, Popup&);
 void hyprMonitorsPage(ui::Flex* page, Popup&);
 void hyprStartupPage(ui::Flex* page, Popup&);
+void hyprProfilesPage(ui::Flex* page, Popup&);
+void hyprPluginsPage(ui::Flex* page, Popup&);
 void hyprWindowRulesPage(ui::Flex* page, Popup&);
 void hyprLayerRulesPage(ui::Flex* page, Popup&);
 void hyprWorkspaceRulesPage(ui::Flex* page, Popup&);

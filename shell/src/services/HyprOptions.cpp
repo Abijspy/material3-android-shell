@@ -777,6 +777,88 @@ void HyprOptions::setRules(RuleKind kind, const nlohmann::json& list) {
     changed.emit();
 }
 
+std::string HyprOptions::profilesDir() {
+    return paths::configDir() + "/hyprland-profiles";
+}
+
+std::vector<std::string> HyprOptions::profiles() const {
+    std::vector<std::string> out;
+    std::error_code ec;
+    for (const auto& e : std::filesystem::directory_iterator(profilesDir(), ec))
+        if (e.path().extension() == ".json") out.push_back(e.path().stem().string());
+    std::ranges::sort(out, [](const std::string& a, const std::string& b) {
+        auto lower = [](std::string t) {
+            for (auto& ch : t) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            return t;
+        };
+        return lower(a) < lower(b);
+    });
+    return out;
+}
+
+std::string HyprOptions::activeProfile() const {
+    return Config::get().value<std::string>("/hyprlandProfile", "");
+}
+
+void HyprOptions::saveProfile(const std::string& name) {
+    if (name.empty() || name.find('/') != std::string::npos) return;
+    auto all = Config::get().value<nlohmann::json>("/hyprland", nlohmann::json::object());
+    all.erase("baseline"); // what the config files had: this machine's, not the profile's
+    std::error_code ec;
+    std::filesystem::create_directories(profilesDir(), ec);
+    std::ofstream(profilesDir() + "/" + name + ".json") << all.dump(2) << "\n";
+    Config::get().set("/hyprlandProfile", name);
+    changed.emit();
+}
+
+std::string HyprOptions::applyProfile(const std::string& wanted) {
+    // Names match regardless of case ("gaming" finds Gaming)
+    std::string name;
+    for (const auto& p : profiles()) {
+        std::string a = p, b = wanted;
+        for (auto* t : {&a, &b})
+            for (auto& ch : *t) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        if (a == b) name = p;
+    }
+    if (name.empty()) return "No profile called " + wanted;
+    nlohmann::json data;
+    try {
+        std::ifstream in(profilesDir() + "/" + name + ".json");
+        data = nlohmann::json::parse(in);
+    } catch (const std::exception& e) {
+        return std::string("Couldn't read it: ") + e.what();
+    }
+    if (!data.is_object()) return "Not a profile";
+    // This machine's baseline stays; the rest is the profile's
+    data["baseline"] = Config::get().value<nlohmann::json>("/hyprland/baseline", nlohmann::json::object());
+    Config::get().set("/hyprland", data);
+    Config::get().set("/hyprlandProfile", name);
+    m_undo.clear(); // steps into the other profile mean nothing now
+    save();
+    // From the files up again, with this profile on top
+    Hyprland::get().request("reload");
+    load();
+    return {};
+}
+
+void HyprOptions::deleteProfile(const std::string& name) {
+    std::error_code ec;
+    std::filesystem::remove(profilesDir() + "/" + name + ".json", ec);
+    if (activeProfile() == name) Config::get().set("/hyprlandProfile", "");
+    changed.emit();
+}
+
+std::string HyprOptions::cycleProfile(int step) {
+    const auto list = profiles();
+    if (list.empty()) return {};
+    auto it = std::ranges::find(list, activeProfile());
+    long i = it == list.end() ? (step > 0 ? -1 : 0) : it - list.begin();
+    const long n = static_cast<long>(list.size());
+    const std::string next = list[static_cast<size_t>(((i + step) % n + n) % n)];
+    applyProfile(next);
+    return next;
+}
+
 void HyprOptions::save() {
     // Every kept option, as a function shell.lua calls after the config
     const auto custom = Config::get().value<nlohmann::json>(kStore, nlohmann::json::object());

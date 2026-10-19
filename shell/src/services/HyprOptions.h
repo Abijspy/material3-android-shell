@@ -123,6 +123,18 @@ public:
     // A JSON value as a Lua literal (objects become tables)
     static std::string luaLiteral(const nlohmann::json& v);
 
+    // Profiles: everything Settings keeps for Hyprland, saved under a name
+    // (~/.config/material3ui/hyprland-profiles/<name>.json) and applied
+    // whole (the config reloads with it)
+    std::vector<std::string> profiles() const;
+    std::string activeProfile() const;
+    void saveProfile(const std::string& name);
+    std::string applyProfile(const std::string& name); // error, if any
+    void deleteProfile(const std::string& name);
+    // The next or previous profile, alphabetically, wrapping round
+    std::string cycleProfile(int step);
+    static std::string profilesDir();
+
     // The Lua for a value (for the generated file and live applies)
     static std::string lua(const Option& o, const nlohmann::json& value);
 
