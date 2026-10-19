@@ -848,7 +848,7 @@ void barPage(Flex* page, Popup&) {
             icon->alignSelf = Align::Center;
             icon->add<Icon>(m.icon, 22)->setColor("on_surface", false);
             auto* label = item->add<Label>(m.name);
-            label->setSize(12)->setMaxWidth(96)->setColor("on_surface_variant", false);
+            label->setSize(12)->setMaxWidth(96)->setMaxLines(2)->setColor("on_surface_variant", false);
             label->alignSelf = Align::Center;
             const std::string id = m.id;
             item->onClicked = [lay, id, target, selected, save](uint32_t button) mutable {
@@ -2295,8 +2295,10 @@ void settings(Flex* card, Popup& popup, const std::string& initial) {
         texts->grow = true;
         auto* label = texts->add<Label>(kPages[i].title);
         label->setSize(15)->setWeight(500)->setMaxWidth(190);
+        // Wraps to a second line, as Android's summaries do, rather than
+        // cutting off in the narrow sidebar
         auto* summary = texts->add<Label>(kPages[i].blurb);
-        summary->setSize(12)->setMaxWidth(190);
+        summary->setSize(12)->setMaxWidth(190)->setMaxLines(2);
         b->onClicked = [show, i](uint32_t) {
             // The page rebuild must not run inside the click that asked for it
             EventLoop::get().defer([show, i] { (*show)(i); });

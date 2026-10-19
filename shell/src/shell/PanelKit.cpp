@@ -83,9 +83,10 @@ Tile::Tile(const std::string& icon, const std::string& title) : Button(Direction
     texts->setAlignItems(Align::Start)->setSpacing(0);
     texts->grow = true;
     m_title = texts->add<Label>(title);
-    m_title->setSize(15)->setWeight(600)->setMaxWidth(112);
+    // Long names (networks, devices) wrap to a second line instead of cutting off
+    m_title->setSize(15)->setWeight(600)->setMaxWidth(112)->setMaxLines(2);
     m_status = texts->add<Label>();
-    m_status->setSize(13)->setMaxWidth(112);
+    m_status->setSize(13)->setMaxWidth(112)->setMaxLines(2);
     // With details, the body opens them and the chip toggles
     onClicked = [this](uint32_t button) {
         if (button != BTN_LEFT) return;

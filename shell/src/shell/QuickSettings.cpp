@@ -636,7 +636,7 @@ void editView(Flex* body, const std::function<void()>& back) {
             chip->alignSelf = Align::Center;
             chip->add<Icon>(def.icon, 22)->setColor("on_surface", false);
             auto* label = item->add<Label>(def.title);
-            label->setSize(12)->setMaxWidth(86)->setColor("on_surface_variant", false);
+            label->setSize(12)->setMaxWidth(86)->setMaxLines(2)->setColor("on_surface_variant", false);
             label->alignSelf = Align::Center;
             const std::string id = def.id;
             item->onClicked = [tiles, id, save](uint32_t) mutable {
