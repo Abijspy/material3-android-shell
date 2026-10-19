@@ -1,5 +1,7 @@
 #include "ui/Controls.h"
 
+#include "render/Text.h"
+
 #include "ui/Theme.h"
 
 #include <algorithm>
@@ -45,9 +47,25 @@ Slider* Slider::setStep(float s) {
     return this;
 }
 
+Slider* Slider::setIcon(const std::string& icon, float trackHeight) {
+    if (icon == m_icon && trackHeight == m_track) return this;
+    m_icon = icon;
+    m_track = trackHeight;
+    requestLayout();
+    return this;
+}
+
+namespace {
+// The handle stands a little proud of the track
+float handleHeight(float track) {
+    return std::max(kHandleH, track + 8);
+}
+} // namespace
+
 SizeF Slider::doMeasure(SizeF) {
     // Width comes from the parent (stretch or grow); this is the minimum
-    return {minWidth, kHandleH + 8};
+    // Large sliders sit in a stack: no extra room beyond the handle
+    return {minWidth, handleHeight(m_track) + (m_track > kTrack ? 0 : 8)};
 }
 
 void Slider::change(float v, bool commit) {
@@ -68,6 +86,11 @@ void Slider::setFromX(float x) {
 void Slider::onHover(bool) {}
 
 void Slider::onPress(uint32_t, float x, float) {
+    // The icon's square at the track's start is a button of its own
+    if (onIconClicked && !m_icon.empty() && x < rect().x + m_track) {
+        onIconClicked();
+        return;
+    }
     m_dragging = true;
     m_handle.set(2);
     setFromX(x);
@@ -78,6 +101,7 @@ void Slider::onDrag(float x, float) {
 }
 
 void Slider::onRelease() {
+    if (!m_dragging) return; // the icon was pressed, not the track
     m_dragging = false;
     m_handle.set(4);
     change(m_value, true);
@@ -106,8 +130,10 @@ void Slider::doPaint(Renderer& r) {
     const float hw = m_handle.value();
     const Color active = Theme::get().color("primary");
     const Color inactive = Theme::get().color("secondary_container");
-    const float ty = cy - kTrack / 2;
-    const float outer = kTrack / 2, inner = 2;
+    const float ty = cy - m_track / 2;
+    // Large tracks are rounded rectangles, small ones pills
+    const float outer = m_track > kTrack ? std::min(m_track / 2, 14.0f) : m_track / 2, inner = m_track > kTrack ? 4 : 2;
+    const float kTrack = m_track; // the drawing below uses the instance's track
 
     const float leftEnd = hx - hw / 2 - kGap;
     const float rightStart = hx + hw / 2 + kGap;
@@ -127,7 +153,22 @@ void Slider::doPaint(Renderer& r) {
         if (rightStart < b.right() - 10)
             r.rect({b.right() - 8, cy - 2, 4, 4}, Theme::get().color("on_secondary_container"), Radii(2));
     }
-    r.rect({hx - hw / 2, cy - kHandleH / 2, hw, kHandleH}, active, Radii(hw / 2));
+    const float handleH = handleHeight(m_track);
+    r.rect({hx - hw / 2, cy - handleH / 2, hw, handleH}, active, Radii(hw / 2));
+    // The icon inside the track's start: on the fill once it reaches it
+    if (!m_icon.empty() && !m_centred) {
+        TextStyle st;
+        st.family = Theme::get().iconFamily();
+        st.icon = true;
+        st.fill = 1;
+        st.size = std::round(m_track * 0.5f);
+        const auto& tex = TextEngine::get().texture(m_icon, st, r.scale());
+        const float ix = b.x + (m_track - tex.logical.width) / 2;
+        const bool covered = leftEnd >= ix + tex.logical.width;
+        const float s = r.scale();
+        r.mask(tex.id, {std::round(ix * s) / s, std::round((cy - tex.logical.height / 2) * s) / s, tex.logical.width, tex.logical.height},
+               Theme::get().color(covered ? "on_primary" : "on_secondary_container"));
+    }
     if (m_shown.running() || m_handle.running()) requestRedraw();
 }
 

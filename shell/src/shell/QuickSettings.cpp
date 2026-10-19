@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <ctime>
 #include <format>
+#include <linux/input-event-codes.h>
 #include <memory>
 
 namespace m3::shell::panels {
@@ -23,6 +24,15 @@ using namespace m3::shell::kit;
 namespace {
 
 bool g_nightLight = false;
+
+std::string nowTime() {
+    const std::time_t t = std::time(nullptr);
+    std::tm tm{};
+    localtime_r(&t, &tm);
+    char buf[16];
+    std::strftime(buf, sizeof buf, "%H:%M", &tm);
+    return buf;
+}
 
 std::string today() {
     const std::time_t t = std::time(nullptr);
@@ -198,59 +208,65 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
     body->clearChildren();
     auto* live = body->add<Live>();
 
-    // Date, then lock and power
+    // M3 Expressive, as Android 16/17's shade: a large clock and the date,
+    // round tonal buttons on the right
     auto* head = live->add<Flex>(Flex::Direction::Row);
-    head->setSpacing(4);
-    auto* date = head->add<Label>(today());
-    date->setSize(18)->setWeight(500);
-    date->grow = true;
-    iconButton(head, "settings", [] {
+    head->setSpacing(8)->setPadding({4, 0, 0, 4});
+    auto* when = head->add<Flex>(Flex::Direction::Column);
+    when->setAlignItems(Align::Start);
+    when->grow = true;
+    auto* clock = when->add<Label>(nowTime());
+    clock->setSize(44)->setWeight(400);
+    when->add<Label>(today())->setSize(14)->setWeight(500)->setColor("on_surface_variant", false);
+    auto roundButton = [&](const char* icon, std::function<void()> fn) {
+        auto* b = head->add<Button>();
+        pill(b->setBackground("surface_container_highest", false))->setPadding(Insets(11));
+        b->pressedRadius = 12;
+        b->add<Icon>(icon, 22)->setColor("on_surface", false);
+        b->onClicked = [fn = std::move(fn)](uint32_t button) {
+            if (button == BTN_LEFT) fn();
+        };
+    };
+    roundButton("settings", [] {
         if (open) open("settings");
     });
-    iconButton(head, "lock", [&popup] {
+    roundButton("lock", [&popup] {
         popup.close();
         if (lock) lock();
     });
-    iconButton(head, "power_settings_new", [] {
+    roundButton("power_settings_new", [] {
         if (open) open("power");
     });
 
-    // Sliders
-    auto sliderRow = [&](const char* icon, std::function<void()> onIcon) {
-        auto* row = live->add<Flex>(Flex::Direction::Row);
-        row->setSpacing(8);
-        auto* b = iconButton(row, icon, std::move(onIcon), 22);
-        auto* sl = row->add<Slider>();
-        sl->grow = true;
-        return std::pair{b, sl};
-    };
-    auto [volButton, volume] = sliderRow("volume_up", [] { Audio::get().toggleMuted(); });
-    volume->onChanged = [](float v) { Audio::get().setVolume(v); };
+    // Large sliders with their icon inside; the speaker icon mutes
     Slider* light = nullptr;
     if (Brightness::get().available()) {
-        light = sliderRow("brightness_medium", {}).second;
+        light = live->add<Slider>();
+        light->setIcon("brightness_medium");
         light->setValue(Brightness::get().value(), false);
         light->onChanged = [](float v) { Brightness::get().set(v); };
     }
+    auto* volume = live->add<Slider>();
+    volume->setIcon("volume_up");
+    volume->onChanged = [](float v) { Audio::get().setVolume(v); };
+    volume->onIconClicked = [] { Audio::get().toggleMuted(); };
 
-    // Tiles, two per row
+    // Two large tiles, then four small ones (card 440 − padding 40 = 400)
     auto row1 = live->add<Flex>(Flex::Direction::Row);
     row1->setSpacing(8)->setAlignItems(Align::Stretch);
     auto* wifi = row1->add<Tile>("wifi", "Wi-Fi");
     auto* bt = row1->add<Tile>("bluetooth", "Bluetooth");
-    auto row2 = live->add<Flex>(Flex::Direction::Row);
-    row2->setSpacing(8)->setAlignItems(Align::Stretch);
-    auto* dnd = row2->add<Tile>("do_not_disturb_on", "Do not disturb");
-    auto* caffeine = row2->add<Tile>("coffee", "Caffeine");
-    auto row3 = live->add<Flex>(Flex::Direction::Row);
-    row3->setSpacing(8)->setAlignItems(Align::Stretch);
-    auto* night = row3->add<Tile>("nightlight", "Night light");
-    auto* mic = row3->add<Tile>("mic", "Microphone");
-    // Two equal columns: (card 440 − padding 40 − gap 8) / 2
-    for (Tile* t : {wifi, bt, dnd, caffeine, night, mic}) {
+    for (Tile* t : {wifi, bt}) {
         t->grow = false;
         t->fixedWidth = 196;
     }
+    auto row2 = live->add<Flex>(Flex::Direction::Row);
+    row2->setSpacing(8);
+    constexpr float kSmall = (400 - 3 * 8) / 4.0f;
+    auto* dnd = row2->add<SmallTile>("do_not_disturb_on", kSmall);
+    auto* caffeine = row2->add<SmallTile>("coffee", kSmall);
+    auto* night = row2->add<SmallTile>("nightlight", kSmall);
+    auto* mic = row2->add<SmallTile>("mic", kSmall);
 
     wifi->enableDetails();
     wifi->onDetails = showWifi;
@@ -269,7 +285,7 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
 
     // Battery: charge, what it is doing, and the power mode
     auto* battery = live->add<Flex>(Flex::Direction::Row);
-    battery->setPadding({16, 10})->setSpacing(12)->setRadius(Radii(20))->setBackground("surface_container_high", false);
+    battery->setPadding({20, 10, 12, 10})->setSpacing(12)->setRadius(Radii(28))->setBackground("surface_container_highest", false);
     auto* batIcon = battery->add<Icon>("battery_full", 22);
     auto* batText = battery->add<Flex>(Flex::Direction::Column);
     batText->setAlignItems(Align::Start);
@@ -284,8 +300,8 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
 
     // The connection at a glance, with live speeds; opens the Wi-Fi view
     auto* net = live->add<Button>(Flex::Direction::Row);
-    net->setPadding({16, 10})->setSpacing(12)->setRadius(Radii(20))->setBackground("surface_container_high", false);
-    net->pressedRadius = 12;
+    net->setPadding({20, 12})->setSpacing(12)->setRadius(Radii(28))->setBackground("surface_container_highest", false);
+    net->pressedRadius = 14;
     auto* netIcon = net->add<Icon>("wifi", 22);
     netIcon->setColor("primary", false);
     auto* netText = net->add<Flex>(Flex::Direction::Column);
@@ -301,7 +317,7 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
 
     // Now playing
     auto* media = live->add<Flex>(Flex::Direction::Row);
-    media->setPadding({16, 12})->setSpacing(12)->setRadius(Radii(20))->setBackground("surface_container_high", false);
+    media->setPadding({20, 12})->setSpacing(12)->setRadius(Radii(28))->setBackground("surface_container_highest", false);
     media->add<Icon>("music_note", 24)->setColor("primary");
     auto* mediaText = media->add<Flex>(Flex::Direction::Column);
     mediaText->setAlignItems(Align::Start);
@@ -318,7 +334,7 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
         auto& a = Audio::get();
         if (const auto* s = a.sink()) {
             volume->setValue(s->volume());
-            static_cast<Icon*>(volButton->children()[0].get())->setText(s->muted ? "volume_off" : "volume_up");
+            volume->setIcon(s->muted ? "volume_off" : "volume_up");
         }
         if (light) light->setValue(Brightness::get().value());
         auto& n = Network::get();
@@ -334,11 +350,12 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
         auto& b = Bluetooth::get();
         bt->set(b.powered(), !b.available() ? "Unavailable" : !b.powered() ? "Off"
                            : b.connected().empty() ? "On" : b.connected().front());
-        dnd->set(Notifications::get().doNotDisturb(), Notifications::get().doNotDisturb() ? "On" : "Off");
-        caffeine->set(Idle::get().inhibited(), Idle::get().inhibited() ? "Staying awake" : "Off");
-        night->set(g_nightLight, g_nightLight ? "4500 K" : "Off");
+        clock->setText(nowTime());
+        dnd->set(Notifications::get().doNotDisturb());
+        caffeine->set(Idle::get().inhibited());
+        night->set(g_nightLight);
         const auto* src = a.source();
-        mic->set(src && !src->muted, !src ? "None" : src->muted ? "Muted" : "On");
+        mic->set(src && !src->muted, src && !src->muted ? "mic" : "mic_off");
         auto& pw = Power::get();
         battery->setVisible(pw.hasBattery() || !pw.profile().empty());
         batIcon->setText(pw.hasBattery() ? pw.icon() : "power");

@@ -18,10 +18,15 @@ public:
     Slider* setValue(float v, bool animate = true);
     Slider* setCentred(bool c);
     Slider* setStep(float s);
+    // M3 Expressive large slider (Quick Settings): a tall track with the
+    // icon inside it, as Android 16 draws brightness and volume
+    Slider* setIcon(const std::string& icon, float trackHeight = 40);
+    const std::string& icon() const { return m_icon; }
     float value() const { return m_value; }
 
     std::function<void(float)> onChanged; // while dragging
     std::function<void(float)> onCommitted; // on release
+    std::function<void()> onIconClicked;    // a press on the icon (mute), with setIcon
 
     bool interactive() const override { return true; }
     bool focusable() const override { return true; }
@@ -43,6 +48,8 @@ private:
     float fraction(float v) const { return (v - m_min) / (m_max - m_min); }
 
     float m_min = 0, m_max = 1, m_value = 0, m_step = 0.05f;
+    float m_track = 16; // M3 "XS" by default
+    std::string m_icon;
     bool m_centred = false, m_dragging = false;
     Tween m_shown{0, motion::shortMs, Easing::standard()}; // displayed fraction
     Tween m_handle{4, motion::shortMs, Easing::standard()}; // handle width (pressed: 2)

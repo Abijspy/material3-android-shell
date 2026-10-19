@@ -49,7 +49,9 @@ private:
 // Round icon button (close, back, power…)
 ui::Button* iconButton(ui::Node* parent, const std::string& icon, std::function<void()> onClick, float size = 20);
 
-// Quick Settings tile: icon, title and status; tonal when active
+// Quick Settings tile (M3 Expressive, as Android 16): a large rounded tile
+// with icon, title and status, filled with the primary colour when on; its
+// corners tighten while pressed
 class Tile : public ui::Button {
 public:
     Tile(const std::string& icon, const std::string& title);
@@ -64,6 +66,16 @@ private:
     ui::Label* m_status;
     ui::Icon* m_chevron = nullptr;
     bool m_active = false;
+};
+
+// Small Quick Settings tile: the icon alone in a pill, filled when on
+class SmallTile : public ui::Button {
+public:
+    SmallTile(const std::string& icon, float width);
+    void set(bool active, const std::string& icon = {});
+
+private:
+    ui::Icon* m_icon;
 };
 
 } // namespace m3::shell::kit

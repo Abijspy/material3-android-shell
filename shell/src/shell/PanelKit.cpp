@@ -69,18 +69,19 @@ Button* iconButton(Node* parent, const std::string& icon, std::function<void()> 
 }
 
 Tile::Tile(const std::string& icon, const std::string& title) : Button(Direction::Row) {
-    setPadding({16, 12})->setSpacing(12)->setRadius(Radii(20));
-    setBackground("surface_container_high", false);
-    minHeight = 64;
+    setPadding({20, 12, 14, 12})->setSpacing(12)->setRadius(Radii(28));
+    setBackground("surface_container_highest", false);
+    pressedRadius = 14;
+    minHeight = 72;
     grow = true;
-    m_icon = add<Icon>(icon, 22);
+    m_icon = add<Icon>(icon, 24);
     auto* texts = add<Flex>(Direction::Column);
     texts->setAlignItems(Align::Start)->setSpacing(1);
     texts->grow = true;
     m_title = texts->add<Label>(title);
-    m_title->setSize(14)->setWeight(500)->setMaxWidth(120);
+    m_title->setSize(15)->setWeight(600)->setMaxWidth(110);
     m_status = texts->add<Label>();
-    m_status->setSize(12)->setMaxWidth(120);
+    m_status->setSize(13)->setMaxWidth(110);
     set(false, "");
 }
 
@@ -97,14 +98,30 @@ void Tile::enableDetails() {
 
 void Tile::set(bool active, const std::string& status) {
     m_active = active;
-    setBackground(active ? "primary_container" : "surface_container_high");
-    const char* fg = active ? "on_primary_container" : "on_surface";
-    m_icon->setColor(active ? "on_primary_container" : "on_surface_variant");
+    setBackground(active ? "primary" : "surface_container_highest");
+    const char* fg = active ? "on_primary" : "on_surface";
+    m_icon->setColor(active ? "on_primary" : "on_surface_variant");
     m_icon->setFill(active);
     m_title->setColor(fg);
     m_status->setText(status);
-    m_status->setColor(active ? "on_primary_container" : "on_surface_variant");
+    m_status->setColor(active ? "on_primary" : "on_surface_variant");
     if (m_chevron) m_chevron->setColor(fg);
+}
+
+SmallTile::SmallTile(const std::string& icon, float width) : Button(Direction::Row) {
+    pill(this)->setJustify(Align::Center);
+    setBackground("surface_container_highest", false);
+    pressedRadius = 14;
+    fixedWidth = width;
+    fixedHeight = 64;
+    m_icon = add<Icon>(icon, 24);
+    set(false);
+}
+
+void SmallTile::set(bool active, const std::string& icon) {
+    setBackground(active ? "primary" : "surface_container_highest");
+    if (!icon.empty()) m_icon->setText(icon);
+    m_icon->setFill(active)->setColor(active ? "on_primary" : "on_surface_variant");
 }
 
 } // namespace m3::shell::kit
