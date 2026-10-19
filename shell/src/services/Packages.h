@@ -55,6 +55,8 @@ public:
     bool searching() const { return m_searching; }
     const std::vector<Result>& results() const { return m_results; }
     void install(const Result& r);
+    // Removes a pacman package (with what it alone needed) or a Flatpak app
+    void uninstall(Source source, const std::string& name);
 
     Signal<> changed;
 

@@ -97,6 +97,7 @@ void Apps::reload() {
             bool inEntry = false, hidden = false, isApp = false;
             App app;
             app.id = id;
+            app.path = it->path().string();
             while (std::getline(in, line)) {
                 if (line.starts_with('[')) {
                     inEntry = line == "[Desktop Entry]";

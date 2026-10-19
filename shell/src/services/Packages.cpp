@@ -335,6 +335,13 @@ void Packages::search(Source source, const std::string& query) {
     }
 }
 
+void Packages::uninstall(Source source, const std::string& name) {
+    if (source == Source::Flatpak)
+        runTask("Uninstalling " + name + "…", "flatpak uninstall -y --noninteractive " + name, "Uninstalled " + name);
+    else
+        runTask("Uninstalling " + name + "…", "pkexec pacman -Rns --noconfirm " + name, "Uninstalled " + name);
+}
+
 void Packages::install(const Result& r) {
     std::string cmd;
     if (r.source == Source::Repo) cmd = "pkexec pacman -S --needed --noconfirm " + r.name;

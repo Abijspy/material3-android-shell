@@ -1340,6 +1340,150 @@ const Apps::App* appForCommand(const std::vector<const Apps::App*>& apps, const 
     return nullptr;
 }
 
+// Installed apps: each with its icon, what kind of package it came from,
+// Open and Uninstall. Ownership comes from pacman (repo or AUR, by its
+// foreign list) and from where Flatpak exports its apps.
+void installedApps(Flex* page) {
+    struct State {
+        std::map<std::string, std::string> owner; // .desktop path → pacman package
+        std::set<std::string> foreign;             // AUR and other non-repo packages
+        bool loaded = false;
+        std::string query, armed;                  // armed: the app whose Uninstall was tapped once
+        Signal<> changed;
+    };
+    auto state = std::make_shared<State>();
+    auto load = [state] {
+        std::string script = "pacman -Qo";
+        for (const auto& a : Apps::get().all())
+            if (a.path.find("/flatpak/exports/") == std::string::npos) script += " '" + a.path + "'";
+        script += " 2>/dev/null; echo '#FOREIGN'; pacman -Qqm";
+        m3::run({"sh", "-c", script}, [state](int, const std::string& out) {
+            state->owner.clear();
+            state->foreign.clear();
+            bool foreign = false;
+            std::stringstream ss(out);
+            for (std::string l; std::getline(ss, l);) {
+                if (l == "#FOREIGN") {
+                    foreign = true;
+                    continue;
+                }
+                if (foreign) {
+                    if (!l.empty()) state->foreign.insert(l);
+                    continue;
+                }
+                // "/usr/share/applications/x.desktop is owned by pkg 1.0-1"
+                const auto at = l.find(" is owned by ");
+                if (at == std::string::npos) continue;
+                std::stringstream rest(l.substr(at + 13));
+                std::string pkg;
+                rest >> pkg;
+                state->owner[l.substr(0, at)] = pkg;
+            }
+            state->loaded = true;
+            state->changed.emit();
+        });
+    };
+    load();
+
+    auto* live = page->add<Live>();
+    live->setSpacing(6);
+    live->watch(state->changed);
+    live->watch(Packages::get().changed); // an uninstall finishing
+    live->conns.push_back(Apps::get().changed.connect([load] { load(); })); // apps added or removed
+    auto* head = group(live, "Installed apps");
+    auto* searchRow = head->add<Flex>(Flex::Direction::Row);
+    searchRow->setPadding({16, 10})->setSpacing(10);
+    auto* field = searchRow->add<TextField>();
+    field->setPlaceholder("Search apps");
+    field->grow = true;
+    auto* list = live->add<Live>(); // rebuilt on its own, so the search field keeps focus
+    list->setSpacing(6);
+    field->onChanged = [state, list](const std::string& t) {
+        state->query = t;
+        list->syncSoon();
+    };
+    list->watch(state->changed);
+    list->watch(Packages::get().changed);
+    list->conns.push_back(Apps::get().changed.connect([list] { list->syncSoon(); }));
+    list->sync = [list, state] {
+        list->clearChildren();
+        auto* g = list->add<Segments>();
+        if (!state->loaded) {
+            row(g, "hourglass_empty", "Reading the package database…");
+            return;
+        }
+        auto lower = [](std::string t) {
+            for (auto& c : t) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            return t;
+        };
+        const std::string q = lower(state->query);
+        const std::string home = paths::home();
+        size_t shown = 0;
+        for (const auto& app : Apps::get().all()) {
+            // What it is, and how it would go
+            enum class Kind { Repo, Aur, Flatpak, Local, Other } kind;
+            std::string pkg;
+            if (app.path.find("/flatpak/exports/") != std::string::npos) {
+                kind = Kind::Flatpak;
+                pkg = app.id.ends_with(".desktop") ? app.id.substr(0, app.id.size() - 8) : app.id;
+            } else if (auto it = state->owner.find(app.path); it != state->owner.end()) {
+                pkg = it->second;
+                kind = state->foreign.contains(pkg) ? Kind::Aur : Kind::Repo;
+            } else {
+                kind = app.path.starts_with(home) ? Kind::Local : Kind::Other;
+            }
+            const char* type = kind == Kind::Repo ? "Official" : kind == Kind::Aur ? "AUR" : kind == Kind::Flatpak ? "Flatpak"
+                             : kind == Kind::Local ? "Local shortcut" : "Installed manually";
+            if (!q.empty() && lower(app.name).find(q) == std::string::npos && lower(pkg).find(q) == std::string::npos &&
+                lower(type).find(q) == std::string::npos)
+                continue;
+            ++shown;
+            auto r = row(g, "", app.name, pkg.empty() ? type : std::string(type) + "  ·  " + pkg);
+            const std::string icon = app.icon;
+            r.row->adopt(std::make_unique<ImageView>(32, [icon](float scale, int& w, int& h) -> GLuint {
+                auto* t = Images::get().icon(icon, static_cast<int>(std::lround(32 * scale)));
+                if (!t) return 0;
+                w = t->width;
+                h = t->height;
+                return t->id;
+            }), 0);
+            pillButton(r.row, "Open", false, [app] { Apps::get().launch(app); }, "open_in_new");
+            if (kind == Kind::Other) continue;
+            // Two taps: the first arms it
+            const bool armed = state->armed == app.path;
+            const std::string label = armed ? "Tap to confirm" : kind == Kind::Local ? "Remove" : "Uninstall";
+            auto* b = pillButton(r.row, label, false, {}, "delete");
+            b->setBackground(armed ? ColorRef("error") : ColorRef("error_container"), false);
+            for (auto& c : b->children()) {
+                if (auto* l = dynamic_cast<Label*>(c.get())) l->setColor(armed ? "on_error" : "on_error_container", false);
+            }
+            const std::string path = app.path;
+            b->onClicked = [state, list, armed, kind, pkg, path](uint32_t button) {
+                if (button != BTN_LEFT) return;
+                if (!armed) {
+                    state->armed = path;
+                    list->syncSoon();
+                    return;
+                }
+                state->armed.clear();
+                if (kind == Kind::Local) {
+                    std::error_code ec;
+                    std::filesystem::remove(path, ec); // just the shortcut; Apps reloads
+                } else {
+                    Packages::get().uninstall(kind == Kind::Flatpak ? Packages::Source::Flatpak : Packages::Source::Repo, pkg);
+                }
+                list->syncSoon();
+            };
+        }
+        if (shown == 0) row(g, "search_off", "No app matches");
+        // What an uninstall is doing, or how it ended
+        auto& p = Packages::get();
+        if (p.busy() || (!p.status().empty() && p.status().find("ninstall") != std::string::npos))
+            caption(list, p.status());
+    };
+    list->sync();
+}
+
 void defaultAppsPage(Flex* page, Popup&) {
     struct State {
         std::vector<std::string> current; // desktop id per kind ("" unknown)
@@ -1439,6 +1583,7 @@ void defaultAppsPage(Flex* page, Popup&) {
         }
     };
     live->sync();
+    installedApps(page);
 }
 
 void toolsPage(Flex* page, Popup& popup) {

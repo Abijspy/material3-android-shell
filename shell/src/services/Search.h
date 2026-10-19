@@ -26,6 +26,7 @@ public:
     struct App {
         std::string id, name, generic, comment, exec, icon, keywords, wmClass;
         std::string mimeTypes, categories; // ';'-separated, as in the file
+        std::string path;                  // the .desktop file
         bool terminal = false;
     };
 
