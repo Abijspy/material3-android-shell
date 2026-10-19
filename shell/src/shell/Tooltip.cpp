@@ -19,17 +19,16 @@ void Tooltip::hover(wl::Surface* surface, Node* node) {
     if (m_timer) EventLoop::get().cancel(m_timer);
     m_timer = 0;
     if (!node) return hide();
-    // Copied now: the node may be rebuilt before the pause is over
-    const std::string text = node->tooltip;
+    m_node = node;
     const auto r = node->rect();
     // Shown at once when one is already up (moving along the dock), else
     // after a pause
     const int delay = m_surface ? 0 : 600;
-    m_timer = EventLoop::get().addTimer(delay, [this, surface, text, r] {
+    m_timer = EventLoop::get().addTimer(delay, [this, surface, r] {
         m_timer = 0;
-        // Still a surface of ours?
+        // Still a surface of ours? (the node is: its going would have hidden this)
         for (auto* s : wl::Surface::all())
-            if (s == surface) return show(surface, text, r.x, r.y, r.w, r.h);
+            if (s == surface && m_node) return show(surface, m_node->tooltip, r.x, r.y, r.w, r.h);
     });
 }
 
@@ -37,50 +36,70 @@ void Tooltip::hide() {
     if (m_timer) EventLoop::get().cancel(m_timer);
     m_timer = 0;
     m_surface.reset();
+    m_node = nullptr;
+    m_root = nullptr;
+    m_label = nullptr;
+    m_source = nullptr;
+}
+
+void Tooltip::changed(Node* node) {
+    if (node != m_node || !m_surface || !m_label) return;
+    if (node->tooltip.empty()) return hide();
+    m_label->setText(node->tooltip);
+    place();
+}
+
+void Tooltip::place() {
+    auto* layer = dynamic_cast<wl::LayerSurface*>(m_source);
+    if (!layer || !m_root) return;
+    const auto& o = layer->options();
+    using A = wl::LayerSurface;
+    const SizeF size = m_root->measure({400, 100});
+    const int tw = static_cast<int>(std::ceil(size.w)), th = static_cast<int>(std::ceil(size.h));
+    // Centred on the item, kept on the screen
+    const float width = m_source->size().w;
+    const int left = o.marginLeft + static_cast<int>(std::clamp(m_x + m_w / 2 - static_cast<float>(tw) / 2, 4.0f,
+                                                                 std::max(4.0f, width - static_cast<float>(tw) - 4)));
+    const bool bottom = (o.anchor & A::Bottom) && !(o.anchor & A::Top);
+    constexpr int gap = 6;
+    if (bottom) m_surface->setMargins(0, 0, o.marginBottom + static_cast<int>(std::lround(m_source->size().h - m_y)) + gap, left);
+    else m_surface->setMargins(o.marginTop + static_cast<int>(std::lround(m_y + m_h)) + gap, 0, 0, left);
+    m_surface->setSize(tw, th);
 }
 
 void Tooltip::show(wl::Surface* source, const std::string& text, float x, float y, float w, float h) {
     auto* layer = dynamic_cast<wl::LayerSurface*>(source);
-    if (!layer) return;
+    if (!layer || text.empty()) return;
     const auto& o = layer->options();
     using A = wl::LayerSurface;
     // Only surfaces across the whole output (the bar, the dock) place it
     if (!(o.anchor & A::Left) || !(o.anchor & A::Right)) return;
+    m_source = source;
+    m_x = x;
+    m_y = y;
+    m_w = w;
+    m_h = h;
 
     auto root = std::make_unique<Flex>(Flex::Direction::Row);
     root->setPadding({10, 5})->setRadius(Radii(6))->setBackground("inverse_surface", false);
-    root->add<Label>(text)->setSize(12)->setWeight(500)->setColor("inverse_on_surface", false)->setMaxWidth(360);
-    const SizeF size = root->measure({400, 100});
-    const int tw = static_cast<int>(std::ceil(size.w)), th = static_cast<int>(std::ceil(size.h));
-    // Centred on the item, kept on the screen
-    const float width = source->size().w;
-    const int left = o.marginLeft + static_cast<int>(std::clamp(x + w / 2 - static_cast<float>(tw) / 2, 4.0f,
-                                                                 std::max(4.0f, width - static_cast<float>(tw) - 4)));
-    const bool bottom = (o.anchor & A::Bottom) && !(o.anchor & A::Top);
-    constexpr int gap = 6;
+    m_label = root->add<Label>(text);
+    m_label->setSize(12)->setWeight(500)->setColor("inverse_on_surface", false)->setMaxWidth(360);
+    m_root = root.get();
 
     wl::LayerSurface::Options opts;
     opts.ns = "material3ui-tooltip";
     opts.layer = wl::LayerSurface::Layer::Overlay;
     // From the screen's edge, not after the bar's reserved space
     opts.exclusiveZone = -1;
-    opts.width = tw;
-    opts.height = th;
-    if (bottom) {
-        // Above the dock: from the bottom edge, past the surface to the item's top
-        opts.anchor = A::Bottom | A::Left;
-        opts.marginBottom = o.marginBottom + static_cast<int>(std::lround(source->size().h - y)) + gap;
-    } else {
-        // Below the bar
-        opts.anchor = A::Top | A::Left;
-        opts.marginTop = o.marginTop + static_cast<int>(std::lround(y + h)) + gap;
-    }
-    opts.marginLeft = left;
+    opts.width = 1;
+    opts.height = 1;
+    opts.anchor = ((o.anchor & A::Bottom) && !(o.anchor & A::Top) ? A::Bottom : A::Top) | A::Left;
     m_surface = std::make_unique<wl::LayerSurface>(source->output(), opts);
     m_surface->setInputRegion(std::vector<RectF>{}); // clicks pass through
     root->setOpacity(0, false);
     root->setOpacity(1);
     m_surface->setRoot(std::move(root));
+    place();
 }
 
 } // namespace m3::shell

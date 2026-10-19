@@ -203,7 +203,10 @@ void Surface::requestRedraw() {
 void Surface::nodeDestroyed(ui::Node* node) {
     std::erase(m_hoverChain, node);
     if (m_hovered == node) m_hovered = nullptr;
-    if (m_tooltip == node) m_tooltip = nullptr;
+    if (m_tooltip == node) {
+        m_tooltip = nullptr;
+        if (tooltipHook) tooltipHook(this, nullptr);
+    }
     if (m_pressed == node) m_pressed = nullptr;
     if (m_focus == node) m_focus = nullptr;
 }

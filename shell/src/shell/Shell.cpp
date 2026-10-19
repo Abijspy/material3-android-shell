@@ -74,6 +74,7 @@ bool Shell::start() {
     panels::lock = [] { EventLoop::get().defer([] { LockScreen::get().lock(); }); };
     // Tooltips on the bar and the dock
     wl::Surface::tooltipHook = [](wl::Surface* s, ui::Node* n) { Tooltip::get().hover(s, n); };
+    ui::Node::tooltipChanged = [](ui::Node* n) { Tooltip::get().changed(n); };
     Session::get().lockRequested.connectForever([] { LockScreen::get().lock(); });
     Idle::get().lockRequested.connectForever([] { LockScreen::get().lock(); });
     Idle::get().start();

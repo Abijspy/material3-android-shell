@@ -106,12 +106,12 @@ void StatusIcons::sync() {
     m_bellIcon->setFill(!n.history().empty());
     // What each says, for its tooltip
     auto& net = Network::get();
-    m_net->tooltip = net.kind() == Network::Kind::None ? "Not connected" : net.name().empty() ? "Connected" : net.name();
-    m_bt->tooltip = Bluetooth::get().powered() ? "Bluetooth on" : "Bluetooth off";
+    m_net->setTooltip(net.kind() == Network::Kind::None ? "Not connected" : net.name().empty() ? "Connected" : net.name());
+    m_bt->setTooltip(Bluetooth::get().powered() ? "Bluetooth on" : "Bluetooth off");
     const auto* sink = Audio::get().sink();
-    m_vol->tooltip = !sink ? "Sound" : sink->muted ? "Muted" : std::format("Volume {}%", std::lround(sink->volume() * 100));
-    m_bell->tooltip = n.doNotDisturb() ? "Do not disturb" : n.history().empty() ? "No notifications"
-                    : std::format("{} notification{}", n.history().size(), n.history().size() == 1 ? "" : "s");
+    m_vol->setTooltip(!sink ? "Sound" : sink->muted ? "Muted" : std::format("Volume {}%", std::lround(sink->volume() * 100)));
+    m_bell->setTooltip(n.doNotDisturb() ? "Do not disturb" : n.history().empty() ? "No notifications"
+                       : std::format("{} notification{}", n.history().size(), n.history().size() == 1 ? "" : "s"));
 }
 
 // ── BatteryStatus ──
@@ -135,7 +135,7 @@ void BatteryStatus::sync() {
     m_icon->setText(p.icon());
     m_icon->setColor(p.percent() <= 15 && !p.charging() ? ColorRef("error") : ColorRef("on_surface"));
     m_label->setText(std::to_string(p.percent()) + "%");
-    tooltip = std::format("Battery {}%{}", p.percent(), p.charging() ? " · charging" : "");
+    setTooltip(std::format("Battery {}%{}", p.percent(), p.charging() ? " · charging" : ""));
 }
 
 // ── Media ──
@@ -163,7 +163,7 @@ void Media::sync() {
     if (!p) return;
     m_icon->setText(p->status == "Playing" ? "graphic_eq" : "pause");
     m_label->setText(p->artist.empty() ? p->title : p->title + " · " + p->artist);
-    tooltip = m_label->text();
+    setTooltip(m_label->text());
 }
 
 // ── TrayIcons ──

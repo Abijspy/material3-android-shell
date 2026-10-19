@@ -93,8 +93,15 @@ public:
     // Animations still running in this subtree
     bool animating() const;
 
-    // Shown in a tooltip while the pointer rests on this node (or inside it)
+    // Shown in a tooltip while the pointer rests on this node (or inside it).
+    // setTooltip also updates one already showing (the volume as it changes)
     std::string tooltip;
+    void setTooltip(std::string text) {
+        if (text == tooltip) return;
+        tooltip = std::move(text);
+        if (tooltipChanged) tooltipChanged(this);
+    }
+    static inline std::function<void(Node*)> tooltipChanged;
 
     // Sizing constraints honoured by parents
     std::optional<float> fixedWidth, fixedHeight;
