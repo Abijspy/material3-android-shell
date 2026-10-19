@@ -2029,6 +2029,14 @@ void packagesPage(Flex* page, Popup&) {
                 pillButton(actions, "Use a terminal", false, [] { Packages::get().upgradeInTerminal(); }, "terminal");
             pillButton(actions, "Check now", false, [] { Packages::get().check(); }, "refresh");
             if (!p.updates().empty()) pillButton(actions, "Update now", true, [] { Packages::get().upgrade(); }, "download");
+            // How the shell itself updates
+            auto* shellGroup = group(body, "Material3UI updates");
+            auto ch = row(shellGroup, "conversion_path", "Update channel",
+                          p.channel() == "stable" ? "Releases only: tested versions, when they come out"
+                                                  : "The newest commits on main: early, less tested");
+            connectedGroup<std::string>(ch.row, p.channel() == "stable" ? "stable" : "canary",
+                                        {{"stable", "Stable"}, {"canary", "Latest (git)"}},
+                                        [](std::string c) { Packages::get().setChannel(c); });
             if (!p.updates().empty()) {
                 auto* list = group(body, "Pending");
                 for (const auto& u : p.updates()) {

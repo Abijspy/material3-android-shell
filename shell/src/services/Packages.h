@@ -43,6 +43,10 @@ public:
     // A background task: what it is doing, or how the last one ended
     bool busy() const { return m_busy; }
     const std::string& status() const { return m_status; }
+    // How the shell itself updates: "stable" (release tags) or "canary"
+    // (the newest commits on main), as install_state.json records it
+    std::string channel() const;
+    void setChannel(const std::string& channel);
     // Runs `script` with root, asking through polkit; `done` gets success
     void runAsRoot(const std::string& label, const std::string& script, const std::string& doneText);
 

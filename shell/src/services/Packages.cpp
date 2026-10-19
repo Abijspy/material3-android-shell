@@ -164,14 +164,40 @@ bool newerVersion(const std::string& a, const std::string& b) {
 
 } // namespace
 
-void Packages::checkShell() {
-    // Where install.sh put the checkout, and which channel it follows
-    nlohmann::json state;
+namespace {
+
+std::string stateFile() {
+    return paths::configDir() + "/install_state.json";
+}
+
+nlohmann::json readState() {
     try {
-        std::ifstream in(paths::configDir() + "/install_state.json");
-        if (in) state = nlohmann::json::parse(in);
+        std::ifstream in(stateFile());
+        if (in) return nlohmann::json::parse(in);
     } catch (...) {
     }
+    return nlohmann::json::object();
+}
+
+} // namespace
+
+std::string Packages::channel() const {
+    return readState().value("channel", "stable");
+}
+
+void Packages::setChannel(const std::string& channel) {
+    auto state = readState();
+    if (state.value("channel", "stable") == channel) return;
+    state["channel"] = channel;
+    // update.sh reads it from here too
+    std::ofstream(stateFile()) << state.dump(2) << "\n";
+    changed.emit();
+    checkShell(); // what's pending depends on the channel
+}
+
+void Packages::checkShell() {
+    // Where install.sh put the checkout, and which channel it follows
+    const auto state = readState();
     m_shellDir = state.value("install_dir", "");
     const std::string channel = state.value("channel", "stable");
     if (m_shellDir.empty()) return;
@@ -180,6 +206,8 @@ void Packages::checkShell() {
                                     ? std::string("t=$(git -C \"$d\" describe --tags \"$(git -C \"$d\" rev-list --tags --max-count=1)\" "
                                                   "2>/dev/null); echo \"tag ${t#v}\"")
                                     : std::string("echo \"commits $(git -C \"$d\" rev-list --count HEAD..origin/main)\""));
+    // A channel switch takes back what the other channel found
+    std::erase_if(m_updates, [](const Update& u) { return u.source == Source::Shell; });
     run({"sh", "-c", script}, [this](int code, const std::string& out) {
         if (code != 0) return;
         std::erase_if(m_updates, [](const Update& u) { return u.source == Source::Shell; });
