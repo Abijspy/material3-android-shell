@@ -1,5 +1,9 @@
 # Changelog
 
+## v5.1.0 — 2026-10-19
+
+- **Tooltips on the dock and the bar.** Rest the pointer on a dock icon to see the app's name (and how many windows it has open), or on the bar to see what each thing is: the workspace, your Wi-Fi network, Bluetooth, the volume, notifications, the battery, the playing track, tray apps and the panel buttons. Material 3's plain tooltips, a moment after you stop, gliding straight to the next one as you move along.
+
 ## v5.0.3 — 2026-10-19
 
 - **One password per update.** Updating from Software & updates asks once ("Install updates") for everything: the system, the AUR, system Flatpaks and Material3UI itself with its login screen. A small helper, started by that one prompt, runs only the update's own steps (pacman, Flatpak updates, Material3UI's packages) and exits when the update ends. This update itself still asks a few times, since it brings the helper.
