@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.4.5 — 2026-10-19
+
+- **Network & internet, reorganised.** Wi-Fi comes first, then Ethernet. The separate Connection section is gone: the connected network opens like a dropdown (tap it or its chevron) to show live download, upload and link speed, with band, security, addresses, hardware address, interface and data used, and a Disconnect button. On a cable, the adapter in use opens the same way.
+
 ## v4.4.4 — 2026-10-19
 
 - **Smoother scrolling everywhere.** Touchpads move lists exactly with your fingers and glide to a stop when you lift them mid-swipe; mouse wheel notches ease into each other instead of stuttering. Sliders and buttons that react to scrolling (volume) still step as before.
