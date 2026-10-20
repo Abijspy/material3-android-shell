@@ -213,7 +213,10 @@ void Switch::doPaint(Renderer& r) {
     r.mask(tex.id,
            {std::round((cx - tex.logical.width / 2) * s) / s, std::round((track.y + 16 - tex.logical.height / 2) * s) / s,
             tex.logical.width, tex.logical.height},
-           Theme::get().color(checked ? "on_primary_container" : "surface_container_highest"));
+           // The track's colour, cut into the thumb: it always stands out
+           // from the thumb (on_primary_container can match on_primary in
+           // dark palettes, and the ✓ vanished)
+           Theme::get().color(checked ? "primary" : "surface_container_highest"));
     if (m_t.running()) requestRedraw();
 }
 
