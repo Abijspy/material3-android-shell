@@ -1,5 +1,10 @@
 # Changelog
 
+## v5.4.4 — 2026-10-20
+
+- **Ticks you can see.** Switches show their ✓ in every palette; in some dark palettes it had matched the switch and vanished. The chosen accent colour now carries a ✓ too.
+- **App theming switches.** Wallpaper & style → App theming lists every app that takes Material You colours from your wallpaper: Hyprland, GTK and Qt apps, terminals, browsers, editors and more, marking the ones not installed. Switch any of them off and it keeps the colours it has, instead of changing with the wallpaper.
+
 ## v5.4.3 — 2026-10-20
 
 - **Hyprland's options live in Hyprland Settings only.** The shell's Settings no longer keeps its own copies of them, which could disagree. Where they used to be, it links straight to the right Hyprland Settings page:
