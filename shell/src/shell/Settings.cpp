@@ -576,6 +576,11 @@ void appearancePage(Flex* page, Popup& popup) {
     choiceRow<std::string>(wp, "animation", "Transition", "", "/background/wallpaperTransition", "random",
                            {{"random", "Random"}, {"fade", "Fade"}, {"wipe", "Wipe"}, {"grow", "Grow"}});
     switchRow(wp, "schedule", "Desktop clock", "A large clock on the wallpaper", "/desktop/clock", true);
+    auto edit = row(wp, "dashboard_customize", "Desktop widgets and shortcuts",
+                    "Place the clock, calendar, weather, apps and files; or right-click the desktop");
+    pillButton(edit.row, "Edit", true, [] {
+        if (open) open("desktopedit");
+    }, "edit");
     timeDateRows(group(page, "Desktop clock: time and date"), "/desktop/timeFormat", "hh:mm", "/desktop/showDate", true,
                  "/desktop/dateFormat", "dddd, d MMMM");
 

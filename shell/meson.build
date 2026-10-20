@@ -101,6 +101,8 @@ sources = files(
   'src/shell/QuickSettings.cpp',
   'src/shell/Rich.cpp',
   'src/shell/CurveEditor.cpp',
+  'src/shell/DesktopEditor.cpp',
+  'src/shell/DesktopItems.cpp',
   'src/shell/HyprPages.cpp',
   'src/shell/KeyCapture.cpp',
   'src/shell/MonitorLayout.cpp',

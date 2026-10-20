@@ -182,28 +182,10 @@ private:
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };
 
-} // namespace
-
-// ── Dashboard ──
-
-void dashboard(Flex* card0, Popup&) {
-    card0->add<StatsLease>();
-    auto* columns = card0->add<Flex>(Flex::Direction::Row);
-    columns->setSpacing(16)->setAlignItems(Align::Start);
-
-    auto* left = columns->add<Flex>(Flex::Direction::Column);
-    left->setAlignItems(Align::Stretch)->setSpacing(12);
-    auto* clock = left->add<Label>();
-    clock->setSize(56)->setWeight(500)->setColor("primary", false);
-    auto* date = left->add<Label>();
-    date->setSize(16)->setColor("on_surface_variant", false);
-    card(left)->add<Calendar>();
-
-    auto* right = columns->add<Live>();
-    right->fixedWidth = 340;
-
-    // Weather: now and the next days; opens its Settings page
-    auto* wx = right->add<Button>(Flex::Direction::Column);
+// Weather now and the next days, live; a tap opens its Settings page
+Node* weatherCard(Node* parent) {
+    auto* live = parent->add<Live>();
+    auto* wx = live->add<Button>(Flex::Direction::Column);
     wx->setPadding({18, 14})->setSpacing(10)->setAlignItems(Align::Stretch)->setRadius(Radii(24));
     wx->setBackground("primary_container", false);
     wx->pressedRadius = 16;
@@ -223,43 +205,7 @@ void dashboard(Flex* card0, Popup&) {
     wxSky->setSize(13)->setMaxWidth(220)->setColor("on_primary_container", false);
     auto* wxDays = wx->add<Flex>(Flex::Direction::Row);
     wxDays->setSpacing(4)->setAlignItems(Align::Stretch);
-
-    // Now playing: the M3 Expressive player
-    right->add<MediaCard>();
-
-    // System at a glance
-    auto* sys = card(right);
-    auto cpu = meterRow(sys, "memory", "CPU");
-    auto mem = meterRow(sys, "memory_alt", "Memory");
-    auto disk = meterRow(sys, "hard_drive", "Disk /");
-    auto* up = sys->add<Label>();
-    up->setSize(13)->setColor("on_surface_variant", false);
-    up->alignSelf = Align::Start;
-
-    right->sync = [=] {
-        const std::time_t now = std::time(nullptr);
-        std::tm tm{};
-        localtime_r(&now, &tm);
-        char buf[64];
-        std::strftime(buf, sizeof buf, "%H:%M", &tm);
-        clock->setText(buf);
-        std::strftime(buf, sizeof buf, "%A, %-d %B %Y", &tm);
-        date->setText(buf);
-
-        auto& s = SystemStats::get();
-        cpu.value->setText(std::format("{:.0f}%{}", s.cpu(), s.temperature() > 0 ? std::format(" · {:.0f}°C", s.temperature()) : ""));
-        cpu.meter->value.set(static_cast<float>(s.cpu() / 100));
-        mem.value->setText(std::format("{} of {}", formatBytes(s.memUsed()), formatBytes(s.memTotal())));
-        mem.meter->value.set(s.memTotal() ? static_cast<float>(s.memUsed()) / static_cast<float>(s.memTotal()) : 0);
-        const auto& disks = s.disks();
-        auto root = std::ranges::find(disks, std::string("/"), &SystemStats::Disk::mount);
-        disk.meter->parentNode()->setVisible(root != disks.end());
-        if (root != disks.end()) {
-            disk.value->setText(std::format("{} free", formatBytes(root->total - root->used)));
-            disk.meter->value.set(static_cast<float>(root->used) / static_cast<float>(root->total));
-        }
-        up->setText("Up " + duration(s.uptime()));
-
+    live->sync = [=] {
         auto& w = Weather::get();
         wx->setVisible(w.enabled());
         wxIcon->setText(w.ready() ? w.icon() : "cloud_off");
@@ -281,10 +227,84 @@ void dashboard(Flex* card0, Popup&) {
             col->add<Label>(w.temp(d.max))->setSize(12)->setColor("on_primary_container", false);
         }
     };
-    right->watch(Weather::get().changed);
-    right->watch(Mpris::get().changed);
-    right->watch(SystemStats::get().changed);
-    right->sync();
+    live->watch(Weather::get().changed);
+    live->sync();
+    return live;
+}
+
+// CPU, memory, the root disk and uptime, live (sampling while shown)
+Node* systemCard(Node* parent) {
+    auto* live = parent->add<Live>();
+    live->add<StatsLease>();
+    auto* sys = card(live);
+    auto cpu = meterRow(sys, "memory", "CPU");
+    auto mem = meterRow(sys, "memory_alt", "Memory");
+    auto disk = meterRow(sys, "hard_drive", "Disk /");
+    auto* up = sys->add<Label>();
+    up->setSize(13)->setColor("on_surface_variant", false);
+    up->alignSelf = Align::Start;
+    live->sync = [=] {
+        auto& s = SystemStats::get();
+        cpu.value->setText(std::format("{:.0f}%{}", s.cpu(), s.temperature() > 0 ? std::format(" · {:.0f}°C", s.temperature()) : ""));
+        cpu.meter->value.set(static_cast<float>(s.cpu() / 100));
+        mem.value->setText(std::format("{} of {}", formatBytes(s.memUsed()), formatBytes(s.memTotal())));
+        mem.meter->value.set(s.memTotal() ? static_cast<float>(s.memUsed()) / static_cast<float>(s.memTotal()) : 0);
+        const auto& disks = s.disks();
+        auto root = std::ranges::find(disks, std::string("/"), &SystemStats::Disk::mount);
+        disk.meter->parentNode()->setVisible(root != disks.end());
+        if (root != disks.end()) {
+            disk.value->setText(std::format("{} free", formatBytes(root->total - root->used)));
+            disk.meter->value.set(static_cast<float>(root->used) / static_cast<float>(root->total));
+        }
+        up->setText("Up " + duration(s.uptime()));
+    };
+    live->watch(SystemStats::get().changed);
+    live->sync();
+    return live;
+}
+
+} // namespace
+
+// ── Dashboard ──
+
+ui::Node* dashboardWidget(ui::Node* parent, const std::string& id) {
+    if (id == "calendar") return card(parent)->add<Calendar>()->parentNode();
+    if (id == "weather") return weatherCard(parent);
+    if (id == "system") return systemCard(parent);
+    return nullptr;
+}
+
+void dashboard(Flex* card0, Popup&) {
+    auto* columns = card0->add<Flex>(Flex::Direction::Row);
+    columns->setSpacing(16)->setAlignItems(Align::Start);
+
+    auto* left = columns->add<Live>();
+    left->setAlignItems(Align::Stretch)->setSpacing(12);
+    auto* clock = left->add<Label>();
+    clock->setSize(56)->setWeight(500)->setColor("primary", false);
+    auto* date = left->add<Label>();
+    date->setSize(16)->setColor("on_surface_variant", false);
+    card(left)->add<Calendar>();
+    left->sync = [=] {
+        const std::time_t now = std::time(nullptr);
+        std::tm tm{};
+        localtime_r(&now, &tm);
+        char buf[64];
+        std::strftime(buf, sizeof buf, "%H:%M", &tm);
+        clock->setText(buf);
+        std::strftime(buf, sizeof buf, "%A, %-d %B %Y", &tm);
+        date->setText(buf);
+    };
+    left->watch(SystemStats::get().changed); // ticks with the samples, as before
+    left->sync();
+
+    auto* right = columns->add<Flex>(Flex::Direction::Column);
+    right->setAlignItems(Align::Stretch)->setSpacing(12);
+    right->fixedWidth = 340;
+    weatherCard(right);
+    // Now playing: the M3 Expressive player
+    right->add<MediaCard>();
+    systemCard(right);
 }
 
 // ── System monitor ──

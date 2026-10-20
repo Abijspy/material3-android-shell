@@ -1,5 +1,8 @@
 #include "shell/Desktop.h"
 
+#include "shell/DesktopEditor.h"
+#include "shell/DesktopItems.h"
+
 #include "core/Config.h"
 #include "shell/bar/Widgets.h"
 #include "core/EventLoop.h"
@@ -8,6 +11,8 @@
 #include "ui/Theme.h"
 
 #include <cmath>
+#include <functional>
+#include <linux/input-event-codes.h>
 #include <ctime>
 #include <random>
 
@@ -92,53 +97,14 @@ private:
     Connection m_conn;
 };
 
-// A big clock and date on the desktop, Material You style
-class DesktopClock : public Flex {
+// The desktop's empty space: a right click opens its menu
+class Backdrop : public Node {
 public:
-    DesktopClock() : Flex(Direction::Column) {
-        setAlignItems(Align::Start)->setSpacing(-6)->setPadding({72, 140});
-        m_time = add<Label>();
-        m_time->setSize(96)->setWeight(500)->setColor("primary", false);
-        m_date = add<Label>();
-        m_date->setSize(22)->setWeight(500)->setColor("on_surface", false);
-        // A new format shows at once (Settings → Wallpaper & style)
-        m_config = Config::get().changed.connect([this] {
-            if (m_timer) EventLoop::get().cancel(m_timer);
-            m_timer = 0;
-            tick();
-        });
-        tick();
+    std::function<void(float x, float y)> onMenu;
+    bool interactive() const override { return true; }
+    void onPress(uint32_t button, float x, float y) override {
+        if (button == BTN_RIGHT && onMenu) onMenu(x, y);
     }
-    ~DesktopClock() override {
-        if (m_timer) EventLoop::get().cancel(m_timer);
-    }
-
-protected:
-    SizeF doMeasure(SizeF available) override {
-        Flex::doMeasure(available);
-        return available;
-    }
-
-private:
-    void tick() {
-        const std::time_t now = std::time(nullptr);
-        std::tm tm{};
-        localtime_r(&now, &tm);
-        auto& c = Config::get();
-        const auto time = c.value<std::string>("/desktop/timeFormat", "hh:mm");
-        m_time->setText(Clock::sample(time));
-        m_date->setText(Clock::sample(c.value<std::string>("/desktop/dateFormat", "dddd, d MMMM")));
-        m_date->setVisible(c.value<bool>("/desktop/showDate", true));
-        // Seconds tick every second, the rest on the minute
-        const bool seconds = time.find('s') != std::string::npos;
-        m_timer = EventLoop::get().addTimer(seconds ? 1000 : (60 - tm.tm_sec) * 1000 + 20, [this] {
-            m_timer = 0;
-            tick();
-        });
-    }
-    Label *m_time, *m_date;
-    EventLoop::TimerId m_timer = 0;
-    Connection m_config;
 };
 
 } // namespace
@@ -152,9 +118,33 @@ Desktop::Desktop(wl::Output* output) {
     m_surface = std::make_unique<wl::LayerSurface>(output, o);
     auto root = std::make_unique<Node>();
     root->add<WallpaperNode>();
-    if (Config::get().value<bool>("/desktop/clock", true)) root->add<DesktopClock>();
-    m_surface->setInputRegion(std::vector<RectF>{}); // windows below get the clicks
+    // Its empty space takes the right click (the menu); the items above it
+    // take their own clicks. Windows cover the rest as ever.
+    auto* backdrop = root->add<Backdrop>();
+    backdrop->onMenu = [output](float x, float y) {
+        EventLoop::get().defer([output, x, y] { desktopeditor::menu(output, x, y); });
+    };
+    m_board = root->add<desktop::Board>();
     m_surface->setRoot(std::move(root));
+    // While the editor shows them as cards, these step aside
+    m_editing = desktopeditor::changed().connect([this] { m_board->setVisible(!desktopeditor::isOpen()); });
+    fill();
+    // Edited in the desktop editor (or Settings): rebuilt when they change
+    m_config = Config::get().changed.connect([this] {
+        const auto now = Config::get().value<nlohmann::json>("/desktop/items", nlohmann::json()).dump();
+        if (now != m_items) fill();
+    });
+}
+
+void Desktop::fill() {
+    m_items = Config::get().value<nlohmann::json>("/desktop/items", nlohmann::json()).dump();
+    m_board->clearChildren();
+    m_board->spots.clear();
+    for (const auto& item : desktop::load()) {
+        desktop::build(m_board, item, false);
+        m_board->spots.push_back({item.x, item.y});
+    }
+    m_board->requestLayout();
 }
 
 } // namespace m3::shell

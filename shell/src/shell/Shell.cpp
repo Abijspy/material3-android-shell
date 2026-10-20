@@ -1,4 +1,5 @@
 #include "shell/Shell.h"
+#include "shell/DesktopEditor.h"
 #include "shell/Tooltip.h"
 
 #include "build_config.h"
@@ -224,6 +225,7 @@ void Shell::openHyprSettings(const std::string& page) {
 void Shell::togglePopup(const std::string& name, wl::Output* output, float anchorX, const std::string& arg) {
     if (name == "settings") return openSettings(arg);
     if (name == "hyprsettings") return openHyprSettings(arg);
+    if (name == "desktopedit") return desktopeditor::open(output ? output : focusedOutput());
     // The system monitor lives in Settings now (Ctrl+Alt+Delete, the bar's widget)
     if (name == "sysmon") return openSettings("monitor");
     if (m_popup && !m_popup->closing() && m_popup->name() == name && m_popup->output() == output) {
@@ -556,6 +558,28 @@ void Shell::registerIpc() {
             [this](const IpcServer::Args& a) {
         openSettings(a.empty() ? "" : a[0]);
         return std::string(m_settings && !m_settings->closing() ? "open" : "closed");
+    });
+    ipc.add("desktop", "desktop edit|menu: place the desktop's widgets and shortcuts, or open its menu", [this](const IpcServer::Args& a) {
+        if (!a.empty() && a[0] == "edit") {
+            desktopeditor::open(focusedOutput());
+            return std::string("editing");
+        }
+        if (!a.empty() && a[0] == "menu") {
+            // At the pointer, as a right click on the desktop opens it
+            float x = 100, y = 100;
+            if (auto c = Hyprland::get().requestJson("cursorpos"); c && c->is_object()) {
+                x = c->value("x", 100.0f);
+                y = c->value("y", 100.0f);
+                for (const auto& m : Hyprland::get().monitorGeometry())
+                    if (x >= m.x && x < m.x + m.w && y >= m.y && y < m.y + m.h) {
+                        x -= m.x;
+                        y -= m.y;
+                    }
+            }
+            desktopeditor::menu(focusedOutput(), x, y);
+            return std::string("menu");
+        }
+        return std::string("usage: desktop edit|menu");
     });
     ipc.add("hyprsettings", "hyprsettings [hypr-monitors|hypr-windows|hypr-decoration|hypr-animations|hypr-keybinds|hypr-startup|hypr-environment|hypr-layouts|hypr-input|hypr-gestures|"
                             "hypr-cursor|hypr-groups|hypr-misc|hypr-render|hypr-debug]: Hyprland Settings",
