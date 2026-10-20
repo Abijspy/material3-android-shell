@@ -1,5 +1,15 @@
 # Changelog
 
+## v5.4.0 — 2026-10-20
+
+- **New clock styles.** Desktop widgets add a stacked two-tone clock, a Material You analog clock (a scalloped dial with rounded hands and an orbiting seconds dot) and a minimal analog clock. The lock and login screens offer Stacked, Two-tone, One line, Analog and Minimal analog.
+- **More widget styles** for the desktop, lock and login screens. Calendars: a day tile, a week strip and a month grid. Music: a disc in a wavy progress ring, and a slim bar player. Weather: a big temperature, and a card with the next four days.
+- **Text and widget size.** Look & feel sets the text size of the whole shell, the status bar, and the lock and login screens, plus a Widget size that grows widgets whole. In the desktop editor, each widget also has its own size (− and +).
+- **Blur behind widgets** on the desktop, lock and login screens, with its own strength.
+- **Bar pills:** adjustable corner roundness and border width.
+- **Clearer time and date settings** for the island and the Clock widget: a live preview, "Same for both", and plain choices (24/12-hour, seconds, date and its format).
+- **The lock editor's preview** shrinks a big clock to fit its cell instead of cutting it off.
+
 ## v5.3.3 — 2026-10-20
 
 - **A floating bar.** Settings → Status bar → Style now offers Pills, Full width and **Floating bar**: one bar across the screen that stands off its edges, with round, curved or square ends, its own width (40–100%) and gap from the edge.
