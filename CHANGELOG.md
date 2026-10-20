@@ -1,5 +1,13 @@
 # Changelog
 
+## v5.3.0 — 2026-10-20
+
+- **Desktop widgets and shortcuts.** Put widgets on the desktop (a big clock, the date, a month calendar, weather with the days ahead, the forecast, a music player, system meters, battery and notifications), and shortcuts to apps and files or folders that open with a click.
+- **A desktop editor.** Right-click the desktop → Edit widgets and shortcuts (or Settings → Wallpaper & style): drag each one where you want it, remove it with its corner button, and add more from the toolbar. Places are kept per screen size, so they hold on any resolution.
+- **A right-click menu on the desktop**, as on other systems: edit widgets, change or skip the wallpaper, open a terminal, display settings, personalise, and both settings apps.
+- **Time and date your way.** The island, the bar's clock and the desktop clock each choose a 24- or 12-hour time, with or without seconds, whether to show the date, and its format, all shown as they read right now.
+- **The window title shows its app's icon**, fixed beside the title as it scrolls.
+
 ## v5.2.1 — 2026-10-20
 
 - **Scrolling text loops like a ticker.** Long titles now scroll continuously: the text, a gap, and its beginning again, pausing as the start comes round.
