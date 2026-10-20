@@ -1,5 +1,9 @@
 # Changelog
 
+## v5.4.5 — 2026-10-20
+
+- **A lighter blur behind widgets.** Cards on the desktop, lock and login screens now soften the wallpaper instead of smearing it. Adjust it in Look & feel → Widget blur strength.
+
 ## v5.4.4 — 2026-10-20
 
 - **Ticks you can see.** Switches show their ✓ in every palette; in some dark palettes it had matched the switch and vanished. The chosen accent colour now carries a ✓ too.
