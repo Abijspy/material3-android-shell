@@ -112,6 +112,7 @@ sources = files(
   'src/shell/Tools.cpp',
   'src/shell/Switcher.cpp',
   'src/shell/Welcome.cpp',
+  'src/shell/WidgetStyles.cpp',
   'src/shell/Tooltip.cpp',
   'src/shell/Popup.cpp',
   'src/shell/Shell.cpp',

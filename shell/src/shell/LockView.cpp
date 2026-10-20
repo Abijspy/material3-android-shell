@@ -9,6 +9,7 @@
 #include "services/Weather.h"
 #include "shell/ClockFaces.h"
 #include "shell/LockLayout.h"
+#include "shell/WidgetStyles.h"
 #include "shell/PanelKit.h"
 #include "ui/Theme.h"
 
@@ -308,6 +309,7 @@ private:
 ui::Node* addLockWidget(ui::Node* parent, const std::string& id, bool greeter, int col, float clockScale) {
     if (id == "player") return parent->add<LockPlayer>(greeter);
     const Align align = col == 0 ? Align::Start : col == 1 ? Align::Center : Align::End;
+    if (auto* styled = addStyledWidget(parent, id, greeter, align)) return styled;
     return parent->add<LockWidget>(id, greeter, align, clockScale);
 }
 

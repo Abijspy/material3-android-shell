@@ -15,6 +15,13 @@ const std::vector<Def>& widgets() {
         {"forecast", "date_range", "Forecast", "The next three days"},
         {"media", "music_note", "Media", "Now playing, with controls"},
         {"player", "album", "Music player", "The full player: cover, progress and controls"},
+        {"cal-day", "today", "Day tile", "Today as a big tile"},
+        {"cal-week", "view_week", "Week", "This week, today circled"},
+        {"cal-month", "calendar_view_month", "Month", "This month as a grid"},
+        {"music-disc", "album", "Music disc", "The cover in a wavy progress ring"},
+        {"music-bar", "graphic_eq", "Music bar", "A slim player with wavy progress"},
+        {"weather-big", "thermostat", "Big weather", "The temperature, large"},
+        {"weather-card", "partly_cloudy_day", "Weather card", "Now and the next four days"},
         {"battery", "battery_full", "Battery", "Charge level"},
         {"notifications", "notifications", "Notifications", "How many are waiting"},
     };
