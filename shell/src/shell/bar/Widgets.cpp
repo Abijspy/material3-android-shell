@@ -64,14 +64,24 @@ bool barBlur() {
     return Config::get().value<bool>("/statusBar/blur", true);
 }
 
+void shapePill(Flex* f) {
+    const auto& c = Config::get();
+    const float radius = static_cast<float>(c.value<double>("/statusBar/pillRadius", 100));
+    if (radius >= 100) pill(f);
+    else f->setRadius(Radii(radius));
+    // The Outline highlight has a border even without a width set
+    const bool outline = c.value<std::string>("/statusBar/pillColor", "auto") == "outline";
+    const float border = static_cast<float>(c.value<double>("/statusBar/pillBorder", outline ? 1.5 : 0));
+    if (border > 0) f->setBorder(border, ColorRef(outline ? "outline" : "primary", outline ? 0.7f : 0.85f));
+}
+
 Flex* capsule(Node* parent, bool filled) {
     auto* f = parent->add<Flex>(Flex::Direction::Row);
     f->setPadding({12, 0})->setSpacing(8);
     f->fixedHeight = 32;
     f->collapseWhenEmpty = true;
     if (const auto colour = filled ? pillColour() : std::nullopt) {
-        pill(f->setBackground(*colour, false));
-        if (Config::get().value<std::string>("/statusBar/pillColor", "auto") == "outline") f->setBorder(1.5f, ColorRef("outline", 0.7f));
+        shapePill(f->setBackground(*colour, false));
         f->blurBehind = barBlur();
     }
     return f;

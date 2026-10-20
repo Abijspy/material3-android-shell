@@ -85,6 +85,12 @@ void Theme::loadEffects() {
     ui::motion::scale = std::clamp(static_cast<float>(c.value<double>("/appearance/animationSpeed", 1.0)), 0.0f, 2.0f);
     m_textScale = std::clamp(static_cast<float>(c.value<double>("/accessibility/textScale", 1.0)), 0.85f, 1.5f);
     m_boldText = c.value<bool>("/accessibility/boldText", false);
+    m_widgetBlur = c.value<bool>("/appearance/blur/widgets", true)
+                       ? std::clamp(static_cast<float>(c.value<double>("/appearance/blur/widgetRadius", 18)), 2.0f, 48.0f)
+                       : 0;
+    const char* areas[AreaCount] = {nullptr, "bar", "lock", "widgets"};
+    for (int i = 1; i < AreaCount; ++i)
+        m_areaScale[i] = std::clamp(static_cast<float>(c.value<double>(std::string("/appearance/textScale/") + areas[i], 1.0)), 0.6f, 1.8f);
 }
 
 void Theme::load() {

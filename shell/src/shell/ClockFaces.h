@@ -10,6 +10,18 @@
 // screen
 namespace m3::shell::kit {
 
+// The size widgets are built at: Look & feel → Widget size, times the size
+// of the one being built (a desktop widget's own, set by a scope)
+float widgetScale();
+class WidgetScaleScope {
+public:
+    explicit WidgetScaleScope(float scale);
+    ~WidgetScaleScope();
+
+private:
+    float m_previous;
+};
+
 // Ticks once a second, on the second, while it lives
 class SecondTicker {
 public:

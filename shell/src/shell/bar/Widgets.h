@@ -31,6 +31,8 @@ protected:
 std::optional<ColorRef> pillColour();
 // Blur behind the bar: on in Look & feel, and for the bar
 bool barBlur();
+// A pill's shape: its corners and border (Settings → Status bar → Pills)
+void shapePill(ui::Flex* pill);
 
 // A rounded module background, in the pill colour; transparent with none,
 // or when `filled` is false (widgets inside a group's capsule)

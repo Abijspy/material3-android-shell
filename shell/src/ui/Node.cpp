@@ -102,6 +102,8 @@ void Node::paint(Renderer& r) {
     if (o < 1) r.pushOpacity(o);
     const bool moved = dx != 0 || dy != 0;
     if (moved) r.pushTranslate(dx, dy);
+    // On the desktop and lock screen, the card's backdrop blurred in the frame
+    if (blurBehind && r.inlineBlur > 0) r.blurBackdrop(m_rect, r.inlineBlur, Radii(cornerRadius()));
     doPaint(r);
     if (clipsChildren()) r.pushClip(m_rect);
     for (auto& c : m_children) c->paint(r);
@@ -373,7 +375,17 @@ TextStyle Label::style() const {
     s.family = !m_family.empty() ? m_family : Theme::get().fontFamily();
     // Accessibility: larger and bolder text (icons keep their size and grade)
     const auto& theme = Theme::get();
-    s.size = m_icon ? m_size : std::round(m_size * theme.textScale());
+    // Each part of the shell it sits in (the lock screen, a widget on it).
+    // Icons keep their size, except in widgets, which grow whole
+    float scale = theme.textScale(), iconScale = 1;
+    for (const Node* n = this; n; n = n->parentNode()) {
+        if (n->textArea) scale *= theme.areaScale(n->textArea);
+        if (n->textArea == Theme::AreaWidgets) iconScale *= theme.areaScale(n->textArea);
+        scale *= n->textMul;
+        iconScale *= n->textMul;
+        if (n->ownTextSize) break;
+    }
+    s.size = std::round(m_size * (m_icon ? iconScale : scale));
     s.weight = !m_icon && theme.boldText() ? std::min(900, m_weight + 200) : m_weight;
     s.maxWidth = m_maxWidth;
     s.maxLines = m_maxLines;

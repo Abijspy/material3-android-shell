@@ -347,8 +347,7 @@ void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
     if (id == "workspaces") {
         auto* ws = zone->add<Workspaces>(m_output->name);
         if (const auto colour = filled ? pillColour() : std::nullopt) {
-            pill(ws->setBackground(*colour, false));
-            if (Config::get().value<std::string>("/statusBar/pillColor", "auto") == "outline") ws->setBorder(1.5f, ColorRef("outline", 0.7f));
+            shapePill(ws->setBackground(*colour, false));
             ws->blurBehind = barBlur();
         }
     } else if (id == "title") {
@@ -419,6 +418,7 @@ void Bar::rebuild() {
 
     auto root = std::make_unique<BarLayout>();
     auto* bg = root.get();
+    bg->textArea = Theme::AreaBar;
     // Right click on empty bar space: edit the bar in place
     bg->onContextMenu = [] {
         if (panels::editBar) panels::editBar(true);

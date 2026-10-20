@@ -45,6 +45,12 @@ public:
     // logical px) at its top edge or its bottom edge and sharp at the
     // other: scrolled content softening as it meets a pane's edge
     void blurEdge(const RectF& r, float radius, bool strongAtTop);
+    // What's been drawn under `r`, blurred evenly and put back with rounded
+    // corners: behind cards on surfaces that draw their own wallpaper
+    void blurBackdrop(const RectF& r, float radius, Radii radii);
+    // Set by a surface while it paints: blurBehind nodes blur what's under
+    // them in the frame itself (0: the compositor does it)
+    float inlineBlur = 0;
 
     // Multiplies every colour drawn until popped (fades, disabled states)
     void pushOpacity(float o);
@@ -87,6 +93,12 @@ private:
         GLuint id = 0;
         GLint viewport, rect, tex, step, radius, top;
     } m_blurProg;
+    struct BackdropProgram {
+        GLuint id = 0;
+        GLint viewport, rect, radii, px, tex;
+    } m_backdropProg;
+    GLuint m_blurred2 = 0;
+    int m_blurred2W = 0, m_blurred2H = 0;
     GLuint m_quad = 0;
     // blurEdge: the copy of the frame under it, and its first pass
     GLuint m_backdrop = 0, m_blurred = 0, m_blurFbo = 0;

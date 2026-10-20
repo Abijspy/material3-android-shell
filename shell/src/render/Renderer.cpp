@@ -119,12 +119,12 @@ uniform vec4 u_rect;
 uniform sampler2D u_tex;
 uniform vec2 u_step;     // one texture pixel along this pass's direction, in uv
 uniform float u_radius;  // device px at the strong edge
-uniform float u_top;     // 1: strong at the top, 0: at the bottom
+uniform float u_top;     // 1: strong at the top, 0: at the bottom, 2: even
 varying vec2 v_local;
 void main() {
     vec2 uv = v_local / u_rect.zw;
-    float s = mix(uv.y, 1.0 - uv.y, u_top);
-    s = s * s * (3.0 - 2.0 * s);
+    float s = mix(uv.y, 1.0 - uv.y, min(u_top, 1.0));
+    s = u_top > 1.5 ? 1.0 : s * s * (3.0 - 2.0 * s);
     float sigma = max(u_radius * s * 0.5, 0.001);
     vec2 at = vec2(uv.x, 1.0 - uv.y);
     // 33 taps over ±3 sigma; linear filtering fills between them
@@ -138,6 +138,36 @@ void main() {
         total += w;
     }
     gl_FragColor = sum / total;
+}
+)";
+
+// A blurred copy of the frame (framebuffer rows, bottom-up, RGBA) drawn back
+// with rounded corners, behind a widget's card
+const char* kBackdropFragment = R"(
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform vec4 u_rect;
+uniform vec4 u_radii;
+uniform float u_px;
+uniform sampler2D u_tex;
+varying vec2 v_local;
+
+float sdRoundBox(vec2 p, vec2 halfSize, float r) {
+    vec2 q = abs(p) - halfSize + r;
+    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+}
+
+void main() {
+    vec2 halfSize = u_rect.zw * 0.5;
+    vec2 p = v_local - halfSize;
+    float r = p.x < 0.0 ? (p.y < 0.0 ? u_radii.x : u_radii.w) : (p.y < 0.0 ? u_radii.y : u_radii.z);
+    r = min(r, min(halfSize.x, halfSize.y));
+    float coverage = clamp(0.5 - sdRoundBox(p, halfSize, r) / u_px, 0.0, 1.0);
+    vec2 uv = v_local / u_rect.zw;
+    gl_FragColor = texture2D(u_tex, vec2(uv.x, 1.0 - uv.y)) * coverage;
 }
 )";
 
@@ -218,6 +248,14 @@ bool Renderer::buildPrograms() {
     m_maskProg.id = link(kVertex, kMaskFragment);
     m_imageProg.id = link(kVertex, kImageFragment);
     m_blurProg.id = link(kVertex, kBlurFragment);
+    m_backdropProg.id = link(kVertex, kBackdropFragment);
+    if (auto& d = m_backdropProg; d.id) {
+        d.viewport = glGetUniformLocation(d.id, "u_viewport");
+        d.rect = glGetUniformLocation(d.id, "u_rect");
+        d.radii = glGetUniformLocation(d.id, "u_radii");
+        d.px = glGetUniformLocation(d.id, "u_px");
+        d.tex = glGetUniformLocation(d.id, "u_tex");
+    }
     if (!m_rectProg.id || !m_maskProg.id || !m_imageProg.id) return false;
 
     auto& b = m_blurProg;
@@ -412,6 +450,82 @@ void Renderer::blurEdge(const RectF& r, float radius, bool strongAtTop) {
     glUniform2f(p.step, 0, 1.0f / static_cast<float>(h));
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     glEnable(GL_BLEND);
+}
+
+void Renderer::blurBackdrop(const RectF& r, float radius, Radii radii) {
+    if (!m_blurProg.id || !m_backdropProg.id || radius <= 0.25f || r.w <= 0 || r.h <= 0) return;
+    const auto [ox, oy] = m_offsets.back();
+    const int x0 = std::max(0, static_cast<int>(std::floor((r.x + ox) * m_scale)));
+    const int y0 = std::max(0, static_cast<int>(std::floor((r.y + oy) * m_scale)));
+    const int x1 = std::min(m_bufferWidth, static_cast<int>(std::ceil((r.right() + ox) * m_scale)));
+    const int y1 = std::min(m_bufferHeight, static_cast<int>(std::ceil((r.bottom() + oy) * m_scale)));
+    const int w = x1 - x0, h = y1 - y0;
+    if (w <= 0 || h <= 0) return;
+
+    auto texture = [w, h](GLuint& t, int& tw, int& th) {
+        if (!t) {
+            glGenTextures(1, &t);
+            glBindTexture(GL_TEXTURE_2D, t);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        }
+        glBindTexture(GL_TEXTURE_2D, t);
+        if (tw != w || th != h) {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            tw = w;
+            th = h;
+        }
+    };
+    int bw = 0, bh = 0; // the copy is sized by glCopyTexImage2D itself
+    texture(m_backdrop, bw, bh);
+    glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, x0, m_bufferHeight - y1, w, h, 0);
+    texture(m_blurred, m_blurredW, m_blurredH);
+    texture(m_blurred2, m_blurred2W, m_blurred2H);
+    if (!m_blurFbo) glGenFramebuffers(1, &m_blurFbo);
+
+    const GLboolean scissor = glIsEnabled(GL_SCISSOR_TEST);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_BLEND);
+    auto& p = m_blurProg;
+    glUseProgram(p.id);
+    glUniform1i(p.tex, 0);
+    glUniform1f(p.radius, radius * m_scale);
+    glUniform1f(p.top, 2.0f); // even all over
+    glUniform2f(p.viewport, static_cast<float>(w), static_cast<float>(h));
+    glUniform4f(p.rect, 0, 0, static_cast<float>(w), static_cast<float>(h));
+    glActiveTexture(GL_TEXTURE0);
+    glBindFramebuffer(GL_FRAMEBUFFER, m_blurFbo);
+    glViewport(0, 0, w, h);
+    bool ok = true;
+    // Across, then down: backdrop → blurred → blurred2
+    for (auto [from, to, step] : {std::tuple{m_backdrop, m_blurred, 0}, std::tuple{m_blurred, m_blurred2, 1}}) {
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, to, 0);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            ok = false;
+            break;
+        }
+        glBindTexture(GL_TEXTURE_2D, from);
+        glUniform2f(p.step, step ? 0 : 1.0f / static_cast<float>(w), step ? 1.0f / static_cast<float>(h) : 0);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, m_bufferWidth, m_bufferHeight);
+    glEnable(GL_BLEND);
+    if (scissor) glEnable(GL_SCISSOR_TEST);
+    if (!ok) return;
+
+    // Back where it came from, rounded like the card over it
+    auto& d = m_backdropProg;
+    glUseProgram(d.id);
+    glUniform2f(d.viewport, m_bufferWidth / m_scale, m_bufferHeight / m_scale);
+    glUniform4f(d.rect, x0 / m_scale, y0 / m_scale, w / m_scale, h / m_scale);
+    glUniform4f(d.radii, radii.tl, radii.tr, radii.br, radii.bl);
+    glUniform1f(d.px, 1.0f / m_scale);
+    glBindTexture(GL_TEXTURE_2D, m_blurred2);
+    glUniform1i(d.tex, 0);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
 void Renderer::pushOpacity(float o) {

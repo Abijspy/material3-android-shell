@@ -115,6 +115,15 @@ public:
     // The compositor blurs what is behind this node's rect (translucent
     // cards); the surface collects these into its blur region after layout
     bool blurBehind = false;
+    // The part of the shell this subtree is (Theme::TextArea), for its own
+    // text size on top of the shell's; 0 inherits
+    uint8_t textArea = 0;
+    // This subtree's own size (a desktop widget's): its text and, inside
+    // widgets, its icons
+    float textMul = 1;
+    // Sized on its own: the parts above it don't scale its text (the lock
+    // screen's clock, which has its own size)
+    bool ownTextSize = false;
     virtual float cornerRadius() const { return 0; }
 
     void setVisible(bool v);

@@ -5,6 +5,7 @@
 #include "core/Signal.h"
 
 #include <functional>
+#include <cstdint>
 #include <map>
 #include <string>
 #include <vector>
@@ -30,7 +31,12 @@ public:
     float panelOpacity() const { return m_panelOpacity; } // popups, toasts, OSD
     float roundness() const { return m_roundness; }       // multiplies corner radii
     float textScale() const { return m_textScale; }       // Accessibility → Text size
+    // Text sizes of parts of the shell (Look & feel → Text size), times the
+    // shell's: a node's textArea picks one
+    enum TextArea : uint8_t { AreaNone, AreaBar, AreaLock, AreaWidgets, AreaCount };
+    float areaScale(uint8_t area) const { return area < AreaCount ? m_areaScale[area] : 1; }
     bool boldText() const { return m_boldText; }          // Accessibility → Bold text
+    float widgetBlur() const { return m_widgetBlur; }     // radius behind desktop and lock widgets; 0: off
 
     Signal<> changed;
 
@@ -44,6 +50,8 @@ private:
     bool m_blur = true;
     float m_barOpacity = 0.8f, m_panelOpacity = 0.9f, m_roundness = 1, m_textScale = 1;
     bool m_boldText = false;
+    float m_areaScale[AreaCount] = {1, 1, 1, 1};
+    float m_widgetBlur = 18;
 };
 
 } // namespace m3

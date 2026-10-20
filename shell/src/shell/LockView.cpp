@@ -144,6 +144,7 @@ private:
     Flex* chip() {
         auto* c = add<Flex>(Direction::Row);
         pill(c->setBackground(ColorRef("surface_container_high", 0.75f), false))->setPadding({16, 8})->setSpacing(8);
+        c->blurBehind = true;
         return c;
     }
     void tick() {
@@ -294,6 +295,7 @@ public:
         }
         auto* card = add<kit::MediaCard>();
         card->fixedWidth = 380;
+        card->blurBehind = true;
         m_conn = Mpris::get().changed.connect([this] { sync(); });
         sync();
     }
@@ -314,6 +316,7 @@ ui::Node* addLockWidget(ui::Node* parent, const std::string& id, bool greeter, i
 }
 
 LockView::LockView(Options options) : Flex(Direction::Column), m_options(std::move(options)) {
+    textArea = Theme::AreaLock; // the login screen's too
     setJustify(Align::Center)->setAlignItems(Align::Center)->setSpacing(0);
     if (m_options.users.empty()) m_options.users.push_back({m_options.user, auth::realName(m_options.user)});
     for (size_t i = 0; i < m_options.users.size(); ++i)
@@ -327,7 +330,13 @@ LockView::LockView(Options options) : Flex(Direction::Column), m_options(std::mo
     // with the greeter through its synced copy of config.json)
     auto* grid = add<LockGrid>();
     grid->alignSelf = Align::Stretch;
-    for (const auto& it : lockgrid::load()) grid->place(addLockWidget(grid, it.id, m_options.greeter, it.col), it.col, it.row);
+    for (const auto& it : lockgrid::load()) {
+        auto* w = addLockWidget(grid, it.id, m_options.greeter, it.col);
+        // The clock keeps its own size (Settings → Lock screen → Clock)
+        if (it.id != "clock") w->textArea = Theme::AreaWidgets;
+        else w->ownTextSize = true;
+        grid->place(w, it.col, it.row);
+    }
 
     auto* spacer = add<Node>();
     spacer->minHeight = 72;

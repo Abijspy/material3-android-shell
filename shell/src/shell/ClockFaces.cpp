@@ -13,7 +13,22 @@ namespace m3::shell::kit {
 
 using namespace m3::ui;
 
-// Ticks once a second, on the second, while it's shown
+namespace {
+float g_itemScale = 1;
+}
+
+float widgetScale() {
+    return Theme::get().areaScale(Theme::AreaWidgets) * g_itemScale;
+}
+
+WidgetScaleScope::WidgetScaleScope(float scale) : m_previous(g_itemScale) {
+    g_itemScale = scale;
+}
+
+WidgetScaleScope::~WidgetScaleScope() {
+    g_itemScale = m_previous;
+}
+
 SecondTicker::SecondTicker(std::function<void()> tick) : m_tick(std::move(tick)) {
     schedule();
 }

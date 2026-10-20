@@ -24,8 +24,7 @@ constexpr float kPadding = 14;
 Island::Island(OpenPopup open) : Button(Direction::Row), m_open(std::move(open)) {
     pill(this);
     if (const auto colour = pillColour()) {
-        setBackground(*colour, false);
-        if (Config::get().value<std::string>("/statusBar/pillColor", "auto") == "outline") setBorder(1.5f, ColorRef("outline", 0.7f));
+        shapePill(setBackground(*colour, false));
         blurBehind = barBlur();
     }
     fixedHeight = 32;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/Node.h"
+#include "ui/Theme.h"
 
 #include <functional>
 #include <string>
@@ -17,6 +18,7 @@ struct Item {
     std::string kind; // "widget", "app" (a desktop id) or "file" (a path)
     std::string id;
     float x = 0.05f, y = 0.2f; // top-left, as fractions of the screen
+    float scale = 1;           // its own size (the editor's − and +)
 };
 
 struct WidgetDef {
@@ -42,6 +44,7 @@ ui::Node* build(ui::Node* parent, const Item& item, bool editing);
 // Places its children at fractions of its own size, each kept inside it
 class Board : public ui::Node {
 public:
+    Board() { textArea = Theme::AreaWidgets; } // Look & feel → Text size → Widgets
     std::vector<std::pair<float, float>> spots; // one per child, in order
     // After each arrangement (the desktop sets its input region from it)
     std::function<void()> onArranged;

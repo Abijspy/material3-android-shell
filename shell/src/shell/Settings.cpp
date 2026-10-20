@@ -676,6 +676,9 @@ void stylePage(Flex* page, Popup&) {
               "/appearance/blur/enabled", true);
     sliderRow(fx, "blur_medium", "Blur strength", "/appearance/blur/size", 12, 2, 20, 1,
               [](double v) { return std::format("Radius {:.0f} · applies to windows too", v); });
+    switchRow(fx, "wallpaper", "Blur behind widgets", "On the desktop, the lock screen and the login screen", "/appearance/blur/widgets", true);
+    sliderRow(fx, "blur_circular", "Widget blur strength", "/appearance/blur/widgetRadius", 18, 4, 40, 1,
+              [](double v) { return std::format("Radius {:.0f}", v); });
     choiceRow<int>(fx, "layers", "Smoothness", "More passes: softer, and more work for the GPU", "/appearance/blur/passes", 3,
                    {{1, "1"}, {2, "2"}, {3, "3"}, {4, "4"}});
     auto fine = [](double v) { return std::format("{:.2f}", v); };
@@ -685,6 +688,14 @@ void stylePage(Flex* page, Popup&) {
     sliderRow(fx, "palette", "Vibrancy", "/appearance/blur/vibrancy", 0.1696, 0, 1, 0.02, fine);
     sliderRow(fx, "toolbar", "Bar opacity", "/appearance/transparency/bar", 0.7, 0.3, 1, 0.05, percent);
     sliderRow(fx, "select_window", "Panel opacity", "/appearance/transparency/panels", 0.72, 0.3, 1, 0.05, percent);
+
+    // Text size: the shell's (Accessibility's), and each part's on top of it
+    auto* text = group(page, "Text & widget size", "The shell's text size applies everywhere; the others adjust one part on top of it. Widget size grows widgets whole, on the desktop, lock and login screens (each desktop widget also has its own, in the desktop editor)");
+    auto scaleText = [](double v) { return std::format("{:.0f}%", v * 100); };
+    sliderRow(text, "format_size", "Whole shell", "/accessibility/textScale", 1.0, 0.85, 1.5, 0.05, scaleText);
+    sliderRow(text, "toolbar", "Status bar", "/appearance/textScale/bar", 1.0, 0.7, 1.4, 0.05, scaleText);
+    sliderRow(text, "lock", "Lock & login screen", "/appearance/textScale/lock", 1.0, 0.7, 1.6, 0.05, scaleText);
+    sliderRow(text, "widgets", "Widget size", "/appearance/textScale/widgets", 1.0, 0.6, 1.8, 0.05, scaleText);
 
     auto* shape = group(page, "Shape & motion");
     choiceRow<double>(shape, "rounded_corner", "Corners", "Every card, button and panel", "/appearance/roundness", 1.0,
@@ -697,6 +708,7 @@ void stylePage(Flex* page, Popup&) {
     pillButton(r.row, "Reset", false, [] {
         for (const char* key : {"/appearance/blur/enabled", "/appearance/blur/size", "/appearance/blur/passes", "/appearance/blur/noise",
                                 "/appearance/blur/contrast", "/appearance/blur/brightness", "/appearance/blur/vibrancy",
+                                "/appearance/blur/widgets", "/appearance/blur/widgetRadius", "/appearance/textScale",
                                 "/appearance/transparency/bar",
                                 "/appearance/transparency/panels", "/appearance/roundness", "/appearance/animationSpeed"})
             Config::get().set(key, nullptr);
@@ -729,6 +741,11 @@ void barPage(Flex* page, Popup&) {
     choiceRow<std::string>(look, "highlight", "Pill highlight", "", "/statusBar/pillColor", "auto",
                            {{"auto", "Auto"}, {"none", "None"}, {"surface", "Surface"}, {"tonal", "Tonal"}, {"accent", "Accent"},
                             {"outline", "Outline"}});
+    sliderRow(look, "rounded_corner", "Pill corners", "/statusBar/pillRadius", 100, 0, 100, 2,
+              [](double v) { return v >= 100 ? std::string("Fully round") : std::format("{:.0f} px", v); });
+    sliderRow(look, "border_style", "Pill border", "/statusBar/pillBorder",
+              Config::get().value<std::string>("/statusBar/pillColor", "auto") == "outline" ? 1.5 : 0, 0, 4, 0.5,
+              [](double v) { return v <= 0 ? std::string("None") : std::format("{:.1f} px", v); });
     switchRow(look, "blur_on", "Blur behind the bar", Theme::get().blur() ? "" : "Blur is off in Look & feel", "/statusBar/blur", true);
     sliderRow(look, "opacity", "Bar opacity", "/appearance/transparency/bar", 0.7, 0.3, 1, 0.05, percent);
     auto more = row(look, "blur_medium", "Blur strength and look", "Shared by the shell and windows");
@@ -2353,6 +2370,10 @@ void lockScreenPage(Flex* page, Popup& popup) {
                             {"dots", "Minimal analog"}});
     choiceRow<int>(clock, "format_bold", "Weight", "", "/lock/clock/weight", 400, {{300, "Light"}, {400, "Regular"}, {600, "Bold"}});
     sliderRow(clock, "format_size", "Size", "/lock/clock/size", 150, 72, 200, 4, [](double v) { return std::format("{:.0f} px", v); });
+    auto scaleText = [](double v) { return std::format("{:.0f}%", v * 100); };
+    auto* lockText = group(page, "Text & widget size", "Also in Look & feel, beside the shell's and the bar's");
+    sliderRow(lockText, "lock", "Lock & login screen", "/appearance/textScale/lock", 1.0, 0.7, 1.6, 0.05, scaleText);
+    sliderRow(lockText, "widgets", "Widget size", "/appearance/textScale/widgets", 1.0, 0.6, 1.8, 0.05, scaleText);
 
     // Layout: a board of the lock screen's grid over the wallpaper
     auto* live = page->add<Live>();

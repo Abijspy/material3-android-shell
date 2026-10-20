@@ -30,6 +30,9 @@ struct Output;
 class Surface : public ui::Host {
 public:
     explicit Surface(Output* output);
+    // It draws its own wallpaper (the desktop, the lock and login screens):
+    // blurBehind cards are blurred in the frame, not by the compositor
+    bool inlineBlur = false;
     ~Surface() override;
 
     Surface(const Surface&) = delete;

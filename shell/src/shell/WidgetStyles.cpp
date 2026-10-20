@@ -88,6 +88,7 @@ private:
 
     std::string m_id;
     bool m_greeter;
+    float m_k = widgetScale(); // Widget size
     EventLoop::TimerId m_timer = 0;
     std::unique_ptr<SecondTicker> m_ticker;
     WavyProgress* m_progress = nullptr;
@@ -164,11 +165,11 @@ void Styled::calendarWeek() {
         const bool isToday = i == fromMonday;
         auto* col = row->add<Flex>(Flex::Direction::Column);
         col->setAlignItems(Align::Center)->setSpacing(6);
-        col->fixedWidth = 44;
+        col->fixedWidth = 44 * m_k;
         col->add<Label>(format("%a", d).substr(0, 1))->setSize(12)->setWeight(600)->setColor(isToday ? "primary" : "on_surface_variant", false);
         auto* num = col->add<Flex>(Flex::Direction::Row);
         pill(num)->setJustify(Align::Center);
-        num->fixedWidth = num->fixedHeight = 36;
+        num->fixedWidth = num->fixedHeight = 36 * m_k;
         if (isToday) num->setBackground("primary", false);
         num->add<Label>(format("%-d", d))->setSize(15)->setWeight(isToday ? 700 : 500)->setColor(isToday ? "on_primary" : "on_surface", false);
     }
@@ -180,11 +181,12 @@ void Styled::calendarMonth() {
     auto* c = card(this);
     c->setSpacing(4)->setPadding({16, 14});
     c->add<Label>(format("%B %Y", today))->setSize(16)->setWeight(600)->setColor("primary", false);
-    auto cell = [](Node* parent, const std::string& text, bool header, bool isToday, bool dim) {
+    const float k = m_k;
+    auto cell = [k](Node* parent, const std::string& text, bool header, bool isToday, bool dim) {
         auto* f = parent->add<Flex>(Flex::Direction::Row);
         pill(f)->setJustify(Align::Center);
-        f->fixedWidth = 36;
-        f->fixedHeight = header ? 22 : 32;
+        f->fixedWidth = 36 * k;
+        f->fixedHeight = (header ? 22 : 32) * k;
         if (isToday) f->setBackground("primary", false);
         f->add<Label>(text)
             ->setSize(header ? 11 : 13)
@@ -243,19 +245,19 @@ Flex* Styled::controls(Node* parent, const Mpris::Player& p, float big) {
 void Styled::musicDisc(const Mpris::Player& p) {
     auto* col = add<Flex>(Flex::Direction::Column);
     col->setAlignItems(Align::Center)->setSpacing(8);
-    auto* ring = col->add<WavyRing>(176);
-    ring->add<ArtView>(Mpris::get().artPath(p), 144, 72);
+    auto* ring = col->add<WavyRing>(176 * m_k);
+    ring->add<ArtView>(Mpris::get().artPath(p), 144 * m_k, 72 * m_k);
     col->add<Label>(p.title.empty() ? p.identity : p.title)->setSize(18)->setWeight(600)->setMaxWidth(280)->setColor("on_surface", false);
     if (!p.artist.empty()) col->add<Label>(p.artist)->setSize(14)->setMaxWidth(280)->setColor("on_surface_variant", false);
-    controls(col, p, 52);
+    controls(col, p, 52 * m_k);
 }
 
 // A slim bar: cover, song, wavy progress and play/pause beside it
 void Styled::musicBar(const Mpris::Player& p) {
     auto* bar = card(this, Flex::Direction::Row);
     bar->setRadius(Radii(32))->setPadding({10, 10, 14, 10})->setSpacing(14)->setAlignItems(Align::Center);
-    bar->fixedWidth = 440;
-    bar->add<ArtView>(Mpris::get().artPath(p), 64, 20);
+    bar->fixedWidth = 440 * m_k;
+    bar->add<ArtView>(Mpris::get().artPath(p), 64 * m_k, 20 * m_k);
     auto* text = bar->add<Flex>(Flex::Direction::Column);
     text->setSpacing(2)->setAlignItems(Align::Stretch);
     text->grow = true;
@@ -268,14 +270,14 @@ void Styled::musicBar(const Mpris::Player& p) {
     row->setSpacing(4);
     auto* play = row->add<Button>();
     pill(play)->setJustify(Align::Center)->setBackground("primary", false);
-    play->fixedWidth = play->fixedHeight = 44;
+    play->fixedWidth = play->fixedHeight = 44 * m_k;
     play->add<Icon>(p.status == "Playing" ? "pause" : "play_arrow", 24)->setColor("on_primary", false);
     play->onClicked = [](uint32_t b) {
         if (b == BTN_LEFT) Mpris::get().playPause();
     };
     auto* next = row->add<Button>();
     pill(next)->setJustify(Align::Center);
-    next->fixedWidth = next->fixedHeight = 40;
+    next->fixedWidth = next->fixedHeight = 40 * m_k;
     next->add<Icon>("skip_next", 22)->setColor("on_surface", false);
     next->onClicked = [](uint32_t b) {
         if (b == BTN_LEFT) Mpris::get().next();
@@ -302,7 +304,7 @@ void Styled::weatherBig() {
 void Styled::weatherCard() {
     auto& w = Weather::get();
     auto* c = card(this);
-    c->fixedWidth = 360;
+    c->fixedWidth = 360 * m_k;
     c->setSpacing(12)->setPadding({20, 18})->setAlignItems(Align::Stretch);
     auto* top = c->add<Flex>(Flex::Direction::Row);
     top->setAlignItems(Align::Center);

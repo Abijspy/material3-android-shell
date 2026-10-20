@@ -48,6 +48,7 @@ void LockScreen::lock() {
 void LockScreen::addOutput(wl::Output* output) {
     if (!m_lock || m_surfaces.contains(output)) return;
     auto surface = std::make_unique<wl::LockSurface>(output, m_lock);
+    surface->inlineBlur = true; // the widgets blur its own wallpaper
     LockView::Options opts;
     opts.user = auth::currentUser();
     opts.wallpaper = Wallpaper::get().lockPath();

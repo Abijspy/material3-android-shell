@@ -132,6 +132,7 @@ void Greeter::addOutput(wl::Output* output) {
     o.exclusiveZone = -1; // cover everything
     o.keyboard = wl::LayerSurface::Keyboard::OnDemand;
     auto surface = std::make_unique<wl::LayerSurface>(output, o);
+    surface->inlineBlur = true; // the widgets blur its own wallpaper
 
     shell::LockView::Options opts;
     opts.greeter = true;

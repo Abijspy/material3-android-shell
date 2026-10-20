@@ -116,6 +116,7 @@ Desktop::Desktop(wl::Output* output) {
     o.anchor = wl::LayerSurface::Top | wl::LayerSurface::Bottom | wl::LayerSurface::Left | wl::LayerSurface::Right;
     o.exclusiveZone = -1; // under the bar too
     m_surface = std::make_unique<wl::LayerSurface>(output, o);
+    m_surface->inlineBlur = true; // under the widgets is its own wallpaper
     auto root = std::make_unique<Node>();
     root->add<WallpaperNode>();
     // Its empty space takes the right click (the menu); the items above it

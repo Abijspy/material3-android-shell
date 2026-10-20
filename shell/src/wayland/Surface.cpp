@@ -256,7 +256,9 @@ void Surface::render() {
 
     auto& r = Renderer::get();
     r.begin(m_eglSurface, bufferWidth(), bufferHeight(), m_scale);
+    r.inlineBlur = inlineBlur && Theme::get().widgetBlur() > 0 ? Theme::get().widgetBlur() : 0;
     if (m_root) m_root->paint(r);
+    r.inlineBlur = 0;
     const auto t2 = Clock::now();
     // Painting may flag more work (running animations); that becomes the next frame
     m_dirty = m_dirty || (m_root && m_root->animating());

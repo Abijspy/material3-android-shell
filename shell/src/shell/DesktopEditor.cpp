@@ -13,6 +13,7 @@
 #include "wayland/LayerSurface.h"
 
 #include <algorithm>
+#include <format>
 #include <cmath>
 #include <linux/input-event-codes.h>
 #include <memory>
@@ -36,11 +37,13 @@ public:
 
     Node* content = nullptr;
     Button* remove = nullptr;
+    Flex* resize = nullptr; // − and +, under its bottom-left corner
 
     bool interactive() const override { return true; }
     Node* hitTest(float x, float y, bool any) override {
         if (!shown() || !rect().contains(x, y)) return nullptr;
         if (remove && remove->rect().contains(x, y)) return remove->hitTest(x, y, any);
+        if (resize && resize->rect().contains(x, y)) return resize->hitTest(x, y, any);
         return this; // the item itself doesn't get clicks while editing
     }
     void onPress(uint32_t button, float x, float y) override {
@@ -80,6 +83,10 @@ protected:
         const auto& b = rect();
         if (content) content->arrange({b.x + 8, b.y + 8, b.w - 16, b.h - 16});
         if (remove) remove->arrange({b.right() - 30, b.y - 6, 36, 36});
+        if (resize) {
+            const SizeF s = resize->measure({b.w, 40});
+            resize->arrange({b.x - 6, b.bottom() - s.h + 6, s.w, s.h});
+        }
     }
     void doPaint(Renderer& r) override {
         const auto& t = Theme::get();
@@ -148,6 +155,27 @@ public:
                 EventLoop::get().defer([this] { fill(); });
             };
             card->remove = x;
+            // Its size: smaller or larger, a tenth at a time
+            auto* size = card->add<Flex>(Flex::Direction::Row);
+            pill(size->setBackground("secondary_container", false))->setPadding({4, 2})->setSpacing(2)->setAlignItems(Align::Center);
+            auto step = [this, i, size](const char* icon, float by) {
+                auto* b = size->add<Button>();
+                pill(b)->setJustify(Align::Center);
+                b->fixedWidth = b->fixedHeight = 30;
+                b->add<Icon>(icon, 18)->setColor("on_secondary_container", false);
+                b->onClicked = [this, i, by](uint32_t button) {
+                    if (button != BTN_LEFT) return;
+                    auto list = desktop::load();
+                    if (i >= list.size()) return;
+                    list[i].scale = std::clamp(std::round((list[i].scale + by) * 10) / 10, 0.5f, 2.5f);
+                    desktop::save(list);
+                    EventLoop::get().defer([this] { fill(); });
+                };
+            };
+            step("remove", -0.1f);
+            size->add<Label>(std::format("{:.0f}%", items[i].scale * 100))->setSize(12)->setWeight(600)->setColor("on_secondary_container", false);
+            step("add", 0.1f);
+            card->resize = size;
             m_board->spots.push_back({items[i].x, items[i].y});
         }
         requestLayout();

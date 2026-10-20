@@ -106,7 +106,7 @@ class AnalogClock : public Flex {
 public:
     explicit AnalogClock(kit::AnalogFace::Style style) : Flex(Direction::Column) {
         setAlignItems(Align::Center)->setSpacing(14);
-        add<kit::AnalogFace>(style, 220);
+        add<kit::AnalogFace>(style, 220 * kit::widgetScale());
         auto& c = Config::get();
         auto* date = add<Label>(Clock::sample(c.value<std::string>("/desktop/dateFormat", "dddd, d MMMM")));
         date->setSize(18)->setWeight(500)->setColor("on_surface", false);
@@ -147,10 +147,11 @@ Node* shortcut(Node* parent, const std::string& icon, const std::string& name, s
     auto* b = parent->add<Button>(Flex::Direction::Column);
     b->setPadding({6, 8})->setSpacing(6)->setRadius(Radii(18));
     b->pressedRadius = 24;
-    b->fixedWidth = 96;
-    b->add<ImageView>(52, [icon](float scale, int& w, int& h) -> GLuint {
-        auto* t = Images::get().icon(icon, static_cast<int>(std::lround(52 * scale)));
-        if (!t) t = Images::get().icon("application-x-executable", static_cast<int>(std::lround(52 * scale)));
+    const float k = kit::widgetScale();
+    b->fixedWidth = 96 * k;
+    b->add<ImageView>(52 * k, [icon, k](float scale, int& w, int& h) -> GLuint {
+        auto* t = Images::get().icon(icon, static_cast<int>(std::lround(52 * k * scale)));
+        if (!t) t = Images::get().icon("application-x-executable", static_cast<int>(std::lround(52 * k * scale)));
         if (!t) return 0;
         w = t->width;
         h = t->height;
@@ -172,9 +173,10 @@ Node* shortcut(Node* parent, const std::string& icon, const std::string& name, s
 Node* cardWidget(Node* parent, const std::string& id) {
     auto* holder = parent->add<Flex>(Flex::Direction::Column);
     holder->setAlignItems(Align::Stretch);
-    holder->fixedWidth = 340;
-    if (id == "player") holder->add<kit::MediaCard>();
-    else panels::dashboardWidget(holder, id);
+    holder->fixedWidth = 340 * kit::widgetScale();
+    // Each card blurs the wallpaper behind it (Look & feel → Blur)
+    Node* c = id == "player" ? holder->add<kit::MediaCard>() : panels::dashboardWidget(holder, id);
+    if (c) c->blurBehind = true;
     return holder;
 }
 
@@ -215,13 +217,17 @@ std::vector<Item> load() {
     }
     for (const auto& i : j)
         if (i.is_object())
-            out.push_back({i.value("kind", "widget"), i.value("id", ""), i.value("x", 0.05f), i.value("y", 0.2f)});
+            out.push_back({i.value("kind", "widget"), i.value("id", ""), i.value("x", 0.05f), i.value("y", 0.2f), i.value("scale", 1.0f)});
     return out;
 }
 
 void save(const std::vector<Item>& items) {
     nlohmann::json out = nlohmann::json::array();
-    for (const auto& i : items) out.push_back({{"kind", i.kind}, {"id", i.id}, {"x", i.x}, {"y", i.y}});
+    for (const auto& i : items) {
+        nlohmann::json j = {{"kind", i.kind}, {"id", i.id}, {"x", i.x}, {"y", i.y}};
+        if (std::abs(i.scale - 1) > 0.001f) j["scale"] = i.scale;
+        out.push_back(j);
+    }
     Config::get().set("/desktop/items", out);
 }
 
@@ -239,7 +245,9 @@ std::string nameOf(const Item& item) {
     return item.id;
 }
 
-Node* build(Node* parent, const Item& item, bool editing) {
+namespace {
+
+Node* buildItem(Node* parent, const Item& item, bool editing) {
     if (item.kind == "app") {
         const auto* a = appById(item.id);
         const std::string id = item.id;
@@ -260,6 +268,16 @@ Node* build(Node* parent, const Item& item, bool editing) {
     if (item.id == "calendar" || item.id == "weather" || item.id == "system" || item.id == "player") return cardWidget(parent, item.id);
     // The lock screen's widgets: date, forecast, battery, notifications
     return addLockWidget(parent, item.id, false, 0);
+}
+
+} // namespace
+
+Node* build(Node* parent, const Item& item, bool editing) {
+    // Built at its size; its text and icons follow it too
+    const kit::WidgetScaleScope scope(std::clamp(item.scale, 0.5f, 2.5f));
+    Node* node = buildItem(parent, item, editing);
+    if (node) node->textMul = std::clamp(item.scale, 0.5f, 2.5f);
+    return node;
 }
 
 void Board::doArrange() {
