@@ -1,5 +1,10 @@
 # Changelog
 
+## v5.3.1 — 2026-10-20
+
+- **Switch windows with Super+Tab**, as on Windows and macOS: hold Super and tap Tab to step through every open window, on every workspace, most recently used first, shown as a row of app icons with the window's title and workspace. Let go of Super to switch to it (its workspace comes with it); Shift+Tab or the arrows go back, Enter or a click picks one, Escape stays put. A quick Super+Tab flips straight back to the previous window.
+- **The overview moves to Super+`.**
+
 ## v5.3.0 — 2026-10-20
 
 - **Desktop widgets and shortcuts.** Put widgets on the desktop (a big clock, the date, a month calendar, weather with the days ahead, the forecast, a music player, system meters, battery and notifications), and shortcuts to apps and files or folders that open with a click.

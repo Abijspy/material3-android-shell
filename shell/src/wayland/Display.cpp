@@ -321,7 +321,16 @@ void Display::keyboardLeave(wl_surface* surface) {
 }
 
 void Display::modifiers(uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group) {
-    if (m_xkbState) xkb_state_update_mask(m_xkbState, depressed, latched, locked, 0, 0, group);
+    if (!m_xkbState) return;
+    xkb_state_update_mask(m_xkbState, depressed, latched, locked, 0, 0, group);
+    if (!onModifiers) return;
+    auto held = [&](const char* mod) { return xkb_state_mod_name_is_active(m_xkbState, mod, XKB_STATE_MODS_DEPRESSED) > 0; };
+    uint32_t mods = 0;
+    if (held(XKB_MOD_NAME_SHIFT)) mods |= ui::ModShift;
+    if (held(XKB_MOD_NAME_CTRL)) mods |= ui::ModCtrl;
+    if (held(XKB_MOD_NAME_ALT)) mods |= ui::ModAlt;
+    if (held(XKB_MOD_NAME_LOGO)) mods |= ui::ModSuper;
+    onModifiers(mods);
 }
 
 void Display::repeatInfo(int32_t rate, int32_t delay) {

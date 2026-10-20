@@ -1,5 +1,6 @@
 #include "shell/Shell.h"
 #include "shell/DesktopEditor.h"
+#include "shell/Switcher.h"
 #include "shell/Tooltip.h"
 
 #include "build_config.h"
@@ -604,6 +605,11 @@ void Shell::registerIpc() {
     ipc.add("lock", "Lock the session", [](const auto&) {
         LockScreen::get().lock();
         return std::string("locked");
+    });
+    ipc.add("switcher", "switcher [next|prev]: the Super+Tab window switcher", [this](const IpcServer::Args& a) {
+        const int by = !a.empty() && a[0] == "prev" ? -1 : 1;
+        EventLoop::get().defer([this, by] { switcher::step(focusedOutput(), by); });
+        return std::string();
     });
     ipc.add("idle", "idle [inhibit|allow]: keep the screen awake (Caffeine)", [](const IpcServer::Args& a) {
         if (!a.empty()) Idle::get().setInhibited(a[0] == "inhibit");

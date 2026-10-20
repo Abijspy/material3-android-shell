@@ -87,6 +87,9 @@ public:
     void setButtonSerial(uint32_t serial) { m_buttonSerial = serial; }
     void pointerAxis(uint32_t axis, double value);
     void pointerFrame();
+    // The held modifiers changed (ui::Modifier bits): the app switcher ends
+    // when Super is let go
+    std::function<void(uint32_t mods)> onModifiers;
     void pointerAxisSource(uint32_t source);
     void pointerAxisStop(uint32_t axis);
     void keymap(int fd, uint32_t size);

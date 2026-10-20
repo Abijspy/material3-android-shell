@@ -1,5 +1,5 @@
 project('material3ui', 'cpp', 'c',
-  version: '5.3.0',
+  version: '5.3.1',
   license: 'MIT',
   meson_version: '>= 1.1',
   default_options: ['cpp_std=c++20', 'warning_level=2', 'buildtype=debugoptimized'])
@@ -109,6 +109,7 @@ sources = files(
   'src/shell/Settings.cpp',
   'src/shell/SettingsKit.cpp',
   'src/shell/Tools.cpp',
+  'src/shell/Switcher.cpp',
   'src/shell/Tooltip.cpp',
   'src/shell/Popup.cpp',
   'src/shell/Shell.cpp',
