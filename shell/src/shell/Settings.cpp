@@ -699,6 +699,14 @@ void stylePage(Flex* page, Popup&) {
     sliderRow(text, "lock", "Lock & login screen", "/appearance/textScale/lock", 1.0, 0.7, 1.6, 0.05, scaleText);
     sliderRow(text, "widgets", "Widget size", "/appearance/textScale/widgets", 1.0, 0.6, 1.8, 0.05, scaleText);
 
+    // Scrolling in both Settings apps and every panel
+    auto* scrolling = group(page, "Scrolling", "In both Settings apps and every panel that scrolls");
+    switchRow(scrolling, "swipe_vertical", "Smooth scrolling", "Mouse wheel steps glide instead of jumping", "/appearance/scroll/smooth", true);
+    choiceRow<double>(scrolling, "speed", "Scroll speed", "How far a wheel step goes", "/appearance/scroll/step", 64,
+                      {{40, "Slow"}, {64, "Normal"}, {96, "Fast"}, {140, "Faster"}});
+    choiceRow<double>(scrolling, "touchpad_mouse", "Touchpad glide", "How far a flick carries on", "/appearance/scroll/glide", 1.0,
+                      {{0.0, "Off"}, {0.6, "Short"}, {1.0, "Normal"}, {1.5, "Long"}});
+
     auto* shape = group(page, "Shape & motion");
     choiceRow<double>(shape, "rounded_corner", "Corners", "Every card, button and panel", "/appearance/roundness", 1.0,
                       {{0.35, "Sharp"}, {0.7, "Soft"}, {1.0, "Round"}, {1.3, "Extra"}});
@@ -710,7 +718,7 @@ void stylePage(Flex* page, Popup&) {
     pillButton(r.row, "Reset", false, [] {
         for (const char* key : {"/appearance/blur/enabled", "/appearance/blur/size", "/appearance/blur/passes", "/appearance/blur/noise",
                                 "/appearance/blur/contrast", "/appearance/blur/brightness", "/appearance/blur/vibrancy",
-                                "/appearance/blur/widgets", "/appearance/blur/widgetRadius", "/appearance/textScale",
+                                "/appearance/blur/widgets", "/appearance/blur/widgetRadius", "/appearance/textScale", "/appearance/scroll",
                                 "/appearance/transparency/bar",
                                 "/appearance/transparency/panels", "/appearance/roundness", "/appearance/animationSpeed"})
             Config::get().set(key, nullptr);
@@ -1695,9 +1703,29 @@ void mousePage(Flex* page, Popup&) {
 
 // ── System ──
 
-// Settings backups, newest first, each with its time: back up now, restore
-// (two taps; what's there now is backed up first) or delete. The
-// installer's backups are listed too, restored by its own undo.
+// Asks before something that can't be taken back: a strip under the row,
+// saying what will happen, with Cancel and the action in its own colour
+void confirmStrip(Node* parent, const std::string& text, const std::string& action, bool destructive, std::function<void()> yes,
+                  std::function<void()> no) {
+    auto* strip = parent->add<Flex>(Flex::Direction::Row);
+    strip->setPadding({20, 12})->setSpacing(10)->setAlignItems(Align::Center);
+    strip->setBackground(destructive ? "error_container" : "secondary_container", false);
+    strip->add<Icon>(destructive ? "warning" : "help", 22)->setColor(destructive ? "on_error_container" : "on_secondary_container", false);
+    auto* label = strip->add<Label>(text);
+    label->setSize(14)->setMaxWidth(440)->setMaxLines(3)->setColor(destructive ? "on_error_container" : "on_secondary_container", false);
+    label->grow = true;
+    pillButton(strip, "Cancel", false, std::move(no));
+    auto* go = pillButton(strip, action, true, std::move(yes));
+    if (destructive) {
+        go->setBackground("error", false);
+        for (auto& c : go->children())
+            if (auto* l = dynamic_cast<Label*>(c.get())) l->setColor("on_error", false);
+    }
+}
+
+// Settings backups, newest first, each with its date and time: back up now,
+// restore or delete one (each asked first, under its row; a restore saves
+// what's there now before it)
 void backupRows(Flex* page) {
     auto* head = group(page, "Backups", "Your shell and Hyprland settings, also saved before each update, restore and reset");
     auto now = row(head, "backup", "Back up now", "Saved with today's date and time");
@@ -1707,11 +1735,18 @@ void backupRows(Flex* page) {
         Backups::get().create("manual", [status](bool ok) { status->setText(ok ? "Backed up" : "Nothing to back up"); });
     }, "save");
 
+    // Which backup is asking, and what for ("restore" or "delete"), and how
+    // the last restore went
+    struct Ask {
+        std::string path, action, result;
+    };
+    auto ask = std::make_shared<Ask>();
     auto* live = page->add<Live>();
     live->setSpacing(0);
-    live->sync = [live] {
+    live->sync = [live, ask] {
         live->clearChildren();
         const auto all = Backups::get().list();
+        if (!ask->result.empty()) caption(live, ask->result);
         if (all.empty()) {
             caption(live, "No backups yet");
             return;
@@ -1724,38 +1759,50 @@ void backupRows(Flex* page) {
             localtime_r(&e.time, &tm);
             char when[64];
             std::strftime(when, sizeof when, "%a %-d %b %Y, %H:%M", &tm);
-            const std::string why = e.kind == Backups::Kind::Install ? "Before an install: the configs it replaced"
-                                  : e.reason == "before-update"     ? "Before an update"
-                                  : e.reason == "before-restore"    ? "Before a restore"
-                                  : e.reason == "before-reset"      ? "Before a reset"
-                                                                    : "Made by you";
-            const std::string size = e.size < 1024 * 1024 ? std::format("{} KB", std::max<std::uintmax_t>(1, e.size / 1024))
-                                                          : std::format("{:.1f} MB", static_cast<double>(e.size) / (1024.0 * 1024.0));
-            auto r = row(g, e.kind == Backups::Kind::Install ? "deployed_code_history" : e.reason == "manual" ? "bookmark" : "history",
-                         when, why + "  ·  " + size);
-            // Two taps: the first says what it will do
-            auto armed = std::make_shared<bool>(false);
-            auto* restore = pillButton(r.row, "Restore", false, {}, "settings_backup_restore");
-            restore->onClicked = [armed, restore, e](uint32_t b) {
-                if (b != BTN_LEFT) return;
-                if (!*armed) {
-                    *armed = true;
-                    for (auto& c : restore->children())
-                        if (auto* l = dynamic_cast<Label*>(c.get())) l->setText("Tap again to restore");
-                    return;
-                }
-                Backups::get().restore(e);
+            const std::string why = e.reason == "before-update"    ? "Before an update"
+                                  : e.reason == "before-restore" ? "Before a restore"
+                                  : e.reason == "before-reset"   ? "Before a reset"
+                                                                 : "Made by you";
+            const std::string size = std::format("{} KB", std::max<std::uintmax_t>(1, e.size / 1024));
+            auto r = row(g, e.reason == "manual" ? "bookmark" : "history", when, why + "  ·  " + size);
+            const bool asking = ask->path == e.path;
+            auto setAsk = [live, ask, path = e.path](const std::string& action) {
+                ask->path = action.empty() ? "" : path;
+                ask->action = action;
+                ask->result.clear();
+                EventLoop::get().defer([live] { live->syncSoon(); });
             };
-            if (e.kind == Backups::Kind::Settings) {
-                auto* del = r.row->add<Button>();
-                pill(del)->setJustify(Align::Center);
-                del->fixedWidth = del->fixedHeight = 40;
-                del->add<Icon>("delete", 20)->setColor("on_surface_variant", false);
-                del->tooltip = "Delete this backup";
-                del->onClicked = [e](uint32_t b) {
-                    if (b == BTN_LEFT) EventLoop::get().defer([e] { Backups::get().remove(e); });
-                };
-            }
+            pillButton(r.row, "Restore", false, [setAsk] { setAsk("restore"); }, "settings_backup_restore");
+            auto* del = r.row->add<Button>();
+            pill(del)->setJustify(Align::Center);
+            del->fixedWidth = del->fixedHeight = 40;
+            del->add<Icon>("delete", 20)->setColor("on_surface_variant", false);
+            del->tooltip = "Delete this backup";
+            del->onClicked = [setAsk](uint32_t b) {
+                if (b == BTN_LEFT) setAsk("delete");
+            };
+            if (!asking) continue;
+            if (ask->action == "restore")
+                confirmStrip(g, std::format("Restore your settings from {}? What you have now is saved as a backup first.", when),
+                             "Restore", false,
+                             [live, ask, e] {
+                                 ask->path.clear();
+                                 ask->result = "Restoring…";
+                                 live->syncSoon();
+                                 Backups::get().restore(e, [live, ask](bool ok) {
+                                     ask->result = ok ? "Restored. Your settings from before are in the list too."
+                                                      : "Not restored: that backup isn't a settings backup, or is damaged. Nothing changed.";
+                                     live->syncSoon();
+                                 });
+                             },
+                             [setAsk] { setAsk(""); });
+            else
+                confirmStrip(g, std::format("Delete the backup from {}? It can't be brought back.", when), "Delete", true,
+                             [live, ask, e] {
+                                 ask->path.clear();
+                                 EventLoop::get().defer([e] { Backups::get().remove(e); });
+                             },
+                             [setAsk] { setAsk(""); });
         }
     };
     live->watch(Backups::get().changed);
@@ -1822,12 +1869,10 @@ void systemPage(Flex* page, Popup&) {
         {"Search languages"});
 
     auto* more = group(page, "More");
-    auto kb = row(more, "keyboard", "Keyboard", "Shortcuts: remap, disable and add");
-    pillButton(kb.row, "Open", false, [] {
-        EventLoop::get().defer([] {
-            reshowPage("hypr-keybinds");
-        });
-    });
+    auto kb = row(more, "keyboard", "Keyboard", "Layouts, typing and shortcuts");
+    // The Keyboard page here (re-showing Hyprland Settings' page did
+    // nothing unless that app was already open)
+    pillButton(kb.row, "Open", false, [] { EventLoop::get().defer([] { settingsPage("keybinds"); }); });
     auto up = row(more, "system_update", "Software & updates", "Updates from the repos, the AUR and Flathub");
     pillButton(up.row, "Open", false, [] {
         EventLoop::get().defer([] {
@@ -1837,21 +1882,24 @@ void systemPage(Flex* page, Popup&) {
 
     backupRows(page);
 
-    // Reset: two taps, and the old settings are kept as a backup first
+    // Reset: asked first, and the settings are kept as a backup before it
     auto* reset = group(page, "Reset options");
-    auto rr = row(reset, "restart_alt", "Reset shell settings", "A backup of them is made first (Backups, above)");
-    auto armed = std::make_shared<bool>(false);
-    auto* button = pillButton(rr.row, "Reset…", false, {});
-    button->onClicked = [armed, button](uint32_t b) {
-        if (b != BTN_LEFT) return;
-        if (!*armed) {
-            *armed = true;
-            for (auto& c : button->children())
-                if (auto* l = dynamic_cast<Label*>(c.get())) l->setText("Tap again to reset");
-            return;
-        }
-        Backups::get().create("before-reset", [](bool) { std::ofstream(paths::configFile()) << "{}\n"; });
-    };
+    auto rr = row(reset, "restart_alt", "Reset shell settings", "Everything back to the defaults; a backup of them is made first");
+    pillButton(rr.row, "Reset…", false, [reset] {
+        if (reset->children().size() > 1) return; // already asking
+        EventLoop::get().defer([reset] {
+            confirmStrip(reset, "Reset all of the shell's settings to their defaults? They're saved as a backup first (Backups, above).",
+                         "Reset", true,
+                         [reset] {
+                             Backups::get().create("before-reset", [](bool ok) {
+                                 // Only once they're safely kept
+                                 if (ok) std::ofstream(paths::configFile()) << "{}\n";
+                             });
+                             EventLoop::get().defer([reset] { reset->remove(reset->children().back().get()); });
+                         },
+                         [reset] { EventLoop::get().defer([reset] { reset->remove(reset->children().back().get()); }); });
+        });
+    });
 }
 
 // ── Default apps ──
@@ -3234,8 +3282,13 @@ void aboutPage(Flex* page, Popup&) {
 
 // Settings' Keyboard entry: shortcuts are Hyprland's, in Hyprland Settings
 void keyboardPage(Flex* page, Popup&) {
+    auto* typing = group(page, "Layouts & typing", "Keyboard layouts, switching between them, repeat rate and delay");
+    auto t = row(typing, "keyboard_alt", "Layouts & typing", "In Hyprland Settings → Input devices");
+    pillButton(t.row, "Open", true, [] {
+        if (open) open("hyprsettings hypr-input");
+    }, "open_in_new");
     auto* g = group(page, "Keyboard shortcuts", "Remap the shell's shortcuts and add your own: actions, commands and mouse drags");
-    auto r = row(g, "keyboard_command_key", "Keybinds", "In Hyprland Settings, with the keyboard layout and repeat rate");
+    auto r = row(g, "keyboard_command_key", "Keybinds", "In Hyprland Settings → Keybinds");
     pillButton(r.row, "Open", true, [] {
         if (open) open("hyprsettings hypr-keybinds");
     }, "open_in_new");
@@ -3294,7 +3347,7 @@ const PageDef kPages[] = {
     {"hypr-render", "memory", "Rendering", "Direct scanout, colour management and OpenGL", hyprRenderPage},
     {"hypr-debug", "bug_report", "Debug", "Logs, overlays and damage tracking", hyprDebugPage},
     {"mouse", "touchpad_mouse", "Mouse & touchpad", "Tap to click, scrolling, gestures and pointer speed", mousePage},
-    {"keybinds", "keyboard", "Keyboard", "Shortcuts are in Hyprland Settings", keyboardPage},
+    {"keybinds", "keyboard", "Keyboard", "Layouts, typing and shortcuts", keyboardPage},
     {"packages", "system_update", "Software & updates", "Updates from the repos, the AUR and Flathub", packagesPage},
     {"about", "info", "About", "This device and the shell", aboutPage},
 };

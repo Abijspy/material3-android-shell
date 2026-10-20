@@ -229,6 +229,8 @@ public:
     float size() const { return m_size; }
     // The size it's drawn at: after the text sizes of the parts it's in
     float shownSize() const { return style().size; }
+    // How it's drawn (for drawing it ahead: a scroll view warms the cache)
+    TextStyle textStyle() const { return style(); }
     int weight() const { return m_weight; }
 
 protected:

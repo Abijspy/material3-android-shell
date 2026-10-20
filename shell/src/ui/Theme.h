@@ -37,6 +37,11 @@ public:
     float areaScale(uint8_t area) const { return area < AreaCount ? m_areaScale[area] : 1; }
     bool boldText() const { return m_boldText; }          // Accessibility → Bold text
     float widgetBlur() const { return m_widgetBlur; }     // radius behind desktop and lock widgets; 0: off
+    // Scrolling (Look & feel → Scrolling): eased wheel steps, their length,
+    // and how far a touchpad flick glides on (0: not at all)
+    bool smoothScroll() const { return m_smoothScroll; }
+    float scrollStep() const { return m_scrollStep; }
+    float scrollGlide() const { return m_scrollGlide; }
 
     Signal<> changed;
 
@@ -52,6 +57,8 @@ private:
     bool m_boldText = false;
     float m_areaScale[AreaCount] = {1, 1, 1, 1};
     float m_widgetBlur = 18;
+    bool m_smoothScroll = true;
+    float m_scrollStep = 64, m_scrollGlide = 1;
 };
 
 } // namespace m3

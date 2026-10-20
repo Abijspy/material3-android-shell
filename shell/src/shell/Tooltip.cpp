@@ -22,13 +22,13 @@ void Tooltip::hover(wl::Surface* surface, Node* node) {
     m_node = node;
     const auto r = node->rect();
     // Shown at once when one is already up (moving along the dock), else
-    // after a pause
+    // after a pause. The text is taken now: the node may be gone by then
+    // (a rebuilt dock), and only its words are needed.
     const int delay = m_surface ? 0 : 600;
-    m_timer = EventLoop::get().addTimer(delay, [this, surface, r] {
+    m_timer = EventLoop::get().addTimer(delay, [this, surface, r, text = node->tooltip] {
         m_timer = 0;
-        // Still a surface of ours? (the node is: its going would have hidden this)
         for (auto* s : wl::Surface::all())
-            if (s == surface && m_node) return show(surface, m_node->tooltip, r.x, r.y, r.w, r.h);
+            if (s == surface && m_node) return show(surface, text, r.x, r.y, r.w, r.h);
     });
 }
 

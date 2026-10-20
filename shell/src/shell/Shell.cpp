@@ -680,7 +680,7 @@ void Shell::registerIpc() {
         if (!a.empty() && a[0] == "restore") {
             // The newest settings backup, or the one named
             for (const auto& e : Backups::get().list())
-                if (e.kind == Backups::Kind::Settings && (a.size() < 2 || e.path == a[1] || e.path.ends_with("/" + a[1]))) {
+                if (a.size() < 2 || e.path == a[1] || e.path.ends_with("/" + a[1])) {
                     Backups::get().restore(e);
                     return "restoring " + e.path;
                 }

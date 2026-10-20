@@ -85,6 +85,9 @@ void Theme::loadEffects() {
     ui::motion::scale = std::clamp(static_cast<float>(c.value<double>("/appearance/animationSpeed", 1.0)), 0.0f, 2.0f);
     m_textScale = std::clamp(static_cast<float>(c.value<double>("/accessibility/textScale", 1.0)), 0.85f, 1.5f);
     m_boldText = c.value<bool>("/accessibility/boldText", false);
+    m_smoothScroll = c.value<bool>("/appearance/scroll/smooth", true);
+    m_scrollStep = std::clamp(static_cast<float>(c.value<double>("/appearance/scroll/step", 64)), 24.0f, 200.0f);
+    m_scrollGlide = std::clamp(static_cast<float>(c.value<double>("/appearance/scroll/glide", 1.0)), 0.0f, 2.0f);
     m_widgetBlur = c.value<bool>("/appearance/blur/widgets", true)
                        ? std::clamp(static_cast<float>(c.value<double>("/appearance/blur/widgetRadius", 18)), 2.0f, 48.0f)
                        : 0;

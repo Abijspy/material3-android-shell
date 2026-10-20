@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <sstream>
 
 namespace fs = std::filesystem;
 
@@ -39,14 +40,6 @@ std::vector<std::string> members() {
     return out;
 }
 
-std::uintmax_t folderSize(const fs::path& dir) {
-    std::uintmax_t total = 0;
-    std::error_code ec;
-    for (const auto& e : fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied, ec))
-        if (e.is_regular_file(ec)) total += e.file_size(ec);
-    return total;
-}
-
 std::time_t mtime(const fs::path& p) {
     std::error_code ec;
     const auto t = fs::last_write_time(p, ec);
@@ -70,12 +63,8 @@ std::vector<Backups::Entry> Backups::list() const {
         if (!name.ends_with(".tar.gz")) continue;
         std::string reason = name.substr(0, name.size() - 7);
         reason = reason.size() > 20 ? reason.substr(20) : "manual";
-        out.push_back({Kind::Settings, e.path().string(), reason, mtime(e.path()), e.file_size(ec)});
+        out.push_back({e.path().string(), reason, mtime(e.path()), e.file_size(ec)});
     }
-    // The installer's: YYYYmmdd-HHMMSS folders with a restore.sh
-    for (const auto& e : fs::directory_iterator(root(), ec))
-        if (e.is_directory(ec) && fs::exists(e.path() / "restore.sh", ec))
-            out.push_back({Kind::Install, e.path().string(), "install", mtime(e.path() / "restore.sh"), folderSize(e.path())});
     std::ranges::sort(out, [](const Entry& a, const Entry& b) { return a.time > b.time; });
     return out;
 }
@@ -106,16 +95,24 @@ void Backups::create(const std::string& reason, std::function<void(bool)> done) 
 }
 
 void Backups::restore(const Entry& entry, std::function<void(bool)> done) {
-    if (entry.kind == Kind::Install) {
-        // The installer's own undo, in a terminal: it says what it puts back
-        const char* t = std::getenv("TERMINAL");
-        run({t && *t ? t : "alacritty", "-e", "sh", "-c", "sh '" + entry.path + "/restore.sh'; echo; read -p 'Done. Press Enter to close…' _"},
-            [done](int code, const std::string&) {
-                if (done) done(code == 0);
-            });
-        return;
-    }
     const std::string path = entry.path;
+    // Only settings files come out of it: anything else (a damaged or
+    // foreign archive) and nothing is touched
+    run({"tar", "-tzf", path}, [this, path, done](int code, const std::string& out) {
+        std::stringstream ss(out);
+        bool safe = code == 0 && !out.empty();
+        for (std::string l; safe && std::getline(ss, l);)
+            safe = l.find("..") == std::string::npos && !l.starts_with("/") &&
+                   (l.starts_with(".config/material3ui/") || l.starts_with(".config/hypr/material3ui/"));
+        if (!safe) {
+            if (done) done(false);
+            return;
+        }
+        restoreChecked(path, done);
+    });
+}
+
+void Backups::restoreChecked(const std::string& path, std::function<void(bool)> done) {
     create("before-restore", [this, path, done](bool) {
         m_busy = true;
         changed.emit();
@@ -131,7 +128,6 @@ void Backups::restore(const Entry& entry, std::function<void(bool)> done) {
 }
 
 void Backups::remove(const Entry& entry) {
-    if (entry.kind != Kind::Settings) return; // the installer's stay its own
     std::error_code ec;
     fs::remove(entry.path, ec);
     changed.emit();
@@ -142,7 +138,7 @@ void Backups::prune() {
     int automatic = 0;
     std::error_code ec;
     for (const auto& e : list())
-        if (e.kind == Kind::Settings && e.reason != "manual" && ++automatic > 10) fs::remove(e.path, ec);
+        if (e.reason != "manual" && ++automatic > 10) fs::remove(e.path, ec);
 }
 
 } // namespace m3

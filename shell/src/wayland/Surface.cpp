@@ -145,6 +145,9 @@ Surface* Surface::fromSurface(wl_surface* surface) {
 }
 
 void Surface::setRoot(std::unique_ptr<ui::Node> root) {
+    // The old tree goes: a tooltip shown or waiting for one of its nodes
+    // goes with it (the dock rebuilds under the pointer)
+    if (m_tooltip && tooltipHook) tooltipHook(this, nullptr);
     m_hovered = m_pressed = m_focus = m_tooltip = nullptr;
     m_root = std::move(root);
     m_root->setHost(this);

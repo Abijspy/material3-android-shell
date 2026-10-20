@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/EventLoop.h"
+#include "render/Text.h"
 #include "ui/Node.h"
 
 #include <chrono>
@@ -119,6 +120,12 @@ private:
     void placeContent();
     bool overflows() const { return m_contentHeight > rect().h + 0.5f; }
     RectF thumb() const;
+    void warmText(Renderer& r);
+    // Text to draw ahead, and for what content it was gathered
+    std::vector<std::pair<std::string, TextStyle>> m_warm;
+    size_t m_warmAt = 0;
+    const Node* m_warmedFor = nullptr;
+    float m_warmedHeight = -1, m_warmedScale = 0;
     // Starts fast and settles: wheel steps chain without stalling
     Tween m_offset{0, kWheelMs, Easing::emphasizedDecelerate()};
     Tween m_bar{0, motion::shortMs, Easing::standard()}; // 0 idle … 1 hovered/dragging

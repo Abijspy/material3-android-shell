@@ -39,6 +39,9 @@ protected:
         const auto* next = m_next.empty() ? nullptr : Images::get().picture(m_next, w, h, true, [this] { started(); });
         const auto* cur = m_current.empty() ? nullptr : Images::get().picture(m_current, w, h, true, [this] { requestRedraw(); });
         if (cur) draw(r, cur);
+        // Already decoded (shown before): the cache has no decode to report,
+        // so the transition starts here
+        if (next && !m_started) started();
         if (next && m_started) {
             const float t = m_t.value();
             if (m_style == 0) {

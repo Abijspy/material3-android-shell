@@ -252,8 +252,9 @@ void ScrollView::placeContent() {
 
 bool ScrollView::onScroll(int d) {
     if (maxOffset() <= 0) return false;
+    const auto& t = Theme::get();
     m_offset.setDuration(kWheelMs);
-    scrollTo(m_offset.target() + static_cast<float>(d) * 64);
+    scrollTo(m_offset.target() + static_cast<float>(d) * t.scrollStep(), t.smoothScroll());
     return true;
 }
 
@@ -263,8 +264,9 @@ bool ScrollView::onScrollPixels(float dy, bool precise) {
         // A wheel notch (15 units) is about 60 px, eased from wherever the
         // last step has got to
         m_velocity = 0;
+        const auto& t = Theme::get();
         m_offset.setDuration(kWheelMs);
-        scrollTo(m_offset.target() + dy * 4);
+        scrollTo(m_offset.target() + dy * t.scrollStep() / 16, t.smoothScroll());
         return true;
     }
     // Touchpad: follow the fingers exactly, and remember how fast they go
@@ -280,11 +282,12 @@ bool ScrollView::onScrollPixels(float dy, bool precise) {
 void ScrollView::onScrollEnd() {
     // Fingers lifted while moving: glide on and slow to a stop
     const float idle = std::chrono::duration<float, std::milli>(AnimClock::now() - m_lastPixels).count();
-    if (std::abs(m_velocity) < 0.25f || idle > 60 || maxOffset() <= 0) {
+    const float glide = Theme::get().scrollGlide();
+    if (std::abs(m_velocity) < 0.25f || idle > 60 || maxOffset() <= 0 || glide <= 0) {
         m_velocity = 0;
         return;
     }
-    const float distance = std::clamp(m_velocity * 320.0f, -2400.0f, 2400.0f);
+    const float distance = std::clamp(m_velocity * 320.0f * glide, -2400.0f * glide, 2400.0f * glide);
     m_velocity = 0;
     m_offset.setDuration(std::clamp(static_cast<int>(std::abs(distance) * 0.9f), 350, 900));
     scrollTo(m_offset.value() + distance);
@@ -327,7 +330,39 @@ void ScrollView::doPaint(Renderer& r) {
     if (m_bar.running()) requestRedraw();
 }
 
+void ScrollView::warmText(Renderer& r) {
+    // Rows below and above the view: their text drawn ahead, nearest first,
+    // a few milliseconds a frame, so scrolling never stops to draw it
+    if (!content()) return;
+    if (content() != m_warmedFor || m_contentHeight != m_warmedHeight || r.scale() != m_warmedScale) {
+        m_warmedFor = content();
+        m_warmedHeight = m_contentHeight;
+        m_warmedScale = r.scale();
+        m_warmAt = 0;
+        std::vector<std::pair<float, const Label*>> found;
+        const float middle = rect().y + rect().h / 2;
+        std::function<void(const Node&)> walk = [&](const Node& n) {
+            if (!n.shown()) return;
+            if (const auto* l = dynamic_cast<const Label*>(&n); l && !l->text().empty())
+                found.push_back({std::abs(l->rect().y - middle), l});
+            for (const auto& c : n.children()) walk(*c);
+        };
+        walk(*content());
+        std::ranges::sort(found, [](const auto& a, const auto& b) { return a.first < b.first; });
+        m_warm.clear();
+        for (const auto& [_, l] : found) m_warm.push_back({l->text(), l->textStyle()});
+    }
+    const auto start = AnimClock::now();
+    auto& text = TextEngine::get();
+    while (m_warmAt < m_warm.size() && AnimClock::now() - start < std::chrono::milliseconds(3)) {
+        text.texture(m_warm[m_warmAt].first, m_warm[m_warmAt].second, r.scale());
+        ++m_warmAt;
+    }
+    if (m_warmAt < m_warm.size()) requestRedraw();
+}
+
 void ScrollView::doPaintOver(Renderer& r) {
+    if (overflows()) warmText(r);
     if (!blurEdges || !overflows()) return;
     const RectF& b = rect();
     constexpr float edge = 40, radius = 10;
