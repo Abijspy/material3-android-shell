@@ -196,13 +196,8 @@ void Effects::apply() {
                               px);
         run({"sh", "-c", script}, nullptr);
     }
-    const int size = std::clamp(c.value<int>("/appearance/blur/size", 12), 1, 20);
-    const int passes = std::clamp(c.value<int>("/appearance/blur/passes", 3), 1, 4);
-    // The blur's look (Hyprland's defaults), and which shell layers get it
-    const double noise = std::clamp(c.value<double>("/appearance/blur/noise", 0.0117), 0.0, 0.2);
-    const double contrast = std::clamp(c.value<double>("/appearance/blur/contrast", 0.8916), 0.0, 2.0);
-    const double brightness = std::clamp(c.value<double>("/appearance/blur/brightness", 0.8172), 0.0, 2.0);
-    const double vibrancy = std::clamp(c.value<double>("/appearance/blur/vibrancy", 0.1696), 0.0, 1.0);
+    // How the blur looks (size, passes, noise…) is Hyprland Settings' alone:
+    // only what the shell's own layers get is written here
     const bool barBlur = c.value<bool>("/statusBar/blur", true), dockBlur = c.value<bool>("/dock/blur", true);
     // Pixels fainter than this are left sharp: the clear space around a
     // popup's card or between bar capsules. Kept under the panels' own alpha.
@@ -211,8 +206,7 @@ void Effects::apply() {
     if (!h.usingLua()) {
         // Legacy hyprland.conf: runtime keywords, gone after a config reload.
         // Rules can't be removed this way; turning blur off needs a reload.
-        const auto key = std::format("{} {:.2f} {} {} {:.4f} {:.4f} {:.4f} {:.4f} {} {}", t.blur(), ignore, size, passes, noise, contrast,
-                                     brightness, vibrancy, barBlur, dockBlur);
+        const auto key = std::format("{} {:.2f} {} {}", t.blur(), ignore, barBlur, dockBlur);
         if (key == m_applied) return;
         m_applied = key;
         if (t.blur())
@@ -221,42 +215,20 @@ void Effects::apply() {
                 h.request(std::format("keyword layerrule blur,material3ui-{}", l));
                 h.request(std::format("keyword layerrule ignorealpha {:.2f},material3ui-{}", ignore, l));
             }
-        h.request(std::format("keyword decoration:blur:size {}", size));
-        h.request(std::format("keyword decoration:blur:passes {}", passes));
-        h.request(std::format("keyword decoration:blur:noise {:.4f}", noise));
-        h.request(std::format("keyword decoration:blur:contrast {:.4f}", contrast));
-        h.request(std::format("keyword decoration:blur:brightness {:.4f}", brightness));
-        h.request(std::format("keyword decoration:blur:vibrancy {:.4f}", vibrancy));
         return;
     }
 
     const std::string lua = std::format("-- Written by Material3UI (Settings → Appearance → Effects).\n"
                                         "-- Change these there; edits made here are overwritten.\n"
-                                        "return {{\n\tblur = {},\n\tignore_alpha = {:.2f},\n\tsize = {},\n\tpasses = {},\n"
-                                        "\tnoise = {:.4f},\n\tcontrast = {:.4f},\n\tbrightness = {:.4f},\n\tvibrancy = {:.4f},\n"
-                                        "\tbar = {},\n\tdock = {},\n}}\n",
-                                        t.blur() ? "true" : "false", ignore, size, passes, noise, contrast, brightness, vibrancy,
-                                        barBlur ? "true" : "false", dockBlur ? "true" : "false");
-    // What the layer rules hold: only a reload changes those
-    const std::string rules = std::format("{} {:.2f} {} {}", t.blur(), ignore, barBlur, dockBlur);
-    if (readAll(luaFile()) == lua) { // unchanged: nothing to do
-        m_rules = rules;
-        return;
-    }
+                                        "return {{\n\tblur = {},\n\tignore_alpha = {:.2f},\n\tbar = {},\n\tdock = {},\n}}\n",
+                                        t.blur() ? "true" : "false", ignore, barBlur ? "true" : "false", dockBlur ? "true" : "false");
+    if (readAll(luaFile()) == lua) return; // unchanged: no reload
     std::error_code ec;
     fs::create_directories(fs::path(luaFile()).parent_path(), ec);
     std::ofstream(luaFile()) << lua;
-    if (!m_rules.empty() && rules == m_rules) {
-        // Only how the blur looks: applied live, without the reload's flicker
-        log::info("effects: blur size {}, passes {}; applied", size, passes);
-        h.request(std::format("eval hl.config({{ decoration = {{ blur = {{ size = {}, passes = {}, noise = {:.4f}, contrast = {:.4f}, "
-                              "brightness = {:.4f}, vibrancy = {:.4f} }} }} }})",
-                              size, passes, noise, contrast, brightness, vibrancy));
-    } else {
-        log::info("effects: blur {}, size {}, passes {}; reloading Hyprland", t.blur() ? "on" : "off", size, passes);
-        h.request("reload");
-    }
-    m_rules = rules;
+    // Layer rules change only with a reload
+    log::info("effects: blur {}; reloading Hyprland", t.blur() ? "on" : "off");
+    h.request("reload");
 }
 
 } // namespace m3

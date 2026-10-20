@@ -18,7 +18,6 @@ private:
     void apply();
 
     std::string m_applied; // legacy configs: what the keywords last set
-    std::string m_rules;   // the layer rules effects_custom.lua last set (blur, ignore_alpha, bar, dock)
     int m_cursor = 0;
     std::string m_cursorTheme; // what setcursor last applied      // the cursor size last applied
     void applyInput();     // Settings → Mouse & touchpad, as input_custom.lua

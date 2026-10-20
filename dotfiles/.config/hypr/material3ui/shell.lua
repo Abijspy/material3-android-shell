@@ -77,16 +77,7 @@ hl.window_rule({
 })
 -- The welcome tour: a dialog-sized window in the middle
 hl.window_rule({ match = { class = "^material3ui-welcome$" }, float = true, center = true, size = { "monitor_w*0.7", "monitor_h*0.82" } })
-if fx.size then
-	hl.config({ decoration = { blur = {
-		size = fx.size,
-		passes = fx.passes or 3,
-		noise = fx.noise or 0.0117,
-		contrast = fx.contrast or 0.8916,
-		brightness = fx.brightness or 0.8172,
-		vibrancy = fx.vibrancy or 0.1696,
-	} } })
-end
+-- The blur's look (size, passes…) is set in Hyprland Settings → Decoration
 
 -- Settings → Accessibility: the magnifier and colour correction
 local ok_a11y, a11y = pcall(require, "material3ui.a11y_custom")

@@ -123,6 +123,15 @@ void textRow(Node* g, const std::string& icon, const std::string& title, const s
     f->onSubmit = [pointer](const std::string& t) { Config::get().set(pointer, t); };
 }
 
+// A setting Hyprland owns: kept in Hyprland Settings only (no copy here to
+// disagree with it), and this row takes you there
+void hyprLink(Node* g, const std::string& icon, const std::string& title, const std::string& sub, const std::string& hyprPage) {
+    auto r = row(g, icon, title, sub);
+    pillButton(r.row, "Hyprland Settings", false, [hyprPage] {
+        if (open) open("hyprsettings " + hyprPage);
+    }, "open_in_new");
+}
+
 // Where one clock keeps its settings (the island, the bar's Clock widget,
 // the desktop)
 struct ClockKeys {
@@ -676,20 +685,14 @@ void stylePage(Flex* page, Popup&) {
     switchRow(fx, "blur_on", "Blur", Hyprland::get().available() ? "Behind the bar, panels, notifications and OSD"
                                                                   : "Needs Hyprland, or a compositor with ext-background-effect",
               "/appearance/blur/enabled", true);
-    sliderRow(fx, "blur_medium", "Blur strength", "/appearance/blur/size", 12, 2, 20, 1,
-              [](double v) { return std::format("Radius {:.0f} · applies to windows too", v); });
     switchRow(fx, "wallpaper", "Blur behind widgets", "On the desktop, the lock screen and the login screen", "/appearance/blur/widgets", true);
     sliderRow(fx, "blur_circular", "Widget blur strength", "/appearance/blur/widgetRadius", 18, 4, 40, 1,
               [](double v) { return std::format("Radius {:.0f}", v); });
-    choiceRow<int>(fx, "layers", "Smoothness", "More passes: softer, and more work for the GPU", "/appearance/blur/passes", 3,
-                   {{1, "1"}, {2, "2"}, {3, "3"}, {4, "4"}});
-    auto fine = [](double v) { return std::format("{:.2f}", v); };
-    sliderRow(fx, "grain", "Noise", "/appearance/blur/noise", 0.0117, 0, 0.1, 0.005, fine);
-    sliderRow(fx, "contrast", "Contrast", "/appearance/blur/contrast", 0.8916, 0.3, 1.6, 0.02, fine);
-    sliderRow(fx, "brightness_6", "Brightness", "/appearance/blur/brightness", 0.8172, 0.3, 1.6, 0.02, fine);
-    sliderRow(fx, "palette", "Vibrancy", "/appearance/blur/vibrancy", 0.1696, 0, 1, 0.02, fine);
     sliderRow(fx, "toolbar", "Bar opacity", "/appearance/transparency/bar", 0.7, 0.3, 1, 0.05, percent);
     sliderRow(fx, "select_window", "Panel opacity", "/appearance/transparency/panels", 0.72, 0.3, 1, 0.05, percent);
+    // The blur itself (shared with windows) and windows' own look are Hyprland's
+    hyprLink(fx, "blur_medium", "Blur strength and look", "Size, passes, noise, contrast, brightness and vibrancy", "hypr-decoration");
+    hyprLink(fx, "select_window", "Window opacity, shadows and corners", "Active and inactive windows", "hypr-decoration");
 
     // Text size: the shell's (Accessibility's), and each part's on top of it
     auto* text = group(page, "Text & widget size", "The shell's text size applies everywhere; the others adjust one part on top of it. Widget size grows widgets whole, on the desktop, lock and login screens (each desktop widget also has its own, in the desktop editor)");
@@ -710,15 +713,14 @@ void stylePage(Flex* page, Popup&) {
     auto* shape = group(page, "Shape & motion");
     choiceRow<double>(shape, "rounded_corner", "Corners", "Every card, button and panel", "/appearance/roundness", 1.0,
                       {{0.35, "Sharp"}, {0.7, "Soft"}, {1.0, "Round"}, {1.3, "Extra"}});
-    choiceRow<double>(shape, "animation", "Animation speed", "", "/appearance/animationSpeed", 1.0,
+    choiceRow<double>(shape, "animation", "Animation speed", "The shell's panels and pages", "/appearance/animationSpeed", 1.0,
                       {{0.0, "Off"}, {0.6, "Fast"}, {1.0, "Normal"}, {1.5, "Relaxed"}});
+    hyprLink(shape, "animation", "Window animations", "Each animation's speed, curve and style", "hypr-animations");
 
     auto* reset = group(page, "Defaults");
     auto r = row(reset, "restart_alt", "Reset look & feel", "Blur, opacity, corners and motion");
     pillButton(r.row, "Reset", false, [] {
-        for (const char* key : {"/appearance/blur/enabled", "/appearance/blur/size", "/appearance/blur/passes", "/appearance/blur/noise",
-                                "/appearance/blur/contrast", "/appearance/blur/brightness", "/appearance/blur/vibrancy",
-                                "/appearance/blur/widgets", "/appearance/blur/widgetRadius", "/appearance/textScale", "/appearance/scroll",
+        for (const char* key : {"/appearance/blur/enabled", "/appearance/blur/widgets", "/appearance/blur/widgetRadius", "/appearance/textScale", "/appearance/scroll",
                                 "/appearance/transparency/bar",
                                 "/appearance/transparency/panels", "/appearance/roundness", "/appearance/animationSpeed"})
             Config::get().set(key, nullptr);
@@ -1670,35 +1672,25 @@ void accessibilityPage(Flex* page, Popup&) {
 
     // The magnifier: Hyprland's zoom around the pointer
     auto* zoom = group(page, "Magnifier", "Zooms in around the pointer. Super+= zooms in, Super+- out, Super+Backspace resets");
-    sliderRow(zoom, "zoom_in", "Zoom", "/accessibility/zoom", 1.0, 1.0, 4.0, 0.25,
-              [](double v) { return v <= 1.001 ? std::string("Off") : std::format("{:.2f}×", v); });
+    hyprLink(zoom, "zoom_in", "Zoom level and how it follows", "Hyprland's cursor zoom", "hypr-cursor");
 
     auto* pointer = group(page, "Pointer");
     choiceRow<int>(pointer, "mouse", "Cursor size", "", "/accessibility/cursorSize", 24,
                    {{24, "Default"}, {32, "Large"}, {48, "Larger"}, {64, "Largest"}});
+    hyprLink(pointer, "arrow_selector_tool", "More cursor options", "Hiding, warping and hardware cursors", "hypr-cursor");
 }
 
 // ── Mouse & touchpad ──
 
-// Hyprland's input options, written for it by the Effects service
+// Touchpad and pointer options are Hyprland's: kept in Hyprland Settings
+// only, linked from here
 void mousePage(Flex* page, Popup&) {
-    auto* pad = group(page, "Touchpad");
-    switchRow(pad, "touch_app", "Tap to click", "A light tap clicks, without pressing down", "/input/tapToClick", true);
-    switchRow(pad, "swap_vert", "Natural scrolling", "Content follows your fingers, as on a phone", "/input/naturalScroll", true);
-    switchRow(pad, "keyboard_alt", "Ignore while typing", "No stray clicks from your palm", "/input/disableWhileTyping", true);
-    switchRow(pad, "ads_click", "Click with fingers",
-              "Two fingers right-click, three middle-click; off: the touchpad's bottom corners", "/input/clickFinger", true);
-    switchRow(pad, "drag_pan", "Tap and drag", "Tap, then tap again and slide to drag", "/input/tapAndDrag", true);
-    switchRow(pad, "lock", "Drag lock", "A drag carries on after you lift your finger, until the next tap", "/input/dragLock", false);
-    sliderRow(pad, "unfold_more", "Scroll speed", "/input/scrollFactor", 0.7, 0.2, 2.0, 0.1,
-              [](double v) { return std::format("{:.1f}×", v); });
-
-    auto* pointer = group(page, "Pointer", "For the touchpad and mice alike");
-    sliderRow(pointer, "speed", "Pointer speed", "/input/sensitivity", 0.0, -1.0, 1.0, 0.1, [](double v) {
-        return std::abs(v) < 0.05 ? std::string("Default") : std::format("{}{:.0f} %", v > 0 ? "+" : "", v * 100);
-    });
-    choiceRow<std::string>(pointer, "trending_up", "Acceleration", "Adaptive speeds up quick movements", "/input/accelProfile",
-                           "adaptive", {{"adaptive", "Adaptive"}, {"flat", "Flat"}});
+    auto* g = group(page, "Mouse & touchpad", "Tap to click, natural scrolling, pointer speed and gestures live in Hyprland Settings");
+    hyprLink(g, "touch_app", "Touchpad", "Tap to click, natural scrolling, ignore while typing, click with fingers", "hypr-input");
+    hyprLink(g, "speed", "Pointer", "Speed and acceleration, for the touchpad and mice", "hypr-input");
+    hyprLink(g, "swipe", "Gestures", "Workspace swipes", "hypr-gestures");
+    auto r = row(g, "swipe_vertical", "Scrolling in the shell", "Smooth scrolling, speed and touchpad glide");
+    pillButton(r.row, "Look & feel", false, [] { settingsPage("style"); }, "open_in_new");
 }
 
 // ── System ──
@@ -3346,7 +3338,7 @@ const PageDef kPages[] = {
     {"hypr-profiles", "switch_account", "Profiles", "Save and switch whole setups by name", hyprProfilesPage},
     {"hypr-render", "memory", "Rendering", "Direct scanout, colour management and OpenGL", hyprRenderPage},
     {"hypr-debug", "bug_report", "Debug", "Logs, overlays and damage tracking", hyprDebugPage},
-    {"mouse", "touchpad_mouse", "Mouse & touchpad", "Tap to click, scrolling, gestures and pointer speed", mousePage},
+    {"mouse", "touchpad_mouse", "Mouse & touchpad", "Touchpad, pointer and gestures, in Hyprland Settings", mousePage},
     {"keybinds", "keyboard", "Keyboard", "Layouts, typing and shortcuts", keyboardPage},
     {"packages", "system_update", "Software & updates", "Updates from the repos, the AUR and Flathub", packagesPage},
     {"about", "info", "About", "This device and the shell", aboutPage},
