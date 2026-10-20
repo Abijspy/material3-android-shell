@@ -328,7 +328,7 @@ void Bar::addModule(Flex* zone, const std::string& id, bool floating) {
     } else if (id == "island") {
         zone->add<Island>(m_openPopup);
     } else if (id == "clock") {
-        capsule(zone, floating)->add<Clock>();
+        capsule(zone, floating)->add<Clock>("bar");
     } else if (id == "netspeed") {
         capsule(zone, floating)->add<NetSpeed>();
     } else if (id == "tray") {

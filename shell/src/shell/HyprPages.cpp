@@ -569,33 +569,6 @@ std::string seconds(double speed) {
     return numberText(speed / 10, false) + " s";
 }
 
-// A dropdown below `anchor`'s row: a pill showing the choice, opening a list
-// inside `g`
-Button* dropdown(Node* tail, Node* g, const std::string& shown, const std::vector<std::pair<std::string, std::string>>& items,
-                 std::function<void(const std::string&)> pick, std::function<Node*(Node*, const std::string&)> lead = {}) {
-    auto* drop = tail->add<Button>(Flex::Direction::Row);
-    pill(drop->setBackground("surface_container_highest", false))->setPadding({14, 8})->setSpacing(6);
-    drop->add<Label>(shown)->setSize(14)->setWeight(500);
-    auto* chevron = drop->add<Icon>("expand_more", 18);
-    auto* menu = g->add<Flex>(Flex::Direction::Column);
-    menu->setPadding({20, 4, 20, 12})->setSpacing(2)->setAlignItems(Align::Stretch);
-    menu->setVisible(false);
-    for (const auto& [value, label] : items) {
-        auto* item = menu->add<Button>(Flex::Direction::Row);
-        pill(item)->setPadding({14, 8})->setSpacing(12);
-        if (lead) lead(item, value);
-        item->add<Label>(label)->setSize(14);
-        item->onClicked = [pick, value = value](uint32_t button) {
-            if (button == BTN_LEFT) pick(value);
-        };
-    }
-    drop->onClicked = [menu, chevron](uint32_t button) {
-        if (button != BTN_LEFT) return;
-        menu->setVisible(!menu->visible());
-        chevron->setText(menu->visible() ? "expand_less" : "expand_more");
-    };
-    return drop;
-}
 
 // One leaf's editor: on/off, speed, curve, style and a preview
 void leafEditor(Node* g, const HyprOptions::Animation& a) {

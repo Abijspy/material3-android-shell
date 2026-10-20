@@ -133,7 +133,18 @@ std::string Clock::toStrftime(const std::string& qt) {
             i += n;
             return true;
         };
-        if (take("hh") || take("HH")) out += twelve ? "%I" : "%H";
+        // Dates first: their letters are longer runs of the same
+        if (take("dddd")) out += "%A";
+        else if (take("ddd")) out += "%a";
+        else if (take("dd")) out += "%d";
+        else if (take("d")) out += "%-d";
+        else if (take("MMMM")) out += "%B";
+        else if (take("MMM")) out += "%b";
+        else if (take("MM")) out += "%m";
+        else if (take("M")) out += "%-m";
+        else if (take("yyyy")) out += "%Y";
+        else if (take("yy")) out += "%y";
+        else if (take("hh") || take("HH")) out += twelve ? "%I" : "%H";
         else if (take("h") || take("H")) out += twelve ? "%-I" : "%-H";
         else if (take("mm")) out += "%M";
         else if (take("m")) out += "%-M";
@@ -147,8 +158,23 @@ std::string Clock::toStrftime(const std::string& qt) {
     return out;
 }
 
-Clock::Clock() {
+std::string Clock::sample(const std::string& qt) {
+    const std::time_t now = std::time(nullptr);
+    std::tm tm{};
+    localtime_r(&now, &tm);
+    char buf[96];
+    std::strftime(buf, sizeof buf, toStrftime(qt).c_str(), &tm);
+    return buf;
+}
+
+Clock::Clock(std::string place) : m_place(std::move(place)) {
     setSize(15)->setWeight(500);
+    // A new format shows at once, not at the next minute
+    m_config = Config::get().changed.connect([this] {
+        if (m_timer) EventLoop::get().cancel(m_timer);
+        m_timer = 0;
+        tick();
+    });
     tick();
 }
 
@@ -157,14 +183,15 @@ Clock::~Clock() {
 }
 
 void Clock::tick() {
-    const auto format = Config::get().value<std::string>("/time/format", "hh:mm");
-    m_seconds = format.find('s') != std::string::npos;
-    const std::time_t now = std::time(nullptr);
-    std::tm tm{};
-    localtime_r(&now, &tm);
-    char buf[64];
-    std::strftime(buf, sizeof buf, toStrftime(format).c_str(), &tm);
-    setText(buf);
+    auto& c = Config::get();
+    const std::string base = "/bar/clock/" + m_place;
+    // Each place's own time format, else the shell's
+    const auto time = c.value<std::string>(base + "/timeFormat", c.value<std::string>("/time/format", "hh:mm"));
+    std::string format = time;
+    if (c.value<bool>(base + "/showDate", false))
+        format = c.value<std::string>(base + "/dateFormat", "ddd d MMM") + "  ·  " + time;
+    m_seconds = time.find('s') != std::string::npos;
+    setText(sample(format));
     schedule();
 }
 

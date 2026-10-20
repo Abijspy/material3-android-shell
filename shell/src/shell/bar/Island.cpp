@@ -98,7 +98,7 @@ void Island::build() {
         const auto* p = Mpris::get().active();
         // Music playing: its progress rings the equaliser beside the clock
         if (p && p->status == "Playing") m_content->add<kit::WavyRing>(26)->add<Icon>("graphic_eq", 14)->setColor("primary", false);
-        m_content->add<Clock>();
+        m_content->add<Clock>("island");
         break;
     }
     case Mode::Media: {

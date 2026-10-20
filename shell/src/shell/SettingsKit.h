@@ -80,6 +80,11 @@ struct Row {
 Row row(Node* group, const std::string& icon, const std::string& title, const std::string& subtitle = {});
 Button* pillButton(Node* parent, const std::string& label, bool primary, std::function<void()> fn, const std::string& icon = {});
 
+// A dropdown: a pill showing the choice, opening a list of items inside
+// `g` (below the row it sits in); `lead` adds something before each item
+Button* dropdown(Node* tail, Node* g, const std::string& shown, const std::vector<std::pair<std::string, std::string>>& items,
+                 std::function<void(const std::string&)> pick, std::function<Node*(Node*, const std::string&)> lead = {});
+
 // M3 Expressive connected button group: segments a hairline apart with tight
 // inner corners; the selected one turns primary and rounds off completely.
 template <typename T>

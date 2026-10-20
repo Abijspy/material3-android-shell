@@ -26,6 +26,7 @@
 #include "shell/SettingsKit.h"
 #include "shell/Panels.h"
 #include "shell/bar/Bar.h"
+#include "shell/bar/Widgets.h"
 #include "ui/Controls.h"
 #include "ui/Theme.h"
 
@@ -118,6 +119,22 @@ void textRow(Node* g, const std::string& icon, const std::string& title, const s
     f->fixedWidth = 280;
     f->setText(Config::get().value<std::string>(pointer, fallback));
     f->onSubmit = [pointer](const std::string& t) { Config::get().set(pointer, t); };
+}
+
+// A clock's time format, whether it shows the date, and the date's format,
+// each choice shown as it reads now (the island, the bar's clock, the desktop)
+void timeDateRows(Node* g, const std::string& timeKey, const std::string& timeDefault, const std::string& showKey,
+                  bool showDefault, const std::string& dateKey, const std::string& dateDefault) {
+    std::vector<std::pair<std::string, std::string>> times;
+    for (const char* f : {"hh:mm", "h:mm AP", "hh:mm:ss", "h:mm:ss AP"}) times.push_back({f, Clock::sample(f)});
+    choiceRow<std::string>(g, "schedule", "Time", "", timeKey, timeDefault, times);
+    switchRow(g, "calendar_today", "Show the date", "", showKey, showDefault);
+    std::vector<std::pair<std::string, std::string>> dates;
+    for (const char* f : {"ddd d MMM", "d MMM", "dddd, d MMMM", "dd/MM/yyyy", "MM/dd/yyyy", "yyyy-MM-dd"})
+        dates.push_back({f, Clock::sample(f)});
+    auto date = row(g, "event", "Date format");
+    dropdown(date.row, g, Clock::sample(Config::get().value<std::string>(dateKey, dateDefault)), dates,
+             [dateKey](const std::string& v) { Config::get().set(dateKey, v); });
 }
 
 std::string percent(double v) {
@@ -559,6 +576,8 @@ void appearancePage(Flex* page, Popup& popup) {
     choiceRow<std::string>(wp, "animation", "Transition", "", "/background/wallpaperTransition", "random",
                            {{"random", "Random"}, {"fade", "Fade"}, {"wipe", "Wipe"}, {"grow", "Grow"}});
     switchRow(wp, "schedule", "Desktop clock", "A large clock on the wallpaper", "/desktop/clock", true);
+    timeDateRows(group(page, "Desktop clock: time and date"), "/desktop/timeFormat", "hh:mm", "/desktop/showDate", true,
+                 "/desktop/dateFormat", "dddd, d MMMM");
 
     auto* colour = group(page, "Colours", "Material You colours come from the wallpaper, or from an accent you pick");
     switchRow(colour, "dark_mode", "Dark theme", "", "/background/darkmode", true, [](bool) { recolour(); });
@@ -811,8 +830,14 @@ void barPage(Flex* page, Popup&) {
 
     auto* island = group(page, "Island & clock");
     switchRow(island, "view_carousel", "Show workspace switches in the island", "", "/statusBar/islandWorkspace", true);
-    choiceRow<std::string>(island, "schedule", "Clock", "", "/time/format", "hh:mm",
-                           {{"hh:mm", "24-hour"}, {"h:mm AP", "12-hour"}, {"hh:mm:ss", "Seconds"}});
+
+    // The time and the date, for the island and the bar's Clock widget each
+    for (const auto& [place, name] : {std::pair{"island", "Island"}, {"bar", "Clock widget"}}) {
+        const std::string base = std::string("/bar/clock/") + place;
+        timeDateRows(group(page, std::string(name) + ": time and date"), base + "/timeFormat",
+                     Config::get().value<std::string>("/time/format", "hh:mm"), base + "/showDate", false, base + "/dateFormat",
+                     "ddd d MMM");
+    }
 
     // Text longer than its space: how each place shows the rest
     auto* scrolling = group(page, "Scrolling text", "For titles longer than their space");

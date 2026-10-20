@@ -42,19 +42,25 @@ private:
     Connection m_conn;
 };
 
+// The time, and the date if chosen, as each place sets them: `place` is
+// "island" or "bar" (Settings → Status bar → Island & clock)
 class Clock : public ui::Label {
 public:
-    Clock();
+    explicit Clock(std::string place = "island");
     ~Clock() override;
     void tick();
 
-    // Qt-style pattern from config ("hh:mm", "h:mm AP") → strftime
+    // Qt-style pattern ("hh:mm", "h:mm AP", "ddd d MMM") → strftime
     static std::string toStrftime(const std::string& qt);
+    // A pattern as it reads now ("Mon 20 Oct"), for Settings' choices
+    static std::string sample(const std::string& qt);
 
 private:
     void schedule();
+    std::string m_place;
     unsigned long long m_timer = 0;
     bool m_seconds = false;
+    Connection m_config;
 };
 
 // The focused window: its app's icon, fixed, then its title, which scrolls

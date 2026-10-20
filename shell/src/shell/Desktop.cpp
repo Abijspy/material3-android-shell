@@ -1,6 +1,7 @@
 #include "shell/Desktop.h"
 
 #include "core/Config.h"
+#include "shell/bar/Widgets.h"
 #include "core/EventLoop.h"
 #include "render/Images.h"
 #include "services/Wallpaper.h"
@@ -100,6 +101,12 @@ public:
         m_time->setSize(96)->setWeight(500)->setColor("primary", false);
         m_date = add<Label>();
         m_date->setSize(22)->setWeight(500)->setColor("on_surface", false);
+        // A new format shows at once (Settings → Wallpaper & style)
+        m_config = Config::get().changed.connect([this] {
+            if (m_timer) EventLoop::get().cancel(m_timer);
+            m_timer = 0;
+            tick();
+        });
         tick();
     }
     ~DesktopClock() override {
@@ -117,18 +124,21 @@ private:
         const std::time_t now = std::time(nullptr);
         std::tm tm{};
         localtime_r(&now, &tm);
-        char buf[64];
-        std::strftime(buf, sizeof buf, "%H:%M", &tm);
-        m_time->setText(buf);
-        std::strftime(buf, sizeof buf, "%A, %-d %B", &tm);
-        m_date->setText(buf);
-        m_timer = EventLoop::get().addTimer((60 - tm.tm_sec) * 1000 + 20, [this] {
+        auto& c = Config::get();
+        const auto time = c.value<std::string>("/desktop/timeFormat", "hh:mm");
+        m_time->setText(Clock::sample(time));
+        m_date->setText(Clock::sample(c.value<std::string>("/desktop/dateFormat", "dddd, d MMMM")));
+        m_date->setVisible(c.value<bool>("/desktop/showDate", true));
+        // Seconds tick every second, the rest on the minute
+        const bool seconds = time.find('s') != std::string::npos;
+        m_timer = EventLoop::get().addTimer(seconds ? 1000 : (60 - tm.tm_sec) * 1000 + 20, [this] {
             m_timer = 0;
             tick();
         });
     }
     Label *m_time, *m_date;
     EventLoop::TimerId m_timer = 0;
+    Connection m_config;
 };
 
 } // namespace
