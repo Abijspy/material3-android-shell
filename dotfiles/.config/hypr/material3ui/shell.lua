@@ -62,7 +62,9 @@ B.apply_custom()
 local ok_fx, fx = pcall(require, "material3ui.effects_custom")
 if not ok_fx or type(fx) ~= "table" then fx = {} end
 for _, ns in ipairs({ "bar", "popup", "toasts", "osd", "dock", "switcher" }) do
-	hl.layer_rule({ match = { namespace = "material3ui-" .. ns }, blur = fx.blur ~= false, ignore_alpha = fx.ignore_alpha or 0.6 })
+	-- The bar and the dock each can go without (Settings → Status bar, Dock)
+	local on = fx.blur ~= false and fx[ns] ~= false
+	hl.layer_rule({ match = { namespace = "material3ui-" .. ns }, blur = on, ignore_alpha = fx.ignore_alpha or 0.6 })
 end
 hl.layer_rule({ match = { namespace = "material3ui-wallpaper" }, blur = false, no_anim = true })
 
@@ -76,7 +78,14 @@ hl.window_rule({
 -- The welcome tour: a dialog-sized window in the middle
 hl.window_rule({ match = { class = "^material3ui-welcome$" }, float = true, center = true, size = { "monitor_w*0.7", "monitor_h*0.82" } })
 if fx.size then
-	hl.config({ decoration = { blur = { size = fx.size, passes = fx.passes or 3 } } })
+	hl.config({ decoration = { blur = {
+		size = fx.size,
+		passes = fx.passes or 3,
+		noise = fx.noise or 0.0117,
+		contrast = fx.contrast or 0.8916,
+		brightness = fx.brightness or 0.8172,
+		vibrancy = fx.vibrancy or 0.1696,
+	} } })
 end
 
 -- Settings → Accessibility: the magnifier and colour correction

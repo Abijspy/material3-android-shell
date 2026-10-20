@@ -22,8 +22,12 @@ constexpr float kPadding = 14;
 }
 
 Island::Island(OpenPopup open) : Button(Direction::Row), m_open(std::move(open)) {
-    pill(this)->setBackground(ColorRef("surface_container_high", Theme::get().barOpacity()), false);
-    blurBehind = true;
+    pill(this);
+    if (const auto colour = pillColour()) {
+        setBackground(*colour, false);
+        if (Config::get().value<std::string>("/statusBar/pillColor", "auto") == "outline") setBorder(1.5f, ColorRef("outline", 0.7f));
+        blurBehind = barBlur();
+    }
     fixedHeight = 32;
     onClicked = [this](uint32_t button) {
         // The dashboard (calendar, weather) also while music plays: the media

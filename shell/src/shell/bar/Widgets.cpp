@@ -47,14 +47,32 @@ void BarLayout::doArrange() {
     place(2, endLeft, end);
 }
 
+std::optional<ColorRef> pillColour() {
+    const auto& c = Config::get();
+    std::string kind = c.value<std::string>("/statusBar/pillColor", "auto");
+    if (kind == "auto") kind = c.value<int>("/statusBar/backgroundStyle", 0) == 0 ? "surface" : "none";
+    const float alpha = Theme::get().barOpacity();
+    if (kind == "surface") return ColorRef("surface_container_high", alpha);
+    // Coloured pills stay readable over a busy wallpaper
+    if (kind == "tonal") return ColorRef("secondary_container", std::max(alpha, 0.85f));
+    if (kind == "accent") return ColorRef("primary_container", std::max(alpha, 0.85f));
+    if (kind == "outline") return ColorRef("surface_container_highest", std::min(alpha, 0.35f));
+    return std::nullopt;
+}
+
+bool barBlur() {
+    return Config::get().value<bool>("/statusBar/blur", true);
+}
+
 Flex* capsule(Node* parent, bool filled) {
     auto* f = parent->add<Flex>(Flex::Direction::Row);
     f->setPadding({12, 0})->setSpacing(8);
     f->fixedHeight = 32;
     f->collapseWhenEmpty = true;
-    if (filled) {
-        pill(f->setBackground(ColorRef("surface_container_high", Theme::get().barOpacity()), false));
-        f->blurBehind = true;
+    if (const auto colour = filled ? pillColour() : std::nullopt) {
+        pill(f->setBackground(*colour, false));
+        if (Config::get().value<std::string>("/statusBar/pillColor", "auto") == "outline") f->setBorder(1.5f, ColorRef("outline", 0.7f));
+        f->blurBehind = barBlur();
     }
     return f;
 }

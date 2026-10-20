@@ -66,7 +66,9 @@ public:
 
 private:
     int height() const;
-    void addModule(ui::Flex* zone, const std::string& id, bool floating);
+    // The surface: the bar, plus the gap a floating bar keeps from the edge
+    int totalHeight() const;
+    void addModule(ui::Flex* zone, const std::string& id, bool filled);
 
     wl::Output* m_output;
     OpenPopup m_openPopup;

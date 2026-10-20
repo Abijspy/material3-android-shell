@@ -635,6 +635,13 @@ void stylePage(Flex* page, Popup&) {
               "/appearance/blur/enabled", true);
     sliderRow(fx, "blur_medium", "Blur strength", "/appearance/blur/size", 12, 2, 20, 1,
               [](double v) { return std::format("Radius {:.0f} · applies to windows too", v); });
+    choiceRow<int>(fx, "layers", "Smoothness", "More passes: softer, and more work for the GPU", "/appearance/blur/passes", 3,
+                   {{1, "1"}, {2, "2"}, {3, "3"}, {4, "4"}});
+    auto fine = [](double v) { return std::format("{:.2f}", v); };
+    sliderRow(fx, "grain", "Noise", "/appearance/blur/noise", 0.0117, 0, 0.1, 0.005, fine);
+    sliderRow(fx, "contrast", "Contrast", "/appearance/blur/contrast", 0.8916, 0.3, 1.6, 0.02, fine);
+    sliderRow(fx, "brightness_6", "Brightness", "/appearance/blur/brightness", 0.8172, 0.3, 1.6, 0.02, fine);
+    sliderRow(fx, "palette", "Vibrancy", "/appearance/blur/vibrancy", 0.1696, 0, 1, 0.02, fine);
     sliderRow(fx, "toolbar", "Bar opacity", "/appearance/transparency/bar", 0.7, 0.3, 1, 0.05, percent);
     sliderRow(fx, "select_window", "Panel opacity", "/appearance/transparency/panels", 0.72, 0.3, 1, 0.05, percent);
 
@@ -647,7 +654,9 @@ void stylePage(Flex* page, Popup&) {
     auto* reset = group(page, "Defaults");
     auto r = row(reset, "restart_alt", "Reset look & feel", "Blur, opacity, corners and motion");
     pillButton(r.row, "Reset", false, [] {
-        for (const char* key : {"/appearance/blur/enabled", "/appearance/blur/size", "/appearance/transparency/bar",
+        for (const char* key : {"/appearance/blur/enabled", "/appearance/blur/size", "/appearance/blur/passes", "/appearance/blur/noise",
+                                "/appearance/blur/contrast", "/appearance/blur/brightness", "/appearance/blur/vibrancy",
+                                "/appearance/transparency/bar",
                                 "/appearance/transparency/panels", "/appearance/roundness", "/appearance/animationSpeed"})
             Config::get().set(key, nullptr);
         // Not inside the click: the rebuild destroys this button
@@ -661,8 +670,28 @@ void barPage(Flex* page, Popup&) {
     auto* layout = group(page, "Layout");
     choiceRow<std::string>(layout, "vertical_align_top", "Position", "", "/statusBar/position", "top",
                            {{"top", "Top"}, {"bottom", "Bottom"}});
-    choiceRow<int>(layout, "toolbar", "Style", "", "/statusBar/backgroundStyle", 0, {{0, "Floating"}, {1, "Full width"}});
+    const int style = Config::get().value<int>("/statusBar/backgroundStyle", 0);
+    // The floating bar's own rows come and go with it
+    choiceRow<int>(layout, "toolbar", "Style", "",
+                   "/statusBar/backgroundStyle", 0, {{0, "Pills"}, {1, "Full width"}, {2, "Floating bar"}}, [style](int v) {
+                       if ((v == 2) != (style == 2)) EventLoop::get().defer([] { reshowPage("bar"); });
+                   });
     sliderRow(layout, "height", "Height", "/statusBar/height", 40, 32, 56, 2, [](double v) { return std::format("{:.0f} px", v); });
+    if (style == 2) {
+        sliderRow(layout, "width", "Width", "/statusBar/width", 1.0, 0.4, 1.0, 0.02, percent);
+        sliderRow(layout, "padding", "Gap from the edge", "/statusBar/gap", 6, 0, 24, 1, [](double v) { return std::format("{:.0f} px", v); });
+        choiceRow<double>(layout, "rounded_corner", "Ends", "", "/statusBar/endRadius", 100,
+                          {{100, "Round"}, {16, "Curved"}, {6, "Square"}});
+    }
+
+    auto* look = group(page, "Pills & blur", "Auto fills the widgets' pills in the Pills style, and leaves them on the bar in the others");
+    choiceRow<std::string>(look, "highlight", "Pill highlight", "", "/statusBar/pillColor", "auto",
+                           {{"auto", "Auto"}, {"none", "None"}, {"surface", "Surface"}, {"tonal", "Tonal"}, {"accent", "Accent"},
+                            {"outline", "Outline"}});
+    switchRow(look, "blur_on", "Blur behind the bar", Theme::get().blur() ? "" : "Blur is off in Look & feel", "/statusBar/blur", true);
+    sliderRow(look, "opacity", "Bar opacity", "/appearance/transparency/bar", 0.7, 0.3, 1, 0.05, percent);
+    auto more = row(look, "blur_medium", "Blur strength and look", "Shared by the shell and windows");
+    pillButton(more.row, "Look & feel", false, [] { settingsPage("style"); }, "open_in_new");
 
     // Widgets, as Android 17's editors work: each zone shows its widgets as
     // chips in a row, the way the bar does (groups share one outlined
@@ -860,6 +889,9 @@ void dockPage(Flex* page, Popup&) {
     sliderRow(g, "photo_size_select_small", "Icon size", "/dock/iconSize", 44, 32, 64, 2,
               [](double v) { return std::format("{:.0f} px", v); });
     switchRow(g, "apps", "Running apps", "Apps that are open but not pinned, after a divider", "/dock/showRunning", true);
+    auto* dlook = group(page, "Look", "How the dock sits on what's behind it");
+    switchRow(dlook, "blur_on", "Blur behind the dock", Theme::get().blur() ? "" : "Blur is off in Look & feel", "/dock/blur", true);
+    sliderRow(dlook, "opacity", "Opacity", "/dock/opacity", Theme::get().panelOpacity(), 0.2, 1, 0.05, percent);
     row(g, "mouse", "Click to focus or open", "Middle click opens a new window · right click pins or unpins");
 
     auto* live = page->add<Live>();

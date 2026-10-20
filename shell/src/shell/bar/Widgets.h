@@ -5,6 +5,7 @@
 #include "ui/Node.h"
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -25,8 +26,14 @@ protected:
     void doArrange() override;
 };
 
-// A rounded module background in "floating" bar style; transparent when the
-// bar draws its own full background.
+// The pills' fill (Settings → Status bar → Pill highlight): Auto fills them
+// in the Pills style only; none leaves them on the bar's own surface
+std::optional<ColorRef> pillColour();
+// Blur behind the bar: on in Look & feel, and for the bar
+bool barBlur();
+
+// A rounded module background, in the pill colour; transparent with none,
+// or when `filled` is false (widgets inside a group's capsule)
 ui::Flex* capsule(ui::Node* parent, bool filled);
 
 class Workspaces : public ui::Flex {

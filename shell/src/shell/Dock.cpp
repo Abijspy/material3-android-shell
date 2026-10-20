@@ -195,8 +195,12 @@ void Dock::rebuild() {
     m_root->arranged = [this] { updateInput(); };
     m_card = root->add<Flex>(Flex::Direction::Row);
     m_card->setPadding(Insets(kPad))->setSpacing(4)->setRadius(Radii(28));
-    m_card->setBackground(ColorRef("surface_container", Theme::get().panelOpacity()), false);
-    m_card->blurBehind = true;
+    // Settings → Dock: its own opacity and blur
+    const auto& config = Config::get();
+    m_card->setBackground(ColorRef("surface_container", static_cast<float>(std::clamp(
+                                                           config.value<double>("/dock/opacity", Theme::get().panelOpacity()), 0.2, 1.0))),
+                          false);
+    m_card->blurBehind = config.value<bool>("/dock/blur", true);
     m_surface->setRoot(std::move(root));
     m_surface->setSize(0, panelHeight());
     m_surface->setExclusiveZone(autoHide() ? 0 : panelHeight());

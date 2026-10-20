@@ -1,5 +1,12 @@
 # Changelog
 
+## v5.3.3 — 2026-10-20
+
+- **A floating bar.** Settings → Status bar → Style now offers Pills, Full width and **Floating bar**: one bar across the screen that stands off its edges, with round, curved or square ends, its own width (40–100%) and gap from the edge.
+- **Pill highlight**: fill the widgets' pills in the surface colour, a tonal or accent colour, as an outline, or not at all, in any bar style (Auto keeps them as before).
+- **Blur, your way.** Look & feel adds the blur's smoothness (passes), noise, contrast, brightness and vibrancy. The bar and the dock each get their own blur switch and opacity, in their Settings pages.
+- **The window switcher's card is blurred** like the rest of the shell.
+
 ## v5.3.2 — 2026-10-20
 
 - **A welcome tour on a new install**, in its own window: pick a dark or light theme and an accent, choose a wallpaper, place the bar and the dock, pick a 12- or 24-hour clock, learn the keys worth knowing, then jump to Settings, Hyprland Settings or the desktop editor. Skip it any time; it's in Settings → About to take again.

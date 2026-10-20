@@ -26,8 +26,8 @@ Bar::Bar(wl::Output* output, OpenPopup openPopup) : m_output(output), m_openPopu
     opts.ns = "material3ui-bar";
     opts.layer = LayerSurface::Layer::Top;
     opts.anchor = anchor();
-    opts.height = height();
-    opts.exclusiveZone = height();
+    opts.height = totalHeight();
+    opts.exclusiveZone = totalHeight();
     m_surface = std::make_unique<LayerSurface>(output, opts);
     rebuild();
 }
@@ -41,9 +41,37 @@ int Bar::height() const {
     return static_cast<int>(Config::get().value<double>("/statusBar/height", 40));
 }
 
+int Bar::totalHeight() const {
+    const bool floating = Config::get().value<int>("/statusBar/backgroundStyle", 0) == 2;
+    return height() + (floating ? static_cast<int>(Config::get().value<double>("/statusBar/gap", 6)) : 0);
+}
+
 namespace {
 
 const char* kZones[] = {"left", "center", "right"};
+
+// The bar's surface in the Full width and Floating bar styles: one backdrop
+// with the modules over it. Floating, both stand off the screen's edges,
+// `width` of it wide and centred, with rounded ends.
+class BarFrame : public Node {
+public:
+    bool floating = false, bottom = false;
+    float width = 1, gap = 6;
+
+protected:
+    SizeF doMeasure(SizeF available) override {
+        for (auto& c : children()) c->measure(available);
+        return available;
+    }
+    void doArrange() override {
+        RectF r = rect();
+        if (floating) {
+            const float w = (r.w - gap * 2) * std::clamp(width, 0.3f, 1.0f);
+            r = {r.x + (r.w - w) / 2, r.y + (bottom ? 0 : gap), w, r.h - gap};
+        }
+        for (auto& c : children()) c->arrange(r);
+    }
+};
 
 // Live download/upload for the bar
 class NetSpeed : public Flex {
@@ -315,40 +343,40 @@ void Bar::ungroup(Layout& l, const std::string& id) {
             }
 }
 
-void Bar::addModule(Flex* zone, const std::string& id, bool floating) {
-    const float alpha = Theme::get().barOpacity();
+void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
     if (id == "workspaces") {
         auto* ws = zone->add<Workspaces>(m_output->name);
-        if (floating) {
-            pill(ws->setBackground(ColorRef("surface_container_high", alpha), false));
-            ws->blurBehind = true;
+        if (const auto colour = filled ? pillColour() : std::nullopt) {
+            pill(ws->setBackground(*colour, false));
+            if (Config::get().value<std::string>("/statusBar/pillColor", "auto") == "outline") ws->setBorder(1.5f, ColorRef("outline", 0.7f));
+            ws->blurBehind = barBlur();
         }
     } else if (id == "title") {
-        capsule(zone, floating)->add<WindowTitle>();
+        capsule(zone, filled)->add<WindowTitle>();
     } else if (id == "island") {
         zone->add<Island>(m_openPopup);
     } else if (id == "clock") {
-        capsule(zone, floating)->add<Clock>("bar");
+        capsule(zone, filled)->add<Clock>("bar");
     } else if (id == "netspeed") {
-        capsule(zone, floating)->add<NetSpeed>();
+        capsule(zone, filled)->add<NetSpeed>();
     } else if (id == "tray") {
-        auto* c = capsule(zone, floating);
+        auto* c = capsule(zone, filled);
         c->setPadding({4, 0});
         c->add<TrayIcons>(m_openPopup);
     } else if (id == "status") {
-        auto* c = capsule(zone, floating);
+        auto* c = capsule(zone, filled);
         c->setPadding({4, 0});
         c->add<StatusIcons>(m_openPopup);
     } else if (id == "battery") {
         // The button fills the capsule (2 px in all round) so its hover
         // pill follows the capsule's shape
-        auto* c = capsule(zone, floating);
+        auto* c = capsule(zone, filled);
         c->setPadding({2, 0});
         c->add<BatteryStatus>(m_openPopup);
     } else if (id == "media") {
-        capsule(zone, floating)->add<Media>();
+        capsule(zone, filled)->add<Media>();
     } else if (id == "weather" || id == "calendar" || id == "notifications" || id == "sysmon") {
-        auto* c = capsule(zone, floating);
+        auto* c = capsule(zone, filled);
         c->setPadding({4, 0});
         Chip* chip = nullptr;
         auto open = [this](const std::string& name, Node* from) {
@@ -368,7 +396,7 @@ void Bar::addModule(Flex* zone, const std::string& id, bool floating) {
         // One-tap buttons that open a panel
         const auto it = std::ranges::find_if(modules(), [&](const Module& m) { return id == m.id; });
         if (it == modules().end()) return;
-        auto* c = capsule(zone, floating);
+        auto* c = capsule(zone, filled);
         c->setPadding({4, 0});
         auto* b = c->add<Button>();
         pill(b)->setPadding(Insets(5));
@@ -382,9 +410,12 @@ void Bar::addModule(Flex* zone, const std::string& id, bool floating) {
 }
 
 void Bar::rebuild() {
-    // backgroundStyle 0 floats each module in its own capsule; anything else
-    // draws one bar-wide surface
-    const bool floating = Config::get().value<int>("/statusBar/backgroundStyle", 0) == 0;
+    // backgroundStyle: 0 each module in its own pill, 1 one bar-wide surface,
+    // 2 a floating bar (inset from the edges, rounded ends). The pills are
+    // filled in the pill colour in any of them (Pill highlight)
+    const auto& config = Config::get();
+    const int style = config.value<int>("/statusBar/backgroundStyle", 0);
+    const bool filled = pillColour().has_value();
 
     auto root = std::make_unique<BarLayout>();
     auto* bg = root.get();
@@ -399,11 +430,11 @@ void Bar::rebuild() {
         if (!editing) {
             for (const auto& g : zones[z]) {
                 if (g.size() == 1) {
-                    addModule(zone, g.front(), floating);
+                    addModule(zone, g.front(), filled);
                     continue;
                 }
                 // A group: one capsule around all of its widgets
-                auto* cap = capsule(zone, floating);
+                auto* cap = capsule(zone, filled);
                 cap->setPadding({4, 0})->setSpacing(2);
                 for (const auto& id : g) addModule(cap, id, false);
             }
@@ -457,24 +488,29 @@ void Bar::rebuild() {
     }
 
     auto* surface = m_surface.get();
-    if (!floating) {
-        // Full background: paint it under everything via a backdrop node
-        class Backdrop : public Node {
-        protected:
-            void doPaint(Renderer& r) override {
-                r.rect(rect(), ColorRef("surface_container", Theme::get().barOpacity()).resolve());
-            }
-        };
-        auto wrapper = std::make_unique<Node>();
-        wrapper->add<Backdrop>()->blurBehind = true;
-        wrapper->adopt(std::move(root));
-        surface->setRoot(std::move(wrapper));
+    if (style != 0) {
+        // One surface under everything: edge to edge, or floating
+        auto frame = std::make_unique<BarFrame>();
+        frame->floating = style == 2;
+        frame->bottom = config.value<std::string>("/statusBar/position", "top") == "bottom";
+        frame->width = static_cast<float>(config.value<double>("/statusBar/width", 1.0));
+        frame->gap = static_cast<float>(config.value<double>("/statusBar/gap", 6));
+        auto* back = frame->add<Flex>(Flex::Direction::Row);
+        back->setBackground(ColorRef("surface_container", Theme::get().barOpacity()), false);
+        back->blurBehind = barBlur();
+        if (frame->floating) {
+            back->setRadius(Radii(static_cast<float>(config.value<double>("/statusBar/endRadius", 100))));
+            // Clear of the rounded ends
+            bg->margin = 8 + std::min(12.0f, static_cast<float>(config.value<double>("/statusBar/endRadius", 100)) / 4);
+        }
+        frame->adopt(std::move(root));
+        surface->setRoot(std::move(frame));
     } else {
         surface->setRoot(std::move(root));
     }
     m_surface->setAnchor(anchor());
-    m_surface->setSize(0, height());
-    m_surface->setExclusiveZone(height());
+    m_surface->setSize(0, totalHeight());
+    m_surface->setExclusiveZone(totalHeight());
 }
 
 void Bar::setVisible(bool visible) {
