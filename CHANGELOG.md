@@ -1,5 +1,11 @@
 # Changelog
 
+## v5.2.0 — 2026-10-20
+
+- **The battery tells the truth.** Plugging in or out shows at once, even on a full battery; a battery held at a charge limit reads "Plugged in, not charging" instead of charging; time left is estimated on laptops whose battery reports no power draw; the charging icon shows how full it is. Hover the battery for the whole status.
+- **The island opens the dashboard while music plays.** Clicking the island shows the calendar and weather whatever it's showing; its media buttons still play, pause and skip.
+- **Long titles scroll.** The window title in the bar and the island's track and notifications take less room and scroll slowly to show the rest when they don't fit.
+
 ## v5.1.1 — 2026-10-19
 
 - **Live tooltips.** A tooltip on the bar follows what it describes while it shows: the volume as you change it (or muting), the Wi-Fi network you join, Bluetooth turning on or off, the battery charging and notifications arriving.
