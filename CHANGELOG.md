@@ -1,5 +1,13 @@
 # Changelog
 
+## v5.4.3 — 2026-10-20
+
+- **Hyprland's options live in Hyprland Settings only.** The shell's Settings no longer keeps its own copies of them, which could disagree. Where they used to be, it links straight to the right Hyprland Settings page:
+  - Mouse & touchpad: touchpad, pointer and gestures.
+  - Look & feel: the blur's strength and look, window opacity, shadows and corners, and window animations.
+  - Accessibility: the magnifier's zoom level and more cursor options.
+- **Shell-only settings stay where they were.** Blur and opacity for the bar, panels, dock and widgets, the shell's corners and animation speed, scrolling, cursor size and the magnifier shortcuts.
+
 ## v5.4.2 — 2026-10-20
 
 - **The dock no longer crashes the shell.** With the pointer over the dock, a settings change could crash the shell, over and over, as it restarted.
