@@ -733,7 +733,7 @@ void stylePage(Flex* page, Popup&) {
                                                                   : "Needs Hyprland, or a compositor with ext-background-effect",
               "/appearance/blur/enabled", true);
     switchRow(fx, "wallpaper", "Blur behind widgets", "On the desktop, the lock screen and the login screen", "/appearance/blur/widgets", true);
-    sliderRow(fx, "blur_circular", "Widget blur strength", "/appearance/blur/widgetRadius", 18, 4, 40, 1,
+    sliderRow(fx, "blur_circular", "Widget blur strength", "/appearance/blur/widgetRadius", 6, 2, 24, 1,
               [](double v) { return std::format("Radius {:.0f}", v); });
     sliderRow(fx, "toolbar", "Bar opacity", "/appearance/transparency/bar", 0.7, 0.3, 1, 0.05, percent);
     sliderRow(fx, "select_window", "Panel opacity", "/appearance/transparency/panels", 0.72, 0.3, 1, 0.05, percent);

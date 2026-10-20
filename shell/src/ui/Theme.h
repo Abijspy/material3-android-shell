@@ -56,7 +56,7 @@ private:
     float m_barOpacity = 0.8f, m_panelOpacity = 0.9f, m_roundness = 1, m_textScale = 1;
     bool m_boldText = false;
     float m_areaScale[AreaCount] = {1, 1, 1, 1};
-    float m_widgetBlur = 18;
+    float m_widgetBlur = 6;
     bool m_smoothScroll = true;
     float m_scrollStep = 64, m_scrollGlide = 1;
 };

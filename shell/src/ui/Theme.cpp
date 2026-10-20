@@ -89,7 +89,7 @@ void Theme::loadEffects() {
     m_scrollStep = std::clamp(static_cast<float>(c.value<double>("/appearance/scroll/step", 64)), 24.0f, 200.0f);
     m_scrollGlide = std::clamp(static_cast<float>(c.value<double>("/appearance/scroll/glide", 1.0)), 0.0f, 2.0f);
     m_widgetBlur = c.value<bool>("/appearance/blur/widgets", true)
-                       ? std::clamp(static_cast<float>(c.value<double>("/appearance/blur/widgetRadius", 18)), 2.0f, 48.0f)
+                       ? std::clamp(static_cast<float>(c.value<double>("/appearance/blur/widgetRadius", 6)), 2.0f, 24.0f)
                        : 0;
     const char* areas[AreaCount] = {nullptr, "bar", "lock", "widgets"};
     for (int i = 1; i < AreaCount; ++i)
