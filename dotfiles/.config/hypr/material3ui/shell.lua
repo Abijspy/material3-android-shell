@@ -61,7 +61,7 @@ B.apply_custom()
 -- written to effects_custom.lua
 local ok_fx, fx = pcall(require, "material3ui.effects_custom")
 if not ok_fx or type(fx) ~= "table" then fx = {} end
-for _, ns in ipairs({ "bar", "popup", "toasts", "osd", "dock" }) do
+for _, ns in ipairs({ "bar", "popup", "toasts", "osd", "dock", "switcher" }) do
 	hl.layer_rule({ match = { namespace = "material3ui-" .. ns }, blur = fx.blur ~= false, ignore_alpha = fx.ignore_alpha or 0.6 })
 end
 hl.layer_rule({ match = { namespace = "material3ui-wallpaper" }, blur = false, no_anim = true })
@@ -73,6 +73,8 @@ hl.window_rule({
 	center = true,
 	size = { "monitor_w*0.8", "monitor_h*0.85" },
 })
+-- The welcome tour: a dialog-sized window in the middle
+hl.window_rule({ match = { class = "^material3ui-welcome$" }, float = true, center = true, size = { "monitor_w*0.7", "monitor_h*0.82" } })
 if fx.size then
 	hl.config({ decoration = { blur = { size = fx.size, passes = fx.passes or 3 } } })
 end

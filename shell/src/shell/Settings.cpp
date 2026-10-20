@@ -2833,6 +2833,9 @@ void packagesPage(Flex* page, Popup&) {
             connectedGroup<std::string>(ch.row, p.channel() == "stable" ? "stable" : "canary",
                                         {{"stable", "Stable"}, {"canary", "Latest (git)"}},
                                         [](std::string c) { Packages::get().setChannel(c); });
+            // This version's notes (all of them: About → Changelog)
+            group(body, "What's new in " M3_VERSION, "Material3UI's latest changes, as installed");
+            releaseNotes(body, 1, 600);
             if (!p.updates().empty()) {
                 auto* list = group(body, "Pending");
                 for (const auto& u : p.updates()) {
@@ -2906,6 +2909,14 @@ void aboutPage(Flex* page, Popup&) {
     });
     hero->add<Label>("Material3UI")->setSize(28)->setWeight(600);
     hero->add<Label>("Native shell " M3_VERSION " · C++, Wayland and OpenGL ES")->setSize(14)->setColor("on_surface_variant", false);
+    auto* intro = hero->add<Flex>(Flex::Direction::Row);
+    intro->setSpacing(8)->setPadding({0, 4, 0, 0});
+    pillButton(intro, "What's new", false, [] {
+        if (open) open("whatsnew");
+    }, "new_releases");
+    pillButton(intro, "Welcome tour", false, [] {
+        if (open) open("welcome");
+    }, "waving_hand");
 
     auto* sys = group(page, "This device");
     char host[256] = {};
@@ -2949,6 +2960,21 @@ void aboutPage(Flex* page, Popup&) {
     row(sys, "memory_alt", formatBytes(stats.memTotal()), "Memory");
     auto wm = row(sys, "grid_view", "Hyprland " + hypr, "Compositor");
     if (const auto mark = paths::dataFile("icons/hyprland-logo.svg"); !mark.empty()) useLogo(wm, mark);
+
+    // The changelog: the latest few releases, the rest on request
+    group(page, "Changelog", "What changed in each release");
+    auto* notes = page->add<Flex>(Flex::Direction::Column);
+    notes->setAlignItems(Align::Stretch)->setSpacing(10);
+    releaseNotes(notes, 3, 600);
+    auto* more = page->add<Flex>(Flex::Direction::Row);
+    more->setJustify(Align::Center);
+    pillButton(more, "Show all releases", false, [notes, more] {
+        EventLoop::get().defer([notes, more] {
+            notes->clearChildren();
+            releaseNotes(notes, 1000, 600);
+            more->setVisible(false);
+        });
+    }, "expand_more");
 
     auto* credits = group(page, "Credits");
     row(credits, "favorite", "NAnDoroid-shell by na-ive", "The project Material3UI grew from");

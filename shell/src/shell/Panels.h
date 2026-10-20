@@ -66,6 +66,13 @@ inline std::function<void(const std::string& name, const std::string& arg, float
 inline std::function<void()> lock;
 // Set by the shell: turn the bars' edit mode on or off
 inline std::function<void(bool)> editBar;
+// The first-run tour, in its own window
+void welcome(ui::Flex* card, Popup& popup);
+// After an update: the release notes since `since` (empty: this release's)
+void whatsNew(ui::Flex* card, Popup& popup, const std::string& since);
+// CHANGELOG.md's newest `max` releases (since `since`, when given) as
+// lists of notes `width` wide (What's new, Settings → Updates and About)
+void releaseNotes(ui::Node* parent, int max, float width, const std::string& since = {});
 // The widget picker the bar's "+" opens; zone is left, centre or right
 void barWidgets(ui::Flex* card, Popup& popup, const std::string& zone);
 // The lock screen at full size, editable on its grid

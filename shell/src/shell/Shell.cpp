@@ -6,6 +6,7 @@
 #include "build_config.h"
 #include "core/Config.h"
 #include "core/EventLoop.h"
+#include "core/Paths.h"
 #include "core/Process.h"
 #include "ipc/IpcServer.h"
 #include "render/Images.h"
@@ -39,6 +40,7 @@
 #include "wayland/Surface.h"
 
 #include <cmath>
+#include <filesystem>
 #include <format>
 #include <unistd.h>
 
@@ -48,6 +50,9 @@ Shell::Shell() = default;
 Shell::~Shell() = default;
 
 bool Shell::start() {
+    // No config yet: a new install (read before anything writes one)
+    std::error_code ec;
+    const bool fresh = !std::filesystem::exists(paths::configFile(), ec) || std::filesystem::file_size(paths::configFile(), ec) < 4;
     auto& display = wl::Display::get();
     if (!display.connect()) return false;
     if (!Renderer::get().init(display.display())) return false;
@@ -130,6 +135,8 @@ bool Shell::start() {
     };
 
     registerIpc();
+    // Once the desktop is up and settled
+    EventLoop::get().addTimer(2500, [this, fresh] { greet(fresh); });
     return true;
 }
 
@@ -223,8 +230,38 @@ void Shell::openHyprSettings(const std::string& page) {
     };
 }
 
+void Shell::openWelcome() {
+    if (m_welcome && !m_welcome->closing()) {
+        auto& h = Hyprland::get();
+        for (const auto& c : h.clients(true))
+            if (c.cls == "material3ui-welcome") h.focusWindow(c.address);
+        return;
+    }
+    if (m_popup) m_popup->close();
+    Popup::Options opts;
+    opts.name = "welcome";
+    opts.window = true;
+    opts.appId = "material3ui-welcome";
+    opts.title = "Welcome";
+    opts.icon = "waving_hand";
+    opts.windowWidth = 900;
+    opts.windowHeight = 680;
+    m_welcome = std::make_unique<Popup>(nullptr, opts, panels::welcome);
+    m_welcome->onClosed = [this] { EventLoop::get().defer([this] { m_welcome.reset(); }); };
+}
+
+void Shell::greet(bool freshInstall) {
+    const std::string seen = Config::get().value<std::string>("/welcome/version", "");
+    if (seen == M3_VERSION) return;
+    Config::get().set("/welcome/version", M3_VERSION);
+    // Before this was kept, an existing config means an update to this one
+    if (freshInstall) openWelcome();
+    else togglePopup("whatsnew", focusedOutput(), -1, seen);
+}
+
 void Shell::togglePopup(const std::string& name, wl::Output* output, float anchorX, const std::string& arg) {
     if (name == "settings") return openSettings(arg);
+    if (name == "welcome") return openWelcome();
     if (name == "hyprsettings") return openHyprSettings(arg);
     if (name == "desktopedit") return desktopeditor::open(output ? output : focusedOutput());
     // The system monitor lives in Settings now (Ctrl+Alt+Delete, the bar's widget)
@@ -311,6 +348,11 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         opts.anchorX = -1;
         opts.centredVertically = true;
         build = [arg](ui::Flex* card, Popup& p) { panels::settings(card, p, arg); };
+    } else if (name == "whatsnew") {
+        opts.width = 560;
+        opts.anchorX = -1;
+        opts.centredVertically = true;
+        build = [arg](ui::Flex* card, Popup& p) { panels::whatsNew(card, p, arg); };
     } else if (name == "overview") {
         opts.fill = true;
         build = panels::overview;
@@ -605,6 +647,15 @@ void Shell::registerIpc() {
     ipc.add("lock", "Lock the session", [](const auto&) {
         LockScreen::get().lock();
         return std::string("locked");
+    });
+    ipc.add("welcome", "Show the first-run tour", [this](const auto&) {
+        EventLoop::get().defer([this] { openWelcome(); });
+        return std::string();
+    });
+    ipc.add("whatsnew", "whatsnew [since-version]: the release notes popup", [this](const IpcServer::Args& a) {
+        const std::string since = a.empty() ? "" : a[0];
+        EventLoop::get().defer([this, since] { togglePopup("whatsnew", focusedOutput(), -1, since); });
+        return std::string();
     });
     ipc.add("switcher", "switcher [next|prev]: the Super+Tab window switcher", [this](const IpcServer::Args& a) {
         const int by = !a.empty() && a[0] == "prev" ? -1 : 1;

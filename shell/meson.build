@@ -110,6 +110,7 @@ sources = files(
   'src/shell/SettingsKit.cpp',
   'src/shell/Tools.cpp',
   'src/shell/Switcher.cpp',
+  'src/shell/Welcome.cpp',
   'src/shell/Tooltip.cpp',
   'src/shell/Popup.cpp',
   'src/shell/Shell.cpp',
@@ -134,6 +135,8 @@ install_data('data/icons/material3ui-settings.svg', 'data/icons/material3ui-hypr
 install_data('data/icons/material3ui-settings.svg', install_dir: get_option('datadir') / 'material3ui/icons')
 # Shipped data: emoji list, logo, wallpapers
 install_data('data/emojis.txt', install_dir: get_option('datadir') / 'material3ui')
+# What's new, the welcome tour and About → Changelog read it
+install_data('../CHANGELOG.md', install_dir: get_option('datadir') / 'material3ui')
 # One password per update: the root helper Settings starts, and its client
 install_data('data/update/material3ui-update-root', 'data/update/material3ui-root',
   install_dir: get_option('prefix') / 'lib/material3ui', install_mode: 'rwxr-xr-x')
