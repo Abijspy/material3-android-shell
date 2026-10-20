@@ -57,12 +57,17 @@ private:
     bool m_seconds = false;
 };
 
-class WindowTitle : public ui::Marquee {
+// The focused window: its app's icon, fixed, then its title, which scrolls
+// when it's longer than its space (Settings → Status bar → Scrolling text)
+class WindowTitle : public ui::Flex {
 public:
     WindowTitle();
     void sync();
 
 private:
+    ui::ImageView* m_icon;
+    ui::Marquee* m_title;
+    std::string m_iconName; // what m_icon draws
     Connection m_style;
     Connection m_conn;
 };

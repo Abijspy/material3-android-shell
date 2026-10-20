@@ -1,6 +1,8 @@
 #include "shell/bar/Widgets.h"
 
 #include "core/Config.h"
+#include "services/Search.h"
+#include "render/Images.h"
 #include "core/EventLoop.h"
 #include "services/Hyprland.h"
 #include "ui/Theme.h"
@@ -181,13 +183,23 @@ void Clock::schedule() {
 
 // ── WindowTitle ──
 
-// Long titles scroll in a narrower space instead of taking the bar's
-WindowTitle::WindowTitle() : Marquee(240) {
-    label()->setSize(13)->setColor("on_surface_variant", false);
+// Long titles scroll in a narrower space instead of taking the bar's;
+// the icon stays put beside them
+WindowTitle::WindowTitle() : Flex(Direction::Row) {
+    setSpacing(8);
+    m_icon = add<ImageView>(18, [this](float scale, int& w, int& h) -> GLuint {
+        auto* t = m_iconName.empty() ? nullptr : Images::get().icon(m_iconName, static_cast<int>(std::lround(18 * scale)));
+        if (!t) return 0;
+        w = t->width;
+        h = t->height;
+        return t->id;
+    });
+    m_title = add<Marquee>(240);
+    m_title->label()->setSize(13)->setColor("on_surface_variant", false);
     // How it scrolls (Settings → Status bar → Scrolling text)
     auto style = [this] {
-        setMode(modeOf(Config::get().value<std::string>("/bar/scrolling/windowTitle", "loop")));
-        setSpeed(Config::get().value<float>("/bar/scrolling/speed", 30));
+        m_title->setMode(Marquee::modeOf(Config::get().value<std::string>("/bar/scrolling/windowTitle", "loop")));
+        m_title->setSpeed(Config::get().value<float>("/bar/scrolling/speed", 30));
     };
     style();
     m_style = Config::get().changed.connect(style);
@@ -196,8 +208,13 @@ WindowTitle::WindowTitle() : Marquee(240) {
 }
 
 void WindowTitle::sync() {
-    setText(Hyprland::get().activeWindowTitle());
-    setVisible(!text().empty());
+    auto& h = Hyprland::get();
+    m_title->setText(h.activeWindowTitle());
+    // The app's icon from its desktop entry, by window class (as the dock finds it)
+    m_iconName = h.activeWindowClass().empty() ? "" : Apps::get().iconForClass(h.activeWindowClass());
+    m_icon->setVisible(!m_iconName.empty() && Images::get().icon(m_iconName, 18));
+    m_icon->requestRedraw(); // its provider reads the new name
+    setVisible(!h.activeWindowTitle().empty());
 }
 
 } // namespace m3::shell
