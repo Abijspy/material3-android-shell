@@ -1,5 +1,10 @@
 # Changelog
 
+## v5.2.1 — 2026-10-20
+
+- **Scrolling text loops like a ticker.** Long titles now scroll continuously: the text, a gap, and its beginning again, pausing as the start comes round.
+- **Choose how each one scrolls.** Settings → Status bar → Scrolling text sets the window title, the island's music and its notifications to loop, go back and forth, or stay still, and the speed for all of them.
+
 ## v5.2.0 — 2026-10-20
 
 - **The battery tells the truth.** Plugging in or out shows at once, even on a full battery; a battery held at a charge limit reads "Plugged in, not charging" instead of charging; time left is estimated on laptops whose battery reports no power draw; the charging icon shows how full it is. Hover the battery for the whole status.
