@@ -81,8 +81,13 @@ void Effects::applyInput() {
     const std::string file = (fs::path(luaFile()).parent_path() / "input_custom.lua").string();
     if (readAll(file) == lua) return;
     std::ofstream(file) << lua;
-    log::info("input: touchpad and pointer settings written; reloading Hyprland");
-    h.request("reload");
+    // Applied live: a reload would re-apply everything (the screen flickers);
+    // the file keeps it for the next one
+    std::string table = lua.substr(lua.find("return ") + 7);
+    std::ranges::replace(table, '\n', ' ');
+    std::ranges::replace(table, '\t', ' ');
+    log::info("input: touchpad and pointer settings written and applied");
+    h.request("eval hl.config({ input = " + table + " })");
 }
 
 namespace {
@@ -232,12 +237,26 @@ void Effects::apply() {
                                         "\tbar = {},\n\tdock = {},\n}}\n",
                                         t.blur() ? "true" : "false", ignore, size, passes, noise, contrast, brightness, vibrancy,
                                         barBlur ? "true" : "false", dockBlur ? "true" : "false");
-    if (readAll(luaFile()) == lua) return; // unchanged: no reload
+    // What the layer rules hold: only a reload changes those
+    const std::string rules = std::format("{} {:.2f} {} {}", t.blur(), ignore, barBlur, dockBlur);
+    if (readAll(luaFile()) == lua) { // unchanged: nothing to do
+        m_rules = rules;
+        return;
+    }
     std::error_code ec;
     fs::create_directories(fs::path(luaFile()).parent_path(), ec);
     std::ofstream(luaFile()) << lua;
-    log::info("effects: blur {}, size {}, passes {}; reloading Hyprland", t.blur() ? "on" : "off", size, passes);
-    h.request("reload");
+    if (!m_rules.empty() && rules == m_rules) {
+        // Only how the blur looks: applied live, without the reload's flicker
+        log::info("effects: blur size {}, passes {}; applied", size, passes);
+        h.request(std::format("eval hl.config({{ decoration = {{ blur = {{ size = {}, passes = {}, noise = {:.4f}, contrast = {:.4f}, "
+                              "brightness = {:.4f}, vibrancy = {:.4f} }} }} }})",
+                              size, passes, noise, contrast, brightness, vibrancy));
+    } else {
+        log::info("effects: blur {}, size {}, passes {}; reloading Hyprland", t.blur() ? "on" : "off", size, passes);
+        h.request("reload");
+    }
+    m_rules = rules;
 }
 
 } // namespace m3

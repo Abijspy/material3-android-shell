@@ -70,6 +70,9 @@ void LayerSurface::setAnchor(uint32_t anchor) {
 }
 
 void LayerSurface::setMargins(int top, int right, int bottom, int left) {
+    // Unchanged: nothing sent (each commit has the compositor lay out again)
+    if (top == m_options.marginTop && right == m_options.marginRight && bottom == m_options.marginBottom && left == m_options.marginLeft)
+        return;
     m_options.marginTop = top;
     m_options.marginRight = right;
     m_options.marginBottom = bottom;
@@ -81,6 +84,7 @@ void LayerSurface::setMargins(int top, int right, int bottom, int left) {
 }
 
 void LayerSurface::setSize(int width, int height) {
+    if (width == m_options.width && height == m_options.height) return;
     m_options.width = width;
     m_options.height = height;
     if (m_layer) {
@@ -90,6 +94,7 @@ void LayerSurface::setSize(int width, int height) {
 }
 
 void LayerSurface::setExclusiveZone(int zone) {
+    if (zone == m_options.exclusiveZone) return; // windows would move for nothing
     m_options.exclusiveZone = zone;
     if (m_layer) {
         zwlr_layer_surface_v1_set_exclusive_zone(m_layer, zone);

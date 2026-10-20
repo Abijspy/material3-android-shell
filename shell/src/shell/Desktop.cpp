@@ -137,6 +137,11 @@ Desktop::Desktop(wl::Output* output) {
     });
 }
 
+void Desktop::refresh() {
+    fill();
+    m_surface->requestLayout();
+}
+
 void Desktop::fill() {
     m_items = Config::get().value<nlohmann::json>("/desktop/items", nlohmann::json()).dump();
     m_board->clearChildren();

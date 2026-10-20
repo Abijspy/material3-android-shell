@@ -18,6 +18,9 @@ class Board;
 class Desktop {
 public:
     explicit Desktop(wl::Output* output);
+    // Settings changed: the widgets rebuilt on the same surface (recreating
+    // it would flash the wallpaper)
+    void refresh();
 
 private:
     void fill(); // the items, from config.json

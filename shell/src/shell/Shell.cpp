@@ -393,8 +393,15 @@ void Shell::restyle(bool relayout) {
         for (auto& [_, bar] : m_bars) bar->rebuild();
         // Open panels and windows too: text may have grown (Accessibility)
         for (auto* s : wl::Surface::all()) s->requestLayout();
-        // Desktop widgets follow settings too (desktop clock on/off)
-        for (auto& [output, desktop] : m_desktops) desktop = std::make_unique<Desktop>(output);
+        // Desktop widgets follow settings too (sizes, formats), on the same
+        // surface: a new one would flash the wallpaper. The desktop itself
+        // comes and goes with its switch.
+        const bool desktops = Config::get().value<bool>("/desktop/wallpaper", true);
+        for (auto& [output, _] : m_bars) {
+            if (!desktops) m_desktops.erase(output);
+            else if (auto it = m_desktops.find(output); it != m_desktops.end()) it->second->refresh();
+            else m_desktops[output] = std::make_unique<Desktop>(output);
+        }
         for (auto& [output, _] : m_bars) syncDock(output);
     } else {
         for (auto& [_, bar] : m_bars) bar->redraw();
