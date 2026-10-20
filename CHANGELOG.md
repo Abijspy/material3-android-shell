@@ -1,5 +1,9 @@
 # Changelog
 
+## v5.4.6 — 2026-10-20
+
+- **Dock settings no longer reload the shell.** On a fresh or reset setup, opening Settings → Dock reloaded the whole shell, and with the dock switched on it could reload over and over. The dock's pinned apps are now saved once, and a setting that hasn't changed is never written again.
+
 ## v5.4.5 — 2026-10-20
 
 - **A lighter blur behind widgets.** Cards on the desktop, lock and login screens now soften the wallpaper instead of smearing it. Adjust it in Look & feel → Widget blur strength.
