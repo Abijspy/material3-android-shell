@@ -1,5 +1,12 @@
 # Changelog
 
+## v5.3.2 — 2026-10-20
+
+- **A welcome tour on a new install**, in its own window: pick a dark or light theme and an accent, choose a wallpaper, place the bar and the dock, pick a 12- or 24-hour clock, learn the keys worth knowing, then jump to Settings, Hyprland Settings or the desktop editor. Skip it any time; it's in Settings → About to take again.
+- **What's new after every update**: once the new version starts, a popup shows its release notes (and those of any versions you skipped), with a link to all of them.
+- **The changelog in Settings.** Software & updates shows what's new in the installed version, and About lists the latest releases (all of them on request), with buttons for What's new and the welcome tour.
+- **The window switcher's card gets the shell's blur.**
+
 ## v5.3.1 — 2026-10-20
 
 - **Switch windows with Super+Tab**, as on Windows and macOS: hold Super and tap Tab to step through every open window, on every workspace, most recently used first, shown as a row of app icons with the window's title and workspace. Let go of Super to switch to it (its workspace comes with it); Shift+Tab or the arrows go back, Enter or a click picks one, Escape stays put. A quick Super+Tab flips straight back to the previous window.
