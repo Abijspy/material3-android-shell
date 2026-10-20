@@ -5,6 +5,7 @@
 #include "core/Process.h"
 #include "render/Images.h"
 #include "services/Search.h"
+#include "shell/ClockFaces.h"
 #include "shell/LockView.h"
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
@@ -13,6 +14,7 @@
 #include "ui/Theme.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <ctime>
 #include <filesystem>
@@ -64,6 +66,52 @@ private:
     Label *m_time, *m_date;
     EventLoop::TimerId m_timer = 0;
     Connection m_config;
+};
+
+// Hours over minutes, big and bold in two tones (Android's lock screen)
+class StackedClock : public Flex {
+public:
+    StackedClock() : Flex(Direction::Column) {
+        setAlignItems(Align::Start)->setSpacing(-38);
+        m_hours = add<Label>();
+        m_hours->setSize(132)->setWeight(700)->setColor("primary", false);
+        m_minutes = add<Label>();
+        m_minutes->setSize(132)->setWeight(700)->setColor("tertiary", false);
+        // Clear of the minutes' descent, which the tight spacing overlaps
+        m_dateRow = add<Flex>(Direction::Row);
+        m_dateRow->setPadding({4, 34, 0, 0});
+        m_date = m_dateRow->add<Label>();
+        m_date->setSize(20)->setWeight(500)->setColor("on_surface", false);
+        m_ticker = std::make_unique<kit::SecondTicker>([this] { sync(); });
+        sync();
+    }
+
+private:
+    void sync() {
+        auto& c = Config::get();
+        const auto time = c.value<std::string>("/desktop/timeFormat", "hh:mm");
+        const bool twelve = time.find("AP") != std::string::npos || time.find("ap") != std::string::npos;
+        m_hours->setText(Clock::sample(twelve ? "h" : "hh"));
+        m_minutes->setText(Clock::sample("mm"));
+        m_date->setText(Clock::sample(c.value<std::string>("/desktop/dateFormat", "dddd, d MMMM")));
+        m_dateRow->setVisible(c.value<bool>("/desktop/showDate", true));
+    }
+    Label *m_hours, *m_minutes, *m_date;
+    Flex* m_dateRow;
+    std::unique_ptr<kit::SecondTicker> m_ticker;
+};
+
+// A face with the date under it, if the desktop clock shows one
+class AnalogClock : public Flex {
+public:
+    explicit AnalogClock(kit::AnalogFace::Style style) : Flex(Direction::Column) {
+        setAlignItems(Align::Center)->setSpacing(14);
+        add<kit::AnalogFace>(style, 220);
+        auto& c = Config::get();
+        auto* date = add<Label>(Clock::sample(c.value<std::string>("/desktop/dateFormat", "dddd, d MMMM")));
+        date->setSize(18)->setWeight(500)->setColor("on_surface", false);
+        date->setVisible(c.value<bool>("/desktop/showDate", true));
+    }
 };
 
 const Apps::App* appById(const std::string& id) {
@@ -134,7 +182,10 @@ Node* cardWidget(Node* parent, const std::string& id) {
 
 const std::vector<WidgetDef>& widgets() {
     static const std::vector<WidgetDef> all = {
-        {"clock", "schedule", "Clock", "The time and date, large"},
+        {"clock", "schedule", "Digital clock", "The time and date, large"},
+        {"clock-stacked", "view_agenda", "Stacked clock", "Hours over minutes, bold, in two tones"},
+        {"clock-analog", "nest_clock_farsight_analog", "Analog clock", "A Material You dial with rounded hands"},
+        {"clock-dots", "radio_button_checked", "Minimal analog", "Slim hands over a ring of dots"},
         {"date", "calendar_today", "Date", "Today's date"},
         {"calendar", "calendar_month", "Calendar", "This month"},
         {"weather", "partly_cloudy_day", "Weather", "Now and the days ahead"},
@@ -196,6 +247,9 @@ Node* build(Node* parent, const Item& item, bool editing) {
         return shortcut(parent, fileIcon(path), nameOf(item), [path] { spawn("xdg-open " + shellQuoted(path)); }, editing);
     }
     if (item.id == "clock") return parent->add<BigClock>();
+    if (item.id == "clock-stacked") return parent->add<StackedClock>();
+    if (item.id == "clock-analog") return parent->add<AnalogClock>(kit::AnalogFace::Style::Cookie);
+    if (item.id == "clock-dots") return parent->add<AnalogClock>(kit::AnalogFace::Style::Dots);
     if (item.id == "calendar" || item.id == "weather" || item.id == "system" || item.id == "player") return cardWidget(parent, item.id);
     // The lock screen's widgets: date, forecast, battery, notifications
     return addLockWidget(parent, item.id, false, 0);

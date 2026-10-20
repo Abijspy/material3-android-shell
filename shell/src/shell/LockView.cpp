@@ -7,6 +7,7 @@
 #include "services/Network.h"
 #include "services/Notifications.h"
 #include "services/Weather.h"
+#include "shell/ClockFaces.h"
 #include "shell/LockLayout.h"
 #include "shell/PanelKit.h"
 #include "ui/Theme.h"
@@ -104,25 +105,32 @@ public:
     }
 
 private:
-    // Hours over minutes like Android's lock screen, or on one line
+    // Hours over minutes like Android's lock screen (in one colour or two),
+    // on one line, or an analog face (the desktop's Material You or minimal)
     void clockTick() {
         clearChildren();
         const auto& cfg = Config::get();
-        const bool stacked = cfg.value<std::string>("/lock/clock/style", "stacked") == "stacked";
+        const std::string style = cfg.value<std::string>("/lock/clock/style", "stacked");
         const float size = static_cast<float>(cfg.value<double>("/lock/clock/size", 150)) * m_clockScale;
+        if (style == "analog" || style == "dots") {
+            // About as tall as the stacked digits; it moves on its own each second
+            add<kit::AnalogFace>(style == "analog" ? kit::AnalogFace::Style::Cookie : kit::AnalogFace::Style::Dots, size * 1.3f);
+            return;
+        }
+        const bool stacked = style != "inline", twoTone = style == "twotone";
         auto* col = add<Flex>(Direction::Column);
         col->setSpacing(-size * 0.26f)->setAlignItems(m_align);
         const std::time_t now = std::time(nullptr);
         std::tm tm{};
         localtime_r(&now, &tm);
         char buf[16];
-        auto line = [&](const char* fmt) {
+        auto line = [&](const char* fmt, const char* colour = "primary") {
             std::strftime(buf, sizeof buf, fmt, &tm);
-            col->add<Label>(buf)->setSize(size)->setWeight(cfg.value<int>("/lock/clock/weight", 400))->setColor("primary", false);
+            col->add<Label>(buf)->setSize(size)->setWeight(cfg.value<int>("/lock/clock/weight", 400))->setColor(colour, false);
         };
         if (stacked) {
             line("%H");
-            line("%M");
+            line("%M", twoTone ? "tertiary" : "primary");
         } else {
             line("%H:%M");
         }

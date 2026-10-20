@@ -2349,7 +2349,8 @@ void weatherPage(Flex* page, Popup&) {
 void lockScreenPage(Flex* page, Popup& popup) {
     auto* clock = group(page, "Clock", "Place it on the board below; the login screen shows the same");
     choiceRow<std::string>(clock, "schedule", "Style", "", "/lock/clock/style", "stacked",
-                           {{"stacked", "Stacked"}, {"inline", "One line"}});
+                           {{"stacked", "Stacked"}, {"twotone", "Two-tone"}, {"inline", "One line"}, {"analog", "Analog"},
+                            {"dots", "Minimal analog"}});
     choiceRow<int>(clock, "format_bold", "Weight", "", "/lock/clock/weight", 400, {{300, "Light"}, {400, "Regular"}, {600, "Bold"}});
     sliderRow(clock, "format_size", "Size", "/lock/clock/size", 150, 72, 200, 4, [](double v) { return std::format("{:.0f} px", v); });
 

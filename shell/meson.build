@@ -100,6 +100,7 @@ sources = files(
   'src/shell/Panels.cpp',
   'src/shell/QuickSettings.cpp',
   'src/shell/Rich.cpp',
+  'src/shell/ClockFaces.cpp',
   'src/shell/CurveEditor.cpp',
   'src/shell/DesktopEditor.cpp',
   'src/shell/DesktopItems.cpp',
