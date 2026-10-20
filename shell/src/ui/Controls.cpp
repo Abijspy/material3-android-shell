@@ -614,4 +614,75 @@ void ImageView::doPaint(Renderer& r) {
     if (cover) r.popClip();
 }
 
+// ── Marquee ──
+
+Marquee::Marquee(float maxWidth, std::string text) : m_max(maxWidth), m_start(std::chrono::steady_clock::now()) {
+    m_label = add<Label>(std::move(text));
+}
+
+Marquee::~Marquee() {
+    if (m_wake) EventLoop::get().cancel(m_wake);
+}
+
+const std::string& Marquee::text() const {
+    return m_label->text();
+}
+
+Marquee* Marquee::setText(const std::string& text) {
+    if (text == m_label->text()) return this;
+    m_label->setText(text);
+    m_start = std::chrono::steady_clock::now(); // a new text starts from its beginning
+    requestLayout();
+    return this;
+}
+
+Marquee* Marquee::setMaxWidth(float w) {
+    m_max = w;
+    requestLayout();
+    return this;
+}
+
+SizeF Marquee::doMeasure(SizeF available) {
+    const SizeF s = m_label->measure({1e6f, available.h});
+    m_natural = s.w;
+    return {std::min({s.w, m_max, available.w}), s.h};
+}
+
+void Marquee::doArrange() {
+    // The label at its full width; the overflow is clipped and scrolled
+    m_label->arrange({rect().x, rect().y, std::max(m_natural, rect().w), rect().h});
+}
+
+void Marquee::doPaint(Renderer&) {
+    const float over = m_natural - rect().w;
+    if (over <= 0.5f) {
+        m_label->setTranslateX(0, false);
+        return;
+    }
+    // Pause, scroll to the end, pause, scroll back: a ping-pong at a reading pace
+    constexpr double pause = 2.2, speed = 32; // s, px/s
+    const double run = over / speed, cycle = 2 * (pause + run);
+    const double t = std::fmod(std::chrono::duration<double>(std::chrono::steady_clock::now() - m_start).count(), cycle);
+    double offset, wait = 0;
+    if (t < pause) {
+        offset = 0;
+        wait = pause - t;
+    } else if (t < pause + run) {
+        offset = (t - pause) * speed;
+    } else if (t < 2 * pause + run) {
+        offset = over;
+        wait = 2 * pause + run - t;
+    } else {
+        offset = over - (t - 2 * pause - run) * speed;
+    }
+    m_label->setTranslateX(-static_cast<float>(std::round(offset)), false);
+    if (wait <= 0) return requestRedraw();
+    // Still: wake when it moves again, no frames in between
+    if (!m_wake)
+        m_wake = EventLoop::get().addTimer(static_cast<int>(wait * 1000) + 16, [this] {
+            m_wake = 0;
+            requestRedraw();
+        });
+}
+
 } // namespace m3::ui

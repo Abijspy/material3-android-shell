@@ -195,6 +195,8 @@ public:
     int percent() const { return m_percent; }
     bool charging() const { return m_charging; }
     bool full() const { return m_full; }
+    // On mains power (charging, full, or held below a charge limit)
+    bool pluggedIn() const { return m_plugged; }
     long long secondsLeft() const { return m_seconds; } // to empty or full; 0 unknown
     double watts() const { return m_watts; }             // charge or discharge rate; 0 unknown
     int health() const { return m_health; }              // full charge vs design, %; 0 unknown
@@ -216,16 +218,22 @@ private:
     void findSysfs();
     void readHealth();
     void loadProfiles(size_t from = 0);
+    void readMains();      // AC online: UPower's OnBattery, else sysfs
+    void estimate();       // time left from energy over time, when the driver gives no rate
+    void finish();         // after any reading: derived values, then changed
 
-    bool m_present = false, m_charging = false, m_full = false;
+    bool m_present = false, m_charging = false, m_full = false, m_plugged = false;
     int m_percent = 0, m_health = 0;
     long long m_seconds = 0;
     double m_watts = 0;
     std::string m_sysfs;
     std::string m_profile, m_ppd, m_ppdPath; // the daemon's bus name and object, once found
     std::vector<std::string> m_profiles;
-    dbus::Subscription m_sub, m_profileSub;
-    EventLoop::TimerId m_poll = 0;
+    dbus::Subscription m_sub, m_profileSub, m_mainsSub;
+    EventLoop::TimerId m_poll = 0, m_sampler = 0;
+    bool m_upowerMains = false; // OnBattery read from UPower (else sysfs)
+    // Energy readings (µWh, or µAh) over time, for drivers with no rate
+    std::vector<std::pair<std::chrono::steady_clock::time_point, double>> m_samples;
 };
 
 // Backlight through sysfs, written via logind so no root is needed.

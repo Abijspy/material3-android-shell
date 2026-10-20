@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Signal.h"
+#include "ui/Controls.h"
 #include "ui/Node.h"
 
 #include <functional>
@@ -56,7 +57,7 @@ private:
     bool m_seconds = false;
 };
 
-class WindowTitle : public ui::Label {
+class WindowTitle : public ui::Marquee {
 public:
     WindowTitle();
     void sync();

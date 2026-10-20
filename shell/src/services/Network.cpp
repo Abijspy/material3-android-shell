@@ -842,10 +842,84 @@ Power::Power() {
     };
     m_sub = dbus::Bus::system().onPropertiesChanged("org.freedesktop.UPower", dev,
                                                     [load](const dbus::Value&, const std::string&) { load(); });
+    // Plugging in or out: UPower's own object says, even when the battery's
+    // numbers don't move (full, or held at a charge limit)
+    m_mainsSub = dbus::Bus::system().onPropertiesChanged("org.freedesktop.UPower", "/org/freedesktop/UPower",
+                                                         [this](const dbus::Value&, const std::string&) { readMains(); });
     load();
     findSysfs();
     readHealth();
+    readMains();
     loadProfiles();
+    // Energy every minute, for drivers that report no rate (time left)
+    m_sampler = EventLoop::get().addTimer(60000, [this] { estimate(); }, true);
+}
+
+void Power::readMains() {
+    dbus::Bus::system().getAll("org.freedesktop.UPower", "/org/freedesktop/UPower", "org.freedesktop.UPower",
+                               [this](const dbus::Value& p, bool ok) {
+        if (ok && p.contains("OnBattery")) {
+            m_upowerMains = true;
+            const bool plugged = !flag(p, "OnBattery");
+            if (plugged != m_plugged) {
+                m_plugged = plugged;
+                m_samples.clear(); // a new direction: start the estimate again
+                finish();
+            }
+            return;
+        }
+        // No UPower: the mains adapter in sysfs
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        bool plugged = false;
+        for (const auto& e : fs::directory_iterator("/sys/class/power_supply", ec)) {
+            std::string type;
+            std::ifstream(e.path() / "type") >> type;
+            if (type == "Mains" || type == "USB") plugged = plugged || readInt((e.path() / "online").string()) == 1;
+        }
+        if (plugged != m_plugged) {
+            m_plugged = plugged;
+            m_samples.clear();
+            finish();
+        }
+    });
+}
+
+void Power::estimate() {
+    if (m_sysfs.empty() || (m_watts > 0 && m_seconds > 0)) return;
+    // Energy (µWh) or charge (µAh), whichever the driver keeps
+    double now = 0, full = 0;
+    for (const char* kind : {"energy", "charge"}) {
+        long long n = -1, f = -1;
+        std::ifstream(m_sysfs + "/" + kind + "_now") >> n;
+        std::ifstream(m_sysfs + "/" + kind + "_full") >> f;
+        if (n >= 0 && f > 0) {
+            now = static_cast<double>(n);
+            full = static_cast<double>(f);
+            break;
+        }
+    }
+    if (full <= 0) return;
+    const auto t = std::chrono::steady_clock::now();
+    m_samples.push_back({t, now});
+    // A quarter of an hour of readings is plenty, and follows changes in load
+    while (m_samples.size() > 16) m_samples.erase(m_samples.begin());
+    if (m_samples.size() < 3) return;
+    const double hours = std::chrono::duration<double, std::ratio<3600>>(t - m_samples.front().first).count();
+    const double perHour = (now - m_samples.front().second) / hours; // + charging, - draining
+    if (std::abs(perHour) < full * 0.002) return;                     // too little change to tell
+    const double secs = perHour < 0 ? now / -perHour * 3600 : (full - now) / perHour * 3600;
+    if ((perHour < 0 && !m_charging) || (perHour > 0 && m_charging)) {
+        m_seconds = static_cast<long long>(secs);
+        changed.emit();
+    }
+}
+
+void Power::finish() {
+    // A full battery on mains isn't charging, whatever the firmware says
+    if (m_plugged && m_percent >= 100) m_full = true;
+    if (!m_plugged) m_full = false;
+    changed.emit();
 }
 
 void Power::findSysfs() {
@@ -917,13 +991,22 @@ void Power::fromUPower(const dbus::Value& p) {
     // DisplayDevice type 2 is a battery; desktops report 0 with IsPresent false
     m_present = flag(p, "IsPresent") && num<uint32_t>(p, "Type") == 2;
     m_percent = static_cast<int>(std::lround(num<double>(p, "Percentage")));
+    // 1 charging, 2 discharging, 4 full, 5 plugged in but held (a charge
+    // limit), 6 about to discharge
     const auto state = num<uint32_t>(p, "State");
-    m_charging = state == 1 || state == 5;
+    const bool wasCharging = m_charging;
+    m_charging = state == 1;
     m_full = state == 4;
-    m_seconds = m_charging ? num<long long>(p, "TimeToFull") : num<long long>(p, "TimeToEmpty");
+    if (state == 1 || state == 4 || state == 5) m_plugged = true;
+    if (state == 2 || state == 6) m_plugged = m_upowerMains ? m_plugged : false;
+    if (m_charging != wasCharging) m_samples.clear();
+    const long long secs = m_charging ? num<long long>(p, "TimeToFull") : num<long long>(p, "TimeToEmpty");
     m_watts = num<double>(p, "EnergyRate");
+    // Keep an estimate made from energy readings when UPower has none
+    if (secs > 0 || m_watts > 0) m_seconds = secs;
+    else if (m_charging != wasCharging) m_seconds = 0;
     readHealth();
-    changed.emit();
+    finish();
 }
 
 void Power::pollSysfs() {
@@ -935,17 +1018,24 @@ void Power::pollSysfs() {
         std::ifstream(m_sysfs + "/status") >> status;
         m_charging = status == "Charging";
         m_full = status == "Full";
-        m_seconds = 0;
+        // "Not charging": on mains, held at a limit
+        if (status == "Charging" || status == "Full" || status == "Not") m_plugged = true;
         // power_now in µW; absent on charge-reporting drivers
         long long power = 0;
         std::ifstream(m_sysfs + "/power_now") >> power;
         m_watts = static_cast<double>(power) / 1e6;
     }
-    changed.emit();
+    finish();
 }
 
 std::string Power::icon() const {
-    if (m_charging) return "battery_charging_full";
+    // Charging: the bolt, at the level it has reached
+    if (m_charging) {
+        for (auto [below, name] : {std::pair{25, "battery_charging_20"}, {40, "battery_charging_30"}, {55, "battery_charging_50"},
+                                   {70, "battery_charging_60"}, {85, "battery_charging_80"}, {95, "battery_charging_90"}})
+            if (m_percent < below) return name;
+        return "battery_charging_full";
+    }
     if (m_full || m_percent >= 95) return "battery_full";
     // Material Symbols has battery_0_bar … battery_6_bar
     return "battery_" + std::to_string(std::clamp(m_percent * 7 / 100, 0, 6)) + "_bar";
@@ -959,6 +1049,7 @@ std::string Power::status() const {
         left = h > 0 ? std::to_string(h) + " h " + std::to_string(min) + " min" : std::to_string(min) + " min";
     }
     if (m_charging) return left.empty() ? "Charging" : "Charging · " + left + " to full";
+    if (m_plugged) return "Plugged in, not charging";
     return left.empty() ? "On battery" : "On battery · " + left + " left";
 }
 

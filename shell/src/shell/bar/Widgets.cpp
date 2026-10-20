@@ -181,8 +181,9 @@ void Clock::schedule() {
 
 // ── WindowTitle ──
 
-WindowTitle::WindowTitle() {
-    setSize(13)->setMaxWidth(360)->setColor("on_surface_variant", false);
+// Long titles scroll in a narrower space instead of taking the bar's
+WindowTitle::WindowTitle() : Marquee(240) {
+    label()->setSize(13)->setColor("on_surface_variant", false);
     m_conn = Hyprland::get().activeWindowChanged.connect([this] { sync(); });
     sync();
 }

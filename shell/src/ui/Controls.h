@@ -3,6 +3,7 @@
 #include "core/EventLoop.h"
 #include "ui/Node.h"
 
+#include <chrono>
 #include <functional>
 #include <string>
 
@@ -129,6 +130,31 @@ private:
     float m_placedOffset = 0; // the offset the content was last arranged at
     float m_grab = -1; // pointer offset within the thumb while dragging
     bool m_hovered = false;
+};
+
+// One line of text in at most `maxWidth`: when it's longer, it scrolls
+// slowly to its end and back, pausing at each (the bar's window title, the
+// island's track). Between moves it waits on a timer, not on frames.
+class Marquee : public Node {
+public:
+    explicit Marquee(float maxWidth, std::string text = {});
+    ~Marquee() override;
+    Label* label() const { return m_label; }
+    Marquee* setText(const std::string& text);
+    Marquee* setMaxWidth(float w);
+    const std::string& text() const;
+
+protected:
+    SizeF doMeasure(SizeF available) override;
+    void doArrange() override;
+    void doPaint(Renderer& r) override;
+    bool clipsChildren() const override { return true; }
+
+private:
+    Label* m_label;
+    float m_max, m_natural = 0;
+    std::chrono::steady_clock::time_point m_start;
+    EventLoop::TimerId m_wake = 0;
 };
 
 // Single-line text field: caret, placeholder, UTF-8 editing, horizontal

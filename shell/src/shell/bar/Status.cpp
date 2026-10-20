@@ -135,7 +135,7 @@ void BatteryStatus::sync() {
     m_icon->setText(p.icon());
     m_icon->setColor(p.percent() <= 15 && !p.charging() ? ColorRef("error") : ColorRef("on_surface"));
     m_label->setText(std::to_string(p.percent()) + "%");
-    setTooltip(std::format("Battery {}%{}", p.percent(), p.charging() ? " · charging" : ""));
+    setTooltip(std::format("Battery {}% · {}", p.percent(), p.status()));
 }
 
 // ── Media ──

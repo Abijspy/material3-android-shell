@@ -6,6 +6,7 @@
 #include "shell/PanelKit.h"
 #include "services/Notifications.h"
 #include "shell/bar/Widgets.h"
+#include "ui/Controls.h"
 #include "ui/Theme.h"
 
 #include <cmath>
@@ -25,7 +26,9 @@ Island::Island(OpenPopup open) : Button(Direction::Row), m_open(std::move(open))
     blurBehind = true;
     fixedHeight = 32;
     onClicked = [this](uint32_t button) {
-        if (button == BTN_LEFT && m_mode != Mode::Media) m_open("dashboard", rect().x + rect().w / 2);
+        // The dashboard (calendar, weather) also while music plays: the media
+        // buttons take their own clicks, the rest of the island opens it
+        if (button == BTN_LEFT) m_open("dashboard", rect().x + rect().w / 2);
         if (button == BTN_RIGHT) m_open("notifications", rect().x + rect().w / 2);
     };
     m_media = Mpris::get().changed.connect([this] {
@@ -102,7 +105,7 @@ void Island::build() {
         const auto* p = Mpris::get().active();
         if (!p) break;
         m_content->add<kit::WavyRing>(26)->add<Icon>("music_note", 14)->setColor("primary", false);
-        m_content->add<Label>(p->artist.empty() ? p->title : p->title + " · " + p->artist)->setSize(13)->setMaxWidth(280);
+        m_content->add<Marquee>(200, p->artist.empty() ? p->title : p->title + " · " + p->artist)->label()->setSize(13);
         auto control = [this](const char* icon, std::function<void()> fn) {
             auto* b = m_content->add<Button>();
             pill(b)->setPadding(Insets(3));
@@ -116,7 +119,7 @@ void Island::build() {
     }
     case Mode::Notice:
         m_content->add<Icon>(m_noticeIcon, 18)->setColor("primary", false);
-        m_content->add<Label>(m_noticeText)->setSize(13)->setWeight(500)->setMaxWidth(320);
+        m_content->add<Marquee>(260, m_noticeText)->label()->setSize(13)->setWeight(500);
         break;
     }
 }
