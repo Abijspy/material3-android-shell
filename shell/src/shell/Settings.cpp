@@ -121,20 +121,61 @@ void textRow(Node* g, const std::string& icon, const std::string& title, const s
     f->onSubmit = [pointer](const std::string& t) { Config::get().set(pointer, t); };
 }
 
-// A clock's time format, whether it shows the date, and the date's format,
-// each choice shown as it reads now (the island, the bar's clock, the desktop)
-void timeDateRows(Node* g, const std::string& timeKey, const std::string& timeDefault, const std::string& showKey,
-                  bool showDefault, const std::string& dateKey, const std::string& dateDefault) {
-    std::vector<std::pair<std::string, std::string>> times;
-    for (const char* f : {"hh:mm", "h:mm AP", "hh:mm:ss", "h:mm:ss AP"}) times.push_back({f, Clock::sample(f)});
-    choiceRow<std::string>(g, "schedule", "Time", "", timeKey, timeDefault, times);
-    switchRow(g, "calendar_today", "Show the date", "", showKey, showDefault);
+// Where one clock keeps its settings (the island, the bar's Clock widget,
+// the desktop)
+struct ClockKeys {
+    std::string time, timeDefault, show;
+    bool showDefault;
+    std::string date, dateDefault;
+};
+
+// A clock's time and date as plain choices: 24- or 12-hour, seconds, the
+// date and its format (shown only with the date on), each as it reads now.
+// Changes go to every target (linked clocks); the first is read.
+void timeDateRows(Node* g, const std::vector<ClockKeys>& targets) {
+    if (targets.empty()) return;
+    const auto& first = targets.front();
+    auto& c = Config::get();
+    const std::string fmt = c.value<std::string>(first.time, first.timeDefault);
+    struct State {
+        bool twelve, seconds;
+    };
+    auto st = std::make_shared<State>(State{fmt.find("AP") != std::string::npos || fmt.find("ap") != std::string::npos,
+                                            fmt.find('s') != std::string::npos});
+    auto writeTime = [st, targets] {
+        const std::string f = std::string(st->twelve ? "h:mm" : "hh:mm") + (st->seconds ? ":ss" : "") + (st->twelve ? " AP" : "");
+        for (const auto& t : targets) Config::get().set(t.time, f);
+    };
+    auto hours = row(g, "schedule", "Time");
+    connectedGroup<bool>(hours.row, st->twelve, {{false, Clock::sample("hh:mm") + "  24-hour"}, {true, Clock::sample("h:mm AP") + "  12-hour"}},
+                         [st, writeTime](bool v) {
+                             st->twelve = v;
+                             writeTime();
+                         });
+    auto secs = row(g, "timer", "Seconds");
+    auto* sw = secs.row->add<Switch>();
+    sw->setChecked(st->seconds, false);
+    sw->onToggled = [st, writeTime](bool on) {
+        st->seconds = on;
+        writeTime();
+    };
+
+    const bool showing = c.value<bool>(first.show, first.showDefault);
+    auto show = row(g, "calendar_today", "Show the date");
+    auto* dsw = show.row->add<Switch>();
+    dsw->setChecked(showing, false);
     std::vector<std::pair<std::string, std::string>> dates;
     for (const char* f : {"ddd d MMM", "d MMM", "dddd, d MMMM", "dd/MM/yyyy", "MM/dd/yyyy", "yyyy-MM-dd"})
         dates.push_back({f, Clock::sample(f)});
     auto date = row(g, "event", "Date format");
-    dropdown(date.row, g, Clock::sample(Config::get().value<std::string>(dateKey, dateDefault)), dates,
-             [dateKey](const std::string& v) { Config::get().set(dateKey, v); });
+    date.row->setVisible(showing);
+    dropdown(date.row, g, Clock::sample(c.value<std::string>(first.date, first.dateDefault)), dates, [targets](const std::string& v) {
+        for (const auto& t : targets) Config::get().set(t.date, v);
+    });
+    dsw->onToggled = [targets, dateRow = date.row](bool on) {
+        for (const auto& t : targets) Config::get().set(t.show, on);
+        dateRow->setVisible(on);
+    };
 }
 
 std::string percent(double v) {
@@ -581,8 +622,8 @@ void appearancePage(Flex* page, Popup& popup) {
     pillButton(edit.row, "Edit", true, [] {
         if (open) open("desktopedit");
     }, "edit");
-    timeDateRows(group(page, "Desktop clock: time and date"), "/desktop/timeFormat", "hh:mm", "/desktop/showDate", true,
-                 "/desktop/dateFormat", "dddd, d MMMM");
+    timeDateRows(group(page, "Desktop clock: time and date"),
+                 {{"/desktop/timeFormat", "hh:mm", "/desktop/showDate", true, "/desktop/dateFormat", "dddd, d MMMM"}});
 
     auto* colour = group(page, "Colours", "Material You colours come from the wallpaper, or from an accent you pick");
     switchRow(colour, "dark_mode", "Dark theme", "", "/background/darkmode", true, [](bool) { recolour(); });
@@ -862,16 +903,73 @@ void barPage(Flex* page, Popup&) {
     };
     live->sync();
 
-    auto* island = group(page, "Island & clock");
-    switchRow(island, "view_carousel", "Show workspace switches in the island", "", "/statusBar/islandWorkspace", true);
-
-    // The time and the date, for the island and the bar's Clock widget each
+    // The time and the date on the bar: the island's clock and the Clock
+    // widget, set together unless they're unlinked, then one at a time
+    auto keys = [](const std::string& place) {
+        const std::string base = "/bar/clock/" + place;
+        return ClockKeys{base + "/timeFormat", Config::get().value<std::string>("/time/format", "hh:mm"), base + "/showDate", false,
+                         base + "/dateFormat", "ddd d MMM"};
+    };
+    auto* clocks = group(page, "Time & date", "The clock in the island and the Clock widget");
+    auto preview = row(clocks, "visibility", "Preview");
     for (const auto& [place, name] : {std::pair{"island", "Island"}, {"bar", "Clock widget"}}) {
-        const std::string base = std::string("/bar/clock/") + place;
-        timeDateRows(group(page, std::string(name) + ": time and date"), base + "/timeFormat",
-                     Config::get().value<std::string>("/time/format", "hh:mm"), base + "/showDate", false, base + "/dateFormat",
-                     "ddd d MMM");
+        auto* chip = preview.row->add<Flex>(Flex::Direction::Column);
+        pill(chip)->setPadding({14, 4})->setBackground("surface_container_highest", false);
+        chip->setAlignItems(Align::Center);
+        chip->add<Label>(name)->setSize(11)->setColor("on_surface_variant", false);
+        chip->add<Clock>(place)->setSize(14);
     }
+    auto sameAs = [keys] {
+        auto& c = Config::get();
+        const auto a = keys("island"), b = keys("bar");
+        return c.value<std::string>(a.time, a.timeDefault) == c.value<std::string>(b.time, b.timeDefault) &&
+               c.value<bool>(a.show, a.showDefault) == c.value<bool>(b.show, b.showDefault) &&
+               c.value<std::string>(a.date, a.dateDefault) == c.value<std::string>(b.date, b.dateDefault);
+    };
+    struct ClockUi {
+        bool linked;
+        int place = 0; // unlinked: 0 the island, 1 the Clock widget
+        Flex* body = nullptr;
+        std::function<void()> fill;
+    };
+    auto ui = std::make_shared<ClockUi>(ClockUi{Config::get().value<bool>("/bar/clock/linked", sameAs())});
+    auto link = row(clocks, "link", "Same for both", "Off: set the island and the Clock widget apart");
+    auto* lsw = link.row->add<Switch>();
+    lsw->setChecked(ui->linked, false);
+    ui->body = page->add<Flex>(Flex::Direction::Column);
+    ui->body->setAlignItems(Align::Stretch);
+    ui->fill = [raw = ui.get(), keys] {
+        raw->body->clearChildren();
+        auto* g = raw->body->add<Segments>();
+        if (!raw->linked) {
+            auto which = row(g, "tune", "Setting up");
+            auto* self = raw;
+            connectedGroup<int>(which.row, raw->place, {{0, "Island"}, {1, "Clock widget"}}, [self](int v) {
+                self->place = v;
+                EventLoop::get().defer([self] { self->fill(); });
+            });
+        }
+        if (raw->linked) timeDateRows(g, {keys("island"), keys("bar")});
+        else timeDateRows(g, {keys(raw->place == 0 ? "island" : "bar")});
+        raw->body->requestLayout();
+    };
+    lsw->onToggled = [ui, keys](bool on) {
+        ui->linked = on;
+        Config::get().set("/bar/clock/linked", on);
+        if (on) {
+            // Linking: the Clock widget takes the island's settings
+            auto& c = Config::get();
+            const auto a = keys("island"), b = keys("bar");
+            c.set(b.time, c.value<std::string>(a.time, a.timeDefault));
+            c.set(b.show, c.value<bool>(a.show, a.showDefault));
+            c.set(b.date, c.value<std::string>(a.date, a.dateDefault));
+        }
+        EventLoop::get().defer([ui] { ui->fill(); });
+    };
+    ui->fill();
+
+    auto* island = group(page, "Island");
+    switchRow(island, "view_carousel", "Show workspace switches in the island", "", "/statusBar/islandWorkspace", true);
 
     // Text longer than its space: how each place shows the rest
     auto* scrolling = group(page, "Scrolling text", "For titles longer than their space");
