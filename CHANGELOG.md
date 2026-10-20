@@ -1,5 +1,11 @@
 # Changelog
 
+## v5.4.1 — 2026-10-20
+
+- **Restart after updates.** Software & updates shows when an update needs a restart, however it ran: the computer (a new kernel, systemd, glibc, drivers, firmware), a log out (Hyprland's libraries) or just the shell. It names the packages, with Restart now, Log out or Restart shell, and the update's notification says so too.
+- **Settings backups with restore.** System → Backups keeps timestamped backups of your shell and Hyprland settings, made when you ask and before every update, restore and reset. Each shows its date, time, reason and size, with Restore (what's there now is backed up first) and Delete. The installer's backups are listed too. Also from a terminal: `material3ui msg backup [list|restore]`.
+- **No more flicker when settings change.** The desktop is refreshed in place instead of recreated, the bar and dock no longer make windows re-lay out for nothing, and blur and touchpad changes apply live without reloading Hyprland.
+
 ## v5.4.0 — 2026-10-20
 
 - **New clock styles.** Desktop widgets add a stacked two-tone clock, a Material You analog clock (a scalloped dial with rounded hands and an orbiting seconds dot) and a minimal analog clock. The lock and login screens offer Stacked, Two-tone, One line, Analog and Minimal analog.
