@@ -25,7 +25,11 @@ Config::Config() {
 void Config::set(const std::string& pointer, const nlohmann::json& value) {
     reload(); // never write over edits made since we last read
     try {
-        m_data[nlohmann::json::json_pointer(pointer)] = value;
+        const auto ptr = nlohmann::json::json_pointer(pointer);
+        // Unchanged: nothing written, so nothing reloads (every write has
+        // the whole shell restyle)
+        if (m_data.contains(ptr) && m_data.at(ptr) == value) return;
+        m_data[ptr] = value;
     } catch (const std::exception& e) {
         log::warn("config: cannot set {}: {}", pointer, e.what());
         return;

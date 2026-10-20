@@ -170,7 +170,10 @@ std::vector<std::string> Dock::pinned() {
     // And the two settings apps
     out.push_back("material3ui-settings");
     out.push_back("material3ui-hyprland");
+    // Saved, so this runs once: unsaved, every call wrote the config, and
+    // each write rebuilt the dock, which called this again (a reload loop)
     Config::get().set("/dock/settingsAppsPinned", true);
+    Config::get().set("/dock/pinned", out);
     return out;
 }
 
