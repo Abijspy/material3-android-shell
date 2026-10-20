@@ -52,6 +52,18 @@ public:
     // Runs `script` with root, asking through polkit; `done` gets success
     void runAsRoot(const std::string& label, const std::string& script, const std::string& doneText);
 
+    // What an update left waiting for a restart: the computer (a new kernel,
+    // systemd, glibc, drivers, firmware), the session (Hyprland's own
+    // libraries) or just the shell (its program was replaced). Read from the
+    // system, so it holds whatever ran the update.
+    struct Restart {
+        bool system = false, session = false, shell = false;
+        std::vector<std::string> why; // package names
+        bool any() const { return system || session || shell; }
+    };
+    const Restart& restart() const { return m_restart; }
+    void checkRestart();
+
     // Search and install
     void search(Source source, const std::string& query);
     bool searching() const { return m_searching; }
@@ -73,6 +85,7 @@ private:
     // yay or paru, told to ask for root through pkexec and not to stop for review
     std::string helperCommand(const std::string& args) const;
 
+    Restart m_restart;
     bool m_checking = false, m_searching = false, m_busy = false;
     std::string m_status;
     std::vector<Update> m_updates;

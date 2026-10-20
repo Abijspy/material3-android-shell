@@ -7,6 +7,7 @@
 #include "core/Process.h"
 #include "render/Images.h"
 #include "services/Audio.h"
+#include "services/Backups.h"
 #include "services/Clipboard.h"
 #include "services/HyprOptions.h"
 #include "services/Hyprland.h"
@@ -15,6 +16,7 @@
 #include "services/Notifications.h"
 #include "services/Packages.h"
 #include "services/Search.h"
+#include "services/Session.h"
 #include "services/SystemStats.h"
 #include "services/Wallpaper.h"
 #include "services/Weather.h"
@@ -1693,6 +1695,73 @@ void mousePage(Flex* page, Popup&) {
 
 // ── System ──
 
+// Settings backups, newest first, each with its time: back up now, restore
+// (two taps; what's there now is backed up first) or delete. The
+// installer's backups are listed too, restored by its own undo.
+void backupRows(Flex* page) {
+    auto* head = group(page, "Backups", "Your shell and Hyprland settings, also saved before each update, restore and reset");
+    auto now = row(head, "backup", "Back up now", "Saved with today's date and time");
+    auto* status = now.subtitle;
+    pillButton(now.row, "Back up", true, [status] {
+        status->setText("Backing up…");
+        Backups::get().create("manual", [status](bool ok) { status->setText(ok ? "Backed up" : "Nothing to back up"); });
+    }, "save");
+
+    auto* live = page->add<Live>();
+    live->setSpacing(0);
+    live->sync = [live] {
+        live->clearChildren();
+        const auto all = Backups::get().list();
+        if (all.empty()) {
+            caption(live, "No backups yet");
+            return;
+        }
+        auto* g = live->add<Segments>();
+        size_t shown = 0;
+        for (const auto& e : all) {
+            if (++shown > 15) break;
+            std::tm tm{};
+            localtime_r(&e.time, &tm);
+            char when[64];
+            std::strftime(when, sizeof when, "%a %-d %b %Y, %H:%M", &tm);
+            const std::string why = e.kind == Backups::Kind::Install ? "Before an install: the configs it replaced"
+                                  : e.reason == "before-update"     ? "Before an update"
+                                  : e.reason == "before-restore"    ? "Before a restore"
+                                  : e.reason == "before-reset"      ? "Before a reset"
+                                                                    : "Made by you";
+            const std::string size = e.size < 1024 * 1024 ? std::format("{} KB", std::max<std::uintmax_t>(1, e.size / 1024))
+                                                          : std::format("{:.1f} MB", static_cast<double>(e.size) / (1024.0 * 1024.0));
+            auto r = row(g, e.kind == Backups::Kind::Install ? "deployed_code_history" : e.reason == "manual" ? "bookmark" : "history",
+                         when, why + "  ·  " + size);
+            // Two taps: the first says what it will do
+            auto armed = std::make_shared<bool>(false);
+            auto* restore = pillButton(r.row, "Restore", false, {}, "settings_backup_restore");
+            restore->onClicked = [armed, restore, e](uint32_t b) {
+                if (b != BTN_LEFT) return;
+                if (!*armed) {
+                    *armed = true;
+                    for (auto& c : restore->children())
+                        if (auto* l = dynamic_cast<Label*>(c.get())) l->setText("Tap again to restore");
+                    return;
+                }
+                Backups::get().restore(e);
+            };
+            if (e.kind == Backups::Kind::Settings) {
+                auto* del = r.row->add<Button>();
+                pill(del)->setJustify(Align::Center);
+                del->fixedWidth = del->fixedHeight = 40;
+                del->add<Icon>("delete", 20)->setColor("on_surface_variant", false);
+                del->tooltip = "Delete this backup";
+                del->onClicked = [e](uint32_t b) {
+                    if (b == BTN_LEFT) EventLoop::get().defer([e] { Backups::get().remove(e); });
+                };
+            }
+        }
+    };
+    live->watch(Backups::get().changed);
+    live->sync();
+}
+
 void systemPage(Flex* page, Popup&) {
     auto alive = page->add<AliveGuard>()->alive;
     namespace fs = std::filesystem;
@@ -1766,9 +1835,11 @@ void systemPage(Flex* page, Popup&) {
         });
     });
 
-    // Reset: two taps, and the old settings are kept beside the file
+    backupRows(page);
+
+    // Reset: two taps, and the old settings are kept as a backup first
     auto* reset = group(page, "Reset options");
-    auto rr = row(reset, "restart_alt", "Reset shell settings", "Your config.json is backed up first");
+    auto rr = row(reset, "restart_alt", "Reset shell settings", "A backup of them is made first (Backups, above)");
     auto armed = std::make_shared<bool>(false);
     auto* button = pillButton(rr.row, "Reset…", false, {});
     button->onClicked = [armed, button](uint32_t b) {
@@ -1779,10 +1850,7 @@ void systemPage(Flex* page, Popup&) {
                 if (auto* l = dynamic_cast<Label*>(c.get())) l->setText("Tap again to reset");
             return;
         }
-        const std::string file = paths::configFile();
-        std::error_code ec;
-        fs::copy_file(file, file + ".bak-" + std::to_string(std::time(nullptr)), fs::copy_options::overwrite_existing, ec);
-        std::ofstream(file) << "{}\n";
+        Backups::get().create("before-reset", [](bool) { std::ofstream(paths::configFile()) << "{}\n"; });
     };
 }
 
@@ -2933,6 +3001,34 @@ void packagesPage(Flex* page, Popup&) {
         body->clearChildren();
         auto& p = Packages::get();
         if (*tab == 0) {
+            // An update waiting on a restart: what to restart, and why
+            p.checkRestart();
+            if (const auto& rs = p.restart(); rs.any() && !p.busy()) {
+                auto* banner = body->add<Flex>(Flex::Direction::Column);
+                banner->setPadding(Insets(20))->setSpacing(12)->setRadius(Radii(24))->setBackground("tertiary_container", false);
+                banner->setAlignItems(Align::Stretch);
+                auto* top = banner->add<Flex>(Flex::Direction::Row);
+                top->setSpacing(16)->setAlignItems(Align::Center);
+                top->add<Icon>("restart_alt", 32)->setColor("on_tertiary_container", false);
+                auto* texts = top->add<Flex>(Flex::Direction::Column);
+                texts->setSpacing(2)->setAlignItems(Align::Start);
+                texts->grow = true;
+                texts->add<Label>(rs.system ? "Restart to finish updating" : rs.session ? "Log out to finish updating"
+                                                                                        : "Restart the shell to finish updating")
+                    ->setSize(18)->setWeight(600)->setColor("on_tertiary_container", false);
+                std::string why;
+                for (const auto& w : rs.why) why += (why.empty() ? "" : ", ") + w;
+                texts->add<Label>("Updated while running: " + why)
+                    ->setSize(13)->setMaxWidth(560)->setMaxLines(2)->setColor("on_tertiary_container", false);
+                auto* actions = banner->add<Flex>(Flex::Direction::Row);
+                actions->setSpacing(8)->setJustify(Align::End);
+                if (rs.shell && !rs.system)
+                    pillButton(actions, "Restart shell", !rs.session, [] {
+                        spawn("setsid -f sh -c 'pkill -x material3ui; sleep 0.5; exec material3ui'");
+                    }, "refresh");
+                if (rs.session && !rs.system) pillButton(actions, "Log out", true, [] { Session::get().logout(); }, "logout");
+                if (rs.system) pillButton(actions, "Restart now", true, [] { spawn("systemctl reboot"); }, "restart_alt");
+            }
             // The status on top, the actions on their own row below it: side
             // by side they were wider than the page and spilled past the card
             auto* hero = body->add<Flex>(Flex::Direction::Column);
@@ -2985,6 +3081,8 @@ void packagesPage(Flex* page, Popup&) {
             connectedGroup<std::string>(ch.row, p.channel() == "stable" ? "stable" : "canary",
                                         {{"stable", "Stable"}, {"canary", "Latest (git)"}},
                                         [](std::string c) { Packages::get().setChannel(c); });
+            auto bk = row(shellGroup, "backup", "Settings backups", "One is made before each update; restore them in System");
+            pillButton(bk.row, "Backups", false, [] { settingsPage("system"); }, "settings_backup_restore");
             // This version's notes (all of them: About → Changelog)
             group(body, "What's new in " M3_VERSION, "Material3UI's latest changes, as installed");
             releaseNotes(body, 1, 600);

@@ -67,6 +67,7 @@ sources = files(
   'src/render/Renderer.cpp',
   'src/render/Text.cpp',
   'src/services/Audio.cpp',
+  'src/services/Backups.cpp',
   'src/services/Auth.cpp',
   'src/services/Clipboard.cpp',
   'src/services/Effects.cpp',

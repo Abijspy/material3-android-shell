@@ -15,6 +15,7 @@
 #include "services/HyprOptions.h"
 #include "services/Hyprland.h"
 #include "services/Audio.h"
+#include "services/Backups.h"
 #include "services/Clipboard.h"
 #include "services/Search.h"
 #include "services/Effects.h"
@@ -656,6 +657,30 @@ void Shell::registerIpc() {
         const std::string since = a.empty() ? "" : a[0];
         EventLoop::get().defer([this, since] { togglePopup("whatsnew", focusedOutput(), -1, since); });
         return std::string();
+    });
+    ipc.add("backup", "backup [list|restore [file]]: back up the settings now, list the backups, or restore one (the newest)", [](const IpcServer::Args& a) {
+        if (!a.empty() && a[0] == "list") {
+            std::string out;
+            for (const auto& e : Backups::get().list()) {
+                char when[32];
+                std::tm tm{};
+                localtime_r(&e.time, &tm);
+                std::strftime(when, sizeof when, "%Y-%m-%d %H:%M:%S", &tm);
+                out += std::format("{}  {:<15} {}\n", when, e.reason, e.path);
+            }
+            return out.empty() ? std::string("no backups") : out;
+        }
+        if (!a.empty() && a[0] == "restore") {
+            // The newest settings backup, or the one named
+            for (const auto& e : Backups::get().list())
+                if (e.kind == Backups::Kind::Settings && (a.size() < 2 || e.path == a[1] || e.path.ends_with("/" + a[1]))) {
+                    Backups::get().restore(e);
+                    return "restoring " + e.path;
+                }
+            return std::string("no such backup");
+        }
+        Backups::get().create("manual");
+        return std::string("backing up");
     });
     ipc.add("switcher", "switcher [next|prev]: the Super+Tab window switcher", [this](const IpcServer::Args& a) {
         const int by = !a.empty() && a[0] == "prev" ? -1 : 1;

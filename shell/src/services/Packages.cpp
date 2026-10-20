@@ -6,14 +6,18 @@
 
 #include "core/EventLoop.h"
 #include "core/Process.h"
+#include "services/Backups.h"
 
 #include <algorithm>
 #include <cstdlib>
+#include <filesystem>
 #include <format>
 #include <nlohmann/json.hpp>
 #include <regex>
 #include <fstream>
 #include <sstream>
+#include <sys/stat.h>
+#include <sys/utsname.h>
 #include <unistd.h>
 
 namespace m3 {
@@ -66,6 +70,7 @@ Packages& Packages::get() {
 
 Packages::Packages() {
     refreshInstalled();
+    checkRestart();
 }
 
 std::string Packages::terminal() const {
@@ -132,11 +137,91 @@ void Packages::runTask(const std::string& label, const std::string& script, cons
         m_status = code == 0 ? doneText
                  : code == 126 || code == 127 ? std::string("Cancelled: no password given")
                  : "Didn't finish: " + (last.empty() ? std::to_string(code) : last);
-        run({"notify-send", "-a", "Software & updates", m_status}, nullptr);
+        checkRestart();
+        const std::string note = m_restart.system ? "Restart your computer to finish"
+                               : m_restart.session ? "Log out and back in to finish"
+                               : m_restart.shell ? "Restart the shell to finish" : "";
+        run({"notify-send", "-a", "Software & updates", m_status, note}, nullptr);
         changed.emit();
         refreshInstalled();
         check();
     });
+}
+
+namespace {
+
+// When something started, from its /proc entry (0: unknown)
+std::time_t processStart(const char* comm) {
+    std::error_code ec;
+    for (const auto& e : std::filesystem::directory_iterator("/proc", ec)) {
+        const std::string pid = e.path().filename().string();
+        if (pid.empty() || !std::isdigit(static_cast<unsigned char>(pid[0]))) continue;
+        std::ifstream in(e.path() / "comm");
+        std::string name;
+        std::getline(in, name);
+        if (name != comm) continue;
+        struct stat st {};
+        if (::stat(e.path().c_str(), &st) == 0) return st.st_mtime;
+    }
+    return 0;
+}
+
+} // namespace
+
+void Packages::checkRestart() {
+    Restart r;
+    // A new kernel: the running one's modules are gone
+    utsname u{};
+    std::error_code ec;
+    if (uname(&u) == 0 && !std::filesystem::exists(std::string("/usr/lib/modules/") + u.release, ec)) {
+        r.system = true;
+        r.why.push_back("linux");
+    }
+    // The shell's program replaced while it runs
+    const std::string exe = std::filesystem::read_symlink("/proc/self/exe", ec).string();
+    if (exe.ends_with(" (deleted)")) {
+        r.shell = true;
+        r.why.push_back("material3ui");
+    }
+    // Upgrades since boot (or since Hyprland started), from pacman's log:
+    // its last 512 KB is plenty
+    std::time_t boot = 0;
+    {
+        std::ifstream st("/proc/stat");
+        for (std::string l; std::getline(st, l);)
+            if (l.starts_with("btime ")) boot = std::atoll(l.c_str() + 6);
+    }
+    const std::time_t session = processStart("Hyprland");
+    std::ifstream log("/var/log/pacman.log");
+    log.seekg(0, std::ios::end);
+    const auto size = static_cast<long long>(log.tellg());
+    log.seekg(std::max(0LL, size - 512 * 1024));
+    auto system = [](const std::string& p) {
+        return p == "systemd" || p == "systemd-libs" || p == "glibc" || p == "mesa" || p == "dbus" || p == "dbus-broker" ||
+               p.starts_with("linux") || p.starts_with("nvidia") || p.ends_with("-ucode");
+    };
+    auto sessionPkg = [](const std::string& p) {
+        return p == "hyprland" || p == "aquamarine" || p.starts_with("hyprutils") || p.starts_with("hyprlang") ||
+               p.starts_with("hyprgraphics") || p == "xorg-xwayland" || p == "wayland";
+    };
+    for (std::string line; std::getline(log, line);) {
+        // [2026-10-20T08:28:20+0530] [ALPM] upgraded linux (6.17.1-1 -> 6.17.2-1)
+        const auto at = line.find("] [ALPM] upgraded ");
+        if (line.size() < 26 || line[0] != '[' || at == std::string::npos) continue;
+        std::tm tm{};
+        if (!strptime(line.c_str() + 1, "%Y-%m-%dT%H:%M:%S%z", &tm)) continue;
+        const std::time_t when = timegm(&tm) - tm.tm_gmtoff;
+        const std::string rest = line.substr(at + 18);
+        const std::string pkg = rest.substr(0, rest.find(' '));
+        const bool sys = when > boot && system(pkg), ses = session && when > session && sessionPkg(pkg);
+        if (!sys && !ses) continue;
+        r.system = r.system || sys;
+        r.session = r.session || ses;
+        if (std::ranges::find(r.why, pkg) == r.why.end()) r.why.push_back(pkg);
+    }
+    const bool was = m_restart.any();
+    m_restart = std::move(r);
+    if (m_restart.any() && !was) changed.emit();
 }
 
 void Packages::runAsRoot(const std::string& label, const std::string& script, const std::string& doneText) {
@@ -228,6 +313,8 @@ void Packages::checkShell() {
 }
 
 void Packages::upgrade() {
+    // Settings as they were, in case the update changes them
+    Backups::get().create("before-update");
     const bool shell = count(Source::Shell) > 0 && !m_shellDir.empty();
     constexpr const char* helper = "/usr/lib/material3ui/material3ui-update-root";
     if (access(helper, X_OK) != 0) {
