@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
+#include <nlohmann/json.hpp>
+#include <fstream>
 #include <unistd.h>
 
 namespace fs = std::filesystem;
@@ -105,6 +107,8 @@ void Wallpaper::recolour() {
     else if (!path().empty()) cmd.insert(cmd.end(), {"image", path()});
     else return;
     cmd.insert(cmd.end(), {"--mode", dark ? "dark" : "light", "--type", scheme});
+    // Templates switched off: Matugen runs a copy of its config without them
+    if (const auto filtered = filteredConfig(); !filtered.empty()) cmd.insert(cmd.end(), {"--config", filtered});
     // Matugen 4 asks which colour to use when an image offers several, and
     // fails without a terminal to ask on: take the most colourful one
     cmd.insert(cmd.end(), {"--prefer", "saturation"});
@@ -117,6 +121,77 @@ void Wallpaper::recolour() {
         if (Config::get().value<bool>("/lock/syncGreeter", true) && access("/var/lib/material3ui-greeter", W_OK) == 0)
             run({"material3ui-greeter", "sync", "--quiet"}, nullptr);
     });
+}
+
+namespace {
+
+std::string matugenConfig() {
+    return paths::home() + "/.config/matugen/config.toml";
+}
+
+std::vector<std::string> disabledTemplates() {
+    std::vector<std::string> out;
+    const auto j = Config::get().value<nlohmann::json>("/theming/disabled", nlohmann::json::array());
+    if (j.is_array())
+        for (const auto& n : j)
+            if (n.is_string() && !Wallpaper::templateRequired(n.get<std::string>())) out.push_back(n.get<std::string>());
+    return out;
+}
+
+// [templates.NAME] → NAME, else empty
+std::string templateHeader(const std::string& line) {
+    auto l = line;
+    l.erase(0, l.find_first_not_of(" \t"));
+    if (!l.starts_with("[templates.")) return {};
+    const auto end = l.find(']');
+    return end == std::string::npos ? std::string() : l.substr(11, end - 11);
+}
+
+} // namespace
+
+std::vector<std::string> Wallpaper::templates() const {
+    std::vector<std::string> out;
+    std::ifstream in(matugenConfig());
+    for (std::string line; std::getline(in, line);)
+        if (auto name = templateHeader(line); !name.empty() && std::ranges::find(out, name) == out.end()) out.push_back(name);
+    return out;
+}
+
+bool Wallpaper::templateOn(const std::string& name) {
+    const auto off = disabledTemplates();
+    return std::ranges::find(off, name) == off.end();
+}
+
+void Wallpaper::setTemplateOn(const std::string& name, bool on) {
+    if (templateRequired(name)) return;
+    auto off = disabledTemplates();
+    std::erase(off, name);
+    if (!on) off.push_back(name);
+    Config::get().set("/theming/disabled", off);
+    // Back on: themed with the colours there are now
+    if (on) get().recolour();
+}
+
+std::string Wallpaper::filteredConfig() const {
+    const auto off = disabledTemplates();
+    if (off.empty()) return {};
+    std::ifstream in(matugenConfig());
+    if (!in) return {};
+    // Every line but the switched-off templates' sections (paths there are
+    // all ~/…, so the copy works from anywhere)
+    std::string out, line;
+    bool skipping = false;
+    while (std::getline(in, line)) {
+        auto l = line;
+        l.erase(0, l.find_first_not_of(" \t"));
+        if (l.starts_with("[")) skipping = std::ranges::find(off, templateHeader(line)) != off.end();
+        if (!skipping) out += line + "\n";
+    }
+    const std::string path = paths::stateDir() + "/matugen.toml";
+    std::error_code ec;
+    fs::create_directories(paths::stateDir(), ec);
+    std::ofstream(path) << out;
+    return path;
 }
 
 void Wallpaper::next(int step) {

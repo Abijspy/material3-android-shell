@@ -1,6 +1,10 @@
 #include "shell/SettingsKit.h"
 
+#include "core/Config.h"
+#include "services/Wallpaper.h"
+
 #include <linux/input-event-codes.h>
+#include <memory>
 
 namespace m3::shell::panels {
 
@@ -35,6 +39,63 @@ Row row(Node* group, const std::string& icon, const std::string& title, const st
     s->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(440)->setMaxLines(2);
     s->setVisible(!subtitle.empty());
     return {r, t, s};
+}
+
+Flex* accentSwatches(Node* parent) {
+    auto* swatches = parent->add<Flex>(Flex::Direction::Row);
+    swatches->setSpacing(6);
+    const std::vector<std::string> seeds = {"", "#6750a4", "#0061a4", "#006d3b", "#8b5000", "#b3261e", "#984061", "#006a6a"};
+    auto chosen = std::make_shared<std::string>(Config::get().value<std::string>("/appearance/accent", ""));
+    struct Dot {
+        Button* button;
+        Icon* tick;
+        Icon* wallpaper; // the "from the wallpaper" swatch's own icon
+    };
+    auto dots = std::make_shared<std::vector<Dot>>();
+    auto mark = [dots, seeds, chosen] {
+        for (size_t i = 0; i < dots->size(); ++i) {
+            const bool on = seeds[i] == *chosen;
+            auto& d = (*dots)[i];
+            d.button->setBorder(on ? 2 : 0, "on_surface");
+            d.tick->setVisible(on);
+            if (d.wallpaper) d.wallpaper->setVisible(!on);
+        }
+    };
+    for (const auto& seed : seeds) {
+        auto* b = swatches->add<Button>();
+        pill(b)->fixedWidth = 30;
+        b->fixedHeight = 30;
+        b->pressedRadius = 6;
+        b->setJustify(Align::Center);
+        Icon* wallpaper = nullptr;
+        std::string tickColour = "on_surface";
+        if (seed.empty()) {
+            b->setBackground("surface_container_highest", false);
+            b->tooltip = "From the wallpaper";
+            wallpaper = b->add<Icon>("wallpaper", 16);
+            wallpaper->setColor("on_surface_variant", false);
+        } else {
+            const Color c = *Color::fromHex(seed);
+            b->setBackground(ColorRef(c), false);
+            // White on dark swatches, black on light ones
+            const float luma = 0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b;
+            tickColour = luma < 0.5f ? "#ffffff" : "#000000";
+        }
+        auto* tick = b->add<Icon>("check", 18);
+        tick->setWeight(700);
+        if (tickColour.starts_with('#')) tick->setColor(ColorRef(*Color::fromHex(tickColour)), false);
+        else tick->setColor(tickColour, false);
+        b->onClicked = [seed, chosen, mark](uint32_t button) {
+            if (button != BTN_LEFT) return;
+            *chosen = seed;
+            mark();
+            Config::get().set("/appearance/accent", seed);
+            Wallpaper::get().recolour();
+        };
+        dots->push_back({b, tick, wallpaper});
+    }
+    mark();
+    return swatches;
 }
 
 Button* pillButton(Node* parent, const std::string& label, bool primary, std::function<void()> fn, const std::string& icon) {

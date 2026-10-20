@@ -565,6 +565,79 @@ void fontRow(Node* g, const std::string& icon, const std::string& title, const s
         [pointer](const std::string& family) { Config::get().set(pointer, family); }, {"Search fonts", true});
 }
 
+// Matugen's templates, as apps: each themed with the wallpaper's colours
+// unless switched off (it then keeps the colours it last had)
+void appThemingRows(Flex* page) {
+    struct App {
+        std::vector<std::string> templates; // one switch for all of them
+        const char* icon;
+        const char* name;
+        const char* about;
+        std::vector<std::string> found; // a command or a path (~/…) that means it's here
+    };
+    const std::vector<App> known = {
+        {{"hyprland"}, "space_dashboard", "Hyprland", "Window borders and group colours", {}},
+        {{"hyprlock"}, "lock", "hyprlock", "The fallback lock screen", {"hyprlock"}},
+        {{"gtk3", "gtk4"}, "widgets", "GTK apps", "GNOME and other GTK 3 and 4 apps", {}},
+        {{"kde_colors"}, "apps", "Qt and KDE apps", "Through the system colour scheme", {}},
+        {{"terminal"}, "terminal", "Terminals (live)", "Colours sent to open terminals", {}},
+        {{"alacritty"}, "terminal", "Alacritty", "", {"alacritty"}},
+        {{"kitty"}, "terminal", "kitty", "", {"kitty"}},
+        {{"foot"}, "terminal", "foot", "", {"foot"}},
+        {{"ghostty"}, "terminal", "Ghostty", "", {"ghostty"}},
+        {{"wezterm"}, "terminal", "WezTerm", "", {"wezterm"}},
+        {{"fuzzel"}, "search", "fuzzel", "", {"fuzzel"}},
+        {{"firefox_chrome", "firefox"}, "language", "Firefox, LibreWolf, Floorp, Zen", "On their next start", {"firefox", "librewolf", "floorp", "zen-browser"}},
+        {{"vscode"}, "code", "VS Code, VSCodium, Cursor", "Pick \"Material3UI\" as the colour theme once", {"code", "codium", "code-oss", "cursor", "windsurf"}},
+        {{"zeditor"}, "code", "Zed", "", {"zeditor", "zed"}},
+        {{"discord"}, "forum", "Vesktop (Discord)", "", {"vesktop", "~/.config/vesktop"}},
+        {{"obsidian"}, "edit_note", "Obsidian", "", {"obsidian"}},
+        {{"zathura"}, "picture_as_pdf", "zathura", "", {"zathura"}},
+        {{"cava"}, "graphic_eq", "cava", "", {"cava"}},
+        {{"btop"}, "monitoring", "btop", "", {"btop"}},
+    };
+    auto installed = [](const std::vector<std::string>& found) {
+        if (found.empty()) return true;
+        std::error_code ec;
+        for (const auto& f : found) {
+            if (f.starts_with("~/")) {
+                if (std::filesystem::exists(paths::home() + f.substr(1), ec)) return true;
+                continue;
+            }
+            for (const char* dir : {"/usr/bin/", "/usr/local/bin/", "/opt/bin/"})
+                if (access((dir + f).c_str(), X_OK) == 0) return true;
+            if (access((paths::home() + "/.local/bin/" + f).c_str(), X_OK) == 0) return true;
+        }
+        return false;
+    };
+    const auto present = Wallpaper::get().templates();
+    auto has = [&](const std::string& t) { return std::ranges::find(present, t) != present.end(); };
+    auto* g = group(page, "App theming", "Material You colours for your apps, from the wallpaper. Off: the app keeps the colours it has now");
+    std::vector<std::string> covered;
+    auto addRow = [&](const std::vector<std::string>& names, const std::string& icon, const std::string& title, std::string about) {
+        auto r = row(g, icon, title, about);
+        auto* sw = r.row->add<Switch>();
+        sw->setChecked(Wallpaper::templateOn(names.front()), false);
+        sw->onToggled = [names](bool on) {
+            for (const auto& n : names) Wallpaper::setTemplateOn(n, on);
+        };
+    };
+    for (const auto& app : known) {
+        std::vector<std::string> names;
+        for (const auto& t : app.templates)
+            if (has(t)) names.push_back(t);
+        covered.insert(covered.end(), app.templates.begin(), app.templates.end());
+        if (names.empty()) continue;
+        const bool here = installed(app.found);
+        std::string about = app.about;
+        if (!here) about = std::string("Not installed") + (about.empty() ? "" : "  ·  " + about);
+        addRow(names, app.icon, app.name, about);
+    }
+    // Templates added by hand: by their own names
+    for (const auto& t : present)
+        if (!Wallpaper::templateRequired(t) && std::ranges::find(covered, t) == covered.end()) addRow({t}, "palette", t, "Your own template");
+}
+
 void appearancePage(Flex* page, Popup& popup) {
     auto* wp = group(page, "Wallpaper");
     const std::string path = Wallpaper::get().path();
@@ -645,35 +718,9 @@ void appearancePage(Flex* page, Popup& popup) {
 
     // Accent: the wallpaper, or a seed colour for Matugen
     auto accent = row(colour, "colorize", "Accent", "");
-    auto* swatches = accent.row->add<Flex>(Flex::Direction::Row);
-    swatches->setSpacing(6);
-    const std::vector<std::string> seeds = {"", "#6750a4", "#0061a4", "#006d3b", "#8b5000", "#b3261e", "#984061", "#006a6a"};
-    auto chosen = std::make_shared<std::string>(Config::get().value<std::string>("/appearance/accent", ""));
-    auto dots = std::make_shared<std::vector<Button*>>();
-    auto mark = [dots, seeds, chosen] {
-        for (size_t i = 0; i < dots->size(); ++i) (*dots)[i]->setBorder(seeds[i] == *chosen ? 3 : 0, "on_surface");
-    };
-    for (const auto& seed : seeds) {
-        auto* d = swatches->add<Button>();
-        pill(d)->fixedWidth = 30;
-        d->fixedHeight = 30;
-        d->pressedRadius = 6;
-        if (seed.empty()) {
-            // "From the wallpaper"
-            d->setBackground("surface_container_highest", false)->setJustify(Align::Center);
-            d->add<Icon>("wallpaper", 16)->setColor("on_surface_variant", false);
-        } else {
-            d->setBackground(ColorRef(*Color::fromHex(seed)), false);
-        }
-        d->onClicked = [seed, chosen, mark](uint32_t) {
-            *chosen = seed;
-            mark();
-            Config::get().set("/appearance/accent", seed);
-            recolour();
-        };
-        dots->push_back(d);
-    }
-    mark();
+    accentSwatches(accent.row);
+
+    appThemingRows(page);
 
     auto* fonts = group(page, "Fonts");
     fontRow(fonts, "text_fields", "Interface", "/appearance/fonts/main", "Google Sans Flex", false);

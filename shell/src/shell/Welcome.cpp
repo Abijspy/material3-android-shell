@@ -122,34 +122,7 @@ void tourLook(Flex* page) {
         Wallpaper::get().recolour();
     };
     auto accent = row(g, "colorize", "Accent", "From the wallpaper, or a colour of your own");
-    auto* swatches = accent.row->add<Flex>(Flex::Direction::Row);
-    swatches->setSpacing(6);
-    const std::vector<std::string> seeds = {"", "#6750a4", "#0061a4", "#006d3b", "#8b5000", "#b3261e", "#984061", "#006a6a"};
-    auto chosen = std::make_shared<std::string>(Config::get().value<std::string>("/appearance/accent", ""));
-    auto dots = std::make_shared<std::vector<Button*>>();
-    auto mark = [dots, seeds, chosen] {
-        for (size_t i = 0; i < dots->size(); ++i) (*dots)[i]->setBorder(seeds[i] == *chosen ? 3 : 0, "on_surface");
-    };
-    for (const auto& seed : seeds) {
-        auto* d = swatches->add<Button>();
-        pill(d)->fixedWidth = 30;
-        d->fixedHeight = 30;
-        d->pressedRadius = 6;
-        if (seed.empty()) {
-            d->setBackground("surface_container_highest", false)->setJustify(Align::Center);
-            d->add<Icon>("wallpaper", 16)->setColor("on_surface_variant", false);
-        } else {
-            d->setBackground(ColorRef(*Color::fromHex(seed)), false);
-        }
-        d->onClicked = [seed, chosen, mark](uint32_t) {
-            *chosen = seed;
-            mark();
-            Config::get().set("/appearance/accent", seed);
-            Wallpaper::get().recolour();
-        };
-        dots->push_back(d);
-    }
-    mark();
+    accentSwatches(accent.row);
     auto wp = row(g, "wallpaper", "Wallpaper", "A few come with the shell; add your own to the folder");
     pillButton(wp.row, "Choose…", false, [] {
         if (open) open("wallpapers");

@@ -78,6 +78,9 @@ struct Row {
     Label* subtitle;
 };
 Row row(Node* group, const std::string& icon, const std::string& title, const std::string& subtitle = {});
+// The accent swatches: the wallpaper's colours or a seed colour for
+// Matugen; the chosen one carries a ✓ (in a colour that reads on it)
+Flex* accentSwatches(Node* parent);
 Button* pillButton(Node* parent, const std::string& label, bool primary, std::function<void()> fn, const std::string& icon = {});
 
 // A dropdown: a pill showing the choice, opening a list of items inside

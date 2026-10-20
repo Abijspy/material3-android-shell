@@ -22,11 +22,23 @@ public:
     void set(const std::string& path);
     // Re-runs Matugen (after the scheme, mode or accent changes)
     void recolour();
+    // Matugen's templates (apps it themes), from ~/.config/matugen/config.toml
+    std::vector<std::string> templates() const;
+    // Switched off in Settings (Wallpaper & style → App theming): left out of
+    // the config Matugen runs with, so those apps keep their own colours
+    static bool templateOn(const std::string& name);
+    static void setTemplateOn(const std::string& name, bool on);
+    // The palette the shell itself draws with, and the wallpaper path it
+    // records: never switched off
+    static bool templateRequired(const std::string& name) { return name == "m3colors" || name == "wallpaper"; }
     void next(int step = 1);
 
     Signal<> changed;
 
 private:
+    // A copy of Matugen's config without the switched-off templates (empty:
+    // none are off, so its own config runs)
+    std::string filteredConfig() const;
     Wallpaper();
     std::string m_last;
 };
