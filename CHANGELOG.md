@@ -1,5 +1,14 @@
 # Changelog
 
+## v5.4.2 — 2026-10-20
+
+- **The dock no longer crashes the shell.** With the pointer over the dock, a settings change could crash the shell, over and over, as it restarted.
+- **Backups are safe to restore.** Settings → Backups lists only your settings backups. It used to offer the installer's backups too, and restoring the oldest one deleted the whole Hyprland configuration. A restore now checks the backup holds only settings files before touching anything.
+- **Clear confirmations.** Restore, Delete and Reset ask in a strip under the row, saying what will happen, with Cancel. Reset only clears your settings once their backup is saved.
+- **The wallpaper you pick is the one you get.** A wallpaper shown before no longer leaves the old one on screen while the colours change to the new one.
+- **Keyboard settings open** from System, with links to layouts and typing, and to keybinds.
+- **Smoother scrolling** in both Settings apps and every panel, with Look & feel → Scrolling for smooth wheel steps, scroll speed and touchpad glide.
+
 ## v5.4.1 — 2026-10-20
 
 - **Restart after updates.** Software & updates shows when an update needs a restart, however it ran: the computer (a new kernel, systemd, glibc, drivers, firmware), a log out (Hyprland's libraries) or just the shell. It names the packages, with Restart now, Log out or Restart shell, and the update's notification says so too.
