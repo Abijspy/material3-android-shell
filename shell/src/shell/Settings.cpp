@@ -813,6 +813,14 @@ void barPage(Flex* page, Popup&) {
     switchRow(island, "view_carousel", "Show workspace switches in the island", "", "/statusBar/islandWorkspace", true);
     choiceRow<std::string>(island, "schedule", "Clock", "", "/time/format", "hh:mm",
                            {{"hh:mm", "24-hour"}, {"h:mm AP", "12-hour"}, {"hh:mm:ss", "Seconds"}});
+
+    // Text longer than its space: how each place shows the rest
+    auto* scrolling = group(page, "Scrolling text", "For titles longer than their space");
+    const std::vector<std::pair<std::string, std::string>> styles = {{"loop", "Loop"}, {"bounce", "Back and forth"}, {"off", "Off"}};
+    choiceRow<std::string>(scrolling, "title", "Window title", "", "/bar/scrolling/windowTitle", "loop", styles);
+    choiceRow<std::string>(scrolling, "music_note", "Music in the island", "", "/bar/scrolling/islandMedia", "loop", styles);
+    choiceRow<std::string>(scrolling, "notifications", "Notifications in the island", "", "/bar/scrolling/islandNotice", "loop", styles);
+    choiceRow<int>(scrolling, "speed", "Speed", "", "/bar/scrolling/speed", 30, {{18, "Slow"}, {30, "Normal"}, {50, "Fast"}});
 }
 
 void dockPage(Flex* page, Popup&) {

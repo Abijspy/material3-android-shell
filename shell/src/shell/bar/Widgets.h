@@ -63,6 +63,7 @@ public:
     void sync();
 
 private:
+    Connection m_style;
     Connection m_conn;
 };
 

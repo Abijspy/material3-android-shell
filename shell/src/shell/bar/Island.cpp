@@ -105,7 +105,10 @@ void Island::build() {
         const auto* p = Mpris::get().active();
         if (!p) break;
         m_content->add<kit::WavyRing>(26)->add<Icon>("music_note", 14)->setColor("primary", false);
-        m_content->add<Marquee>(200, p->artist.empty() ? p->title : p->title + " · " + p->artist)->label()->setSize(13);
+        m_content->add<Marquee>(200, p->artist.empty() ? p->title : p->title + " · " + p->artist)
+            ->setMode(Marquee::modeOf(Config::get().value<std::string>("/bar/scrolling/islandMedia", "loop")))
+            ->setSpeed(Config::get().value<float>("/bar/scrolling/speed", 30))
+            ->label()->setSize(13);
         auto control = [this](const char* icon, std::function<void()> fn) {
             auto* b = m_content->add<Button>();
             pill(b)->setPadding(Insets(3));
@@ -119,7 +122,10 @@ void Island::build() {
     }
     case Mode::Notice:
         m_content->add<Icon>(m_noticeIcon, 18)->setColor("primary", false);
-        m_content->add<Marquee>(260, m_noticeText)->label()->setSize(13)->setWeight(500);
+        m_content->add<Marquee>(260, m_noticeText)
+            ->setMode(Marquee::modeOf(Config::get().value<std::string>("/bar/scrolling/islandNotice", "loop")))
+            ->setSpeed(Config::get().value<float>("/bar/scrolling/speed", 30))
+            ->label()->setSize(13)->setWeight(500);
         break;
     }
 }

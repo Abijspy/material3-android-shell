@@ -653,29 +653,53 @@ void Marquee::doArrange() {
     m_label->arrange({rect().x, rect().y, std::max(m_natural, rect().w), rect().h});
 }
 
+namespace {
+constexpr float kMarqueeGap = 40;    // px between the end and the beginning again (Loop)
+constexpr double kMarqueePause = 2;  // s at the start of each round, and at the end (Bounce)
+} // namespace
+
+Marquee::Mode Marquee::modeOf(const std::string& name) {
+    return name == "bounce" ? Mode::Bounce : name == "off" ? Mode::Off : Mode::Loop;
+}
+
+Marquee* Marquee::setMode(Mode mode) {
+    if (mode == m_mode) return this;
+    m_mode = mode;
+    m_start = std::chrono::steady_clock::now();
+    requestRedraw();
+    return this;
+}
+
+Marquee* Marquee::setSpeed(float pxPerSecond) {
+    m_speed = std::max(5.0f, pxPerSecond);
+    requestRedraw();
+    return this;
+}
+
 void Marquee::doPaint(Renderer&) {
     const float over = m_natural - rect().w;
-    if (over <= 0.5f) {
+    if (over <= 0.5f || m_mode == Mode::Off) {
+        m_offset = 0;
         m_label->setTranslateX(0, false);
         return;
     }
-    // Pause, scroll to the end, pause, scroll back: a ping-pong at a reading pace
-    constexpr double pause = 2.2, speed = 32; // s, px/s
-    const double run = over / speed, cycle = 2 * (pause + run);
-    const double t = std::fmod(std::chrono::duration<double>(std::chrono::steady_clock::now() - m_start).count(), cycle);
-    double offset, wait = 0;
-    if (t < pause) {
-        offset = 0;
-        wait = pause - t;
-    } else if (t < pause + run) {
-        offset = (t - pause) * speed;
-    } else if (t < 2 * pause + run) {
-        offset = over;
-        wait = 2 * pause + run - t;
+    const double speed = m_speed, t0 = std::chrono::duration<double>(std::chrono::steady_clock::now() - m_start).count();
+    double offset = 0, wait = 0;
+    if (m_mode == Mode::Loop) {
+        // A round: a pause, then the text and the gap go by
+        const double travel = m_natural + kMarqueeGap, cycle = kMarqueePause + travel / speed, t = std::fmod(t0, cycle);
+        if (t < kMarqueePause) wait = kMarqueePause - t;
+        else offset = (t - kMarqueePause) * speed;
     } else {
-        offset = over - (t - 2 * pause - run) * speed;
+        // Pause, to the end, pause, back
+        const double run = over / speed, cycle = 2 * (kMarqueePause + run), t = std::fmod(t0, cycle);
+        if (t < kMarqueePause) wait = kMarqueePause - t;
+        else if (t < kMarqueePause + run) offset = (t - kMarqueePause) * speed;
+        else if (t < 2 * kMarqueePause + run) offset = over, wait = 2 * kMarqueePause + run - t;
+        else offset = over - (t - 2 * kMarqueePause - run) * speed;
     }
-    m_label->setTranslateX(-static_cast<float>(std::round(offset)), false);
+    m_offset = -static_cast<float>(std::round(offset));
+    m_label->setTranslateX(m_offset, false);
     if (wait <= 0) return requestRedraw();
     // Still: wake when it moves again, no frames in between
     if (!m_wake)
@@ -683,6 +707,15 @@ void Marquee::doPaint(Renderer&) {
             m_wake = 0;
             requestRedraw();
         });
+}
+
+void Marquee::doPaintOver(Renderer& r) {
+    if (m_mode != Mode::Loop || m_natural - rect().w <= 0.5f) return;
+    // The beginning again, one text and a gap along: the loop is seamless.
+    // Moved by the label's own offset (culling looks at its layout place)
+    m_label->setTranslateX(m_offset + m_natural + kMarqueeGap, false);
+    m_label->paint(r);
+    m_label->setTranslateX(m_offset, false);
 }
 
 } // namespace m3::ui

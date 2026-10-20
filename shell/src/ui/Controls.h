@@ -132,27 +132,37 @@ private:
     bool m_hovered = false;
 };
 
-// One line of text in at most `maxWidth`: when it's longer, it scrolls
-// slowly to its end and back, pausing at each (the bar's window title, the
-// island's track). Between moves it waits on a timer, not on frames.
+// One line of text in at most `maxWidth`. When it's longer, by its mode:
+// Loop scrolls continuously, a ticker (the text, a gap, its beginning
+// again, pausing as the start comes round); Bounce scrolls to the end and
+// back, pausing at each; Off just shows what fits. While paused it waits on
+// a timer, not on frames.
 class Marquee : public Node {
 public:
+    enum class Mode { Loop, Bounce, Off };
     explicit Marquee(float maxWidth, std::string text = {});
     ~Marquee() override;
     Label* label() const { return m_label; }
     Marquee* setText(const std::string& text);
     Marquee* setMaxWidth(float w);
+    Marquee* setMode(Mode mode);
+    Marquee* setSpeed(float pxPerSecond);
+    // "loop", "bounce" or "off", as Settings keeps it
+    static Mode modeOf(const std::string& name);
     const std::string& text() const;
 
 protected:
     SizeF doMeasure(SizeF available) override;
     void doArrange() override;
     void doPaint(Renderer& r) override;
+    void doPaintOver(Renderer& r) override; // the copy that follows
     bool clipsChildren() const override { return true; }
 
 private:
     Label* m_label;
-    float m_max, m_natural = 0;
+    float m_max, m_natural = 0, m_offset = 0;
+    Mode m_mode = Mode::Loop;
+    float m_speed = 30;
     std::chrono::steady_clock::time_point m_start;
     EventLoop::TimerId m_wake = 0;
 };
