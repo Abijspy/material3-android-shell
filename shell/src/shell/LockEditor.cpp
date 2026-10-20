@@ -47,6 +47,16 @@ protected:
     }
 };
 
+// A cell: nothing it holds bleeds into its neighbours
+class ClippedButton : public Button {
+public:
+    ClippedButton() : Button(Direction::Column) {}
+    bool holdsWidget = false; // not the "Add" hint
+
+protected:
+    bool clipsChildren() const override { return true; }
+};
+
 // The stage: background behind everything, the 3 × 4 cells above the login
 // area, and the login preview (avatar and password) along the bottom. Rows
 // size to their widgets as on the real lock screen; empty ones keep room to
@@ -67,13 +77,36 @@ protected:
         const float gw = r.w - pad * 2;
         const float cw = (gw - gap * (lockgrid::kCols - 1)) / lockgrid::kCols;
         const auto& cells = kids[1]->children();
+        // Too tall for the stage: the tallest row's widgets shrink by what it
+        // overflows (a big stacked clock) rather than being cut off by their
+        // cells. Natural sizes are the measured ones over the size shown.
+        const float room = r.h - pad - loginHeight;
+        const float gaps = gap * (lockgrid::kRows - 1);
+        std::vector<float> natural(lockgrid::kRows, minRow);
+        for (size_t i = 0; i < cells.size(); ++i) {
+            auto& n = natural[i / lockgrid::kCols];
+            n = std::max(n, cells[i]->measure({cw, 1e6f}).h / cells[i]->textMul);
+        }
+        float naturalTotal = gaps;
+        for (float h : natural) naturalTotal += h;
+        const size_t tallest = static_cast<size_t>(std::ranges::max_element(natural) - natural.begin());
+        const float fit = naturalTotal > room ? std::clamp((natural[tallest] - (naturalTotal - room)) / natural[tallest], 0.4f, 1.0f) : 1;
+        bool changed = false;
+        for (size_t i = 0; i < cells.size(); ++i) {
+            const auto* cell = dynamic_cast<const ClippedButton*>(cells[i].get());
+            const float want = i / lockgrid::kCols == tallest && cell && cell->holdsWidget ? fit : 1;
+            if (std::abs(cells[i]->textMul - want) > 0.01f) {
+                cells[i]->textMul = want;
+                changed = true;
+            }
+        }
+        if (changed) requestLayout(); // measured again at the new size
         std::vector<float> rows(lockgrid::kRows, minRow);
         for (size_t i = 0; i < cells.size(); ++i)
             rows[i / lockgrid::kCols] = std::max(rows[i / lockgrid::kCols], cells[i]->measure({cw, 1e6f}).h);
-        // Too tall for the stage: share what there is
-        float total = gap * (lockgrid::kRows - 1);
+        // Whatever still doesn't fit shares what there is
+        float total = gaps;
         for (float h : rows) total += h;
-        const float room = r.h - pad - loginHeight;
         const float k = total > room ? (room - gap * (lockgrid::kRows - 1)) / (total - gap * (lockgrid::kRows - 1)) : 1;
         float y = r.y + pad;
         for (size_t i = 0; i < cells.size(); ++i) {
@@ -84,15 +117,6 @@ protected:
         const SizeF s = kids[2]->measure({r.w, loginHeight});
         kids[2]->arrange({r.x + (r.w - s.w) / 2, r.bottom() - loginHeight + (loginHeight - s.h) / 2, s.w, s.h});
     }
-    bool clipsChildren() const override { return true; }
-};
-
-// A cell: nothing it holds bleeds into its neighbours
-class ClippedButton : public Button {
-public:
-    ClippedButton() : Button(Direction::Column) {}
-
-protected:
     bool clipsChildren() const override { return true; }
 };
 
@@ -238,6 +262,7 @@ void lockEditor(Flex* card, Popup& popup) {
                 if (it) {
                     // The stage is about 3/4 of the screen's height: the clock follows
                     addLockWidget(cell, it->id, false, col, 0.75f);
+                    cell->holdsWidget = true;
                 } else {
                     auto* hint = cell->add<Flex>(Flex::Direction::Row);
                     hint->setSpacing(6);

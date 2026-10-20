@@ -227,6 +227,8 @@ public:
     Label* setCentered(bool centered); // wrapped lines centred under each other // wraps within maxWidth
     const std::string& text() const { return m_text; }
     float size() const { return m_size; }
+    // The size it's drawn at: after the text sizes of the parts it's in
+    float shownSize() const { return style().size; }
     int weight() const { return m_weight; }
 
 protected:

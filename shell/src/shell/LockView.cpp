@@ -83,6 +83,23 @@ std::string initial(const std::string& name) {
     return s;
 }
 
+// Lines of big digits pulled together by a fraction of their drawn size, so
+// they stay tight when the text is scaled (the lock editor shrinks them)
+class TightLines : public Flex {
+public:
+    explicit TightLines(float overlap) : Flex(Direction::Column), m_overlap(overlap) {}
+
+protected:
+    SizeF doMeasure(SizeF available) override {
+        if (const auto* first = children().empty() ? nullptr : dynamic_cast<const Label*>(children().front().get()))
+            m_spacing = -first->shownSize() * m_overlap;
+        return Flex::doMeasure(available);
+    }
+
+private:
+    float m_overlap;
+};
+
 // One lock-screen widget: rebuilt whenever its service changes
 class LockWidget : public Flex {
 public:
@@ -119,8 +136,8 @@ private:
             return;
         }
         const bool stacked = style != "inline", twoTone = style == "twotone";
-        auto* col = add<Flex>(Direction::Column);
-        col->setSpacing(-size * 0.26f)->setAlignItems(m_align);
+        auto* col = add<TightLines>(0.26f);
+        col->setAlignItems(m_align);
         const std::time_t now = std::time(nullptr);
         std::tm tm{};
         localtime_r(&now, &tm);
