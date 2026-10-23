@@ -9,6 +9,7 @@
 #include "services/Audio.h"
 #include "services/Backups.h"
 #include "services/Calendar.h"
+#include "quickshare/QuickShare.h"
 #include "services/Clipboard.h"
 #include "services/HyprOptions.h"
 #include "services/Hyprland.h"
@@ -352,38 +353,50 @@ void networkPage(Flex* page, Popup&) {
     wiredLive->sync();
 }
 
-// Quick Share: files to and from Android phones nearby, through an open
-// source app (RQuickShare from the AUR, or Packet from Flathub)
+// Quick Share, the shell's own: phones nearby send files, links and text
+// over the network, each transfer asked first with its PIN
 void quickShareRows(Flex* page) {
-    auto* g = group(page, "Quick Share", "Send and receive files with Android phones and Chromebooks nearby, over Wi-Fi and Bluetooth");
-    const auto* app = Apps::get().quickShare();
-    if (app) {
-        auto r = row(g, "share", app->name, "Ready: phones nearby can send to this computer while it's open");
-        const Apps::App copy = *app;
-        pillButton(r.row, "Open", true, [copy] { Apps::get().launch(copy); }, "open_in_new");
-        // Started with the session (minimised to the tray, where it waits)
-        std::string command = app->exec;
-        if (const auto at = command.find(" %"); at != std::string::npos) command.erase(at);
-        auto start = row(g, "rocket_launch", "Start with the session", "So phones can always find this computer");
-        auto* sw = start.row->add<Switch>();
-        const auto list = HyprOptions::get().startups();
-        sw->setChecked(std::ranges::any_of(list, [&](const HyprOptions::Startup& s) { return s.command == command && s.enabled; }), false);
-        sw->onToggled = [command](bool on) {
-            auto list = HyprOptions::get().startups();
-            std::erase_if(list, [&](const HyprOptions::Startup& s) { return s.command == command; });
-            if (on) list.push_back({command, "Quick Share", true});
-            HyprOptions::get().setStartups(list);
-        };
-        return;
-    }
-    auto r = row(g, "share", "Not installed", "Two open source apps speak Android's Quick Share; either works");
-    (void)r;
-    auto rq = row(g, "deployed_code", "RQuickShare", "From the AUR · a small app that waits in the tray");
-    pillButton(rq.row, "Install", true, [] { Packages::get().install({"rquickshare-x-bin", "", "", "aur", Packages::Source::Aur}); },
-               "download");
-    auto pk = row(g, "apps", "Packet", "From Flathub · a GNOME app");
-    pillButton(pk.row, "Install", false,
-               [] { Packages::get().install({"io.github.nozwock.Packet", "", "", "flathub", Packages::Source::Flatpak}); }, "download");
+    auto* live = page->add<Live>();
+    live->setSpacing(0);
+    live->sync = [live] {
+        live->clearChildren();
+        auto& qs = quickshare::QuickShare::get();
+        auto* g = group(live, "Quick Share", "Android phones and Chromebooks on the same Wi-Fi can send this computer files, links and text");
+        const bool on = Config::get().value<bool>("/quickshare/receive", true);
+        auto vis = row(g, "share", "Let devices nearby share with you",
+                       !on ? "Off" : qs.receiving() ? "Visible as \"" + qs.deviceName() + "\": each transfer is asked first"
+                           : qs.status().empty() ? "Starting…" : qs.status());
+        auto* sw = vis.row->add<Switch>();
+        sw->setChecked(on, false);
+        sw->onToggled = [](bool v) { Config::get().set("/quickshare/receive", v); };
+        auto nameRow = row(g, "badge", "Name shown to others", "Enter to save");
+        auto* name = nameRow.row->add<TextField>();
+        name->fixedWidth = 240;
+        name->setText(qs.deviceName());
+        name->onSubmit = [](const std::string& v) { Config::get().set("/quickshare/name", v); };
+        row(g, "folder", "Files go to Downloads", "Links and text go to the clipboard");
+        // The last few transfers
+        if (!qs.transfers().empty()) {
+            auto* recent = group(live, "Recently");
+            static const char* states[] = {"Connecting", "Waiting for you", "Receiving", "Received", "Declined", "Stopped"};
+            for (auto it = qs.transfers().rbegin(); it != qs.transfers().rend(); ++it) {
+                const auto& t = it->second;
+                std::string what = t.files.size() == 1 ? t.files.front().name
+                                 : !t.files.empty()     ? std::format("{} files", t.files.size())
+                                 : !t.texts.empty()     ? std::string("Text")
+                                                        : std::string("");
+                auto r = row(recent, t.state == quickshare::QuickShare::State::Done ? "download_done" : "share",
+                             t.sender.empty() ? "A device nearby" : t.sender,
+                             std::string(states[static_cast<int>(t.state)]) + (what.empty() ? "" : " · " + what) + (t.error.empty() ? "" : " · " + t.error));
+                const int id = t.id;
+                pillButton(r.row, "Open", false, [id] {
+                    if (open) open("quickshare " + std::to_string(id));
+                });
+            }
+        }
+    };
+    live->watch(quickshare::QuickShare::get().changed);
+    live->sync();
 }
 
 void bluetoothPage(Flex* page, Popup&) {

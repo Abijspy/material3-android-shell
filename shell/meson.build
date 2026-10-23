@@ -15,6 +15,7 @@ cairo = dependency('cairo')
 json = dependency('nlohmann_json', version: '>= 3.10')
 xkbcommon = dependency('xkbcommon')
 libsystemd = dependency('libsystemd', version: '>= 246') # sd-bus
+libcrypto = dependency('libcrypto', version: '>= 3.0') # Quick Share's encryption
 libpulse = dependency('libpulse')
 librsvg = dependency('librsvg-2.0', version: '>= 2.46')
 gdk_pixbuf = dependency('gdk-pixbuf-2.0')
@@ -56,6 +57,9 @@ sources = files(
   'src/main.cpp',
   'src/greeter/Greeter.cpp',
   'src/share/SharePicker.cpp',
+  'src/quickshare/Crypto.cpp',
+  'src/quickshare/Mdns.cpp',
+  'src/quickshare/QuickShare.cpp',
   'src/polkit/listener.c',
   'src/core/Config.cpp',
   'src/core/EventLoop.cpp',
@@ -102,6 +106,7 @@ sources = files(
   'src/shell/PanelKit.cpp',
   'src/shell/Panels.cpp',
   'src/shell/QuickSettings.cpp',
+  'src/shell/QuickSharePanel.cpp',
   'src/shell/Rich.cpp',
   'src/shell/ClockFaces.cpp',
   'src/shell/CurveEditor.cpp',
@@ -168,7 +173,7 @@ install_data('data/wallpapers/default_wallpaper.png', 'data/wallpapers/midnight-
 
 executable('material3ui', sources, protocol_sources,
   include_directories: include_directories('src'),
-  dependencies: [wayland_client, wayland_egl, egl, glesv2, pangocairo, cairo, json, xkbcommon, libsystemd, libpulse, librsvg, gdk_pixbuf, polkit_agent, pam],
+  dependencies: [wayland_client, wayland_egl, egl, glesv2, pangocairo, cairo, json, xkbcommon, libsystemd, libpulse, librsvg, gdk_pixbuf, polkit_agent, pam, libcrypto],
   # Function names in crash.log's backtraces
   link_args: ['-rdynamic'],
   install: true)

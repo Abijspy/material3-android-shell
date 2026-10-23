@@ -17,6 +17,7 @@
 #include "services/Audio.h"
 #include "services/Backups.h"
 #include "services/Calendar.h"
+#include "quickshare/QuickShare.h"
 #include "services/Clipboard.h"
 #include "services/Search.h"
 #include "services/Effects.h"
@@ -64,6 +65,10 @@ bool Shell::start() {
     Effects::get();
     Clipboard::get().ensureWatchers();
     Calendar::get(); // events, subscriptions and their reminders
+    // Quick Share: phones nearby may send files; each is asked here
+    quickshare::QuickShare::get().asking.connectForever([this](int id) {
+        EventLoop::get().defer([this, id] { togglePopup("quickshare", focusedOutput(), -1, std::to_string(id)); });
+    });
     // New apps bring their icons; before anyone redraws with them
     Apps::get().changed.connectForever([] { Images::get().rescan(); });
 
@@ -351,6 +356,11 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         opts.anchorX = -1;
         opts.centredVertically = true;
         build = [arg](ui::Flex* card, Popup& p) { panels::settings(card, p, arg); };
+    } else if (name == "quickshare") {
+        opts.width = 520;
+        opts.anchorX = -1;
+        opts.centredVertically = true;
+        build = [arg](ui::Flex* card, Popup& p) { panels::quickSharePanel(card, p, arg); };
     } else if (name == "event") {
         opts.width = 560;
         opts.anchorX = -1;
@@ -700,6 +710,22 @@ void Shell::registerIpc() {
         }
         Backups::get().create("manual");
         return std::string("backing up");
+    });
+    ipc.add("quickshare", "quickshare [status|accept <id>|decline <id>]: Quick Share's transfers", [](const IpcServer::Args& a) {
+        auto& qs = quickshare::QuickShare::get();
+        const std::string cmd = a.empty() ? "status" : a[0];
+        if ((cmd == "accept" || cmd == "decline") && a.size() > 1) {
+            const int id = std::atoi(a[1].c_str());
+            if (cmd == "accept") qs.accept(id);
+            else qs.decline(id);
+            return (cmd == "accept" ? "accepted " : "declined ") + a[1];
+        }
+        std::string out = qs.receiving() ? "visible as " + qs.deviceName() + "\n" : "not visible" + (qs.status().empty() ? "" : ": " + qs.status()) + "\n";
+        static const char* states[] = {"connecting", "asking", "receiving", "done", "declined", "failed"};
+        for (const auto& [id, t] : qs.transfers())
+            out += std::format("{}  {}  {}  pin {}  {} file(s) {}/{} bytes{}\n", id, states[static_cast<int>(t.state)], t.sender, t.pin, t.files.size(),
+                               t.received, t.total, t.error.empty() ? "" : "  " + t.error);
+        return out;
     });
     ipc.add("calendar", "calendar [list [days]|subscribe <name> <ics-url>|refresh]: events coming up, or add a calendar", [](const IpcServer::Args& a) {
         auto& cal = Calendar::get();

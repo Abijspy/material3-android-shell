@@ -4,6 +4,7 @@
 #include "services/Network.h"
 #include "services/Notifications.h"
 #include "services/Search.h"
+#include "quickshare/QuickShare.h"
 #include "services/Wallpaper.h"
 #include "core/Config.h"
 #include "core/EventLoop.h"
@@ -320,14 +321,9 @@ const std::vector<TileDef>& tileDefs() {
         {"powersaver", "eco", "Power saver", [] { return Power::get().profile() == "power-saver"; },
          [] { return std::string(Power::get().profile() == "power-saver" ? "On" : "Off"); }, {},
          [](Popup&) { Power::get().setProfile(Power::get().profile() == "power-saver" ? "balanced" : "power-saver"); }},
-        {"quickshare", "share", "Quick Share", [] { return false; },
-         [] { return std::string(Apps::get().quickShare() ? "Nearby devices" : "Not installed"); }, {},
-         [](Popup& popup) {
-             popup.close();
-             // Its app, or Settings to install one
-             if (const auto* app = Apps::get().quickShare()) Apps::get().launch(*app);
-             else if (open) open("settings bluetooth");
-         }},
+        {"quickshare", "share", "Quick Share", [] { return quickshare::QuickShare::get().receiving(); },
+         [] { return std::string(quickshare::QuickShare::get().receiving() ? "Visible nearby" : "Off"); }, {},
+         [](Popup&) { Config::get().set("/quickshare/receive", !Config::get().value<bool>("/quickshare/receive", true)); }},
         {"screenshot", "screenshot_region", "Screenshot", [] { return false; }, [] { return std::string("Region"); }, {},
          [](Popup& popup) {
              popup.close();

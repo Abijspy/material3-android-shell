@@ -175,17 +175,6 @@ std::string Apps::iconForClass(const std::string& cls) const {
     return c; // many apps name their icon after their class
 }
 
-const Apps::App* Apps::quickShare() const {
-    for (const auto& a : m_apps) {
-        std::string hay = a.id + " " + a.name;
-        std::ranges::transform(hay, hay.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        if (hay.find("quickshare") != std::string::npos || hay.find("quick share") != std::string::npos ||
-            hay.find("quick-share") != std::string::npos || hay.find("nozwock.packet") != std::string::npos)
-            return &a;
-    }
-    return nullptr;
-}
-
 void Apps::launch(const App& app) {
     const char* term = std::getenv("TERMINAL");
     spawn(app.terminal ? std::format("{} -e {}", term && *term ? term : "alacritty", app.exec) : app.exec);

@@ -69,6 +69,8 @@ inline std::function<void(bool)> editBar;
 // A file picker for pictures: `purpose` "wallpaper" (sets it) or "avatar"
 // (your picture, ~/.face, with the default pictures first)
 void filePicker(ui::Flex* card, Popup& popup, const std::string& purpose);
+// A Quick Share transfer by its id: the question (PIN, files), then progress
+void quickSharePanel(ui::Flex* card, Popup& popup, const std::string& arg);
 // A calendar event: "new:YYYY-MM-DD" to add one, or an event's id
 void eventEditor(ui::Flex* card, Popup& popup, const std::string& arg);
 // The first-run tour, in its own window
