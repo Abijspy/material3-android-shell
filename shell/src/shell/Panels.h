@@ -71,6 +71,8 @@ inline std::function<void(bool)> editBar;
 void filePicker(ui::Flex* card, Popup& popup, const std::string& purpose);
 // A Quick Share transfer by its id: the question (PIN, files), then progress
 void quickSharePanel(ui::Flex* card, Popup& popup, const std::string& arg);
+// Sending: arg, the files' paths, one per line
+void quickShareSend(ui::Flex* card, Popup& popup, const std::string& arg);
 // A calendar event: "new:YYYY-MM-DD" to add one, or an event's id
 void eventEditor(ui::Flex* card, Popup& popup, const std::string& arg);
 // The first-run tour, in its own window

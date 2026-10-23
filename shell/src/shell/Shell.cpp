@@ -361,6 +361,11 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         opts.anchorX = -1;
         opts.centredVertically = true;
         build = [arg](ui::Flex* card, Popup& p) { panels::quickSharePanel(card, p, arg); };
+    } else if (name == "quickshare-send") {
+        opts.width = 560;
+        opts.anchorX = -1;
+        opts.centredVertically = true;
+        build = [arg](ui::Flex* card, Popup& p) { panels::quickShareSend(card, p, arg); };
     } else if (name == "event") {
         opts.width = 560;
         opts.anchorX = -1;
@@ -711,9 +716,51 @@ void Shell::registerIpc() {
         Backups::get().create("manual");
         return std::string("backing up");
     });
-    ipc.add("quickshare", "quickshare [status|accept <id>|decline <id>]: Quick Share's transfers", [](const IpcServer::Args& a) {
+    ipc.add("quickshare", "quickshare [status|accept <id>|decline <id>|cancel <id>|send [files…]|devices|sendto <device> <files…>]: Quick Share",
+            [](const IpcServer::Args& a) {
         auto& qs = quickshare::QuickShare::get();
         const std::string cmd = a.empty() ? "status" : a[0];
+        const auto absolute = [](const std::string& p) {
+            std::error_code ec;
+            const auto abs = std::filesystem::absolute(p, ec);
+            return ec ? p : abs.string();
+        };
+        if (cmd == "send") {
+            std::string paths;
+            for (size_t i = 1; i < a.size(); ++i) paths += absolute(a[i]) + "\n";
+            panels::open("quickshare-send " + paths);
+            return std::string("choose a device");
+        }
+        if (cmd == "cancel" && a.size() > 1) {
+            qs.cancel(std::atoi(a[1].c_str()));
+            return "cancelled " + a[1];
+        }
+        // Without the popup: look for a few seconds, then list or send
+        static quickshare::QuickShare::Lease lease;
+        static EventLoop::TimerId drop = 0;
+        const auto hold = [] {
+            if (!lease) lease = quickshare::QuickShare::get().discover();
+            EventLoop::get().debounce(drop, 60000, [] { lease.reset(); });
+        };
+        if (cmd == "devices") {
+            hold();
+            std::string out;
+            for (const auto& d : qs.devices()) out += std::format("{}  {}  type {}\n", d.id, d.name, d.type);
+            if (out.empty()) out = "none yet (looking for a minute; ask again)\n";
+            if (const auto note = qs.discoveryNote(); !note.empty()) out += note + "\n";
+            return out;
+        }
+        if (cmd == "sendto" && a.size() > 2) {
+            hold();
+            for (const auto& d : qs.devices())
+                if (d.id == a[1] || d.name == a[1]) {
+                    std::vector<std::string> files;
+                    for (size_t i = 2; i < a.size(); ++i) files.push_back(absolute(a[i]));
+                    const int id = qs.send(d, files);
+                    return id ? "sending: transfer " + std::to_string(id) : std::string("nothing to send");
+                }
+            return std::string("no such device (yet): see quickshare devices");
+        }
         if ((cmd == "accept" || cmd == "decline") && a.size() > 1) {
             const int id = std::atoi(a[1].c_str());
             if (cmd == "accept") qs.accept(id);
@@ -723,7 +770,7 @@ void Shell::registerIpc() {
         std::string out = qs.receiving() ? "visible as " + qs.deviceName() + "\n" : "not visible" + (qs.status().empty() ? "" : ": " + qs.status()) + "\n";
         static const char* states[] = {"connecting", "asking", "receiving", "done", "declined", "failed"};
         for (const auto& [id, t] : qs.transfers())
-            out += std::format("{}  {}  {}  pin {}  {} file(s) {}/{} bytes{}\n", id, states[static_cast<int>(t.state)], t.sender, t.pin, t.files.size(),
+            out += std::format("{}  {}{}  {}  pin {}  {} file(s) {}/{} bytes{}\n", id, t.outgoing ? "→ " : "", states[static_cast<int>(t.state)], t.sender, t.pin, t.files.size(),
                                t.received, t.total, t.error.empty() ? "" : "  " + t.error);
         return out;
     });

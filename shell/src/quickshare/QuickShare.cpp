@@ -4,6 +4,7 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Process.h"
+#include "quickshare/Ble.h"
 #include "quickshare/Crypto.h"
 #include "quickshare/Mdns.h"
 #include "quickshare/Proto.h"
@@ -89,6 +90,56 @@ std::string pinFrom(const Bytes& auth) {
     return std::format("{:04}", std::abs(hash));
 }
 
+Bytes unbase64url(const std::string& in) {
+    Bytes out;
+    uint32_t acc = 0;
+    int bits = 0;
+    for (char c : in) {
+        int v = c >= 'A' && c <= 'Z' ? c - 'A' : c >= 'a' && c <= 'z' ? c - 'a' + 26 : c >= '0' && c <= '9' ? c - '0' + 52
+              : c == '-' || c == '+' ? 62 : c == '_' || c == '/' ? 63 : -1;
+        if (v < 0) continue; // padding
+        acc = acc << 6 | static_cast<uint32_t>(v);
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            out += static_cast<char>(acc >> bits & 0xFF);
+        }
+    }
+    return out;
+}
+
+// What the other side shows for a file: its MIME type, and a kind
+std::string mimeOf(const std::string& path) {
+    static const std::map<std::string, std::string> types{
+        {".jpg", "image/jpeg"}, {".jpeg", "image/jpeg"}, {".png", "image/png"}, {".gif", "image/gif"}, {".webp", "image/webp"},
+        {".heic", "image/heic"}, {".svg", "image/svg+xml"}, {".mp4", "video/mp4"}, {".mkv", "video/x-matroska"},
+        {".webm", "video/webm"}, {".mov", "video/quicktime"}, {".mp3", "audio/mpeg"}, {".flac", "audio/flac"},
+        {".ogg", "audio/ogg"}, {".opus", "audio/opus"}, {".m4a", "audio/mp4"}, {".wav", "audio/wav"},
+        {".pdf", "application/pdf"}, {".zip", "application/zip"}, {".apk", "application/vnd.android.package-archive"},
+        {".txt", "text/plain"}, {".md", "text/markdown"}, {".html", "text/html"}, {".csv", "text/csv"}, {".json", "application/json"},
+        {".doc", "application/msword"}, {".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+        {".odt", "application/vnd.oasis.opendocument.text"}};
+    std::string ext = fs::path(path).extension().string();
+    for (auto& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    const auto it = types.find(ext);
+    return it == types.end() ? "application/octet-stream" : it->second;
+}
+
+int kindOf(const std::string& mime) {
+    if (mime.starts_with("image/")) return 1;
+    if (mime.starts_with("video/")) return 2;
+    if (mime == "application/vnd.android.package-archive") return 3;
+    if (mime.starts_with("audio/")) return 4;
+    return 0;
+}
+
+int64_t randomId() {
+    static std::mt19937_64 rng{std::random_device{}()};
+    int64_t id = 0;
+    while (id == 0) id = static_cast<int64_t>(rng() >> 1);
+    return id;
+}
+
 std::string downloads() {
     std::string dir = paths::home() + "/Downloads";
     std::error_code ec;
@@ -116,30 +167,67 @@ std::string freePath(const std::string& name) {
 
 class Connection : public EventSource {
 public:
+    // A phone connecting to us
     Connection(int fd, QuickShare::Transfer& t) : m_fd(fd), m_id(t.id) { EventLoop::get().add(this); }
+    // Us connecting to it, to send these (fd: connecting); request: our
+    // connection request
+    Connection(int fd, QuickShare::Transfer& t, Bytes request, std::vector<std::string> paths)
+        : m_fd(fd), m_id(t.id), m_step(Step::Connect), m_client(true), m_request(std::move(request)) {
+        for (size_t i = 0; i < paths.size() && i < t.files.size(); ++i) {
+            Outgoing o;
+            o.path = paths[i];
+            o.payloadId = t.files[i].payloadId;
+            o.size = t.files[i].size;
+            m_outgoing.push_back(std::move(o));
+        }
+        EventLoop::get().add(this);
+        m_answerTimer = EventLoop::get().addTimer(10000, [this] {
+            m_answerTimer = 0;
+            if (m_step == Step::Connect) closeWith("The other device didn't answer");
+        });
+    }
     ~Connection() override {
         EventLoop::get().remove(this);
         if (m_keepAlive) EventLoop::get().cancel(m_keepAlive);
         if (m_answerTimer) EventLoop::get().cancel(m_answerTimer);
         for (auto& [_, f] : m_files)
             if (f.out) std::fclose(f.out);
+        for (auto& o : m_outgoing)
+            if (o.in) std::fclose(o.in);
         if (m_fd >= 0) close(m_fd);
     }
 
     int fd() const override { return m_fd; }
-    short events() const override { return static_cast<short>(POLLIN | (m_out.empty() ? 0 : POLLOUT)); }
+    short events() const override {
+        const bool more = m_step == Step::Connect || !m_out.empty() || (m_pumping && m_next < m_outgoing.size());
+        return static_cast<short>(POLLIN | (more ? POLLOUT : 0));
+    }
     void dispatch(short revents) override {
         if (m_closed) return;
-        if (revents & POLLOUT) flush();
+        if (m_step == Step::Connect) {
+            if (!(revents & (POLLOUT | POLLERR | POLLHUP))) return;
+            int err = 0;
+            socklen_t len = sizeof err;
+            getsockopt(m_fd, SOL_SOCKET, SO_ERROR, &err, &len);
+            if (err) return closeWith("Couldn't reach the other device");
+            return startClient();
+        }
+        if (revents & POLLOUT) {
+            flush();
+            pump();
+        }
         if (revents & (POLLIN | POLLHUP | POLLERR)) readSome();
     }
 
     void accept();
     void decline();
+    void cancel();
     int id() const { return m_id; }
 
 private:
-    enum class Step { Request, ClientInit, ClientFinish, Response, Secure };
+    // A server goes Request → ClientInit → ClientFinish; a client
+    // Connect → ServerInit; then both Response → Secure
+    enum class Step { Connect, Request, ServerInit, ClientInit, ClientFinish, Response, Secure };
 
     QuickShare::Transfer* t() { return const_cast<QuickShare::Transfer*>(QuickShare::get().transfer(m_id)); }
 
@@ -151,7 +239,10 @@ private:
                 m_in.append(buf, static_cast<size_t>(n));
                 continue;
             }
-            if (n == 0) return closeWith(m_doneOk ? "" : "The other device left");
+            if (n == 0) {
+                if (m_client && m_allSent) finishSending();
+                return closeWith(m_doneOk ? "" : "The other device left");
+            }
             if (errno == EAGAIN || errno == EWOULDBLOCK) break;
             if (errno == EINTR) continue;
             return closeWith("Connection lost");
@@ -214,7 +305,9 @@ private:
 
     void handle(const Bytes& msg) {
         switch (m_step) {
+        case Step::Connect: return;
         case Step::Request: return onConnectionRequest(msg);
+        case Step::ServerInit: return onServerInit(msg);
         case Step::ClientInit: return onClientInit(msg);
         case Step::ClientFinish: return onClientFinish(msg);
         case Step::Response: return onConnectionResponse(msg);
@@ -272,24 +365,136 @@ private:
         if (!finish.parse(ukey.bytes(2)) || !generic.parse(finish.bytes(1))) return closeWith("The key exchange failed");
         auto point = generic.message(2);
         if (!point) return closeWith("The key exchange failed");
-        const Bytes secret = m_key.agree(fit32(point->bytes(1)), fit32(point->bytes(2)));
-        if (secret.empty()) return closeWith("The key exchange failed");
-        // UKEY2's authentication string and next-protocol secret
+        if (!deriveKeys(*point)) return closeWith("The key exchange failed");
+        sendConnectionResponse();
+    }
+
+    // The shared secret, then UKEY2's authentication string (the PIN) and
+    // the four message keys; a client's are a server's, swapped
+    bool deriveKeys(const Reader& point) {
+        const Bytes secret = m_key.agree(fit32(point.bytes(1)), fit32(point.bytes(2)));
+        if (secret.empty()) return false;
         const Bytes derived = crypto::sha256(secret), info = m_clientInit + m_serverInit;
         const Bytes auth = crypto::hkdfSha256(derived, "UKEY2 v1 auth", info, 32);
         const Bytes next = crypto::hkdfSha256(derived, "UKEY2 v1 next", info, 32);
         const Bytes d2dSalt = crypto::sha256("D2D"), smSalt = crypto::sha256("SecureMessage");
         const Bytes clientKey = crypto::hkdfSha256(next, d2dSalt, "client", 32), serverKey = crypto::hkdfSha256(next, d2dSalt, "server", 32);
-        m_decryptKey = crypto::hkdfSha256(clientKey, smSalt, "ENC:2", 32);
-        m_receiveHmac = crypto::hkdfSha256(clientKey, smSalt, "SIG:1", 32);
-        m_encryptKey = crypto::hkdfSha256(serverKey, smSalt, "ENC:2", 32);
-        m_sendHmac = crypto::hkdfSha256(serverKey, smSalt, "SIG:1", 32);
+        const Bytes& theirs = m_client ? serverKey : clientKey;
+        const Bytes& ours = m_client ? clientKey : serverKey;
+        m_decryptKey = crypto::hkdfSha256(theirs, smSalt, "ENC:2", 32);
+        m_receiveHmac = crypto::hkdfSha256(theirs, smSalt, "SIG:1", 32);
+        m_encryptKey = crypto::hkdfSha256(ours, smSalt, "ENC:2", 32);
+        m_sendHmac = crypto::hkdfSha256(ours, smSalt, "SIG:1", 32);
         if (auto* tr = t()) tr->pin = pinFrom(auth);
-        // Our side of the connection response, in the clear
+        return true;
+    }
+
+    // Our side of the connection response, in the clear
+    void sendConnectionResponse() {
         Writer resp;
         resp.varint(1, 0).varint(3, 1).message(4, Writer().varint(1, 100)); // status 0, ACCEPT, os: Linux
         send(offline(CONNECTION_RESPONSE, resp, 3));
         m_step = Step::Response;
+        QuickShare::get().notifyChanged();
+    }
+
+    // ── As the client ──
+
+    void startClient() {
+        if (m_answerTimer) EventLoop::get().cancel(m_answerTimer);
+        m_answerTimer = 0;
+        send(m_request);
+        // Commit to our finish (our key), then say hello
+        Writer point;
+        point.bytes(1, signedBig(m_key.x())).bytes(2, signedBig(m_key.y()));
+        const Bytes generic = Writer().varint(1, 1).message(2, point).str(); // EC_P256
+        m_clientFinish = Writer().varint(1, CLIENT_FINISH).bytes(2, Writer().bytes(1, generic).str()).str();
+        Writer commitment;
+        commitment.varint(1, kP256Sha512).bytes(2, crypto::sha512(m_clientFinish));
+        Writer init;
+        init.varint(1, 1).bytes(2, crypto::random(32)).message(3, commitment).bytes(4, "AES_256_CBC-HMAC_SHA256");
+        m_clientInit = Writer().varint(1, CLIENT_INIT).bytes(2, init.str()).str();
+        send(m_clientInit);
+        m_step = Step::ServerInit;
+    }
+
+    void onServerInit(const Bytes& msg) {
+        Reader ukey, init, key;
+        if (!ukey.parse(msg) || ukey.number(1) != SERVER_INIT) return closeWith("The other device refused the connection");
+        if (!init.parse(ukey.bytes(2)) || init.number(3) != kP256Sha512 || !key.parse(init.bytes(4)))
+            return closeWith("The key exchange failed");
+        auto point = key.message(2);
+        m_serverInit = msg;
+        if (!point || !deriveKeys(*point)) return closeWith("The key exchange failed");
+        send(m_clientFinish);
+        sendConnectionResponse();
+    }
+
+    // What we offer, once the paired key frames are through
+    void introduce() {
+        auto* tr = t();
+        if (!tr || m_introduced) return;
+        m_introduced = true;
+        Writer intro;
+        for (const auto& f : tr->files) {
+            Writer meta;
+            meta.bytes(1, f.name).varint(2, static_cast<uint64_t>(kindOf(f.mime))).sint(3, f.payloadId).sint(4, f.size).bytes(5, f.mime).sint(6, randomId());
+            intro.message(1, meta);
+        }
+        sendShare(INTRODUCTION, intro, 2);
+        tr->state = QuickShare::State::Asking;
+        QuickShare::get().notifyChanged();
+    }
+
+    // Files out in 512 KB chunks, a little ahead of the socket at a time
+    void pump() {
+        if (!m_pumping) return;
+        while (m_out.size() < 1024 * 1024 && m_next < m_outgoing.size() && !m_closed) {
+            auto& o = m_outgoing[m_next];
+            if (!o.in) {
+                o.in = std::fopen(o.path.c_str(), "rb");
+                if (!o.in) return closeWith("Couldn't read " + fs::path(o.path).filename().string());
+            }
+            Bytes chunk(512 * 1024, '\0');
+            const size_t n = std::fread(chunk.data(), 1, std::min<int64_t>(static_cast<int64_t>(chunk.size()), o.size - o.offset), o.in);
+            chunk.resize(n);
+            Writer header;
+            header.sint(1, o.payloadId).varint(2, kPayloadFile).sint(3, o.size);
+            if (n > 0) {
+                sendOffline(PAYLOAD_TRANSFER, Writer().varint(1, 1).message(2, header).message(3, Writer().varint(1, 0).sint(2, o.offset).bytes(3, chunk)), 4);
+                o.offset += static_cast<int64_t>(n);
+                if (auto* tr = t()) tr->received += static_cast<int64_t>(n);
+            }
+            if (n == 0 || o.offset >= o.size) {
+                // The file changed size under us: what was read is what goes
+                sendOffline(PAYLOAD_TRANSFER, Writer().varint(1, 1).message(2, header).message(3, Writer().varint(1, kLastChunk).sint(2, o.offset)), 4);
+                std::fclose(o.in);
+                o.in = nullptr;
+                ++m_next;
+            }
+        }
+        QuickShare::get().notifyChanged();
+        if (m_next >= m_outgoing.size() && !m_allSent) {
+            m_allSent = true;
+            // The other side says goodbye when it has everything; if it
+            // doesn't, it had it anyway
+            m_answerTimer = EventLoop::get().addTimer(15000, [this] {
+                m_answerTimer = 0;
+                finishSending();
+                sendOffline(DISCONNECTION, Writer(), 7);
+                EventLoop::get().addTimer(300, [this] { closeWith(""); });
+            });
+        }
+    }
+
+    void finishSending() {
+        auto* tr = t();
+        if (!tr || m_doneOk) return;
+        m_doneOk = true;
+        tr->state = QuickShare::State::Done;
+        const std::string what = tr->files.size() == 1 ? tr->files.front().name : std::format("{} files", tr->files.size());
+        run({"notify-send", "-a", "Quick Share", "-i", "send-to", "Sent to " + tr->sender, what}, nullptr);
+        QuickShare::get().notifyChanged();
     }
 
     void onConnectionResponse(const Bytes& msg) {
@@ -329,10 +534,10 @@ private:
     // last chunk (as Android does)
     void sendShare(int type, const Writer& inner, int field) {
         Writer v1;
-        v1.varint(1, static_cast<uint64_t>(type)).message(field, inner);
+        v1.varint(1, static_cast<uint64_t>(type));
+        if (field) v1.message(field, inner);
         const Bytes data = Writer().varint(1, 1).message(2, v1).str();
-        int64_t id = 0;
-        while (id == 0) id = static_cast<int64_t>(std::mt19937_64{std::random_device{}()}() >> 1);
+        const int64_t id = randomId();
         Writer header;
         header.sint(1, id).varint(2, kPayloadBytes).sint(3, static_cast<int64_t>(data.size()));
         sendOffline(PAYLOAD_TRANSFER,
@@ -363,7 +568,10 @@ private:
         case KEEP_ALIVE:
             if (auto k = v1->message(6); !k || !k->number(1)) sendOffline(KEEP_ALIVE, Writer().boolean(1, true), 6);
             break;
-        case DISCONNECTION: closeWith(m_doneOk ? "" : "The other device cancelled"); break;
+        case DISCONNECTION:
+            if (m_client && m_allSent) finishSending();
+            closeWith(m_doneOk ? "" : "The other device cancelled");
+            break;
         default: break;
         }
     }
@@ -424,7 +632,34 @@ private:
         case PAIRED_KEY_ENCRYPTION:
             sendShare(PAIRED_KEY_RESULT, Writer().varint(1, 3), 5); // UNABLE: no Google account here
             break;
-        case PAIRED_KEY_RESULT: break;
+        case PAIRED_KEY_RESULT:
+            if (m_client) introduce();
+            break;
+        case RESPONSE: {
+            // Their answer to what we offered
+            auto* tr = t();
+            auto resp = v1->message(3);
+            if (!m_client || !tr || !m_introduced || m_pumping) return;
+            const int status = resp ? static_cast<int>(resp->number(1)) : 0;
+            if (status != 1) {
+                tr->state = QuickShare::State::Declined;
+                QuickShare::get().notifyChanged();
+                const char* why = status == 3 ? "There isn't enough space on the other device"
+                                : status == 4 ? "The other device can't take these files"
+                                : status == 5 ? "The other device didn't answer in time"
+                                              : "";
+                if (*why) {
+                    tr->state = QuickShare::State::Failed;
+                    tr->error = why;
+                }
+                m_doneOk = true; // nothing more to say
+                return closeWith("");
+            }
+            tr->state = QuickShare::State::Receiving;
+            m_pumping = true;
+            pump();
+            break;
+        }
         case INTRODUCTION: {
             auto intro = v1->message(2);
             if (!intro) return closeWith("A damaged introduction");
@@ -493,9 +728,19 @@ private:
         EventLoop::get().addTimer(500, [this] { closeWith(""); });
     }
 
+    struct Outgoing {
+        std::string path;
+        int64_t payloadId = 0, size = 0, offset = 0;
+        FILE* in = nullptr;
+    };
+
     int m_fd;
     int m_id;
     Step m_step = Step::Request;
+    bool m_client = false, m_introduced = false, m_pumping = false, m_allSent = false;
+    Bytes m_request, m_clientFinish;
+    std::vector<Outgoing> m_outgoing;
+    size_t m_next = 0;
     Bytes m_in, m_out;
     bool m_closed = false, m_accepted = false, m_doneOk = false;
     crypto::EcKey m_key;
@@ -534,6 +779,20 @@ void Connection::accept() {
     tr->state = QuickShare::State::Receiving;
     sendShare(RESPONSE, Writer().varint(1, 1), 3); // ACCEPT
     QuickShare::get().notifyChanged();
+}
+
+void Connection::cancel() {
+    auto* tr = t();
+    if (!tr || m_closed) return;
+    if (m_step == Step::Secure) {
+        sendShare(CANCEL, Writer(), 0);
+        sendOffline(DISCONNECTION, Writer(), 7);
+    }
+    tr->state = QuickShare::State::Failed;
+    tr->error = "Cancelled";
+    m_doneOk = true;
+    QuickShare::get().notifyChanged();
+    EventLoop::get().addTimer(300, [this] { closeWith(""); });
 }
 
 void Connection::decline() {
@@ -627,14 +886,20 @@ void QuickShare::stop() {
     m_listenFd = -1;
 }
 
-void QuickShare::advertise() {
-    // The service name: 0x23, the endpoint id, the service id, two zeros
-    Bytes name = "\x23" + m_endpointId + std::string("\xFC\x9F\x5E\x00\x00", 5);
-    // The endpoint info: a laptop (3 << 1), visible; 16 random bytes; the name
+// The service name: 0x23, the endpoint id, the service id, two zeros
+std::string QuickShare::instanceName() const {
+    return base64url("\x23" + m_endpointId + std::string("\xFC\x9F\x5E\x00\x00", 5));
+}
+
+// The endpoint info: a laptop (3 << 1), visible; 16 random bytes; the name
+std::string QuickShare::endpointInfo() const {
     const std::string device = deviceName().substr(0, 60);
-    Bytes info = std::string(1, static_cast<char>(3 << 1)) + crypto::random(16) + std::string(1, static_cast<char>(device.size())) + device;
-    m_mdns = std::make_unique<MdnsResponder>(base64url(name), kServiceType, static_cast<uint16_t>(m_port),
-                                             std::vector<std::string>{"n=" + base64url(info)});
+    return std::string(1, static_cast<char>(3 << 1)) + crypto::random(16) + std::string(1, static_cast<char>(device.size())) + device;
+}
+
+void QuickShare::advertise() {
+    m_mdns = std::make_unique<MdnsResponder>(instanceName(), kServiceType, static_cast<uint16_t>(m_port),
+                                             std::vector<std::string>{"n=" + base64url(endpointInfo())});
     if (!m_mdns->ok()) {
         m_mdns.reset();
         m_status = "Not visible: the network's mDNS port can't be used";
@@ -674,6 +939,112 @@ void QuickShare::accept(int id) {
 void QuickShare::decline(int id) {
     for (auto& c : m_connections)
         if (c->id() == id) c->decline();
+}
+
+void QuickShare::cancel(int id) {
+    for (auto& c : m_connections)
+        if (c->id() == id) c->cancel();
+}
+
+QuickShare::Lease QuickShare::discover() {
+    if (m_discoverers++ == 0) {
+        m_beacon = std::make_unique<BleBeacon>();
+        m_browser = std::make_unique<MdnsBrowser>(kServiceType);
+        m_browser->changed = [this] { changed.emit(); };
+    }
+    return std::shared_ptr<void>(nullptr, [](void*) {
+        auto& qs = QuickShare::get();
+        if (--qs.m_discoverers > 0) return;
+        // A moment later, so closing and reopening doesn't flap Bluetooth
+        EventLoop::get().defer([] {
+            auto& q = QuickShare::get();
+            if (q.m_discoverers > 0) return;
+            q.m_browser.reset();
+            q.m_beacon.reset();
+            q.changed.emit();
+        });
+    });
+}
+
+std::vector<QuickShare::Device> QuickShare::devices() const {
+    std::vector<Device> out;
+    if (!m_browser) return out;
+    const std::string self = instanceName();
+    for (const auto& [label, inst] : m_browser->instances()) {
+        if (label == self || !inst.port || !inst.addr) continue;
+        Device d;
+        d.id = label;
+        d.addr = inst.addr;
+        d.port = inst.port;
+        for (const auto& t : inst.txt) {
+            if (!t.starts_with("n=")) continue;
+            const Bytes info = unbase64url(t.substr(2));
+            if (info.empty()) continue;
+            d.type = static_cast<uint8_t>(info[0]) >> 1 & 7;
+            if (info.size() > 18) {
+                const size_t len = static_cast<uint8_t>(info[17]);
+                if (18 + len <= info.size()) d.name = info.substr(18, len);
+            }
+        }
+        if (d.name.empty()) d.name = d.type == 1 ? "A phone nearby" : d.type == 2 ? "A tablet nearby" : "A device nearby";
+        out.push_back(std::move(d));
+    }
+    std::ranges::sort(out, {}, &Device::name);
+    return out;
+}
+
+std::string QuickShare::discoveryNote() const {
+    if (m_browser && !m_browser->ok()) return "The network's mDNS port can't be used";
+    if (m_beacon && !m_beacon->error().empty())
+        return m_beacon->error() + ": phones show up only with their Quick Share open to “Everyone”, on this network";
+    return {};
+}
+
+int QuickShare::send(const Device& to, const std::vector<std::string>& paths) {
+    auto& tr = newTransfer();
+    tr.outgoing = true;
+    tr.sender = to.name;
+    std::vector<std::string> kept;
+    for (const auto& p : paths) {
+        std::error_code ec;
+        if (!fs::is_regular_file(p, ec)) continue;
+        File f;
+        f.name = fs::path(p).filename().string();
+        f.mime = mimeOf(p);
+        f.size = static_cast<int64_t>(fs::file_size(p, ec));
+        f.payloadId = randomId();
+        tr.files.push_back(f);
+        tr.total += f.size;
+        kept.push_back(p);
+    }
+    if (kept.empty()) {
+        m_transfers.erase(tr.id);
+        return 0;
+    }
+    const int fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(to.port);
+    addr.sin_addr.s_addr = to.addr;
+    if (fd < 0 || (connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof addr) < 0 && errno != EINPROGRESS)) {
+        if (fd >= 0) close(fd);
+        tr.state = State::Failed;
+        tr.error = "Couldn't reach " + to.name;
+        changed.emit();
+        return tr.id;
+    }
+    int yes = 1;
+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof yes);
+    // Our connection request: who we are, over Wi-Fi
+    const std::string device = deviceName().substr(0, 60);
+    Writer req;
+    req.bytes(1, m_endpointId).bytes(2, device).varint(5, 5).bytes(6, endpointInfo()); // medium: WIFI_LAN
+    Writer v1;
+    v1.varint(1, CONNECTION_REQUEST).message(2, req);
+    const Bytes request = Writer().varint(1, 1).message(2, v1).str();
+    m_connections.push_back(std::make_unique<Connection>(fd, tr, request, kept));
+    changed.emit();
+    return tr.id;
 }
 
 void QuickShare::finished(Connection* c) {

@@ -121,6 +121,7 @@ public:
 
     bool available() const { return m_available; }
     bool powered() const { return m_powered; }
+    const std::string& adapter() const { return m_adapter; } // its BlueZ path
     const std::vector<std::string>& connected() const { return m_connected; }
     void setPowered(bool on);
     std::string icon() const;

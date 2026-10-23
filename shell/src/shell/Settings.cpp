@@ -361,7 +361,7 @@ void quickShareRows(Flex* page) {
     live->sync = [live] {
         live->clearChildren();
         auto& qs = quickshare::QuickShare::get();
-        auto* g = group(live, "Quick Share", "Android phones and Chromebooks on the same Wi-Fi can send this computer files, links and text");
+        auto* g = group(live, "Quick Share", "Share files with Android phones and Chromebooks on the same Wi-Fi, both ways");
         const bool on = Config::get().value<bool>("/quickshare/receive", true);
         auto vis = row(g, "share", "Let devices nearby share with you",
                        !on ? "Off" : qs.receiving() ? "Visible as \"" + qs.deviceName() + "\": each transfer is asked first"
@@ -375,19 +375,24 @@ void quickShareRows(Flex* page) {
         name->setText(qs.deviceName());
         name->onSubmit = [](const std::string& v) { Config::get().set("/quickshare/name", v); };
         row(g, "folder", "Files go to Downloads", "Links and text go to the clipboard");
+        auto send = row(g, "send", "Send files", "To a phone nearby with Quick Share open");
+        pillButton(send.row, "Send", true, [] {
+            if (open) open("quickshare-send ");
+        }, "send");
         // The last few transfers
         if (!qs.transfers().empty()) {
             auto* recent = group(live, "Recently");
             static const char* states[] = {"Connecting", "Waiting for you", "Receiving", "Received", "Declined", "Stopped"};
+            static const char* sending[] = {"Connecting", "Waiting for them", "Sending", "Sent", "Declined", "Not sent"};
             for (auto it = qs.transfers().rbegin(); it != qs.transfers().rend(); ++it) {
                 const auto& t = it->second;
                 std::string what = t.files.size() == 1 ? t.files.front().name
                                  : !t.files.empty()     ? std::format("{} files", t.files.size())
                                  : !t.texts.empty()     ? std::string("Text")
                                                         : std::string("");
-                auto r = row(recent, t.state == quickshare::QuickShare::State::Done ? "download_done" : "share",
+                auto r = row(recent, t.outgoing ? "send" : t.state == quickshare::QuickShare::State::Done ? "download_done" : "share",
                              t.sender.empty() ? "A device nearby" : t.sender,
-                             std::string(states[static_cast<int>(t.state)]) + (what.empty() ? "" : " · " + what) + (t.error.empty() ? "" : " · " + t.error));
+                             std::string((t.outgoing ? sending : states)[static_cast<int>(t.state)]) + (what.empty() ? "" : " · " + what) + (t.error.empty() ? "" : " · " + t.error));
                 const int id = t.id;
                 pillButton(r.row, "Open", false, [id] {
                     if (open) open("quickshare " + std::to_string(id));

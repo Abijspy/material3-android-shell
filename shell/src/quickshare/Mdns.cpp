@@ -249,4 +249,236 @@ void MdnsResponder::dispatch(short revents) {
     }
 }
 
+// ── Browsing ──
+
+namespace {
+
+uint16_t be16(const std::string& p, size_t i) {
+    return static_cast<uint16_t>(static_cast<uint8_t>(p[i]) << 8 | static_cast<uint8_t>(p[i + 1]));
+}
+
+std::vector<std::pair<int, uint32_t>> ipv4Interfaces() {
+    std::vector<std::pair<int, uint32_t>> out;
+    ifaddrs* list = nullptr;
+    if (getifaddrs(&list) != 0) return out;
+    for (auto* a = list; a; a = a->ifa_next) {
+        if (!a->ifa_addr || a->ifa_addr->sa_family != AF_INET) continue;
+        if ((a->ifa_flags & IFF_LOOPBACK) || !(a->ifa_flags & IFF_UP) || !(a->ifa_flags & IFF_MULTICAST)) continue;
+        const int index = static_cast<int>(if_nametoindex(a->ifa_name));
+        if (index) out.emplace_back(index, reinterpret_cast<sockaddr_in*>(a->ifa_addr)->sin_addr.s_addr);
+    }
+    freeifaddrs(list);
+    return out;
+}
+
+void sendQuery(int fd, const std::string& packet) {
+    for (const auto& [index, addr] : ipv4Interfaces()) {
+        ip_mreqn via{};
+        via.imr_ifindex = index;
+        via.imr_address.s_addr = addr;
+        setsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF, &via, sizeof via);
+        sockaddr_in dst{};
+        dst.sin_family = AF_INET;
+        dst.sin_port = htons(kPort);
+        dst.sin_addr.s_addr = kGroup;
+        sendto(fd, packet.data(), packet.size(), 0, reinterpret_cast<sockaddr*>(&dst), sizeof dst);
+    }
+}
+
+} // namespace
+
+// A socket on a port of its own: legacy queries from it get direct answers
+class MdnsBrowser::Direct : public EventSource {
+public:
+    explicit Direct(MdnsBrowser& b) : m_b(b) {
+        m_fd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+        if (m_fd >= 0) EventLoop::get().add(this);
+    }
+    ~Direct() override {
+        if (m_fd < 0) return;
+        EventLoop::get().remove(this);
+        close(m_fd);
+    }
+    int fd() const override { return m_fd; }
+    void dispatch(short revents) override {
+        if (revents & POLLIN) m_b.read(m_fd);
+    }
+
+private:
+    MdnsBrowser& m_b;
+    int m_fd = -1;
+};
+
+MdnsBrowser::MdnsBrowser(std::string type) : m_type(std::move(type)) {
+    m_fd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+    if (m_fd >= 0) {
+        int yes = 1;
+        setsockopt(m_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes);
+        setsockopt(m_fd, SOL_SOCKET, SO_REUSEPORT, &yes, sizeof yes);
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(kPort);
+        addr.sin_addr.s_addr = htonl(INADDR_ANY);
+        if (bind(m_fd, reinterpret_cast<sockaddr*>(&addr), sizeof addr) < 0) {
+            close(m_fd);
+            m_fd = -1;
+        } else {
+            int ttl = 255;
+            setsockopt(m_fd, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof ttl);
+            for (const auto& [index, _] : ipv4Interfaces()) {
+                ip_mreqn req{};
+                req.imr_multiaddr.s_addr = kGroup;
+                req.imr_ifindex = index;
+                setsockopt(m_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &req, sizeof req);
+            }
+            EventLoop::get().add(this);
+        }
+    }
+    m_direct = std::make_unique<Direct>(*this);
+    query();
+    m_timer = EventLoop::get().addTimer(3000, [this] {
+        expire();
+        query();
+    }, true);
+}
+
+MdnsBrowser::~MdnsBrowser() {
+    EventLoop::get().cancel(m_timer);
+    m_direct.reset();
+    if (m_fd < 0) return;
+    EventLoop::get().remove(this);
+    close(m_fd);
+}
+
+void MdnsBrowser::query() {
+    // The PTR question, and SRV and TXT for any instance still missing them
+    const std::string service = m_type + ".local";
+    std::vector<std::pair<std::string, uint16_t>> questions{{service, kPtr}};
+    for (const auto& [label, inst] : m_found)
+        if (!inst.port) {
+            questions.emplace_back(label + "." + service, kSrv);
+            questions.emplace_back(label + "." + service, kTxt);
+        }
+    std::string p;
+    u16(p, 0);
+    u16(p, 0);
+    u16(p, static_cast<uint16_t>(questions.size()));
+    u16(p, 0);
+    u16(p, 0);
+    u16(p, 0);
+    for (const auto& [qname, qtype] : questions) {
+        name(p, qname);
+        u16(p, qtype);
+        u16(p, 1); // IN
+    }
+    if (m_fd >= 0) sendQuery(m_fd, p);
+    if (m_direct && m_direct->fd() >= 0) sendQuery(m_direct->fd(), p);
+}
+
+void MdnsBrowser::dispatch(short revents) {
+    if (revents & POLLIN) read(m_fd);
+}
+
+void MdnsBrowser::read(int fd) {
+    for (;;) {
+        char buf[9000];
+        sockaddr_in from{};
+        socklen_t fromLen = sizeof from;
+        const ssize_t n = recvfrom(fd, buf, sizeof buf, 0, reinterpret_cast<sockaddr*>(&from), &fromLen);
+        if (n <= 0) return;
+        parse(std::string(buf, static_cast<size_t>(n)), from.sin_addr.s_addr);
+    }
+}
+
+void MdnsBrowser::parse(const std::string& p, uint32_t from) {
+    if (p.size() < 12 || !(be16(p, 2) & 0x8000)) return; // answers only
+    const int questions = be16(p, 4);
+    const int records = be16(p, 6) + be16(p, 8) + be16(p, 10);
+    size_t i = 12;
+    std::string owner;
+    for (int q = 0; q < questions; ++q) {
+        if (!readName(p, i, owner) || i + 4 > p.size()) return;
+        i += 4;
+    }
+    const std::string service = lower(m_type + ".local");
+    const auto labelOf = [&](const std::string& full) -> std::string {
+        const std::string l = lower(full);
+        if (l.size() <= service.size() + 1 || !l.ends_with("." + service)) return {};
+        return full.substr(0, full.size() - service.size() - 1);
+    };
+    struct Srv {
+        std::string label, host;
+        uint16_t port;
+    };
+    std::vector<Srv> srvs;
+    std::map<std::string, uint32_t> hosts;
+    bool any = false;
+    const auto now = std::chrono::steady_clock::now();
+    for (int r = 0; r < records; ++r) {
+        if (!readName(p, i, owner) || i + 10 > p.size()) return;
+        const uint16_t type = be16(p, i);
+        const uint32_t ttl = static_cast<uint32_t>(be16(p, i + 4)) << 16 | be16(p, i + 6);
+        const size_t len = be16(p, i + 8);
+        i += 10;
+        if (i + len > p.size()) return;
+        const size_t end = i + len;
+        if (type == kPtr && lower(owner) == service) {
+            std::string target;
+            size_t at = i;
+            if (readName(p, at, target)) {
+                const std::string label = labelOf(target);
+                if (!label.empty()) {
+                    if (ttl == 0) {
+                        any |= m_found.erase(label) > 0;
+                    } else {
+                        auto& inst = m_found[label];
+                        inst.name = label;
+                        inst.seen = now;
+                        if (!inst.addr) inst.addr = from;
+                        any = true;
+                    }
+                }
+            }
+        } else if (type == kSrv && len >= 7) {
+            const std::string label = labelOf(owner);
+            std::string host;
+            size_t at = i + 6;
+            if (!label.empty() && readName(p, at, host)) srvs.push_back({label, lower(host), be16(p, i + 4)});
+        } else if (type == kTxt) {
+            const std::string label = labelOf(owner);
+            if (auto it = m_found.find(label); !label.empty() && it != m_found.end()) {
+                it->second.txt.clear();
+                for (size_t at = i; at < end;) {
+                    const size_t n = static_cast<uint8_t>(p[at]);
+                    if (at + 1 + n > end) break;
+                    if (n) it->second.txt.push_back(p.substr(at + 1, n));
+                    at += 1 + n;
+                }
+                any = true;
+            }
+        } else if (type == kA && len == 4) {
+            uint32_t a;
+            std::memcpy(&a, p.data() + i, 4);
+            hosts[lower(owner)] = a;
+        }
+        i = end;
+    }
+    for (const auto& s : srvs) {
+        auto it = m_found.find(s.label);
+        if (it == m_found.end()) continue;
+        it->second.port = s.port;
+        if (auto h = hosts.find(s.host); h != hosts.end()) it->second.addr = h->second;
+        any = true;
+    }
+    if (any && changed) changed();
+}
+
+void MdnsBrowser::expire() {
+    // Not heard from for a while: gone (turned off, or out of range)
+    const auto old = std::chrono::steady_clock::now() - std::chrono::seconds(15);
+    const size_t before = m_found.size();
+    std::erase_if(m_found, [&](const auto& kv) { return kv.second.seen < old; });
+    if (m_found.size() != before && changed) changed();
+}
+
 } // namespace m3::quickshare
