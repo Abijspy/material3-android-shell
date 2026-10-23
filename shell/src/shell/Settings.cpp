@@ -369,6 +369,15 @@ void quickShareRows(Flex* page) {
         auto* sw = vis.row->add<Switch>();
         sw->setChecked(on, false);
         sw->onToggled = [](bool v) { Config::get().set("/quickshare/receive", v); };
+        // A firewall dropping phones' connections: they see this computer,
+        // then fail to send
+        if (on && qs.firewallBlocks()) {
+            auto fw = row(g, "shield", "The firewall blocks phones sending to you",
+                          std::format("{} drops connections to Quick Share's port ({}): allow it once", qs.firewall(), qs.port()));
+            fw.title->setColor("error", false);
+            fw.subtitle->setMaxWidth(400)->setMaxLines(2);
+            pillButton(fw.row, "Allow", true, [] { quickshare::QuickShare::get().allowThroughFirewall(); }, "shield");
+        }
         auto nameRow = row(g, "badge", "Name shown to others", "Enter to save");
         auto* name = nameRow.row->add<TextField>();
         name->fixedWidth = 240;

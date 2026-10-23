@@ -1,4 +1,5 @@
-// A Material You file picker for pictures: the wallpaper, your profile picture
+// A Material You file picker: pictures for the wallpaper and your profile
+// picture, or any files (several) to send with Quick Share
 #include "core/Config.h"
 #include "core/EventLoop.h"
 #include "core/Paths.h"
@@ -15,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <format>
 #include <linux/input-event-codes.h>
 #include <memory>
 
@@ -48,13 +50,31 @@ ImageView* preview(Node* parent, const std::string& path, float w, float h) {
     return v;
 }
 
+// The icon for a file that isn't a picture, by its extension
+std::string fileIcon(const fs::path& p) {
+    auto ext = p.extension().string();
+    std::ranges::transform(ext, ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (ext == ".mp4" || ext == ".mkv" || ext == ".webm" || ext == ".mov" || ext == ".avi") return "movie";
+    if (ext == ".mp3" || ext == ".flac" || ext == ".ogg" || ext == ".opus" || ext == ".m4a" || ext == ".wav") return "music_note";
+    if (ext == ".pdf") return "picture_as_pdf";
+    if (ext == ".zip" || ext == ".tar" || ext == ".gz" || ext == ".xz" || ext == ".zst" || ext == ".7z" || ext == ".rar") return "folder_zip";
+    if (ext == ".apk") return "android";
+    if (ext == ".txt" || ext == ".md" || ext == ".doc" || ext == ".docx" || ext == ".odt") return "description";
+    return "draft";
+}
+
 } // namespace
 
+// purpose: "wallpaper", "avatar", or "send" followed by the files already
+// chosen, one per line (they go back to Quick Share with the new ones)
 void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
     const bool avatar = purpose == "avatar";
+    const bool sending = purpose.starts_with("send");
+    std::string already = sending && purpose.size() > 4 ? purpose.substr(5) : "";
     struct State {
         fs::path dir;
         std::string chosen;
+        std::vector<std::string> picked; // sending: several
         Button* chosenTile = nullptr;
         Label* chosenName = nullptr;
         Button* choose = nullptr;
@@ -69,7 +89,7 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
     const std::string shipped = paths::dataFile("wallpapers");
     // Where it opens: the default pictures for a profile picture, the
     // wallpaper's folder for a wallpaper
-    st->dir = avatar && !avatars.empty() ? fs::path(avatars) : fs::path(Wallpaper::get().directory());
+    st->dir = sending ? fs::path(paths::home()) : avatar && !avatars.empty() ? fs::path(avatars) : fs::path(Wallpaper::get().directory());
     std::error_code ec;
     // No wallpaper folder yet: the ones the shell ships
     if (!fs::is_directory(st->dir, ec) && !avatar && !shipped.empty()) st->dir = shipped;
@@ -79,11 +99,15 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
     // Title
     auto* head = card->add<Flex>(Flex::Direction::Row);
     head->setSpacing(12)->setAlignItems(Align::Center);
-    head->add<Icon>(avatar ? "account_circle" : "wallpaper", 26)->setColor("primary", false);
-    auto* title = head->add<Label>(avatar ? "Choose your picture" : "Choose a wallpaper");
+    head->add<Icon>(sending ? "send" : avatar ? "account_circle" : "wallpaper", 26)->setColor("primary", false);
+    auto* title = head->add<Label>(sending ? "Choose files to send" : avatar ? "Choose your picture" : "Choose a wallpaper");
     title->setSize(22)->setWeight(600);
     title->grow = true;
-    iconButton(head, "close", [&popup] { popup.close(); });
+    // Closing while sending goes back to Quick Share, files kept
+    iconButton(head, "close", [&popup, sending, already] {
+        popup.close();
+        if (sending) open("quickshare-send " + already);
+    });
 
     auto* columns = card->add<Flex>(Flex::Direction::Row);
     columns->setSpacing(16)->setAlignItems(Align::Start);
@@ -97,7 +121,10 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
     st->pathBar = right->add<Flex>(Flex::Direction::Row);
     st->pathBar->setSpacing(8)->setAlignItems(Align::Center);
     st->scroll = right->add<ScrollView>();
-    st->scroll->maxHeight = 460;
+    // A fixed height: the same size in every folder, and measured exactly
+    // (the footer stays on the card)
+    st->scroll->maxHeight = 380;
+    st->scroll->fixedHeight = 380;
     st->scroll->blurEdges = true;
     st->grid = st->scroll->add<Flex>(Flex::Direction::Column);
     st->grid->setAlignItems(Align::Stretch);
@@ -105,12 +132,30 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
     std::vector<std::tuple<std::string, std::string, std::string>> placeList; // icon, name, path
     if (avatar && !avatars.empty()) placeList.push_back({"face", "Default pictures", avatars});
     placeList.push_back({"home", "Home", paths::home()});
-    placeList.push_back({"image", "Pictures", paths::home() + "/Pictures"});
-    placeList.push_back({"download", "Downloads", paths::home() + "/Downloads"});
-    if (!avatar) placeList.push_back({"wallpaper", "Wallpapers", Wallpaper::get().directory()});
-    if (!avatar && !shipped.empty()) placeList.push_back({"palette", "Material3UI wallpapers", shipped});
+    if (sending) {
+        placeList.push_back({"download", "Downloads", paths::home() + "/Downloads"});
+        placeList.push_back({"description", "Documents", paths::home() + "/Documents"});
+        placeList.push_back({"image", "Pictures", paths::home() + "/Pictures"});
+        placeList.push_back({"movie", "Videos", paths::home() + "/Videos"});
+        placeList.push_back({"music_note", "Music", paths::home() + "/Music"});
+        placeList.push_back({"desktop_windows", "Desktop", paths::home() + "/Desktop"});
+    } else {
+        placeList.push_back({"image", "Pictures", paths::home() + "/Pictures"});
+        placeList.push_back({"download", "Downloads", paths::home() + "/Downloads"});
+    }
+    if (!avatar && !sending) placeList.push_back({"wallpaper", "Wallpapers", Wallpaper::get().directory()});
+    if (!avatar && !sending && !shipped.empty()) placeList.push_back({"palette", "Material3UI wallpapers", shipped});
 
-    st->fill = [st, placeList, avatar] {
+    // Sending: what's picked, said in the footer
+    const auto showPicked = [st] {
+        if (!st->chosenName) return;
+        st->chosenName->setText(st->picked.empty()         ? "Pick files: tap again to leave one out"
+                                : st->picked.size() == 1 ? fs::path(st->picked.front()).filename().string()
+                                                         : std::format("{} files", st->picked.size()));
+        if (st->choose) st->choose->setOpacity(st->picked.empty() ? 0.4f : 1);
+    };
+
+    st->fill = [st, placeList, avatar, sending, showPicked] {
         std::error_code ec;
         // Places, the current one highlighted
         st->places->clearChildren();
@@ -154,7 +199,7 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
             const auto name = e.path().filename().string();
             if (name.starts_with(".")) continue;
             if (e.is_directory(ec)) folders.push_back(e.path());
-            else if (e.is_regular_file(ec) && isPicture(e.path())) pictures.push_back(e.path());
+            else if (e.is_regular_file(ec) && (sending || isPicture(e.path()))) pictures.push_back(e.path());
         }
         std::ranges::sort(folders);
         std::ranges::sort(pictures);
@@ -163,10 +208,11 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
         st->chosenTile = nullptr;
         if (st->choose) st->choose->setOpacity(0.4f);
         if (st->chosenName) st->chosenName->setText(pictures.empty() ? "No pictures here" : "Pick a picture");
+        if (sending) showPicked();
         auto* flow = st->grid->add<Flow>();
         flow->spacing = 10;
         // Pictures shown square for profile pictures, wide for wallpapers
-        const float tw = avatar ? 120 : 196, th = avatar ? 120 : 110;
+        const float tw = avatar ? 120 : sending ? 150 : 196, th = avatar ? 120 : sending ? 100 : 110;
         size_t count = 0;
         for (const auto& f : folders) {
             if (++count > 400) break;
@@ -188,6 +234,40 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
         }
         for (const auto& p : pictures) {
             if (++count > 400) break;
+            if (sending) {
+                // A tile per file: a preview for pictures, an icon otherwise;
+                // tapping picks it or leaves it out
+                const std::string file = p.string();
+                const bool picked = std::ranges::find(st->picked, file) != st->picked.end();
+                auto* b = flow->add<Button>(Flex::Direction::Column);
+                b->setPadding(Insets(6))->setSpacing(6)->setRadius(Radii(20))->setAlignItems(Align::Center);
+                b->fixedWidth = tw + 12;
+                b->tooltip = p.filename().string();
+                if (isPicture(p) && !file.ends_with(".svg")) {
+                    preview(b, file, tw, th)->radius = 14;
+                } else {
+                    auto* icon = b->add<Flex>(Flex::Direction::Row);
+                    icon->setJustify(Align::Center)->setRadius(Radii(14))->setBackground("surface_container_highest", false);
+                    icon->fixedWidth = tw;
+                    icon->fixedHeight = th;
+                    icon->add<Icon>(fileIcon(p), 40)->setColor("on_surface_variant", false);
+                }
+                b->add<Label>(p.filename().string())->setSize(12)->setWeight(500)->setMaxWidth(tw)->setCentered(true);
+                const auto mark = [b](bool on) {
+                    b->setBorder(on ? 3 : 0, "primary")->setBackground(on ? ColorRef("secondary_container") : ColorRef::none());
+                };
+                mark(picked);
+                b->onClicked = [st, file, mark, showPicked](uint32_t button) {
+                    if (button != BTN_LEFT) return;
+                    const auto it = std::ranges::find(st->picked, file);
+                    const bool on = it == st->picked.end();
+                    if (on) st->picked.push_back(file);
+                    else st->picked.erase(it);
+                    mark(on);
+                    showPicked();
+                };
+                continue;
+            }
             auto* b = flow->add<Button>(Flex::Direction::Column);
             b->setPadding(Insets(6))->setSpacing(6)->setRadius(Radii(avatar ? 70 : 20))->setAlignItems(Align::Center);
             b->pressedRadius = 12;
@@ -206,6 +286,7 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
             };
         }
         if (folders.empty() && pictures.empty()) caption(st->grid, "Nothing here");
+        if (count > 400) caption(st->grid, "Showing the first 400");
         st->scroll->scrollTo(0, false);
         st->grid->requestLayout();
     };
@@ -216,7 +297,21 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
     st->chosenName = foot->add<Label>("Pick a picture");
     st->chosenName->setSize(14)->setMaxWidth(520)->setColor("on_surface_variant", false);
     st->chosenName->grow = true;
-    pillButton(foot, "Cancel", false, [&popup] { popup.close(); });
+    pillButton(foot, "Cancel", false, [&popup, sending, already] {
+        popup.close();
+        if (sending) open("quickshare-send " + already);
+    });
+    if (sending) {
+        st->choose = pillButton(foot, "Add", true, [st, already, &popup] {
+            if (st->picked.empty()) return;
+            std::string all = already;
+            for (const auto& f : st->picked) all += f + "\n";
+            popup.close();
+            open("quickshare-send " + all);
+        }, "check");
+        st->fill();
+        return;
+    }
     st->choose = pillButton(foot, avatar ? "Use as my picture" : "Set as wallpaper", true, [st, avatar, &popup] {
         if (st->chosen.empty()) return;
         const std::string file = st->chosen;

@@ -163,6 +163,16 @@ std::string freePath(const std::string& name) {
 
 } // namespace
 
+// The QR code: a P-256 key of its own, its X compressed behind two version
+// bytes. The phone that scans it advertises a token derived from it (or its
+// name sealed with it, when hidden), so it's found without Bluetooth; our
+// signature over the handshake with this key lets it skip its prompt.
+struct QuickShare::Qr {
+    crypto::EcKey key;
+    Bytes token, nameKey;
+    std::string url;
+};
+
 // ── A connection from a phone: the handshake, then the transfer ──
 
 class Connection : public EventSource {
@@ -386,6 +396,7 @@ private:
         m_encryptKey = crypto::hkdfSha256(ours, smSalt, "ENC:2", 32);
         m_sendHmac = crypto::hkdfSha256(ours, smSalt, "SIG:1", 32);
         if (auto* tr = t()) tr->pin = pinFrom(auth);
+        m_auth = auth;
         return true;
     }
 
@@ -509,6 +520,11 @@ private:
         // Google's servers: random bytes, as Android accepts)
         Writer pke;
         pke.bytes(1, crypto::random(72)).bytes(2, crypto::random(6));
+        // Sent to a phone that scanned our QR code: proof, so it needn't ask
+        if (m_client) {
+            const Bytes qr = QuickShare::get().qrSignature(m_auth);
+            if (!qr.empty()) pke.bytes(4, qr);
+        }
         sendShare(PAIRED_KEY_ENCRYPTION, pke, 4);
         // Keep-alives, as Android expects every 10 s
         m_keepAlive = EventLoop::get().addTimer(10000, [this] {
@@ -738,7 +754,7 @@ private:
     int m_id;
     Step m_step = Step::Request;
     bool m_client = false, m_introduced = false, m_pumping = false, m_allSent = false;
-    Bytes m_request, m_clientFinish;
+    Bytes m_request, m_clientFinish, m_auth;
     std::vector<Outgoing> m_outgoing;
     size_t m_next = 0;
     Bytes m_in, m_out;
@@ -843,7 +859,7 @@ std::string QuickShare::deviceName() const {
 
 void QuickShare::apply() {
     const bool on = Config::get().value<bool>("/quickshare/receive", true);
-    const std::string key = std::format("{}|{}", on, deviceName());
+    const std::string key = std::format("{}|{}|{}", on, deviceName(), port());
     if (key == m_applied) return;
     m_applied = key;
     stop();
@@ -863,9 +879,14 @@ void QuickShare::start() {
     sockaddr_in6 addr{};
     addr.sin6_family = AF_INET6;
     addr.sin6_addr = in6addr_any;
-    addr.sin6_port = 0; // any free port: the advertisement says which
+    // A fixed port, so a firewall can let it through; any free one if taken
+    addr.sin6_port = htons(static_cast<uint16_t>(port()));
     socklen_t len = sizeof addr;
-    if (bind(m_listenFd, reinterpret_cast<sockaddr*>(&addr), sizeof addr) < 0 || listen(m_listenFd, 4) < 0 ||
+    if (bind(m_listenFd, reinterpret_cast<sockaddr*>(&addr), sizeof addr) < 0) {
+        addr.sin6_port = 0;
+        bind(m_listenFd, reinterpret_cast<sockaddr*>(&addr), sizeof addr);
+    }
+    if (listen(m_listenFd, 4) < 0 ||
         getsockname(m_listenFd, reinterpret_cast<sockaddr*>(&addr), &len) < 0) {
         close(m_listenFd);
         m_listenFd = -1;
@@ -876,6 +897,7 @@ void QuickShare::start() {
     m_listener = std::make_unique<Listener>(*this);
     m_status.clear();
     advertise();
+    checkFirewall();
     log::info("quick share: listening on port {}", m_port);
 }
 
@@ -961,6 +983,7 @@ QuickShare::Lease QuickShare::discover() {
             if (q.m_discoverers > 0) return;
             q.m_browser.reset();
             q.m_beacon.reset();
+            q.m_qr.reset();
             q.changed.emit();
         });
     });
@@ -981,16 +1004,95 @@ std::vector<QuickShare::Device> QuickShare::devices() const {
             const Bytes info = unbase64url(t.substr(2));
             if (info.empty()) continue;
             d.type = static_cast<uint8_t>(info[0]) >> 1 & 7;
-            if (info.size() > 18) {
+            const bool hidden = static_cast<uint8_t>(info[0]) & 0x10; // no name in the clear
+            size_t at = 17;
+            if (!hidden && info.size() > 18) {
                 const size_t len = static_cast<uint8_t>(info[17]);
                 if (18 + len <= info.size()) d.name = info.substr(18, len);
+                at = 18 + len;
             }
+            // Then TLV records: type 1 is the QR code's, when it scanned ours
+            while (m_qr && at + 2 <= info.size()) {
+                const int type = static_cast<uint8_t>(info[at]);
+                const size_t len = static_cast<uint8_t>(info[at + 1]);
+                at += 2;
+                if (at + len > info.size()) break;
+                const Bytes value = info.substr(at, len);
+                at += len;
+                if (type != 1) continue;
+                if (crypto::equal(value, m_qr->token)) {
+                    d.scannedQr = true;
+                } else if (value.size() > 28) {
+                    // A hidden device: its name, sealed with the QR code's key
+                    const Bytes name = crypto::aesGcmDecrypt(m_qr->nameKey, value, m_qr->token);
+                    if (!name.empty()) {
+                        d.scannedQr = true;
+                        d.name = name;
+                    }
+                }
+            }
+            if (hidden && !d.scannedQr) d.name.clear();
         }
         if (d.name.empty()) d.name = d.type == 1 ? "A phone nearby" : d.type == 2 ? "A tablet nearby" : "A device nearby";
+        if (std::ranges::any_of(out, [&](const Device& o) { return o.id == d.id; })) continue;
         out.push_back(std::move(d));
     }
     std::ranges::sort(out, {}, &Device::name);
     return out;
+}
+
+QuickShare::~QuickShare() = default;
+
+std::string QuickShare::qrUrl() {
+    if (!m_qr) {
+        m_qr = std::make_unique<Qr>();
+        if (!m_qr->key.valid()) {
+            m_qr.reset();
+            return {};
+        }
+        const bool oddY = !m_qr->key.y().empty() && (static_cast<uint8_t>(m_qr->key.y().back()) & 1);
+        const Bytes data = std::string("\0\0", 2) + static_cast<char>(oddY ? 3 : 2) + m_qr->key.x();
+        m_qr->token = crypto::hkdfSha256(data, "", "advertisingContext", 16);
+        m_qr->nameKey = crypto::hkdfSha256(data, "", "encryptionKey", 16);
+        m_qr->url = "https://quickshare.google/qrcode#key=" + base64url(data);
+    }
+    return m_qr->url;
+}
+
+Bytes QuickShare::qrSignature(const Bytes& authKey) const {
+    return m_qr ? m_qr->key.sign(authKey) : Bytes{};
+}
+
+int QuickShare::port() const {
+    return std::clamp(Config::get().value<int>("/quickshare/port", 47893), 1024, 65535);
+}
+
+// Incoming connections dropped by a firewall look, from the phone, like a
+// device that can't take files. ufw keeps its rules readable; firewalld
+// answers a query without root.
+void QuickShare::checkFirewall() {
+    const int p = port();
+    run({"sh", "-c", std::format(
+        "if systemctl is-active -q ufw; then "
+        "  policy=$(sed -n 's/^DEFAULT_INPUT_POLICY=\"\\(.*\\)\"/\\1/p' /etc/default/ufw); "
+        "  if [ \"$policy\" = ACCEPT ] || grep -qsE -- '--dport {0}( |$).*ACCEPT|--dports [0-9,:]*{0}' /etc/ufw/user.rules; then echo 'ufw open'; else echo 'ufw blocked'; fi; "
+        "elif systemctl is-active -q firewalld; then "
+        "  if firewall-cmd --query-port={0}/tcp >/dev/null 2>&1; then echo 'firewalld open'; else echo 'firewalld blocked'; fi; "
+        "else echo none; fi", p)},
+        [this](int, const std::string& out) {
+            m_firewall = out.starts_with("ufw") ? "ufw" : out.starts_with("firewalld") ? "firewalld" : "";
+            m_firewallBlocks = out.find("blocked") != std::string::npos;
+            changed.emit();
+        });
+}
+
+void QuickShare::allowThroughFirewall() {
+    const int p = port();
+    std::string cmd;
+    if (m_firewall == "ufw") cmd = std::format("ufw allow {}/tcp comment 'Quick Share'", p);
+    else if (m_firewall == "firewalld") cmd = std::format("firewall-cmd --permanent --add-port={0}/tcp && firewall-cmd --add-port={0}/tcp", p);
+    if (cmd.empty()) return;
+    run({"pkexec", "sh", "-c", cmd}, [this](int, const std::string&) { checkFirewall(); });
 }
 
 std::string QuickShare::discoveryNote() const {

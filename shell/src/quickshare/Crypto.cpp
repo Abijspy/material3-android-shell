@@ -1,5 +1,6 @@
 #include "quickshare/Crypto.h"
 
+#include <openssl/bn.h>
 #include <openssl/core_names.h>
 #include <openssl/crypto.h>
 #include <openssl/ec.h>
@@ -87,6 +88,27 @@ Bytes aesCbcDecrypt(const Bytes& key, const Bytes& iv, const Bytes& cipher) {
     return aesCbc(false, key, iv, cipher);
 }
 
+Bytes aesGcmDecrypt(const Bytes& key, const Bytes& combined, const Bytes& aad) {
+    if (key.size() != 16 || combined.size() < 12 + 16) return {};
+    const Bytes iv = combined.substr(0, 12), tag = combined.substr(combined.size() - 16);
+    const Bytes cipher = combined.substr(12, combined.size() - 28);
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    Bytes out(cipher.size() + 16, '\0');
+    int a = 0, b = 0, ignored = 0;
+    auto* o = reinterpret_cast<unsigned char*>(out.data());
+    const bool ok = ctx && EVP_DecryptInit_ex(ctx, EVP_aes_128_gcm(), nullptr, nullptr, nullptr) == 1 &&
+                    EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, 12, nullptr) == 1 &&
+                    EVP_DecryptInit_ex(ctx, nullptr, nullptr, u(key), u(iv)) == 1 &&
+                    EVP_DecryptUpdate(ctx, nullptr, &ignored, u(aad), static_cast<int>(aad.size())) == 1 &&
+                    EVP_DecryptUpdate(ctx, o, &a, u(cipher), static_cast<int>(cipher.size())) == 1 &&
+                    EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, const_cast<char*>(tag.data())) == 1 &&
+                    EVP_DecryptFinal_ex(ctx, o + a, &b) == 1;
+    EVP_CIPHER_CTX_free(ctx);
+    if (!ok) return {};
+    out.resize(static_cast<size_t>(a + b));
+    return out;
+}
+
 bool equal(const Bytes& a, const Bytes& b) {
     return a.size() == b.size() && CRYPTO_memcmp(a.data(), b.data(), a.size()) == 0;
 }
@@ -103,6 +125,26 @@ EcKey::EcKey() {
     }
     m_x.assign(reinterpret_cast<char*>(point + 1), 32);
     m_y.assign(reinterpret_cast<char*>(point + 33), 32);
+}
+
+Bytes EcKey::sign(const Bytes& message) const {
+    if (!m_key) return {};
+    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+    unsigned char der[80];
+    size_t len = sizeof der;
+    const bool ok = ctx && EVP_DigestSignInit(ctx, nullptr, EVP_sha256(), nullptr, m_key) == 1 &&
+                    EVP_DigestSign(ctx, der, &len, u(message), message.size()) == 1;
+    EVP_MD_CTX_free(ctx);
+    if (!ok) return {};
+    // DER → r ‖ s
+    const unsigned char* p = der;
+    ECDSA_SIG* sig = d2i_ECDSA_SIG(nullptr, &p, static_cast<long>(len));
+    if (!sig) return {};
+    Bytes out(64, '\0');
+    BN_bn2binpad(ECDSA_SIG_get0_r(sig), reinterpret_cast<unsigned char*>(out.data()), 32);
+    BN_bn2binpad(ECDSA_SIG_get0_s(sig), reinterpret_cast<unsigned char*>(out.data()) + 32, 32);
+    ECDSA_SIG_free(sig);
+    return out;
 }
 
 EcKey::~EcKey() {

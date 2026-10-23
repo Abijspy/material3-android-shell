@@ -69,12 +69,24 @@ public:
         int type = 0;         // 1 phone, 2 tablet, 3 laptop
         uint32_t addr = 0;    // IPv4, network order
         uint16_t port = 0;
+        bool scannedQr = false; // it scanned our QR code: send at once
     };
     using Lease = std::shared_ptr<void>;
     [[nodiscard]] Lease discover();
     std::vector<Device> devices() const;
     std::string discoveryNote() const; // why phones may not appear
     int send(const Device& to, const std::vector<std::string>& paths); // the transfer's id, 0 if nothing to send
+    // A QR code for a phone's camera, while discovering: the phone then
+    // shows up without Bluetooth (Device::scannedQr)
+    std::string qrUrl();
+    std::string qrSignature(const std::string& authKey) const; // empty without a QR code
+
+    // Receiving through a firewall: which one, and whether it drops phones'
+    // connections to our port; allowing asks for an admin password
+    int port() const;
+    const std::string& firewall() const { return m_firewall; }
+    bool firewallBlocks() const { return m_firewallBlocks; }
+    void allowThroughFirewall();
     std::string status() const { return m_status; } // why it isn't visible, if not
 
     Signal<int> asking; // a transfer waits for an answer: show it
@@ -87,10 +99,12 @@ public:
 
 private:
     QuickShare();
+    ~QuickShare();
     void start();
     void stop();
     void advertise();
     void acceptClient();
+    void checkFirewall();
     std::string instanceName() const;
     std::string endpointInfo() const;
 
@@ -105,6 +119,10 @@ private:
     int m_discoverers = 0;
     std::unique_ptr<MdnsBrowser> m_browser;
     std::unique_ptr<BleBeacon> m_beacon;
+    struct Qr;
+    std::unique_ptr<Qr> m_qr;
+    std::string m_firewall;
+    bool m_firewallBlocks = false;
     std::string m_applied; // the settings last applied
 };
 

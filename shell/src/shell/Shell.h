@@ -47,6 +47,7 @@ private:
 
     std::map<wl::Output*, std::unique_ptr<Bar>> m_bars;
     std::unique_ptr<Popup> m_popup;
+    std::string m_popupArg; // what the open popup shows (a transfer, an event…)
     std::unique_ptr<Popup> m_settings; // an app window, beside the popups
     std::unique_ptr<Popup> m_hyprSettings; // Hyprland Settings, the same
     std::unique_ptr<Popup> m_welcome; // the tour window

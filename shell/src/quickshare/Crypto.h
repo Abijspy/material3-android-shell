@@ -2,7 +2,8 @@
 
 // The cryptography Quick Share's UKEY2 handshake and secure messages need,
 // over OpenSSL's libcrypto: P-256 ECDH, SHA-256/512, HMAC-SHA256,
-// HKDF-SHA256 and AES-256-CBC (PKCS#7 padded).
+// HKDF-SHA256 and AES-256-CBC (PKCS#7 padded); for the QR code, ECDSA and
+// AES-GCM.
 #include <memory>
 #include <string>
 
@@ -20,6 +21,8 @@ Bytes hkdfSha256(const Bytes& ikm, const Bytes& salt, const Bytes& info, size_t 
 // Empty on failure (a bad key, bad padding)
 Bytes aesCbcEncrypt(const Bytes& key, const Bytes& iv, const Bytes& plain);
 Bytes aesCbcDecrypt(const Bytes& key, const Bytes& iv, const Bytes& cipher);
+// AES-128-GCM: iv (12) + ciphertext + tag (16) in one; empty on failure
+Bytes aesGcmDecrypt(const Bytes& key, const Bytes& combined, const Bytes& aad);
 // Constant time
 bool equal(const Bytes& a, const Bytes& b);
 
@@ -36,6 +39,8 @@ public:
     // The ECDH shared secret (the shared point's X, 32 bytes) with a peer's
     // public point; empty if the point isn't on the curve
     Bytes agree(const Bytes& peerX, const Bytes& peerY) const;
+    // ECDSA with SHA-256: r and s, 32 bytes each (IEEE P1363)
+    Bytes sign(const Bytes& message) const;
 
 private:
     EVP_PKEY* m_key = nullptr;

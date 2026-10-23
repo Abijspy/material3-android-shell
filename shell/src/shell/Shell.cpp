@@ -274,7 +274,9 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
     if (name == "desktopedit") return desktopeditor::open(output ? output : focusedOutput());
     // The system monitor lives in Settings now (Ctrl+Alt+Delete, the bar's widget)
     if (name == "sysmon") return openSettings("monitor");
-    if (m_popup && !m_popup->closing() && m_popup->name() == name && m_popup->output() == output) {
+    // The same popup again closes it; the same kind for something else
+    // (another transfer) takes its place
+    if (m_popup && !m_popup->closing() && m_popup->name() == name && m_popup->output() == output && m_popupArg == arg) {
         m_popup->close();
         return;
     }
@@ -398,6 +400,7 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         return;
     }
     m_popup = std::make_unique<Popup>(output, opts, build);
+    m_popupArg = arg;
     holdDocks(name == "dockmenu"); // a new popup releases a held dock too
     Popup* raw = m_popup.get();
     m_popup->onClosed = [this, raw, name] {
