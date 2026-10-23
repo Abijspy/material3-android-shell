@@ -1,5 +1,13 @@
 # Changelog
 
+## v5.5.2 — 2026-10-23
+
+- **Quick Share with a QR code.** In the send popup, choose **Use a QR code** and scan it with the phone's camera. The files go straight to the phone, without Bluetooth and without the phone set to "Everyone". Tested with a real Android phone.
+- **Phones can send to you through a firewall.** If ufw or firewalld blocks incoming connections, a phone sees this computer but can't send to it. Settings → Connected devices now warns about this and offers **Allow**, which opens Quick Share's port (47893) after asking for your password.
+- **Choose files in the shell's own picker.** "Choose files" and "Add files" open a Material You picker: any files, several at once, with previews for pictures. The old system dialog opened behind the shell's popups.
+- **"Log out to finish updating" goes away after you log out.** Update times from pacman's log lost their time zone, so in time zones ahead of UTC an update could look newer than your login and the banner never cleared. This is fixed and covered by a test.
+- The file picker's Cancel and Add buttons sit on its card again, and a new Quick Share transfer replaces the open popup instead of closing it.
+
 ## v5.5.1 — 2026-10-23
 
 - **Quick Share, built in.** Send and receive files with Android phones and Chromebooks on the same Wi-Fi, with no app to install:
