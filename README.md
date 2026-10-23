@@ -42,26 +42,28 @@ Most Linux desktops are a patchwork. The bar comes from one project, the lock sc
 
 <table>
   <tr>
-    <td><img src="docs/screenshots/desktop.jpg" alt="Desktop with the bar, clock and dock"/></td>
-    <td><img src="docs/screenshots/dashboard.jpg" alt="Dashboard: calendar, weather, media and system stats"/></td>
+    <td><img src="docs/screenshots/desktop.jpg" alt="Desktop with the bar, its dynamic island and the dock"/></td>
+    <td><img src="docs/screenshots/dashboard.jpg" alt="Dashboard: clock, weather, calendar with the day's agenda, media and system stats"/></td>
   </tr>
   <tr>
     <td align="center"><b>Desktop:</b> the bar, its dynamic island and the dock</td>
-    <td align="center"><b>Dashboard:</b> calendar, weather, media and system</td>
+    <td align="center"><b>Dashboard:</b> calendar and agenda, weather, media and system</td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/launcher.jpg" alt="App launcher"/></td>
-    <td><img src="docs/screenshots/wallpapers.jpg" alt="Wallpaper picker with the shipped wallpapers"/></td>
+    <td><img src="docs/screenshots/launcher.jpg" alt="Spotlight launcher"/></td>
+    <td><img src="docs/screenshots/wallpapers.jpg" alt="The built-in file picker choosing from the shipped wallpapers"/></td>
   </tr>
   <tr>
-    <td align="center"><b>Launcher:</b> apps, maths, emoji, clipboard, files</td>
-    <td align="center"><b>Wallpapers:</b> ten ship with the shell</td>
+    <td align="center"><b>Spotlight:</b> apps, maths, emoji, clipboard with previews, files</td>
+    <td align="center"><b>Wallpapers:</b> ten ship with the shell, in its own file picker</td>
   </tr>
   <tr>
-    <td colspan="2"><img src="docs/screenshots/settings.jpg" alt="Settings app on the Wallpaper and style page"/></td>
+    <td><img src="docs/screenshots/quick-share.jpg" alt="Quick Share sending two files, with a QR code for the phone's camera"/></td>
+    <td><img src="docs/screenshots/settings.jpg" alt="Settings app on the Wallpaper and style page, with Android 16 style icons"/></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><b>Settings:</b> one app for the whole desktop</td>
+    <td align="center"><b>Quick Share:</b> files to and from Android phones, by QR code too</td>
+    <td align="center"><b>Settings:</b> one app for the whole desktop, themed from your wallpaper</td>
   </tr>
 </table>
 
