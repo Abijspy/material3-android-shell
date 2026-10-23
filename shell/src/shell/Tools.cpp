@@ -109,11 +109,12 @@ void clipboard(Flex* card, Popup& popup) {
             auto* row = live->add<Button>(Flex::Direction::Row);
             row->setPadding({14, 10})->setSpacing(12)->setRadius(Radii(16))->setBackground("surface_container_high", false);
             row->pressedRadius = 8;
-            if (e.image) {
+            if (e.image || !e.file.empty()) {
+                // A screenshot, a copied picture or video file
                 if (!e.thumb.empty()) thumbnail(row, e.thumb, 96, 56)->grow = false;
-                else row->add<Icon>("image", 22)->setColor("on_surface_variant", false);
-                auto* l = row->add<Label>("Image");
-                l->setSize(13)->setColor("on_surface_variant", false);
+                else row->add<Icon>(e.video ? "movie" : "image", 22)->setColor("on_surface_variant", false);
+                auto* l = row->add<Label>(e.image ? "Image" : std::filesystem::path(e.file).filename().string());
+                l->setSize(13)->setMaxWidth(300)->setColor("on_surface_variant", false);
                 l->grow = true;
             } else {
                 row->add<Icon>(e.preview.starts_with("http") ? "link" : "notes", 20)->setColor("on_surface_variant", false);

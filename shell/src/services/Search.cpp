@@ -3,6 +3,7 @@
 #include "core/FileWatcher.h"
 #include "core/Paths.h"
 #include "core/Process.h"
+#include "services/Clipboard.h"
 
 #include <algorithm>
 #include <cctype>
@@ -449,37 +450,66 @@ std::vector<SearchResult> query(const std::string& raw) {
     return out;
 }
 
+namespace {
+
+// "[[ binary data 12 KiB png 800x600 ]]" → "PNG · 800×600 · 12 KiB"
+std::string imageDetails(const std::string& preview) {
+    std::stringstream ss(preview);
+    std::vector<std::string> words;
+    for (std::string w; ss >> w;) words.push_back(w);
+    // [[ binary data <n> <unit> <type> <w>x<h> ]]
+    if (words.size() < 8) return "Image";
+    std::string type = words[5];
+    for (auto& c : type) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    std::string size = words[6];
+    if (const auto x = size.find('x'); x != std::string::npos) size.replace(x, 1, "×");
+    return std::format("{} · {} · {} {}", type, size, words[3], words[4]);
+}
+
+} // namespace
+
+std::vector<SearchResult> clipboard(const std::string& q) {
+    std::vector<SearchResult> out;
+    auto& cb = Clipboard::get();
+    if (!cb.available())
+        return {{"Clipboard history is unavailable", "Install cliphist and run wl-paste --watch cliphist store", "", "content_paste_off", "", 0, {}}};
+    double rank = 1000;
+    for (const auto& e : cb.entries()) {
+        if (out.size() >= 80) break;
+        SearchResult r;
+        if (e.image) {
+            r.title = "Image";
+            r.subtitle = imageDetails(e.preview);
+            r.glyph = "image";
+        } else if (!e.file.empty()) {
+            r.title = fs::path(e.file).filename().string();
+            r.subtitle = e.video ? "Video file" : "Picture file";
+            r.glyph = e.video ? "movie" : "image";
+        } else {
+            r.title = e.preview;
+            r.subtitle = "Enter copies it again";
+            r.glyph = "content_paste";
+        }
+        r.image = e.thumb;
+        r.video = e.video;
+        // Pictures match "image", "picture", "video"… as well as their name
+        const std::string kind = e.image ? "image picture screenshot" : e.video ? "video" : !e.file.empty() ? "image picture" : "";
+        r.score = q.empty() ? rank-- : std::max(fuzzyScore(q, r.title), fuzzyScore(q, kind) * 0.8);
+        if (r.score <= 0) continue;
+        const Clipboard::Entry entry = e;
+        r.activate = [entry] { Clipboard::get().copy(entry); };
+        out.push_back(std::move(r));
+    }
+    if (out.empty() && q.empty()) out.push_back({"Nothing copied yet", "Copied text and pictures show up here", "", "content_paste", "", 0, {}});
+    std::ranges::stable_sort(out, std::greater{}, &SearchResult::score);
+    return out;
+}
+
 void queryAsync(const std::string& raw, std::function<void(std::vector<SearchResult>)> done) {
     const std::string text = trimmed(raw);
     if (text.starts_with('#')) {
         const std::string q = trimmed(text.substr(1));
-        run({"cliphist", "list"}, [q, done](int code, const std::string& output) {
-            std::vector<SearchResult> out;
-            if (code != 0) {
-                out.push_back({"Clipboard history is unavailable", "Install cliphist and run wl-paste --watch cliphist store",
-                               "", "content_paste_off", "", 0, {}});
-                return done(out);
-            }
-            std::stringstream ss(output);
-            std::string line;
-            double rank = 1000;
-            while (std::getline(ss, line) && out.size() < 80) {
-                const auto tab = line.find('\t');
-                if (tab == std::string::npos) continue;
-                const std::string preview = line.substr(tab + 1);
-                const double s = q.empty() ? rank-- : fuzzyScore(q, preview);
-                if (s <= 0) continue;
-                out.push_back({preview, "Enter copies it again", "", preview.starts_with("[[ binary") ? "image" : "content_paste",
-                               "", s, [line] {
-                                   // Decode the entry and put it back on the clipboard
-                                   run({"cliphist", "decode"}, [](int, const std::string& data) {
-                                       run({"wl-copy"}, nullptr, data);
-                                   }, line);
-                               }});
-            }
-            std::ranges::stable_sort(out, std::greater{}, &SearchResult::score);
-            done(out);
-        });
+        Clipboard::get().refresh([q, done] { done(clipboard(q)); });
         return;
     }
     if (text.starts_with('@')) {

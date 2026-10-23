@@ -1,4 +1,6 @@
+#include "core/EventLoop.h"
 #include "render/Images.h"
+#include "services/Clipboard.h"
 #include "services/Search.h"
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
@@ -35,6 +37,18 @@ public:
         m_field->setText(initial);
         popup.initialFocus = m_field;
         refresh();
+        // Clipboard thumbnails arrive after the list: show them as they do
+        m_clipboard = Clipboard::get().changed.connect([this] {
+            EventLoop::get().defer([this, alive = m_alive] {
+                const std::string text = *alive ? m_field->text() : "";
+                if (!text.starts_with('#')) return;
+                std::string q = text.substr(1);
+                q.erase(0, q.find_first_not_of(' '));
+                const int selected = m_selected;
+                show(search::clipboard(q));
+                if (selected > 0 && selected < static_cast<int>(m_results.size())) select(selected);
+            });
+        });
     }
 
     bool onKey(const KeyEvent& e) override {
@@ -76,7 +90,19 @@ private:
             auto* row = m_list->add<Button>(Direction::Row);
             row->setPadding({14, 8})->setSpacing(14)->setRadius(Radii(18));
             row->fixedHeight = kRowHeight;
-            if (!r.emoji.empty()) {
+            if (!r.image.empty()) {
+                // A copied picture, a screenshot or a video's frame
+                const std::string image = r.image;
+                auto* thumb = row->add<ImageView>(64, 40, [image](float scale, int& w, int& h) -> GLuint {
+                    auto* t = Images::get().picture(image, static_cast<int>(64 * scale), static_cast<int>(40 * scale), true);
+                    if (!t) return 0;
+                    w = t->width;
+                    h = t->height;
+                    return t->id;
+                });
+                thumb->cover = true;
+                thumb->radius = 10;
+            } else if (!r.emoji.empty()) {
                 auto* e = row->add<Label>(r.emoji);
                 e->setSize(26)->setFamily("Noto Color Emoji, sans-serif");
                 e->fixedWidth = 32;
@@ -158,6 +184,7 @@ private:
     float m_scrollTarget = 0;
     EventLoop::TimerId m_debounce = 0;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
+    Connection m_clipboard;
 };
 
 } // namespace

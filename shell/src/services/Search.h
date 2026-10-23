@@ -17,6 +17,8 @@ struct SearchResult {
     std::string emoji;  // drawn as text instead of an icon
     double score = 0;
     std::function<void()> activate;
+    std::string image;  // a picture to show as a thumbnail (clipboard images, videos)
+    bool video = false; // the thumbnail is a video's frame
 };
 
 // Installed applications from XDG .desktop files, ranked by how often they
@@ -62,6 +64,8 @@ namespace search {
 std::vector<SearchResult> query(const std::string& text);
 // Providers that run a process report back asynchronously
 void queryAsync(const std::string& text, std::function<void(std::vector<SearchResult>)> done);
+// "#…": the clipboard history as it stands (no refresh), matching `q`
+std::vector<SearchResult> clipboard(const std::string& q);
 } // namespace search
 
 } // namespace m3
