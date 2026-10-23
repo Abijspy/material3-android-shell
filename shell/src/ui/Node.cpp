@@ -408,7 +408,9 @@ void Label::doPaint(Renderer& r) {
     // Snap the quad to device pixels so text is never resampled
     const float x = std::round(rect().x * s) / s;
     const float y = std::round((rect().y + (rect().h - tex.logical.height) / 2) * s) / s;
-    r.mask(tex.id, {x, y, tex.logical.width, tex.logical.height}, m_color.value());
+    const Color c = m_color.value();
+    r.mask(tex.id, {x, y, tex.logical.width, tex.logical.height}, c);
+    if (tex.color) r.image(tex.color, {x, y, tex.logical.width, tex.logical.height}, c.a);
     if (m_color.running()) requestRedraw();
 }
 

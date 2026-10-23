@@ -621,6 +621,7 @@ void TextField::doPaint(Renderer& r) {
         const float y = std::round((b.y + (b.h - tex.logical.height) / 2) * s) / s;
         r.mask(tex.id, {x, y, tex.logical.width, tex.logical.height},
                Theme::get().color(empty ? "on_surface_variant" : "on_surface"));
+        if (tex.color) r.image(tex.color, {x, y, tex.logical.width, tex.logical.height});
     }
     if (m_focused && m_caretOn) r.rect({inner.x + cx - m_scroll, b.y + 13, 2, b.h - 26}, Theme::get().color("primary"), Radii(1));
     r.popClip();

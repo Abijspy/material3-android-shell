@@ -30,13 +30,14 @@ struct TextMetrics {
 };
 
 // Pango lays text out, Cairo rasterises it to an alpha mask at the surface's
-// scale, and the mask is cached as a GL texture keyed by text, style and
+// scale (and colour glyphs, emoji, to a second texture of their own), and the mask is cached as a GL texture keyed by text, style and
 // scale. Textures unused for a while (or beyond a budget) are evicted, so
 // rows scrolled away and panels reopened soon after draw from the cache.
 class TextEngine {
 public:
     struct Texture {
-        GLuint id = 0;
+        GLuint id = 0;    // the alpha mask, drawn in the text's colour
+        GLuint color = 0; // colour glyphs (emoji), premultiplied BGRA; 0 if none
         TextMetrics logical; // size in logical px
     };
 

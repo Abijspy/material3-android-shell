@@ -1,5 +1,6 @@
 #include "render/Text.h"
 
+#include <algorithm>
 #include <cairo.h>
 #include <cmath>
 #include <format>
@@ -79,29 +80,64 @@ const TextEngine::Texture& TextEngine::texture(const std::string& text, const Te
     pango_layout_get_pixel_extents(layout, nullptr, &logical);
     const int w = std::max(1, logical.width), h = std::max(1, logical.height);
 
-    // ARGB32 rows are always width*4 bytes, which GLES2 can upload directly
-    cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
-    cairo_t* cr = cairo_create(surface);
-    cairo_set_source_rgba(cr, 1, 1, 1, 1);
-    cairo_move_to(cr, -logical.x, -logical.y);
-    pango_cairo_show_layout(cr, layout);
-    cairo_surface_flush(surface);
+    // ARGB32 rows are always width*4 bytes, which GLES2 can upload directly.
+    // Drawn in white: plain glyphs come out as (a, a, a, a)
+    const auto draw = [&](double grey) {
+        cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
+        cairo_t* cr = cairo_create(surface);
+        cairo_set_source_rgba(cr, grey, grey, grey, 1);
+        cairo_move_to(cr, -logical.x, -logical.y);
+        pango_cairo_show_layout(cr, layout);
+        cairo_surface_flush(surface);
+        cairo_destroy(cr);
+        return surface;
+    };
+    cairo_surface_t* surface = draw(1);
+    const auto upload = [&](const unsigned char* pixels) {
+        GLuint id = 0;
+        glGenTextures(1, &id);
+        glBindTexture(GL_TEXTURE_2D, id);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        return id;
+    };
 
-    GLuint id = 0;
-    glGenTextures(1, &id);
-    glBindTexture(GL_TEXTURE_2D, id);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    // Emoji keep their own colours whatever the source: drawn again in
+    // black, plain glyphs change and colour ones don't. Those split off into
+    // a texture drawn as an image; the rest stays a mask. Only text with
+    // characters past U+2000 can have any
+    GLuint colorId = 0;
+    const bool maybeColour = !style.icon && std::ranges::any_of(text, [](char c) { return static_cast<unsigned char>(c) >= 0xE2; });
+    if (maybeColour) {
+        cairo_surface_t* dark = draw(0);
+        auto* white = cairo_image_surface_get_data(surface);
+        auto* black = cairo_image_surface_get_data(dark);
+        bool any = false;
+        const size_t n = static_cast<size_t>(w) * static_cast<size_t>(h) * 4;
+        for (size_t i = 0; i < n; i += 4) {
+            if (black[i + 3] == 0) continue;
+            const bool same = black[i] == white[i] && black[i + 1] == white[i + 1] && black[i + 2] == white[i + 2];
+            if (same) {
+                // A colour pixel: out of the mask, kept in the image
+                white[i] = white[i + 1] = white[i + 2] = white[i + 3] = 0;
+                any = true;
+            } else {
+                black[i] = black[i + 1] = black[i + 2] = black[i + 3] = 0;
+            }
+        }
+        if (any) colorId = upload(black);
+        cairo_surface_destroy(dark);
+    }
     // Only alpha is sampled, and it sits in the same byte for BGRA and RGBA
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, cairo_image_surface_get_data(surface));
+    const GLuint id = upload(cairo_image_surface_get_data(surface));
 
     g_object_unref(layout);
-    cairo_destroy(cr);
     cairo_surface_destroy(surface);
 
-    entry.tex = Texture{id, {static_cast<float>(w) / scale, static_cast<float>(h) / scale}};
+    entry.tex = Texture{id, colorId, {static_cast<float>(w) / scale, static_cast<float>(h) / scale}};
     return entry.tex;
 }
 
@@ -117,13 +153,17 @@ void TextEngine::collect() {
     std::erase_if(m_textures, [&](auto& kv) {
         if (m_now - kv.second.lastUsed < keep) return false;
         dead.push_back(kv.second.tex.id);
+        if (kv.second.tex.color) dead.push_back(kv.second.tex.color);
         return true;
     });
     if (!dead.empty()) glDeleteTextures(static_cast<GLsizei>(dead.size()), dead.data());
 }
 
 void TextEngine::clear() {
-    for (auto& [_, e] : m_textures) glDeleteTextures(1, &e.tex.id);
+    for (auto& [_, e] : m_textures) {
+        glDeleteTextures(1, &e.tex.id);
+        if (e.tex.color) glDeleteTextures(1, &e.tex.color);
+    }
     m_textures.clear();
     m_metrics.clear();
 }
