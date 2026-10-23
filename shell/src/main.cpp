@@ -3,6 +3,7 @@
 #include "core/Process.h"
 #include "ipc/IpcServer.h"
 #include "greeter/Greeter.h"
+#include "share/SharePicker.h"
 #include "shell/Shell.h"
 
 #include <cerrno>
@@ -29,6 +30,7 @@ void usage() {
               << "  material3ui              run the shell\n"
               << "  material3ui msg <cmd>    send a command to the running shell (msg help)\n"
               << "  material3ui greeter      run as the greetd login screen\n"
+              << "  material3ui share-picker choose what an app may share (xdg-desktop-portal-hyprland)\n"
               << "  material3ui --version\n";
 }
 
@@ -192,6 +194,13 @@ int main(int argc, char** argv) {
             m3::EventLoop::get().add(&signals);
             m3::greeter::Greeter greeter;
             if (!greeter.start()) return 1;
+            return m3::EventLoop::get().run();
+        }
+        if (args[0] == "share-picker") {
+            // Run by xdg-desktop-portal-hyprland when an app asks to share
+            const bool allowToken = std::ranges::find(args, std::string("--allow-token")) != args.end();
+            m3::share::SharePicker picker(allowToken);
+            if (!picker.start()) return 1;
             return m3::EventLoop::get().run();
         }
         if (args[0] == "--version" || args[0] == "-v") {

@@ -692,6 +692,9 @@ void appearancePage(Flex* page, Popup& popup) {
         auto* where = foot->add<Label>(Wallpaper::get().directory());
         where->setSize(12)->setColor("on_surface_variant", false)->setMaxWidth(420);
         where->grow = true;
+        pillButton(foot, "Browse files…", false, [] {
+            if (open) open("files wallpaper");
+        }, "folder_open");
         pillButton(foot, "Browse all…", false, [&popup] {
             // The app stays open behind it; a popup makes way
             if (!popup.isWindow()) popup.close();
@@ -1547,18 +1550,9 @@ void usersPage(Flex* page, Popup&) {
         auto head = row(you, "", self != users.end() ? self->realName : me,
                         me + (self != users.end() && self->admin ? "  ·  Administrator" : ""));
         head.row->adopt(std::make_unique<AvatarView>(paths::home() + "/.face", self != users.end() ? self->realName : me, 56), 0);
-        pillButton(head.row, "Change picture", false, [live] {
-            // A picture of your choice becomes ~/.face (login screens read it too)
-            m3::run({"zenity", "--file-selection", "--title=Choose your picture",
-                     "--file-filter=Images | *.png *.jpg *.jpeg *.webp *.svg"},
-                    [live](int code, const std::string& out) {
-                if (code != 0 || out.empty()) return;
-                std::string path = out;
-                while (!path.empty() && (path.back() == '\n' || path.back() == '\r')) path.pop_back();
-                std::error_code ec;
-                std::filesystem::copy_file(path, paths::home() + "/.face", std::filesystem::copy_options::overwrite_existing, ec);
-                live->syncSoon();
-            });
+        // The shell's picker: the default pictures, or one of yours
+        pillButton(head.row, "Change picture", false, [] {
+            if (open) open("files avatar");
         }, "add_a_photo");
 
         auto nameRow = row(you, "badge", "Name", "Enter to save");
@@ -2389,6 +2383,14 @@ void defaultAppsPage(Flex* page, Popup&) {
 }
 
 void toolsPage(Flex* page, Popup& popup) {
+    // Screen sharing: what apps (browsers, calls) see, asked through the portal
+    auto* share = group(page, "Screen sharing", "When an app asks to share your screen, a window or a part of it");
+    switchRow(share, "screen_share", "Material3UI picker", "Choose a screen, a window or a region in the shell's own dialog",
+              "/share/picker", true);
+    switchRow(share, "history", "Remember apps by default", "Apps may share again without asking (each time, the picker can change it)",
+              "/share/remember", false);
+    choiceRow<int>(share, "speed", "Frame rate", "At most", "/share/maxFps", 60, {{30, "30"}, {60, "60"}, {120, "120"}});
+
     auto* clip = group(page, "Clipboard", "History through cliphist (and wl-clipboard)");
     switchRow(clip, "history", "Keep history", "Starts the wl-paste watchers if nothing else runs them", "/clipboard/history", true,
               [](bool on) {

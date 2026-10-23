@@ -39,7 +39,7 @@ private:
     std::string m_noticeIcon, m_noticeText;
     EventLoop::TimerId m_clock = 0, m_noticeTimer = 0;
     int m_lastWorkspace = 0;
-    Connection m_media, m_notify, m_ws;
+    Connection m_media, m_notify, m_ws, m_recording;
 };
 
 } // namespace m3::shell

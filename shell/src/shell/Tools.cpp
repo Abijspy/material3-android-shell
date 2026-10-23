@@ -6,7 +6,9 @@
 #include "services/Clipboard.h"
 #include "services/Screenshot.h"
 #include "services/Search.h"
+#include "shell/ClockFaces.h"
 #include "shell/PanelKit.h"
+#include "shell/SettingsKit.h"
 #include "shell/Panels.h"
 #include "shell/bar/Bar.h"
 #include "ui/Controls.h"
@@ -143,19 +145,9 @@ void clipboard(Flex* card, Popup& popup) {
     clip.refresh();
 }
 
-void screenshot(Flex* card, Popup& popup) {
+// The Screenshot tab: what to capture, a delay, what to do after, recent shots
+void screenshotBody(Flex* card, Popup& popup) {
     auto& cfg = Config::get();
-    auto* head = card->add<Flex>(Flex::Direction::Row);
-    head->setSpacing(10);
-    head->add<Icon>("screenshot_region", 24)->setColor("primary", false);
-    auto* title = head->add<Label>("Screenshot");
-    title->setSize(22)->setWeight(600);
-    title->grow = true;
-    iconButton(head, "folder_open", [&popup] {
-        spawn("xdg-open '" + Screenshot::get().directory() + "'");
-        popup.close();
-    });
-
     // What to capture
     auto mode = std::make_shared<int>(cfg.value<int>("/screenshot/mode", 0));
     auto* modes = card->add<Flex>(Flex::Direction::Row);
@@ -298,6 +290,147 @@ void barWidgets(Flex* card, Popup& popup, const std::string& zone) {
         };
     }
     if (count == 0) caption(card, "Every widget is already on the bar.");
+}
+
+// How long the recording has run, ticking each second while shown
+class RecordingTime : public Label {
+public:
+    RecordingTime() {
+        sync();
+        m_ticker = std::make_unique<SecondTicker>([this] { sync(); });
+    }
+
+private:
+    void sync() {
+        const long s = std::max<long>(0, std::time(nullptr) - Screenshot::get().recordingSince());
+        setText(std::format("{}:{:02}", s / 60, s % 60));
+    }
+    std::unique_ptr<SecondTicker> m_ticker;
+};
+
+// A row of choices: an icon and a name, then a connected group
+template <typename T>
+void choiceLine(Node* card, const char* icon, const char* label, const char* pointer, T fallback,
+                std::vector<std::pair<T, std::string>> options) {
+    auto* r = card->add<Flex>(Flex::Direction::Row);
+    r->setSpacing(12)->setPadding({4, 2})->setAlignItems(Align::Center);
+    r->add<Icon>(icon, 20)->setColor("on_surface_variant", false);
+    auto* l = r->add<Label>(label);
+    l->setSize(14)->setWeight(500);
+    l->grow = true;
+    connectedGroup<T>(r, Config::get().value<T>(pointer, fallback), std::move(options),
+                      [pointer](T v) { Config::get().set(pointer, v); });
+}
+
+// The Record tab: what to record and how, or the recording going on
+void recordBody(Flex* card, Popup& popup) {
+    auto& shot = Screenshot::get();
+    const std::string output = popup.output() ? popup.output()->name : "";
+    if (shot.recording()) {
+        auto* live = card->add<Live>();
+        live->setSpacing(14)->setAlignItems(Align::Center)->setPadding({0, 16});
+        auto* dot = live->add<Flex>(Flex::Direction::Row);
+        dot->setSpacing(10)->setAlignItems(Align::Center);
+        dot->add<Icon>("radio_button_checked", 28)->setFill(true)->setColor("error", false);
+        dot->add<RecordingTime>()->setSize(34)->setWeight(500);
+        caption(live, "Recording. Stop here, with Super+Shift+R, or from the island");
+        auto* stop = card->add<Button>(Flex::Direction::Row);
+        pill(stop->setBackground("error", false))->setPadding({20, 16})->setSpacing(10)->setJustify(Align::Center);
+        stop->pressedRadius = 16;
+        stop->add<Icon>("stop", 22)->setFill(true)->setColor("on_error", false);
+        stop->add<Label>("Stop and save")->setSize(16)->setWeight(600)->setColor("on_error", false);
+        stop->onClicked = [&popup](uint32_t) {
+            Screenshot::get().stopRecording();
+            popup.close();
+        };
+        return;
+    }
+    // What to record
+    auto mode = std::make_shared<int>(Config::get().value<int>("/recorder/mode", 0));
+    auto* modes = card->add<Flex>(Flex::Direction::Row);
+    modes->setSpacing(8)->setAlignItems(Align::Stretch);
+    auto tiles = std::make_shared<std::vector<OptionTile*>>();
+    const std::pair<const char*, const char*> kModes[] = {{"crop", "Region"}, {"select_window", "Window"}, {"fullscreen", "Screen"}};
+    for (int i = 0; i < 3; ++i) {
+        auto* t = modes->add<OptionTile>(kModes[i].first, kModes[i].second);
+        t->set(i == *mode, false);
+        t->onClicked = [tiles, mode, i](uint32_t) {
+            *mode = i;
+            Config::get().set("/recorder/mode", i);
+            for (int k = 0; k < 3; ++k) (*tiles)[static_cast<size_t>(k)]->set(k == i);
+        };
+        tiles->push_back(t);
+    }
+    choiceLine<std::string>(card, "movie", "Format", "/recorder/format", "mp4",
+                            {{"mp4", "MP4"}, {"webm", "WebM"}, {"mkv", "MKV"}, {"gif", "GIF"}});
+    choiceLine<int>(card, "aspect_ratio", "Resolution", "/recorder/height", 0,
+                    {{0, "Native"}, {1080, "1080p"}, {720, "720p"}, {480, "480p"}});
+    choiceLine<int>(card, "speed", "Frame rate", "/recorder/fps", 60, {{24, "24"}, {30, "30"}, {60, "60"}});
+    choiceLine<std::string>(card, "high_quality", "Quality", "/recorder/quality", "high",
+                            {{"low", "Small"}, {"medium", "Balanced"}, {"high", "Best"}});
+    choiceLine<std::string>(card, "volume_up", "Sound", "/recorder/audio", "off",
+                            {{"off", "None"}, {"system", "System"}, {"mic", "Microphone"}});
+    choiceLine<int>(card, "timer", "Countdown", "/recorder/delay", 0, {{0, "None"}, {3, "3 s"}, {5, "5 s"}, {10, "10 s"}});
+    {
+        auto* r = card->add<Flex>(Flex::Direction::Row);
+        r->setSpacing(12)->setPadding({4, 2})->setAlignItems(Align::Center);
+        r->add<Icon>("memory", 20)->setColor("on_surface_variant", false);
+        auto* texts = r->add<Flex>(Flex::Direction::Column);
+        texts->setSpacing(1)->setAlignItems(Align::Start);
+        texts->grow = true;
+        texts->add<Label>("Hardware encoding")->setSize(14)->setWeight(500);
+        texts->add<Label>("The GPU encodes (VA-API): lighter on the CPU. MP4 and MKV")->setSize(12)->setColor("on_surface_variant", false);
+        auto* sw = r->add<Switch>();
+        sw->setChecked(Config::get().value<bool>("/recorder/hardware", false), false);
+        sw->onToggled = [](bool on) { Config::get().set("/recorder/hardware", on); };
+    }
+    auto* go = card->add<Button>(Flex::Direction::Row);
+    pill(go->setBackground("error", false))->setPadding({20, 16})->setSpacing(10)->setJustify(Align::Center);
+    go->pressedRadius = 16;
+    go->add<Icon>("radio_button_checked", 22)->setFill(true)->setColor("on_error", false);
+    go->add<Label>("Start recording")->setSize(16)->setWeight(600)->setColor("on_error", false);
+    go->onClicked = [output, &popup](uint32_t) {
+        // The panel fades out first, then the countdown
+        const int delay = Config::get().value<int>("/recorder/delay", 0) * 1000;
+        Screenshot::get().startRecording(Screenshot::RecordOptions::saved(), output, delay + 450);
+        popup.close();
+    };
+}
+
+void screenshot(Flex* card, Popup& popup) {
+    auto* head = card->add<Flex>(Flex::Direction::Row);
+    head->setSpacing(10);
+    head->add<Icon>("screenshot_region", 24)->setColor("primary", false);
+    auto* title = head->add<Label>("Screen capture");
+    title->setSize(22)->setWeight(600);
+    title->grow = true;
+    iconButton(head, "folder_open", [&popup] {
+        spawn("xdg-open '" + Screenshot::get().directory() + "'");
+        popup.close();
+    });
+
+    // Screenshot or Record: a connected pair, and that tab's panel under it
+    auto tab = std::make_shared<int>(Screenshot::get().recording() ? 1 : Config::get().value<int>("/screenshot/tab", 0));
+    auto* tabs = card->add<Flex>(Flex::Direction::Row);
+    tabs->setJustify(Align::Center);
+    auto* holder = card->add<Flex>(Flex::Direction::Column);
+    holder->setAlignItems(Align::Stretch);
+    auto fill = std::make_shared<std::function<void()>>();
+    *fill = [holder, tab, &popup] {
+        holder->clearChildren();
+        auto* b = holder->add<Flex>(Flex::Direction::Column);
+        b->setSpacing(12)->setAlignItems(Align::Stretch);
+        if (*tab == 0) screenshotBody(b, popup);
+        else recordBody(b, popup);
+        holder->requestLayout();
+    };
+    connectedGroup<int>(tabs, *tab, {{0, "Screenshot"}, {1, "Record"}}, [tab, fill](int v) {
+        *tab = v;
+        Config::get().set("/screenshot/tab", v);
+        // Not inside the click: the rebuild replaces what was clicked
+        EventLoop::get().defer([fill] { (*fill)(); });
+    });
+    (*fill)();
 }
 
 } // namespace m3::shell::panels

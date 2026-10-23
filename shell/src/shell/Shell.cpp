@@ -340,7 +340,7 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         opts.centredVertically = true;
         build = panels::clipboard;
     } else if (name == "screenshot") {
-        opts.width = 460;
+        opts.width = 540; // the Record tab's rows of choices
         opts.anchorX = -1;
         opts.centredVertically = true;
         build = panels::screenshot;
@@ -349,6 +349,11 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         opts.anchorX = -1;
         opts.centredVertically = true;
         build = [arg](ui::Flex* card, Popup& p) { panels::settings(card, p, arg); };
+    } else if (name == "files") {
+        opts.width = 980;
+        opts.anchorX = -1;
+        opts.centredVertically = true;
+        build = [arg](ui::Flex* card, Popup& p) { panels::filePicker(card, p, arg.empty() ? "wallpaper" : arg); };
     } else if (name == "whatsnew") {
         opts.width = 560;
         opts.anchorX = -1;

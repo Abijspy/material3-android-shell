@@ -313,6 +313,9 @@ void dashboard(Flex* card0, Popup&) {
 
 void wallpapers(Flex* card0, Popup& popup) {
     auto* head = header(card0, "wallpaper", "Wallpapers");
+    iconButton(head, "folder_open", [] {
+        if (open) open("files wallpaper");
+    });
     iconButton(head, "shuffle", [] {
         const auto all = Wallpaper::get().list();
         if (!all.empty()) Wallpaper::get().set(all[static_cast<size_t>(std::rand()) % all.size()]);

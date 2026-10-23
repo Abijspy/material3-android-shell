@@ -1,5 +1,5 @@
 project('material3ui', 'cpp', 'c',
-  version: '5.4.6',
+  version: '5.5.0',
   license: 'MIT',
   meson_version: '>= 1.1',
   default_options: ['cpp_std=c++20', 'warning_level=2', 'buildtype=debugoptimized'])
@@ -55,6 +55,7 @@ configure_file(output: 'build_config.h', configuration: conf)
 sources = files(
   'src/main.cpp',
   'src/greeter/Greeter.cpp',
+  'src/share/SharePicker.cpp',
   'src/polkit/listener.c',
   'src/core/Config.cpp',
   'src/core/EventLoop.cpp',
@@ -104,6 +105,7 @@ sources = files(
   'src/shell/ClockFaces.cpp',
   'src/shell/CurveEditor.cpp',
   'src/shell/DesktopEditor.cpp',
+  'src/shell/FilePicker.cpp',
   'src/shell/DesktopItems.cpp',
   'src/shell/HyprPages.cpp',
   'src/shell/KeyCapture.cpp',
@@ -138,10 +140,12 @@ install_data('data/icons/material3ui-settings.svg', 'data/icons/material3ui-hypr
 install_data('data/icons/material3ui-settings.svg', install_dir: get_option('datadir') / 'material3ui/icons')
 # Shipped data: emoji list, logo, wallpapers
 install_data('data/emojis.txt', install_dir: get_option('datadir') / 'material3ui')
+# Default profile pictures (Settings → Users → Change picture)
+install_subdir('data/avatars', install_dir: get_option('datadir') / 'material3ui')
 # What's new, the welcome tour and About → Changelog read it
 install_data('../CHANGELOG.md', install_dir: get_option('datadir') / 'material3ui')
 # One password per update: the root helper Settings starts, and its client
-install_data('data/update/material3ui-update-root', 'data/update/material3ui-root',
+install_data('data/update/material3ui-update-root', 'data/update/material3ui-root', 'data/share/material3ui-share-picker',
   install_dir: get_option('prefix') / 'lib/material3ui', install_mode: 'rwxr-xr-x')
 install_data('data/update/io.github.abijspy.material3ui.update.policy',
   install_dir: get_option('datadir') / 'polkit-1/actions')

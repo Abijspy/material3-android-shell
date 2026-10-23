@@ -11,6 +11,11 @@ url="https://github.com/Abijspy/material3-android-shell"
 license=(MIT)
 depends=(hyprland wayland libglvnd pango cairo libxkbcommon systemd-libs libpulse librsvg gdk-pixbuf2 polkit pam)
 makedepends=(meson ninja wayland-protocols wlr-protocols nlohmann-json)
+optdepends=('wf-recorder: screen recording'
+            'ffmpeg: GIF recordings'
+            'slurp: picking a region or a window to capture or share'
+            'grim: screenshots, and screen previews when sharing'
+            'xdg-desktop-portal-hyprland: screen sharing, with the shell'"'"'s picker')
 backup=(etc/pam.d/material3ui)
 options=(!debug)
 

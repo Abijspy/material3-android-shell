@@ -5,11 +5,14 @@
 #include "services/Mpris.h"
 #include "shell/PanelKit.h"
 #include "services/Notifications.h"
+#include "services/Screenshot.h"
+#include "shell/ClockFaces.h"
 #include "shell/bar/Widgets.h"
 #include "ui/Controls.h"
 #include "ui/Theme.h"
 
 #include <cmath>
+#include <format>
 #include <ctime>
 #include <linux/input-event-codes.h>
 
@@ -19,6 +22,22 @@ using namespace m3::ui;
 
 namespace {
 constexpr float kPadding = 14;
+
+// How long the screen recording has run, ticking each second
+class RecordingTime : public Label {
+public:
+    RecordingTime() {
+        sync();
+        m_ticker = std::make_unique<kit::SecondTicker>([this] { sync(); });
+    }
+
+private:
+    void sync() {
+        const long s = std::max<long>(0, std::time(nullptr) - Screenshot::get().recordingSince());
+        setText(std::format("{}:{:02}", s / 60, s % 60));
+    }
+    std::unique_ptr<kit::SecondTicker> m_ticker;
+};
 }
 
 Island::Island(OpenPopup open) : Button(Direction::Row), m_open(std::move(open)) {
@@ -48,6 +67,10 @@ Island::Island(OpenPopup open) : Button(Direction::Row), m_open(std::move(open))
         m_lastWorkspace = ws;
     });
     m_lastWorkspace = Hyprland::get().activeWorkspace("");
+    // A screen recording shows beside the clock, with its time; a click stops it
+    m_recording = Screenshot::get().recordingChanged.connect([this] {
+        if (m_mode == Mode::Clock) show(Mode::Clock);
+    });
     build();
     m_width.set(m_content->measure({800, 32}).w + kPadding * 2, false);
     tick();
@@ -98,6 +121,17 @@ void Island::build() {
     m_content->setSpacing(8);
     switch (m_mode) {
     case Mode::Clock: {
+        if (Screenshot::get().recording()) {
+            auto* rec = m_content->add<Button>(Direction::Row);
+            pill(rec->setBackground("error", false))->setPadding({8, 2})->setSpacing(4)->setAlignItems(Align::Center);
+            rec->fixedHeight = 24;
+            rec->add<Icon>("stop_circle", 16)->setFill(true)->setColor("on_error", false);
+            rec->add<RecordingTime>()->setSize(12)->setWeight(600)->setColor("on_error", false);
+            rec->tooltip = "Stop recording";
+            rec->onClicked = [](uint32_t b) {
+                if (b == BTN_LEFT) Screenshot::get().stopRecording();
+            };
+        }
         const auto* p = Mpris::get().active();
         // Music playing: its progress rings the equaliser beside the clock
         if (p && p->status == "Playing") m_content->add<kit::WavyRing>(26)->add<Icon>("graphic_eq", 14)->setColor("primary", false);

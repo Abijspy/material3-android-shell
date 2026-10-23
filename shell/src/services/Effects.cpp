@@ -12,6 +12,7 @@
 #include <format>
 #include <fstream>
 #include <sstream>
+#include <unistd.h>
 
 namespace fs = std::filesystem;
 
@@ -168,6 +169,29 @@ void Effects::applyAccessibility() {
     if (readAll(file) != lua) std::ofstream(file) << lua;
 }
 
+// Screen sharing: xdg-desktop-portal-hyprland's config, with the shell's
+// picker (unless switched off), whether apps may share again without
+// asking, and the frame rate. A file someone wrote by hand is left alone.
+void Effects::applySharing() {
+    const auto& c = Config::get();
+    const std::string file = paths::home() + "/.config/hypr/xdph.conf";
+    constexpr const char* kMarker = "# Written by Material3UI";
+    const std::string now = readAll(file);
+    if (!now.empty() && now.find(kMarker) == std::string::npos) return;
+    const bool picker = c.value<bool>("/share/picker", true) && access("/usr/lib/material3ui/material3ui-share-picker", X_OK) == 0;
+    std::string conf = std::string(kMarker) + " (Settings → Tools → Screen sharing).\n"
+                       "# Change it there; edits made here are overwritten. Delete this\n"
+                       "# comment to keep your own.\nscreencopy {\n";
+    if (picker) conf += "    custom_picker_binary = /usr/lib/material3ui/material3ui-share-picker\n";
+    conf += std::format("    allow_token_by_default = {}\n    max_fps = {}\n}}\n", c.value<bool>("/share/remember", false) ? "true" : "false",
+                        std::clamp(c.value<int>("/share/maxFps", 60), 15, 240));
+    if (conf == now) return;
+    std::ofstream(file) << conf;
+    // The portal reads it when it starts
+    log::info("screen sharing: xdph.conf written; restarting the portal");
+    run({"systemctl", "--user", "try-restart", "xdg-desktop-portal-hyprland.service"}, nullptr);
+}
+
 void Effects::apply() {
     auto& h = Hyprland::get();
     if (!h.available()) return;
@@ -175,6 +199,7 @@ void Effects::apply() {
     const auto& c = Config::get();
     applyInput();
     applyAccessibility();
+    applySharing();
     // The cursor: its theme (Hyprland Settings → Cursor) and size
     // (Accessibility). Hyprland's own, GTK's, and the variables apps
     // started from now on read

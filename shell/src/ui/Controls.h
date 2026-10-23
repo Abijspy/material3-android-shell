@@ -226,6 +226,7 @@ public:
     ImageView(float width, float height, Provider provider);
     void setProvider(Provider p);
     bool cover = false; // fill and crop instead of fit
+    float radius = 0;   // rounded corners (a circle at half the size)
 
 protected:
     SizeF doMeasure(SizeF) override { return {m_width, m_height}; }

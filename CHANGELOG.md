@@ -1,5 +1,18 @@
 # Changelog
 
+## v5.5.0 — 2026-10-20
+
+- **A built-in screen recorder.** The screenshot tool (Super+G) has a Record tab:
+  - What to record: a region, a window or a whole screen.
+  - Format: MP4, WebM, MKV or GIF (made with its own palette).
+  - Resolution (native, 1080p, 720p, 480p), frame rate and quality.
+  - Sound: none, system sound or the microphone.
+  - Hardware encoding (VA-API) and a countdown.
+  - While it records, the island shows a red timer; click it to stop. Super+Shift+R still starts and stops a recording straight away.
+- **Screen sharing with the shell's own picker.** When an app (a browser, a call) asks to share your screen, a Material You dialog asks what it may see: a screen (with a live preview), a window or a region you draw. You can let the app share again without asking. Settings → Tools → Screen sharing sets the picker, remembering and the frame rate.
+- **A Material You file picker** for wallpapers and your profile picture: places down the side, folders and picture previews, replacing the old system dialog.
+- **Default profile pictures:** twelve Material Expressive shapes to pick from in Settings → Users → Change picture.
+
 ## v5.4.6 — 2026-10-20
 
 - **Dock settings no longer reload the shell.** On a fresh or reset setup, opening Settings → Dock reloaded the whole shell, and with the dock switched on it could reload over and over. The dock's pinned apps are now saved once, and a setting that hasn't changed is never written again.

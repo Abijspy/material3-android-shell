@@ -22,6 +22,7 @@ private:
     std::string m_cursorTheme; // what setcursor last applied      // the cursor size last applied
     void applyInput();     // Settings → Mouse & touchpad, as input_custom.lua
     void applyAccessibility(); // the magnifier and colour correction
+    void applySharing();       // Settings → Tools → Screen sharing, as xdph.conf
     std::string m_a11yApplied;
     std::string m_inputApplied; // legacy configs: what the keywords last set
 };

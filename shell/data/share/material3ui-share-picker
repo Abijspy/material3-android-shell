@@ -1,0 +1,5 @@
+#!/bin/sh
+# xdg-desktop-portal-hyprland runs this when an app asks to share the
+# screen (screencopy:custom_picker_binary in ~/.config/hypr/xdph.conf,
+# written by Material3UI): the Material3UI picker, its choice on stdout.
+exec material3ui share-picker "$@"

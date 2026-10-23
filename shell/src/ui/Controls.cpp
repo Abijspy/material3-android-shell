@@ -648,7 +648,9 @@ void ImageView::doPaint(Renderer& r) {
     const float s = cover ? std::max(sx, sy) : std::min(sx, sy);
     const float dw = static_cast<float>(w) * s, dh = static_cast<float>(h) * s;
     if (cover) r.pushClip(b);
-    r.image(tex, {b.x + (b.w - dw) / 2, b.y + (b.h - dh) / 2, dw, dh});
+    // Rounded: the corners of what shows (the box, when it's covered)
+    const RectF at{b.x + (b.w - dw) / 2, b.y + (b.h - dh) / 2, dw, dh};
+    r.image(tex, at, 1, Radii(radius > 0 && dw <= b.w + 0.5f && dh <= b.h + 0.5f ? radius : radius > 0 ? radius * std::max(dw / b.w, dh / b.h) : 0));
     if (cover) r.popClip();
 }
 

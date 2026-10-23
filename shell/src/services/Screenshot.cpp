@@ -11,6 +11,8 @@
 #include <ctime>
 #include <filesystem>
 #include <format>
+#include <nlohmann/json.hpp>
+#include <unistd.h>
 
 namespace fs = std::filesystem;
 
@@ -108,40 +110,134 @@ void Screenshot::ocr() {
     });
 }
 
+Screenshot::RecordOptions Screenshot::RecordOptions::saved() {
+    const auto& c = Config::get();
+    RecordOptions o;
+    o.mode = std::clamp(c.value<int>("/recorder/mode", 0), 0, 2);
+    o.format = c.value<std::string>("/recorder/format", "mp4");
+    o.height = c.value<int>("/recorder/height", 0);
+    o.fps = c.value<int>("/recorder/fps", 60);
+    o.quality = c.value<std::string>("/recorder/quality", "high");
+    o.audio = c.value<std::string>("/recorder/audio", "off");
+    o.hardware = c.value<bool>("/recorder/hardware", false);
+    return o;
+}
+
+void Screenshot::stopRecording() {
+    // SIGINT lets wf-recorder finish the file
+    if (m_recording) run({"pkill", "-INT", "-x", "wf-recorder"}, nullptr);
+}
+
 void Screenshot::toggleRecording(bool region, const std::string& output) {
-    if (m_recording) {
-        // SIGINT lets wf-recorder finish the file
-        run({"pkill", "-INT", "-x", "wf-recorder"}, nullptr);
-        return;
+    if (m_recording) return stopRecording();
+    auto o = RecordOptions::saved();
+    o.mode = region ? 0 : 2;
+    startRecording(o, output);
+}
+
+void Screenshot::startRecording(const RecordOptions& o, const std::string& output, int delayMs) {
+    if (m_recording) return;
+    std::string dir = paths::home() + "/Videos/Recordings";
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    const bool gif = o.format == "gif";
+    const std::string ext = o.format == "webm" || o.format == "mkv" || gif ? o.format : "mp4";
+    const std::string file = dir + "/Recording_" + stamp() + "." + ext;
+    // A GIF is recorded as a video first, then made with its own palette
+    const std::string capture = gif ? paths::runtimeDir() + "/recording-" + stamp() + ".mp4" : file;
+
+    // The encoder and its quality
+    std::vector<std::string> args = {"wf-recorder", "-y", "-r", std::to_string(std::clamp(o.fps, 10, 120))};
+    const int level = o.quality == "low" ? 0 : o.quality == "medium" ? 1 : 2;
+    const bool vaapi = o.hardware && !gif && ext != "webm" && access("/dev/dri/renderD128", R_OK) == 0;
+    std::string filter;
+    if (vaapi) {
+        args.insert(args.end(), {"-c", "h264_vaapi", "-d", "/dev/dri/renderD128", "-p", "qp=" + std::to_string(30 - level * 5)});
+        filter = "scale_vaapi=format=nv12" + (o.height > 0 ? ":w=-2:h=" + std::to_string(o.height) : std::string());
+    } else if (ext == "webm") {
+        args.insert(args.end(), {"-c", "libvpx-vp9", "-p", "crf=" + std::to_string(40 - level * 8), "-p", "b=0", "-p", "deadline=realtime",
+                                 "-p", "cpu-used=8"});
+        if (o.height > 0) filter = "scale=-2:" + std::to_string(o.height);
+    } else {
+        args.insert(args.end(), {"-c", "libx264", "-p", "crf=" + std::to_string(28 - level * 5), "-p", "preset=veryfast"});
+        if (o.height > 0) filter = "scale=-2:" + std::to_string(o.height);
     }
-    auto start = [this](const std::vector<std::string>& target) {
-        std::string dir = paths::home() + "/Videos/Recordings";
-        std::error_code ec;
-        fs::create_directories(dir, ec);
-        const std::string file = dir + "/Recording_" + stamp() + ".mp4";
-        std::vector<std::string> argv = {"wf-recorder"};
-        argv.insert(argv.end(), target.begin(), target.end());
-        argv.insert(argv.end(), {"-f", file});
+    if (!filter.empty()) args.insert(args.end(), {"-F", filter});
+    if (ext == "webm" && o.audio != "off") args.insert(args.end(), {"-C", "libopus"});
+
+    auto launch = [this, args, capture, file, gif, o](std::vector<std::string> argv, const std::string& audioDevice) {
+        if (!audioDevice.empty() && !gif) argv.push_back("--audio=" + audioDevice);
+        argv.insert(argv.end(), {"-f", capture});
         m_recording = true;
+        m_since = std::time(nullptr);
         recordingChanged.emit();
-        run(argv, [this, file](int code, const std::string&) {
+        run(argv, [this, capture, file, gif](int code, const std::string&) {
             m_recording = false;
+            m_since = 0;
             recordingChanged.emit();
-            if (code < 0) {
+            std::error_code ec;
+            if (code < 0 || !fs::exists(capture, ec)) {
                 run({"notify-send", "-a", "Screen recording", "Recording failed", "Is wf-recorder installed?"}, nullptr);
                 return;
             }
-            run({"notify-send", "-a", "Screen recording", "Recording saved", fs::path(file).filename().string()}, nullptr);
+            if (!gif) {
+                run({"notify-send", "-a", "Screen recording", "Recording saved", fs::path(file).filename().string()}, nullptr);
+                return;
+            }
+            // 15 frames a second, at most 960 wide, with its own palette
+            run({"notify-send", "-a", "Screen recording", "Making the GIF…"}, nullptr);
+            run({"ffmpeg", "-y", "-loglevel", "error", "-i", capture, "-vf",
+                 "fps=15,scale='min(960,iw)':-2:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer",
+                 file},
+                [capture, file](int c, const std::string&) {
+                    std::error_code e;
+                    fs::remove(capture, e);
+                    run({"notify-send", "-a", "Screen recording", c == 0 ? "GIF saved" : "The GIF couldn't be made",
+                         fs::path(file).filename().string()},
+                        nullptr);
+                });
         });
     };
-    if (!region) {
-        start(output.empty() ? std::vector<std::string>{} : std::vector<std::string>{"-o", output});
+    // Where the sound comes from: the speakers' monitor, or the microphone
+    auto withAudio = [launch, o](std::vector<std::string> argv) {
+        if (o.audio == "off" || o.format == "gif") return launch(argv, "");
+        run({"pactl", o.audio == "mic" ? "get-default-source" : "get-default-sink"}, [launch, argv, o](int, const std::string& out) {
+            const std::string dev = trimmed(out);
+            launch(argv, dev.empty() ? "" : o.audio == "mic" ? dev : dev + ".monitor");
+        });
+    };
+    auto begin = [withAudio, args, o, output](std::vector<std::string> target) {
+        std::vector<std::string> argv = args;
+        argv.insert(argv.end(), target.begin(), target.end());
+        withAudio(argv);
+    };
+    // What to record: picked now, then the countdown, then it starts
+    auto after = [delayMs](std::function<void()> fn) {
+        if (delayMs <= 0) return fn();
+        EventLoop::get().addTimer(delayMs, std::move(fn));
+    };
+    if (o.mode == 2) {
+        after([begin, output] { begin(output.empty() ? std::vector<std::string>{} : std::vector<std::string>{"-o", output}); });
         return;
     }
-    run({"slurp", "-d"}, [start](int code, const std::string& out) {
+    std::string boxes;
+    if (o.mode == 1) {
+        // A window: slurp offers the visible windows' rectangles to pick from
+        if (auto j = Hyprland::get().requestJson("clients"); j && j->is_array()) {
+            for (const auto& c : *j) {
+                if (!c.value("mapped", true) || c.value("hidden", false)) continue;
+                const auto& at = c.value("at", nlohmann::json::array()), &size = c.value("size", nlohmann::json::array());
+                if (at.size() == 2 && size.size() == 2)
+                    boxes += std::format("{},{} {}x{}\n", at[0].get<int>(), at[1].get<int>(), size[0].get<int>(), size[1].get<int>());
+            }
+        }
+    }
+    std::vector<std::string> slurp = {"slurp", "-d"};
+    if (o.mode == 1) slurp.push_back("-r");
+    run(slurp, [begin, after](int code, const std::string& out) {
         const std::string geometry = trimmed(out);
-        if (code == 0 && !geometry.empty()) start({"-g", geometry});
-    });
+        if (code == 0 && !geometry.empty()) after([begin, geometry] { begin({"-g", geometry}); });
+    }, boxes);
 }
 
 void Screenshot::shoot(const std::vector<std::string>& target) {

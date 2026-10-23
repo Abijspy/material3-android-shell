@@ -31,6 +31,8 @@ public:
     // Index the icon themes again and forget icons that were missing, for
     // apps installed since (their icons arrive with them)
     void rescan();
+    // A file changed (a new ~/.face): its pictures are decoded again
+    void forget(const std::string& path);
     // ARGB32 big-endian pixmap (StatusNotifierItem IconPixmap)
     const Texture* pixmap(const std::string& key, int w, int h, const std::vector<uint8_t>& argb);
 

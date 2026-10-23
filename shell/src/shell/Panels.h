@@ -66,6 +66,9 @@ inline std::function<void(const std::string& name, const std::string& arg, float
 inline std::function<void()> lock;
 // Set by the shell: turn the bars' edit mode on or off
 inline std::function<void(bool)> editBar;
+// A file picker for pictures: `purpose` "wallpaper" (sets it) or "avatar"
+// (your picture, ~/.face, with the default pictures first)
+void filePicker(ui::Flex* card, Popup& popup, const std::string& purpose);
 // The first-run tour, in its own window
 void welcome(ui::Flex* card, Popup& popup);
 // After an update: the release notes since `since` (empty: this release's)
