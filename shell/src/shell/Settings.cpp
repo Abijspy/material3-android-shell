@@ -755,8 +755,7 @@ void appearancePage(Flex* page, Popup& popup) {
                            [](std::string) { recolour(); });
 
     // Accent: the wallpaper, or a seed colour for Matugen
-    auto accent = row(colour, "colorize", "Accent", "");
-    accentSwatches(accent.row);
+    accentRows(colour);
 
     appThemingRows(page);
 
@@ -801,6 +800,7 @@ void stylePage(Flex* page, Popup&) {
     choiceRow<double>(shape, "animation", "Animation speed", "The shell's panels and pages", "/appearance/animationSpeed", 1.0,
                       {{0.0, "Off"}, {0.6, "Fast"}, {1.0, "Normal"}, {1.5, "Relaxed"}});
     hyprLink(shape, "animation", "Window animations", "Each animation's speed, curve and style", "hypr-animations");
+    switchRow(shape, "palette", "Themed icons", "Settings' icons take on your wallpaper's colours, as Android's do", "/appearance/themedIcons", true);
 
     auto* reset = group(page, "Defaults");
     auto r = row(reset, "restart_alt", "Reset look & feel", "Blur, opacity, corners and motion");
@@ -3413,7 +3413,45 @@ HueChip categoryColours(const std::string& id) {
         if (std::ranges::find(ids, id) != ids.end()) pair = p;
     const Color surface = Theme::get().color("surface");
     const bool dark = 0.2126f * surface.r + 0.7152f * surface.g + 0.0722f * surface.b < 0.5f;
-    const Color pastel = *Color::fromHex(pair->pastel), deep = *Color::fromHex(pair->deep);
+    Color pastel = *Color::fromHex(pair->pastel), deep = *Color::fromHex(pair->deep);
+    // Themed (Look & feel → Themed icons), as Android harmonises colours with
+    // the wallpaper: each hue turned towards the palette's, half the way and
+    // at most 15° (Material's harmonising), so categories stay apart but all
+    // belong to it
+    if (Config::get().value<bool>("/appearance/themedIcons", true)) {
+        auto toHsl = [](const Color& c, float& h, float& s, float& l) {
+            const float mx = std::max({c.r, c.g, c.b}), mn = std::min({c.r, c.g, c.b});
+            l = (mx + mn) / 2;
+            const float d = mx - mn;
+            s = d == 0 ? 0 : d / (1 - std::abs(2 * l - 1));
+            if (d == 0) h = 0;
+            else if (mx == c.r) h = 60 * std::fmod((c.g - c.b) / d + 6, 6.0f);
+            else if (mx == c.g) h = 60 * ((c.b - c.r) / d + 2);
+            else h = 60 * ((c.r - c.g) / d + 4);
+        };
+        auto fromHsl = [](float h, float s, float l) {
+            auto f = [&](float n) {
+                const float k = std::fmod(n + h / 30.0f, 12.0f), a = s * std::min(l, 1 - l);
+                return l - a * std::max(-1.0f, std::min({k - 3, 9 - k, 1.0f}));
+            };
+            return Color{f(0), f(8), f(4), 1};
+        };
+        float ph, ps, pl;
+        toHsl(Theme::get().color("primary"), ph, ps, pl);
+        auto harmonise = [&](Color& c) {
+            float h, s, l;
+            toHsl(c, h, s, l);
+            if (s < 0.05f) { // the greys take on a touch of the palette, as Android's neutrals do
+                c = fromHsl(ph, std::min(0.12f, ps), l);
+                return;
+            }
+            float diff = std::fmod(ph - h + 540.0f, 360.0f) - 180.0f;
+            const float turn = std::clamp(diff * 0.5f, -15.0f, 15.0f);
+            c = fromHsl(std::fmod(h + turn + 360.0f, 360.0f), s, l);
+        };
+        harmonise(pastel);
+        harmonise(deep);
+    }
     return dark ? HueChip{deep, pastel} : HueChip{pastel, deep};
 }
 
@@ -3681,6 +3719,18 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
         items->push_back({b, chip, icon, label, summary, pagesOf(Hypr)[i].id});
         if (initial == pagesOf(Hypr)[i].id) first = i;
     }
+    // A new wallpaper (or theme) recolours the icons at once, as Android's do
+    auto* recolour = side->add<Live>();
+    recolour->sync = [items, shown] {
+        for (size_t i = 0; i < items->size(); ++i) {
+            auto& it = (*items)[i];
+            const auto c = categoryColours(it.id);
+            it.chip->setBackground(ColorRef(c.chip));
+            it.icon->setFill(i == *shown)->setColor(ColorRef(c.glyph));
+        }
+    };
+    recolour->watch(Theme::get().changed);
+    recolour->watch(Config::get().changed);
     // Universal search, as Android's: every setting by name, not just the
     // pages. The index is read from the pages themselves, built out of view
     // once (their row titles and section headings).

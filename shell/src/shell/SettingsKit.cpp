@@ -1,6 +1,7 @@
 #include "shell/SettingsKit.h"
 
 #include "core/Config.h"
+#include "core/EventLoop.h"
 #include "services/Wallpaper.h"
 
 #include <linux/input-event-codes.h>
@@ -41,61 +42,111 @@ Row row(Node* group, const std::string& icon, const std::string& title, const st
     return {r, t, s};
 }
 
-Flex* accentSwatches(Node* parent) {
-    auto* swatches = parent->add<Flex>(Flex::Direction::Row);
-    swatches->setSpacing(6);
-    const std::vector<std::string> seeds = {"", "#6750a4", "#0061a4", "#006d3b", "#8b5000", "#b3261e", "#984061", "#006a6a"};
-    auto chosen = std::make_shared<std::string>(Config::get().value<std::string>("/appearance/accent", ""));
+namespace {
+// Takes nothing, shows nothing: tells a callback whether its row still exists
+class AliveFlag : public Node {
+public:
+    std::shared_ptr<bool> alive;
+    Connection connection; // ends with the row
+    ~AliveFlag() override {
+        if (alive) *alive = false;
+    }
+
+protected:
+    SizeF doMeasure(SizeF) override { return {0, 0}; }
+};
+} // namespace
+
+void accentRows(Node* group) {
+    // One choice across both rows: the ✓ moves to whichever was picked
     struct Dot {
+        std::string value;
         Button* button;
         Icon* tick;
-        Icon* wallpaper; // the "from the wallpaper" swatch's own icon
+        Icon* own; // the automatic swatch's wallpaper icon
     };
-    auto dots = std::make_shared<std::vector<Dot>>();
-    auto mark = [dots, seeds, chosen] {
-        for (size_t i = 0; i < dots->size(); ++i) {
-            const bool on = seeds[i] == *chosen;
-            auto& d = (*dots)[i];
+    struct State {
+        std::string chosen;
+        std::vector<Dot> dots;
+        std::shared_ptr<bool> alive = std::make_shared<bool>(true);
+    };
+    auto st = std::make_shared<State>();
+    st->chosen = Config::get().value<std::string>("/appearance/accent", "");
+    auto mark = [st] {
+        for (auto& d : st->dots) {
+            const bool on = d.value == st->chosen;
             d.button->setBorder(on ? 2 : 0, "on_surface");
             d.tick->setVisible(on);
-            if (d.wallpaper) d.wallpaper->setVisible(!on);
+            if (d.own) d.own->setVisible(!on);
         }
     };
-    for (const auto& seed : seeds) {
-        auto* b = swatches->add<Button>();
+    auto swatch = [st, mark](Flex* line, const std::string& value, const std::string& colour, const std::string& tip) {
+        auto* b = line->add<Button>();
         pill(b)->fixedWidth = 30;
         b->fixedHeight = 30;
         b->pressedRadius = 6;
         b->setJustify(Align::Center);
-        Icon* wallpaper = nullptr;
-        std::string tickColour = "on_surface";
-        if (seed.empty()) {
+        b->tooltip = tip;
+        Icon* own = nullptr;
+        ColorRef tickColour("on_surface");
+        if (colour.empty()) {
             b->setBackground("surface_container_highest", false);
-            b->tooltip = "From the wallpaper";
-            wallpaper = b->add<Icon>("wallpaper", 16);
-            wallpaper->setColor("on_surface_variant", false);
+            own = b->add<Icon>("wallpaper", 16);
+            own->setColor("on_surface_variant", false);
         } else {
-            const Color c = *Color::fromHex(seed);
+            const Color c = *Color::fromHex(colour);
             b->setBackground(ColorRef(c), false);
             // White on dark swatches, black on light ones
             const float luma = 0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b;
-            tickColour = luma < 0.5f ? "#ffffff" : "#000000";
+            tickColour = ColorRef(luma < 0.5f ? Color{1, 1, 1, 1} : Color{0, 0, 0, 1});
         }
         auto* tick = b->add<Icon>("check", 18);
-        tick->setWeight(700);
-        if (tickColour.starts_with('#')) tick->setColor(ColorRef(*Color::fromHex(tickColour)), false);
-        else tick->setColor(tickColour, false);
-        b->onClicked = [seed, chosen, mark](uint32_t button) {
+        tick->setWeight(700)->setColor(tickColour, false);
+        b->onClicked = [st, value, mark](uint32_t button) {
             if (button != BTN_LEFT) return;
-            *chosen = seed;
+            st->chosen = value;
             mark();
-            Config::get().set("/appearance/accent", seed);
+            Config::get().set("/appearance/accent", value);
             Wallpaper::get().recolour();
         };
-        dots->push_back({b, tick, wallpaper});
-    }
+        st->dots.push_back({value, b, tick, own});
+    };
+
+    // The wallpaper's own colours, as Android offers them (the first: picked
+    // for you, the most colourful)
+    auto wall = row(group, "wallpaper", "Wallpaper colours", "Taken from your wallpaper");
+    auto* wallLine = wall.row->add<Flex>(Flex::Direction::Row);
+    wallLine->setSpacing(6);
+    // The page may go before Matugen answers: this goes with it
+    auto* flag = wall.row->add<AliveFlag>();
+    flag->alive = st->alive;
+    // Filled now, and again when the wallpaper changes
+    auto fillWall = std::make_shared<std::function<void()>>();
+    *fillWall = [st, wallLine, swatch, mark] {
+        std::erase_if(st->dots, [](const Dot& d) { return d.value.empty() || d.value.starts_with("wallpaper:"); });
+        wallLine->clearChildren();
+        swatch(wallLine, "", "", "Picked for you");
+        mark();
+        Wallpaper::get().sourceColours([st, wallLine, swatch, mark, alive = st->alive](const std::vector<std::string>& colours) {
+            if (!*alive) return;
+            for (size_t i = 0; i < colours.size(); ++i) swatch(wallLine, "wallpaper:" + std::to_string(i), colours[i], colours[i]);
+            st->chosen = Config::get().value<std::string>("/appearance/accent", "");
+            mark();
+            wallLine->requestLayout();
+        });
+    };
+    (*fillWall)();
+    flag->connection = Wallpaper::get().changed.connect([fillWall, alive = st->alive] {
+        if (*alive) EventLoop::get().defer([fillWall, alive] {
+                if (*alive) (*fillWall)();
+            });
+    });
+    // And the basic colours, whatever the wallpaper
+    auto basic = row(group, "palette", "Basic colours", "The same on any wallpaper");
+    auto* basicLine = basic.row->add<Flex>(Flex::Direction::Row);
+    basicLine->setSpacing(6);
+    for (const char* seed : {"#6750a4", "#0061a4", "#006d3b", "#8b5000", "#b3261e", "#984061", "#006a6a"}) swatch(basicLine, seed, seed, seed);
     mark();
-    return swatches;
 }
 
 Button* pillButton(Node* parent, const std::string& label, bool primary, std::function<void()> fn, const std::string& icon) {

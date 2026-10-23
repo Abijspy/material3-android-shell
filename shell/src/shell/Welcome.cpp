@@ -121,8 +121,7 @@ void tourLook(Flex* page) {
         Config::get().set("/background/darkmode", on);
         Wallpaper::get().recolour();
     };
-    auto accent = row(g, "colorize", "Accent", "From the wallpaper, or a colour of your own");
-    accentSwatches(accent.row);
+    accentRows(g);
     auto wp = row(g, "wallpaper", "Wallpaper", "A few come with the shell; add your own to the folder");
     pillButton(wp.row, "Choose…", false, [] {
         if (open) open("wallpapers");

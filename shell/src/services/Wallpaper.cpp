@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <nlohmann/json.hpp>
 #include <fstream>
+#include <sstream>
 #include <unistd.h>
 
 namespace fs = std::filesystem;
@@ -89,6 +90,8 @@ std::vector<std::string> Wallpaper::list() const {
 
 void Wallpaper::set(const std::string& p) {
     if (p.empty()) return;
+    // A wallpaper colour belonged to the old picture: back to the new one's own
+    if (Config::get().value<std::string>("/appearance/accent", "").starts_with("wallpaper:")) Config::get().set("/appearance/accent", "");
     Config::get().set("/background/wallpaperPath", "file://" + p);
     m_last = p;
     changed.emit();
@@ -103,6 +106,8 @@ void Wallpaper::recolour() {
     // A chosen accent colour seeds the palette instead of the wallpaper
     const auto accent = Config::get().value<std::string>("/appearance/accent", "");
     std::vector<std::string> cmd = {"matugen"};
+    // "wallpaper:N": the wallpaper's Nth colour (Android's wallpaper colours)
+    const bool fromWallpaper = accent.starts_with("wallpaper:");
     if (accent.size() == 7 && accent[0] == '#') cmd.insert(cmd.end(), {"color", "hex", accent});
     else if (!path().empty()) cmd.insert(cmd.end(), {"image", path()});
     else return;
@@ -111,7 +116,8 @@ void Wallpaper::recolour() {
     if (const auto filtered = filteredConfig(); !filtered.empty()) cmd.insert(cmd.end(), {"--config", filtered});
     // Matugen 4 asks which colour to use when an image offers several, and
     // fails without a terminal to ask on: take the most colourful one
-    cmd.insert(cmd.end(), {"--prefer", "saturation"});
+    if (fromWallpaper) cmd.insert(cmd.end(), {"--source-color-index", std::to_string(std::clamp(std::atoi(accent.c_str() + 10), 0, 4))});
+    else cmd.insert(cmd.end(), {"--prefer", "saturation"});
     run(cmd, [](int code, const std::string&) {
         if (code != 0) {
             log::warn("matugen failed ({}); the palette is unchanged", code);
@@ -192,6 +198,25 @@ std::string Wallpaper::filteredConfig() const {
     fs::create_directories(paths::stateDir(), ec);
     std::ofstream(path) << out;
     return path;
+}
+
+void Wallpaper::sourceColours(std::function<void(const std::vector<std::string>&)> done) {
+    static std::string cachedFor;
+    static std::vector<std::string> cached;
+    const std::string image = path();
+    if (image == cachedFor && !cached.empty()) return done(cached);
+    run({"matugen", "image", image, "--show-source-colors", "--dry-run"}, [image, done](int, const std::string& out) {
+        std::vector<std::string> colours;
+        std::stringstream ss(out);
+        for (std::string l; std::getline(ss, l);) {
+            const auto at = l.find('#');
+            if (at != std::string::npos && l.size() >= at + 7) colours.push_back(l.substr(at, 7));
+            if (colours.size() == 4) break;
+        }
+        cachedFor = image;
+        cached = colours;
+        done(colours);
+    });
 }
 
 void Wallpaper::next(int step) {

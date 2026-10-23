@@ -2,6 +2,7 @@
 
 #include "core/Signal.h"
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -22,6 +23,9 @@ public:
     void set(const std::string& path);
     // Re-runs Matugen (after the scheme, mode or accent changes)
     void recolour();
+    // The wallpaper's own colours, most dominant first (what Android offers
+    // as "Wallpaper colours"); `done` runs once Matugen has looked
+    void sourceColours(std::function<void(const std::vector<std::string>&)> done);
     // Matugen's templates (apps it themes), from ~/.config/matugen/config.toml
     std::vector<std::string> templates() const;
     // Switched off in Settings (Wallpaper & style → App theming): left out of
