@@ -61,6 +61,7 @@ sources = files(
   'src/quickshare/Crypto.cpp',
   'src/quickshare/Mdns.cpp',
   'src/quickshare/QuickShare.cpp',
+  'src/quickshare/Qr.cpp',
   'src/polkit/listener.c',
   'src/core/Config.cpp',
   'src/core/EventLoop.cpp',
@@ -86,6 +87,7 @@ sources = files(
   'src/services/Network.cpp',
   'src/services/Notifications.cpp',
   'src/services/Packages.cpp',
+  'src/services/PacmanLog.cpp',
   'src/services/Polkit.cpp',
   'src/services/Search.cpp',
   'src/services/Screenshot.cpp',
@@ -178,3 +180,7 @@ executable('material3ui', sources, protocol_sources,
   # Function names in crash.log's backtraces
   link_args: ['-rdynamic'],
   install: true)
+
+# Unit tests: meson test -C <build dir>
+test('pacman-log', executable('pacman_log_test', 'tests/pacman_log_test.cpp', 'src/services/PacmanLog.cpp',
+  include_directories: include_directories('src')))

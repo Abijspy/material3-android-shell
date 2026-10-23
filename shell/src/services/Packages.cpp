@@ -7,6 +7,7 @@
 #include "core/EventLoop.h"
 #include "core/Process.h"
 #include "services/Backups.h"
+#include "services/PacmanLog.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -148,26 +149,6 @@ void Packages::runTask(const std::string& label, const std::string& script, cons
     });
 }
 
-namespace {
-
-// When something started, from its /proc entry (0: unknown)
-std::time_t processStart(const char* comm) {
-    std::error_code ec;
-    for (const auto& e : std::filesystem::directory_iterator("/proc", ec)) {
-        const std::string pid = e.path().filename().string();
-        if (pid.empty() || !std::isdigit(static_cast<unsigned char>(pid[0]))) continue;
-        std::ifstream in(e.path() / "comm");
-        std::string name;
-        std::getline(in, name);
-        if (name != comm) continue;
-        struct stat st {};
-        if (::stat(e.path().c_str(), &st) == 0) return st.st_mtime;
-    }
-    return 0;
-}
-
-} // namespace
-
 void Packages::checkRestart() {
     Restart r;
     // A new kernel: the running one's modules are gone
@@ -191,7 +172,7 @@ void Packages::checkRestart() {
         for (std::string l; std::getline(st, l);)
             if (l.starts_with("btime ")) boot = std::atoll(l.c_str() + 6);
     }
-    const std::time_t session = processStart("Hyprland");
+    const std::time_t session = pacmanlog::processStart("Hyprland");
     std::ifstream log("/var/log/pacman.log");
     log.seekg(0, std::ios::end);
     const auto size = static_cast<long long>(log.tellg());
@@ -205,14 +186,10 @@ void Packages::checkRestart() {
                p.starts_with("hyprgraphics") || p == "xorg-xwayland" || p == "wayland";
     };
     for (std::string line; std::getline(log, line);) {
-        // [2026-10-20T08:28:20+0530] [ALPM] upgraded linux (6.17.1-1 -> 6.17.2-1)
-        const auto at = line.find("] [ALPM] upgraded ");
-        if (line.size() < 26 || line[0] != '[' || at == std::string::npos) continue;
-        std::tm tm{};
-        if (!strptime(line.c_str() + 1, "%Y-%m-%dT%H:%M:%S%z", &tm)) continue;
-        const std::time_t when = timegm(&tm) - tm.tm_gmtoff;
-        const std::string rest = line.substr(at + 18);
-        const std::string pkg = rest.substr(0, rest.find(' '));
+        pacmanlog::Upgrade up;
+        if (!pacmanlog::parseUpgrade(line, up)) continue;
+        const std::time_t when = up.when;
+        const std::string& pkg = up.package;
         const bool sys = when > boot && system(pkg), ses = session && when > session && sessionPkg(pkg);
         if (!sys && !ses) continue;
         r.system = r.system || sys;
