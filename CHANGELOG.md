@@ -1,5 +1,20 @@
 # Changelog
 
+## v5.5.1 — 2026-10-23
+
+- **Quick Share, built in.** Send and receive files with Android phones and Chromebooks on the same Wi-Fi, with no app to install:
+  - **Receiving:** each transfer is asked first, with the sender, the files and the PIN to match with the phone's. Files go to Downloads; links and text go to the clipboard.
+  - **Sending:** Settings → Connected devices → Send files, "Open with → Quick Share" in a file manager, or `material3ui msg quickshare send <files>`. Pick a device nearby, then check the PIN and watch the progress.
+  - Settings → Connected devices sets whether you're visible and the name others see. A Quick Settings tile switches visibility.
+  - Phones find this computer through a Bluetooth signal when sending, so turn Bluetooth on. With it off, a phone shows up only when its Quick Share is set to "Everyone".
+- **A calendar.** Add your own events, or subscribe to Google, Outlook, Nextcloud or other calendars by their ICS link. Events can repeat, and you get a reminder notification before each one. The dashboard's month view marks days with events and shows a day's agenda; there's an Agenda widget for the desktop and lock screen. Manage it in Settings → Calendar.
+- **Wallpaper colours, as on Android 16.** The accent picker offers your wallpaper's own colours as well as the basic ones.
+- **Settings icons in Android 16's colours.** With themed icons on (Look & feel), they shift towards your theme's colours.
+- **Emoji in colour.** Emoji in the launcher (and everywhere else) were drawn as flat silhouettes.
+- **The media player's title scrolls** instead of running past the card's edge.
+- **A clearer updates list.** Software & updates groups pending updates by source and shows the installed version → the new one.
+- **Indic and other scripts:** noto-fonts is now among the installer's fonts.
+
 ## v5.5.0 — 2026-10-20
 
 - **A built-in screen recorder.** The screenshot tool (Super+G) has a Record tab:
