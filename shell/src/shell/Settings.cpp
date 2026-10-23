@@ -3382,45 +3382,39 @@ void keyboardPage(Flex* page, Popup&) {
     }, "open_in_new");
 }
 
-// Android 16's settings icons: each category its own hue (blue for
-// connections and apps, pink for sound and notifications, orange for the
-// look, yellow for storage, green for power, teal for privacy, purple for
-// accessibility, grey for the system), a tinted circle behind a glyph of
-// the same hue. Light themes: pastel behind dark; dark themes: deep behind
-// pastel.
+// Android 16's settings icons: Material Symbols in a tinted circle, each
+// category its own colour, as Google's (sampled from Android 16's Settings:
+// pastel behind a deep glyph of the same hue). Dark themes swap the pair:
+// the deep shade behind, the pastel glyph on it.
 struct HueChip {
     Color chip, glyph;
 };
 HueChip categoryColours(const std::string& id) {
-    // Hue in degrees, and how colourful (0: grey)
-    struct Hue {
-        float h, s;
+    struct Pair {
+        const char* pastel;
+        const char* deep;
     };
-    static const std::vector<std::pair<std::vector<std::string>, Hue>> table = {
-        {{"network", "bluetooth", "hypr-windows", "hypr-layouts", "hypr-groups"}, {212, 0.75f}},
-        {{"defaults", "hypr-input"}, {225, 0.85f}},
-        {{"notifications", "sound", "hypr-animations"}, {330, 0.70f}},
-        {{"display", "appearance", "style", "bar", "dock", "hypr-decoration", "hypr-monitors"}, {28, 0.85f}},
-        {{"storage", "monitor", "weather", "hypr-render"}, {45, 0.85f}},
-        {{"battery", "hypr-startup", "packages"}, {135, 0.55f}},
-        {{"lock", "lockscreen", "users", "hypr-window-rules", "hypr-layer-rules", "hypr-workspace-rules", "hypr-profiles"}, {185, 0.65f}},
-        {{"hypr-debug"}, {0, 0.75f}},
-        {{"accessibility", "tools", "hypr-plugins"}, {270, 0.55f}},
+    static const Pair blue{"#bae6fa", "#004a63"}, apps{"#cddff6", "#1a4a8a"}, pink{"#f6d8ee", "#7a1e5a"},
+        orange{"#fad8bc", "#6a3a0a"}, yellow{"#fcde7a", "#5c4300"}, green{"#c0e4ba", "#0c4c23"}, grey{"#dedede", "#424242"},
+        teal{"#a8eafa", "#00505f"}, red{"#fcd2d2", "#6a1e1e"}, purple{"#ecdcfc", "#4c258e"};
+    static const std::vector<std::pair<std::vector<std::string>, const Pair*>> table = {
+        {{"network", "bluetooth", "weather", "hypr-windows", "hypr-layouts", "hypr-groups"}, &blue},
+        {{"defaults", "hypr-input"}, &apps},
+        {{"notifications", "sound", "hypr-animations"}, &pink},
+        {{"display", "appearance", "style", "bar", "dock", "hypr-decoration", "hypr-monitors"}, &orange},
+        {{"storage", "monitor", "hypr-render"}, &yellow},
+        {{"battery", "packages", "hypr-startup"}, &green},
+        {{"lock", "lockscreen", "users", "hypr-window-rules", "hypr-layer-rules", "hypr-workspace-rules", "hypr-profiles"}, &teal},
+        {{"hypr-debug"}, &red},
+        {{"accessibility", "tools", "hypr-plugins"}, &purple},
     };
-    Hue hue{220, 0.08f}; // the rest: system, about, keyboard, mouse…
-    for (const auto& [ids, h] : table)
-        if (std::ranges::find(ids, id) != ids.end()) hue = h;
+    const Pair* pair = &grey; // the rest: system, about, keyboard, mouse…
+    for (const auto& [ids, p] : table)
+        if (std::ranges::find(ids, id) != ids.end()) pair = p;
     const Color surface = Theme::get().color("surface");
     const bool dark = 0.2126f * surface.r + 0.7152f * surface.g + 0.0722f * surface.b < 0.5f;
-    auto hsl = [](float h, float s, float l) {
-        auto f = [&](float n) {
-            const float k = std::fmod(n + h / 30.0f, 12.0f), a = s * std::min(l, 1 - l);
-            return l - a * std::max(-1.0f, std::min({k - 3, 9 - k, 1.0f}));
-        };
-        return Color{f(0), f(8), f(4), 1};
-    };
-    return dark ? HueChip{hsl(hue.h, hue.s * 0.6f, 0.32f), hsl(hue.h, hue.s, 0.84f)}
-                : HueChip{hsl(hue.h, hue.s, 0.88f), hsl(hue.h, hue.s * 0.9f, 0.32f)};
+    const Color pastel = *Color::fromHex(pair->pastel), deep = *Color::fromHex(pair->deep);
+    return dark ? HueChip{deep, pastel} : HueChip{pastel, deep};
 }
 
 struct PageDef {
