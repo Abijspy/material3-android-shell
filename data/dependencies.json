@@ -297,6 +297,11 @@
       "name": "noto-fonts-cjk",
       "command": "fc-list",
       "description": "CJK Font (Japanese, Chinese, Korean)"
+    },
+    {
+      "name": "noto-fonts",
+      "command": "fc-list",
+      "description": "Noto fonts for Indic, Arabic, Thai and other scripts"
     }
   ],
   "livewallpaper": [

@@ -35,6 +35,9 @@ public:
     void reload();
     Signal<> changed; // the list reloaded: apps were installed or removed
     void launch(const App& app);
+    // An installed Quick Share app (Android's file sharing, open source:
+    // RQuickShare, Packet), or nullptr
+    const App* quickShare() const;
     int launches(const std::string& id) const;
     // Icon for a window class (Hyprland's "class"), via StartupWMClass or the desktop id
     std::string iconForClass(const std::string& cls) const;

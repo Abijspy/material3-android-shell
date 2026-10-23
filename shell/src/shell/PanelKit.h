@@ -10,6 +10,10 @@
 #include <string>
 #include <vector>
 
+namespace m3::ui {
+class Marquee;
+}
+
 // Building blocks shared by the popup panels
 namespace m3::shell::kit {
 
@@ -153,10 +157,14 @@ public:
 
 protected:
     void doPaint(Renderer& r) override;
+    // The title and artist take the card's width as it is, scrolling
+    // (the title) or cut (the artist) within it
+    void doArrange() override;
 
 private:
     void sync();
-    ui::Label *m_app, *m_title, *m_artist, *m_elapsed, *m_left;
+    ui::Label *m_app, *m_artist, *m_elapsed, *m_left;
+    ui::Marquee* m_title;
     ui::Flex* m_progressBox;
     WavyProgress* m_progress;
     ui::Button *m_play, *m_prev, *m_next;
@@ -167,6 +175,7 @@ private:
     EventLoop::TimerId m_tick = 0; // the times move on each second
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true); // for the cover's decode
     bool m_compact = false;
+    float m_room = 0; // the text's width, as last arranged
 };
 
 // A user's picture, round (~/.face, as login screens use); without one,

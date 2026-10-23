@@ -1,5 +1,7 @@
 #include "shell/PanelKit.h"
 
+#include "core/Config.h"
+
 #include "core/EventLoop.h"
 #include "render/Images.h"
 #include "services/Mpris.h"
@@ -252,8 +254,12 @@ MediaCard::MediaCard(bool compact) : Flex(Direction::Column) {
     }
     m_app = textHost->add<Label>();
     m_app->setSize(12)->setWeight(500)->setColor("on_surface_variant", false);
-    m_title = textHost->add<Label>();
-    m_title->setSize(compact ? 16 : 20)->setWeight(600)->setMaxWidth(compact ? 200 : 340)->setMaxLines(compact ? 1 : 2);
+    // One line that scrolls when it's longer than the card (a long title
+    // wrapped and ran past the card's edge)
+    m_title = textHost->add<Marquee>(compact ? 200 : 300, "");
+    m_title->setMode(Marquee::modeOf(Config::get().value<std::string>("/bar/scrolling/islandMedia", "loop")))
+        ->setSpeed(Config::get().value<float>("/bar/scrolling/speed", 30));
+    m_title->label()->setSize(compact ? 16 : 20)->setWeight(600);
     m_artist = textHost->add<Label>();
     m_artist->setSize(compact ? 13 : 14)->setColor("on_surface_variant", false)->setMaxWidth(compact ? 200 : 340);
     if (compact) m_app->setVisible(false);
@@ -288,6 +294,17 @@ MediaCard::MediaCard(bool compact) : Flex(Direction::Column) {
     m_lease = Mpris::get().watchPosition();
     m_tick = EventLoop::get().addTimer(1000, [this] { sync(); }, true);
     sync();
+}
+
+void MediaCard::doArrange() {
+    // The room inside the padding, beside the controls when compact
+    const float room = std::max(80.0f, rect().w - (m_compact ? 32 + 160 : 40));
+    if (std::abs(room - m_room) > 0.5f) {
+        m_room = room;
+        m_title->setMaxWidth(room);
+        m_artist->setMaxWidth(room);
+    }
+    Flex::doArrange();
 }
 
 MediaCard::~MediaCard() {

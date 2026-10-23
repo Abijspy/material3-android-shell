@@ -351,7 +351,42 @@ void networkPage(Flex* page, Popup&) {
     wiredLive->sync();
 }
 
+// Quick Share: files to and from Android phones nearby, through an open
+// source app (RQuickShare from the AUR, or Packet from Flathub)
+void quickShareRows(Flex* page) {
+    auto* g = group(page, "Quick Share", "Send and receive files with Android phones and Chromebooks nearby, over Wi-Fi and Bluetooth");
+    const auto* app = Apps::get().quickShare();
+    if (app) {
+        auto r = row(g, "share", app->name, "Ready: phones nearby can send to this computer while it's open");
+        const Apps::App copy = *app;
+        pillButton(r.row, "Open", true, [copy] { Apps::get().launch(copy); }, "open_in_new");
+        // Started with the session (minimised to the tray, where it waits)
+        std::string command = app->exec;
+        if (const auto at = command.find(" %"); at != std::string::npos) command.erase(at);
+        auto start = row(g, "rocket_launch", "Start with the session", "So phones can always find this computer");
+        auto* sw = start.row->add<Switch>();
+        const auto list = HyprOptions::get().startups();
+        sw->setChecked(std::ranges::any_of(list, [&](const HyprOptions::Startup& s) { return s.command == command && s.enabled; }), false);
+        sw->onToggled = [command](bool on) {
+            auto list = HyprOptions::get().startups();
+            std::erase_if(list, [&](const HyprOptions::Startup& s) { return s.command == command; });
+            if (on) list.push_back({command, "Quick Share", true});
+            HyprOptions::get().setStartups(list);
+        };
+        return;
+    }
+    auto r = row(g, "share", "Not installed", "Two open source apps speak Android's Quick Share; either works");
+    (void)r;
+    auto rq = row(g, "deployed_code", "RQuickShare", "From the AUR · a small app that waits in the tray");
+    pillButton(rq.row, "Install", true, [] { Packages::get().install({"rquickshare-x-bin", "", "", "aur", Packages::Source::Aur}); },
+               "download");
+    auto pk = row(g, "apps", "Packet", "From Flathub · a GNOME app");
+    pillButton(pk.row, "Install", false,
+               [] { Packages::get().install({"io.github.nozwock.Packet", "", "", "flathub", Packages::Source::Flatpak}); }, "download");
+}
+
 void bluetoothPage(Flex* page, Popup&) {
+    quickShareRows(page);
     auto* live = page->add<Live>();
     auto* g = group(live, "Bluetooth");
     auto power = row(g, "bluetooth", "Bluetooth");
@@ -3162,6 +3197,41 @@ void packagesPage(Flex* page, Popup&) {
                 pillButton(actions, "Use a terminal", false, [] { Packages::get().upgradeInTerminal(); }, "terminal");
             if (!p.checking()) pillButton(actions, "Check now", false, [] { Packages::get().check(); }, "refresh");
             if (!p.updates().empty()) pillButton(actions, "Update now", true, [] { Packages::get().upgrade(); }, "download");
+            if (!p.updates().empty()) {
+                // Grouped by where they come from; each shows the installed
+                // version and the new one
+                using Src = Packages::Source;
+                const std::pair<Src, const char*> sources[] = {
+                    {Src::Shell, "Material3UI"}, {Src::Repo, "Official"}, {Src::Aur, "AUR"}, {Src::Flatpak, "Flatpak"}};
+                for (const auto& [source, name] : sources) {
+                    const int n = p.count(source);
+                    if (n == 0) continue;
+                    auto* list = group(body, std::format("{} · {} update{}", name, n, n == 1 ? "" : "s"), "Installed version → new version");
+                    for (const auto& u : p.updates()) {
+                        if (u.source != source) continue;
+                        const bool shell = source == Src::Shell;
+                        auto r = row(list, shell ? "" : source == Src::Flatpak ? "apps" : "deployed_code", u.name);
+                        auto* versions = r.row->add<Flex>(Flex::Direction::Row);
+                        versions->setSpacing(8)->setAlignItems(Align::Center);
+                        versions->add<Label>(u.from.empty() ? "—" : u.from)->setSize(13)->setMaxWidth(170)->setColor("on_surface_variant", false);
+                        versions->add<Icon>("arrow_forward", 16)->setColor("on_surface_variant", false);
+                        auto* to = versions->add<Flex>(Flex::Direction::Row);
+                        pill(to->setBackground("primary_container", false))->setPadding({10, 4});
+                        to->add<Label>(u.to)->setSize(13)->setWeight(600)->setMaxWidth(170)->setColor("on_primary_container", false);
+                        // Material3UI's own update wears its logo
+                        if (shell)
+                            r.row->adopt(std::make_unique<ImageView>(24, [](float scale, int& w, int& h) -> GLuint {
+                                             auto* t = Images::get().icon(paths::dataFile("icons/Material3UI.svg"),
+                                                                          static_cast<int>(std::lround(24 * scale)));
+                                             if (!t) return 0;
+                                             w = t->width;
+                                             h = t->height;
+                                             return t->id;
+                                         }),
+                                         0);
+                    }
+                }
+            }
             // How the shell itself updates
             auto* shellGroup = group(body, "Material3UI updates");
             auto ch = row(shellGroup, "conversion_path", "Update channel",
@@ -3175,29 +3245,6 @@ void packagesPage(Flex* page, Popup&) {
             // This version's notes (all of them: About → Changelog)
             group(body, "What's new in " M3_VERSION, "Material3UI's latest changes, as installed");
             releaseNotes(body, 1, 600);
-            if (!p.updates().empty()) {
-                auto* list = group(body, "Pending");
-                for (const auto& u : p.updates()) {
-                    const char* src = u.source == Packages::Source::Aur       ? "AUR"
-                                    : u.source == Packages::Source::Flatpak ? "Flatpak"
-                                    : u.source == Packages::Source::Shell   ? "Shell"
-                                                                            : "Official";
-                    const bool shell = u.source == Packages::Source::Shell;
-                    auto r = row(list, shell ? "" : u.source == Packages::Source::Flatpak ? "apps" : "deployed_code", u.name,
-                                 std::format("{}{} → {}", src, u.from.empty() ? "" : "  ·  " + u.from, u.to));
-                    // Material3UI's own update wears its logo
-                    if (shell)
-                        r.row->adopt(std::make_unique<ImageView>(24, [](float scale, int& w, int& h) -> GLuint {
-                                         auto* t = Images::get().icon(paths::dataFile("icons/Material3UI.svg"),
-                                                                      static_cast<int>(std::lround(24 * scale)));
-                                         if (!t) return 0;
-                                         w = t->width;
-                                         h = t->height;
-                                         return t->id;
-                                     }),
-                                     0);
-                }
-            }
             return;
         }
         auto* field = body->add<TextField>();
@@ -3333,6 +3380,47 @@ void keyboardPage(Flex* page, Popup&) {
     pillButton(r.row, "Open", true, [] {
         if (open) open("hyprsettings hypr-keybinds");
     }, "open_in_new");
+}
+
+// Android 16's settings icons: each category its own hue (blue for
+// connections and apps, pink for sound and notifications, orange for the
+// look, yellow for storage, green for power, teal for privacy, purple for
+// accessibility, grey for the system), a tinted circle behind a glyph of
+// the same hue. Light themes: pastel behind dark; dark themes: deep behind
+// pastel.
+struct HueChip {
+    Color chip, glyph;
+};
+HueChip categoryColours(const std::string& id) {
+    // Hue in degrees, and how colourful (0: grey)
+    struct Hue {
+        float h, s;
+    };
+    static const std::vector<std::pair<std::vector<std::string>, Hue>> table = {
+        {{"network", "bluetooth", "hypr-windows", "hypr-layouts", "hypr-groups"}, {212, 0.75f}},
+        {{"defaults", "hypr-input"}, {225, 0.85f}},
+        {{"notifications", "sound", "hypr-animations"}, {330, 0.70f}},
+        {{"display", "appearance", "style", "bar", "dock", "hypr-decoration", "hypr-monitors"}, {28, 0.85f}},
+        {{"storage", "monitor", "weather", "hypr-render"}, {45, 0.85f}},
+        {{"battery", "hypr-startup", "packages"}, {135, 0.55f}},
+        {{"lock", "lockscreen", "users", "hypr-window-rules", "hypr-layer-rules", "hypr-workspace-rules", "hypr-profiles"}, {185, 0.65f}},
+        {{"hypr-debug"}, {0, 0.75f}},
+        {{"accessibility", "tools", "hypr-plugins"}, {270, 0.55f}},
+    };
+    Hue hue{220, 0.08f}; // the rest: system, about, keyboard, mouse…
+    for (const auto& [ids, h] : table)
+        if (std::ranges::find(ids, id) != ids.end()) hue = h;
+    const Color surface = Theme::get().color("surface");
+    const bool dark = 0.2126f * surface.r + 0.7152f * surface.g + 0.0722f * surface.b < 0.5f;
+    auto hsl = [](float h, float s, float l) {
+        auto f = [&](float n) {
+            const float k = std::fmod(n + h / 30.0f, 12.0f), a = s * std::min(l, 1 - l);
+            return l - a * std::max(-1.0f, std::min({k - 3, 9 - k, 1.0f}));
+        };
+        return Color{f(0), f(8), f(4), 1};
+    };
+    return dark ? HueChip{hsl(hue.h, hue.s * 0.6f, 0.32f), hsl(hue.h, hue.s, 0.84f)}
+                : HueChip{hsl(hue.h, hue.s, 0.88f), hsl(hue.h, hue.s * 0.9f, 0.32f)};
 }
 
 struct PageDef {
@@ -3530,7 +3618,7 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
         Icon* icon;
         Label* label;
         Label* summary;
-        int hue;    // 0 primary, 1 secondary, 2 tertiary
+        std::string id; // its category colours (categoryColours)
     };
     auto items = std::make_shared<std::vector<NavItem>>();
     auto show = std::make_shared<std::function<void(size_t)>>();
@@ -3552,12 +3640,11 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
             const bool on = i == index;
             auto& it = (*items)[i];
             it.button->setBackground(on ? ColorRef("secondary_container") : ColorRef::none());
-            // Android 16's settings list: each icon in a tonal circle, the
-            // current page's solid
-            static const char* kChip[] = {"primary_container", "secondary_container", "tertiary_container"};
-            static const char* kOnChip[] = {"on_primary_container", "on_secondary_container", "on_tertiary_container"};
-            it.chip->setBackground(on ? ColorRef("primary") : ColorRef(kChip[it.hue]));
-            it.icon->setFill(on)->setColor(on ? "on_primary" : kOnChip[it.hue]);
+            // Android 16's settings list: each icon in its category's
+            // tinted circle; the current page's glyph filled
+            const auto c = categoryColours(it.id);
+            it.chip->setBackground(ColorRef(c.chip));
+            it.icon->setFill(on)->setColor(ColorRef(c.glyph));
             it.label->setWeight(on ? 600 : 500)->setColor(on ? "on_secondary_container" : "on_surface", false);
             it.summary->setColor(on ? "on_secondary_container" : "on_surface_variant", false);
         }
@@ -3597,7 +3684,7 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
             // The page rebuild must not run inside the click that asked for it
             EventLoop::get().defer([show, i] { (*show)(i); });
         };
-        items->push_back({b, chip, icon, label, summary, static_cast<int>(i % 3)});
+        items->push_back({b, chip, icon, label, summary, pagesOf(Hypr)[i].id});
         if (initial == pagesOf(Hypr)[i].id) first = i;
     }
     // Universal search, as Android's: every setting by name, not just the
