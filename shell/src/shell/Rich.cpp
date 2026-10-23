@@ -1,5 +1,6 @@
 // Phase 6 panels: dashboard, system monitor, wallpaper picker, overview
 #include "render/Images.h"
+#include "services/Calendar.h"
 #include "services/Hyprland.h"
 #include "services/Mpris.h"
 #include "services/Search.h"
@@ -105,27 +106,34 @@ std::string duration(double seconds) {
     return std::format("{}h {}m", s / 3600, (s % 3600) / 60);
 }
 
-// Month calendar with navigation; today as a filled pill
-class Calendar : public Flex {
+// The month, as Android's calendar: today filled, days with events dotted,
+// the chosen day's agenda under it (an event opens in the editor) and a
+// button to add one. Follows the calendar service as it changes.
+class MonthView : public Flex {
 public:
-    Calendar() : Flex(Direction::Column) {
+    MonthView() : Flex(Direction::Column) {
         setAlignItems(Align::Stretch)->setSpacing(6);
         const std::time_t now = std::time(nullptr);
         localtime_r(&now, &m_today);
         m_year = m_today.tm_year + 1900;
         m_month = m_today.tm_mon;
+        m_day = m_today.tm_mday;
+        m_conn = m3::Calendar::get().changed.connect([this] { rebuildSoon(); });
         build();
     }
+    ~MonthView() override { *m_alive = false; }
 
 private:
     void build() {
         clearChildren();
+        auto& cal = m3::Calendar::get();
         auto* head = add<Flex>(Direction::Row);
-        head->setSpacing(4);
+        head->setSpacing(4)->setAlignItems(Align::Center);
         std::tm first{};
         first.tm_year = m_year - 1900;
         first.tm_mon = m_month;
         first.tm_mday = 1;
+        first.tm_isdst = -1;
         std::mktime(&first);
         char title[64];
         std::strftime(title, sizeof title, "%B %Y", &first);
@@ -148,37 +156,123 @@ private:
         last.tm_mday = 0;
         std::mktime(&last);
         const int days = last.tm_mday;
+        const auto busy = cal.busyDays(m_year, m_month);
         Flex* row = nullptr;
         for (int cell = 0; cell < offset + days; ++cell) {
             if (cell % 7 == 0) row = add<Flex>(Direction::Row);
-            auto* box = row->add<Flex>(Direction::Row);
-            box->fixedWidth = 40;
-            box->fixedHeight = 36;
-            box->setJustify(Align::Center);
-            if (cell < offset) continue;
+            if (cell < offset) {
+                auto* gap = row->add<Flex>(Direction::Row);
+                gap->fixedWidth = 40;
+                gap->fixedHeight = 40;
+                continue;
+            }
             const int day = cell - offset + 1;
             const bool today = day == m_today.tm_mday && m_month == m_today.tm_mon && m_year == m_today.tm_year + 1900;
-            if (today) pill(box->setBackground("primary", false));
-            box->add<Label>(std::to_string(day))->setSize(14)->setWeight(today ? 600 : 400)->setColor(today ? "on_primary" : "on_surface", false);
+            const bool chosen = day == m_day;
+            auto* box = row->add<Button>(Direction::Column);
+            box->fixedWidth = 40;
+            box->fixedHeight = 40;
+            box->setJustify(Align::Center)->setAlignItems(Align::Center)->setSpacing(1);
+            pill(box);
+            if (today) box->setBackground("primary", false);
+            else if (chosen) box->setBackground("secondary_container", false);
+            box->add<Label>(std::to_string(day))
+                ->setSize(14)
+                ->setWeight(today || chosen ? 600 : 400)
+                ->setColor(today ? "on_primary" : chosen ? "on_secondary_container" : "on_surface", false);
+            // A dot under the days with something on
+            auto* dot = box->add<Flex>(Direction::Row);
+            pill(dot)->fixedWidth = 4;
+            dot->fixedHeight = 4;
+            if (busy.contains(day)) dot->setBackground(today ? "on_primary" : "primary", false);
+            box->onClicked = [this, day](uint32_t b) {
+                if (b != BTN_LEFT) return;
+                m_day = day;
+                rebuildSoon();
+            };
         }
+
+        // The chosen day's agenda
+        std::tm d0{};
+        d0.tm_year = m_year - 1900;
+        d0.tm_mon = m_month;
+        d0.tm_mday = std::min(m_day, days);
+        d0.tm_isdst = -1;
+        const std::time_t from = std::mktime(&d0);
+        std::tm d1 = d0;
+        d1.tm_mday += 1;
+        const std::time_t to = std::mktime(&d1);
+        auto* agenda = add<Flex>(Direction::Column);
+        agenda->setSpacing(4)->setAlignItems(Align::Stretch)->setPadding({0, 8, 0, 0});
+        auto* ahead = agenda->add<Flex>(Direction::Row);
+        ahead->setAlignItems(Align::Center);
+        char dayName[64];
+        std::strftime(dayName, sizeof dayName, "%A %-d %B", &d0);
+        auto* dl = ahead->add<Label>(dayName);
+        dl->setSize(13)->setWeight(600)->setColor("primary", false);
+        dl->grow = true;
+        char date[16];
+        std::strftime(date, sizeof date, "%Y-%m-%d", &d0);
+        const std::string newArg = std::string("event new:") + date;
+        iconButton(ahead, "add", [newArg] {
+            if (open) open(newArg);
+        }, 18);
+        const auto items = cal.between(from, to);
+        if (items.empty()) {
+            agenda->add<Label>("Nothing on")->setSize(13)->setColor("on_surface_variant", false);
+        }
+        for (size_t i = 0; i < items.size() && i < 6; ++i) {
+            const auto& o = items[i];
+            auto* r = agenda->add<Button>(Direction::Row);
+            r->setPadding({10, 6})->setSpacing(10)->setRadius(Radii(12))->setAlignItems(Align::Center);
+            r->setBackground(ColorRef("on_surface", 0.05f), false);
+            auto* bar = r->add<Flex>(Direction::Row);
+            pill(bar->setBackground(o.event->source.empty() ? "primary" : "tertiary", false));
+            bar->fixedWidth = 4;
+            bar->fixedHeight = 28;
+            auto* texts = r->add<Flex>(Direction::Column);
+            texts->setSpacing(0)->setAlignItems(Align::Start);
+            texts->grow = true;
+            texts->add<Label>(o.event->title.empty() ? "(No title)" : o.event->title)->setSize(13)->setWeight(600)->setMaxWidth(240);
+            std::string when = "All day";
+            if (!o.event->allDay) {
+                std::tm a{}, z{};
+                localtime_r(&o.start, &a);
+                localtime_r(&o.end, &z);
+                char buf[32];
+                std::strftime(buf, sizeof buf, "%H:%M", &a);
+                when = buf;
+                std::strftime(buf, sizeof buf, "%H:%M", &z);
+                when += std::string(" – ") + buf;
+            }
+            if (!o.event->location.empty()) when += " · " + o.event->location;
+            texts->add<Label>(when)->setSize(12)->setMaxWidth(240)->setColor("on_surface_variant", false);
+            const std::string arg = "event " + o.event->id;
+            r->onClicked = [arg](uint32_t b) {
+                if (b == BTN_LEFT && open) open(arg);
+            };
+        }
+    }
+
+    void rebuildSoon() {
+        // Rebuilding destroys what was clicked: wait a turn
+        EventLoop::get().defer([this, alive = m_alive] {
+            if (*alive) build();
+        });
     }
 
     void step(int d) {
         m_month += d;
         if (m_month < 0) m_month = 11, --m_year;
         if (m_month > 11) m_month = 0, ++m_year;
-        // Rebuilding destroys the arrow being clicked: wait a turn
-        EventLoop::get().defer([this, alive = m_alive] {
-            if (*alive) build();
-        });
+        const bool thisMonth = m_month == m_today.tm_mon && m_year == m_today.tm_year + 1900;
+        m_day = thisMonth ? m_today.tm_mday : 1;
+        rebuildSoon();
     }
 
-public:
-    ~Calendar() override { *m_alive = false; }
-
-private:
     std::tm m_today{};
-    int m_year = 0, m_month = 0;
+    int m_year = 0, m_month = 0, m_day = 1;
+    Connection m_conn;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };
 
@@ -268,7 +362,7 @@ Node* systemCard(Node* parent) {
 // ── Dashboard ──
 
 ui::Node* dashboardWidget(ui::Node* parent, const std::string& id) {
-    if (id == "calendar") return card(parent)->add<Calendar>()->parentNode();
+    if (id == "calendar") return card(parent)->add<MonthView>()->parentNode();
     if (id == "weather") return weatherCard(parent);
     if (id == "system") return systemCard(parent);
     return nullptr;
@@ -284,7 +378,7 @@ void dashboard(Flex* card0, Popup&) {
     clock->setSize(56)->setWeight(500)->setColor("primary", false);
     auto* date = left->add<Label>();
     date->setSize(16)->setColor("on_surface_variant", false);
-    card(left)->add<Calendar>();
+    card(left)->add<MonthView>();
     left->sync = [=] {
         const std::time_t now = std::time(nullptr);
         std::tm tm{};

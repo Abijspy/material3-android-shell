@@ -16,6 +16,7 @@
 #include "services/Hyprland.h"
 #include "services/Audio.h"
 #include "services/Backups.h"
+#include "services/Calendar.h"
 #include "services/Clipboard.h"
 #include "services/Search.h"
 #include "services/Effects.h"
@@ -62,6 +63,7 @@ bool Shell::start() {
     Hyprland::get();
     Effects::get();
     Clipboard::get().ensureWatchers();
+    Calendar::get(); // events, subscriptions and their reminders
     // New apps bring their icons; before anyone redraws with them
     Apps::get().changed.connectForever([] { Images::get().rescan(); });
 
@@ -349,6 +351,11 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         opts.anchorX = -1;
         opts.centredVertically = true;
         build = [arg](ui::Flex* card, Popup& p) { panels::settings(card, p, arg); };
+    } else if (name == "event") {
+        opts.width = 560;
+        opts.anchorX = -1;
+        opts.centredVertically = true;
+        build = [arg](ui::Flex* card, Popup& p) { panels::eventEditor(card, p, arg); };
     } else if (name == "files") {
         opts.width = 980;
         opts.anchorX = -1;
@@ -693,6 +700,31 @@ void Shell::registerIpc() {
         }
         Backups::get().create("manual");
         return std::string("backing up");
+    });
+    ipc.add("calendar", "calendar [list [days]|subscribe <name> <ics-url>|refresh]: events coming up, or add a calendar", [](const IpcServer::Args& a) {
+        auto& cal = Calendar::get();
+        const std::string cmd = a.empty() ? "list" : a[0];
+        if (cmd == "subscribe" && a.size() >= 3) {
+            cal.subscribe(a[1], a[2]);
+            return std::string("subscribed: ") + a[1];
+        }
+        if (cmd == "refresh") {
+            cal.refresh();
+            return std::string("refreshing");
+        }
+        const long days = a.size() > 1 ? std::max(1L, std::atol(a[1].c_str())) : 7;
+        const std::time_t now = std::time(nullptr);
+        std::string out;
+        for (const auto& o : cal.between(now, now + days * 86400)) {
+            std::tm tm{};
+            localtime_r(&o.start, &tm);
+            char when[32];
+            std::strftime(when, sizeof when, o.event->allDay ? "%a %d %b       " : "%a %d %b %H:%M", &tm);
+            out += std::format("{}  {}\n", when, o.event->title);
+        }
+        for (const auto& src : cal.sources())
+            out += std::format("[{}] {}{}\n", src.enabled ? "on" : "off", src.name, src.error.empty() ? "" : " — " + src.error);
+        return out.empty() ? std::string("nothing coming up") : out;
     });
     ipc.add("switcher", "switcher [next|prev]: the Super+Tab window switcher", [this](const IpcServer::Args& a) {
         const int by = !a.empty() && a[0] == "prev" ? -1 : 1;

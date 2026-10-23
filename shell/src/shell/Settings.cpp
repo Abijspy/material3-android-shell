@@ -8,6 +8,7 @@
 #include "render/Images.h"
 #include "services/Audio.h"
 #include "services/Backups.h"
+#include "services/Calendar.h"
 #include "services/Clipboard.h"
 #include "services/HyprOptions.h"
 #include "services/Hyprland.h"
@@ -2417,6 +2418,81 @@ void defaultAppsPage(Flex* page, Popup&) {
     installedApps(page);
 }
 
+// Calendar: your own events, calendars subscribed to by their ICS link,
+// and reminders
+void calendarPage(Flex* page, Popup&) {
+    auto* live = page->add<Live>();
+    live->setSpacing(0);
+    live->sync = [live] {
+        live->clearChildren();
+        auto& cal = m3::Calendar::get();
+        auto* mine = group(live, "Your calendar", "Events you add here, from the dashboard's calendar or below");
+        const std::time_t now = std::time(nullptr);
+        const auto soon = cal.between(now, now + 30L * 86400);
+        size_t own = 0;
+        for (const auto& o : soon) own += o.event->source.empty();
+        auto r = row(mine, "event", "Coming up", own == 0 ? "Nothing in the next 30 days" : std::format("{} in the next 30 days", own));
+        char today[16];
+        std::tm tm{};
+        localtime_r(&now, &tm);
+        std::strftime(today, sizeof today, "%Y-%m-%d", &tm);
+        const std::string arg = std::string("event new:") + today;
+        pillButton(r.row, "Add event", true, [arg] {
+            if (open) open(arg);
+        }, "add");
+
+        auto* subs = group(live, "Subscribed calendars",
+                           "Google, Outlook, Nextcloud, Proton…: paste the calendar's \"secret address in iCal format\" (an ICS link). "
+                           "They refresh every half hour");
+        for (const auto& s : cal.sources()) {
+            auto sr = row(subs, "calendar_month", s.name, s.error.empty() ? s.url : s.error);
+            if (!s.error.empty()) sr.subtitle->setColor("error", false);
+            sr.subtitle->setMaxWidth(380);
+            auto* sw = sr.row->add<Switch>();
+            sw->setChecked(s.enabled, false);
+            const std::string id = s.id;
+            sw->onToggled = [id](bool on) { m3::Calendar::get().setEnabled(id, on); };
+            auto* del = sr.row->add<Button>();
+            pill(del)->setJustify(Align::Center);
+            del->fixedWidth = del->fixedHeight = 40;
+            del->add<Icon>("delete", 20)->setColor("on_surface_variant", false);
+            del->tooltip = "Remove this calendar";
+            del->onClicked = [id](uint32_t b) {
+                if (b == BTN_LEFT) EventLoop::get().defer([id] { m3::Calendar::get().unsubscribe(id); });
+            };
+        }
+        // Adding one: a name and its link
+        // Adding one: a name and its link, on a line of their own
+        auto* add = subs->add<Flex>(Flex::Direction::Row);
+        add->setPadding({16, 12})->setSpacing(10)->setAlignItems(Align::Center);
+        add->add<Icon>("add_link", 22)->setColor("on_surface_variant", false);
+        auto* nameField = add->add<TextField>();
+        nameField->fixedWidth = 150;
+        nameField->setPlaceholder("Name");
+        auto* urlField = add->add<TextField>();
+        urlField->grow = true;
+        urlField->setPlaceholder("ICS link: https://… or webcal://…");
+        auto subscribe = [nameField, urlField] {
+            if (urlField->text().empty()) return;
+            const std::string n = nameField->text(), u = urlField->text();
+            EventLoop::get().defer([n, u] { m3::Calendar::get().subscribe(n, u); });
+        };
+        urlField->onSubmit = [subscribe](const std::string&) { subscribe(); };
+        pillButton(add, "Add", true, subscribe, "add");
+        if (!cal.sources().empty()) {
+            auto ref = row(subs, "refresh", cal.refreshing() ? "Refreshing…" : "Refresh now", "");
+            ref.subtitle->setVisible(false);
+            pillButton(ref.row, "Refresh", false, [] { m3::Calendar::get().refresh(); }, "refresh");
+        }
+
+        auto* rem = group(live, "Reminders");
+        choiceRow<int>(rem, "notifications", "For new and subscribed events", "A notification before each starts", "/calendar/remind", 10,
+                       {{-1, "None"}, {0, "At start"}, {10, "10 min"}, {30, "30 min"}, {60, "1 h"}});
+    };
+    live->watch(m3::Calendar::get().changed);
+    live->sync();
+}
+
 void toolsPage(Flex* page, Popup& popup) {
     // Screen sharing: what apps (browsers, calls) see, asked through the portal
     auto* share = group(page, "Screen sharing", "When an app asks to share your screen, a window or a part of it");
@@ -3402,7 +3478,7 @@ HueChip categoryColours(const std::string& id) {
         {{"defaults", "hypr-input"}, &apps},
         {{"notifications", "sound", "hypr-animations"}, &pink},
         {{"display", "appearance", "style", "bar", "dock", "hypr-decoration", "hypr-monitors"}, &orange},
-        {{"storage", "monitor", "hypr-render"}, &yellow},
+        {{"storage", "monitor", "calendar", "hypr-render"}, &yellow},
         {{"battery", "packages", "hypr-startup"}, &green},
         {{"lock", "lockscreen", "users", "hypr-window-rules", "hypr-layer-rules", "hypr-workspace-rules", "hypr-profiles"}, &teal},
         {{"hypr-debug"}, &red},
@@ -3471,6 +3547,7 @@ const PageDef kPages[] = {
     {"defaults", "apps", "Apps", "Default apps for links, files and the terminal", defaultAppsPage},
     {"notifications", "notifications", "Notifications", "Do not disturb and pop-ups", notificationsPage},
     {"tools", "construction", "Tools", "Clipboard history and screenshots", toolsPage},
+    {"calendar", "calendar_month", "Calendar", "Your events, subscribed calendars and reminders", calendarPage},
     {"weather", "partly_cloudy_day", "Weather", "Location, units and the forecast", weatherPage},
     {"battery", "battery_full", "Battery", "Charge, power draw, health and the power mode", batteryPage},
     {"storage", "storage", "Storage", "Disks, folders and freeing up space", storagePage},
@@ -3535,7 +3612,7 @@ int pageGroup(const std::string& id) {
     if (id == "hypr-keybinds" || id == "hypr-startup" || id == "hypr-environment" || id.ends_with("-rules")) return 3;
     if (id.starts_with("hypr-")) return 2;
     if (id == "network" || id == "bluetooth") return 0;
-    if (id == "defaults" || id == "notifications" || id == "tools" || id == "weather") return 1;
+    if (id == "defaults" || id == "notifications" || id == "tools" || id == "calendar" || id == "weather") return 1;
     if (id == "battery" || id == "storage" || id == "monitor" || id == "sound" || id == "display") return 2;
     if (id == "appearance" || id == "style" || id == "bar" || id == "dock" || id == "lockscreen") return 3;
     if (id == "accessibility" || id == "lock" || id == "users") return 4;

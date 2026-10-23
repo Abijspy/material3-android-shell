@@ -196,6 +196,7 @@ const std::vector<WidgetDef>& widgets() {
         {"cal-day", "today", "Day tile", "Today as a big tile"},
         {"cal-week", "view_week", "Week", "This week, today circled"},
         {"cal-month", "calendar_view_month", "Month", "This month as a grid"},
+        {"cal-agenda", "event_upcoming", "Agenda", "Your next events"},
         {"music-disc", "album", "Music disc", "The cover in a wavy progress ring"},
         {"music-bar", "graphic_eq", "Music bar", "A slim player with wavy progress"},
         {"weather-big", "thermostat", "Big weather", "The temperature, large"},

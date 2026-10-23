@@ -3,6 +3,7 @@
 #include "core/EventLoop.h"
 #include "render/Images.h"
 #include "render/Renderer.h"
+#include "services/Calendar.h"
 #include "services/Mpris.h"
 #include "services/Weather.h"
 #include "shell/ClockFaces.h"
@@ -51,6 +52,7 @@ public:
         setAlignItems(align)->setSpacing(0);
         sync = [this] { build(); };
         if (m_id.starts_with("weather")) watch(Weather::get().changed);
+        if (m_id == "cal-agenda") watch(m3::Calendar::get().changed);
         if (m_id.starts_with("music")) {
             watch(Mpris::get().changed);
             // The progress moves on by itself
@@ -75,6 +77,7 @@ private:
     void calendarDay();
     void calendarWeek();
     void calendarMonth();
+    void calendarAgenda();
     void musicDisc(const Mpris::Player& p);
     void musicBar(const Mpris::Player& p);
     void weatherBig();
@@ -129,6 +132,7 @@ void Styled::build() {
     if (m_id == "cal-day") return calendarDay();
     if (m_id == "cal-week") return calendarWeek();
     if (m_id == "cal-month") return calendarMonth();
+    if (m_id == "cal-agenda") return calendarAgenda();
     if (m_id.starts_with("music")) {
         // Never on the login screen: nobody's music plays there
         const auto* p = m_greeter ? nullptr : Mpris::get().active();
@@ -217,6 +221,51 @@ void Styled::calendarMonth() {
             const bool in = d.tm_mon == month;
             cell(row, in ? std::to_string(d.tm_mday) : "", false, in && d.tm_mday == today.tm_mday, !in);
         }
+    }
+}
+
+// What's next: the coming events, by day (not on the login screen: they're
+// yours)
+void Styled::calendarAgenda() {
+    if (m_greeter) return setVisible(false);
+    const std::time_t now = std::time(nullptr);
+    const auto items = m3::Calendar::get().between(now, now + 14L * 86400);
+    auto* c = card(this);
+    c->fixedWidth = 340 * m_k;
+    c->setSpacing(8)->setAlignItems(Align::Stretch);
+    auto* head = c->add<Flex>(Flex::Direction::Row);
+    head->setSpacing(8)->setAlignItems(Align::Center);
+    head->add<Icon>("event", 20)->setColor("primary", false);
+    head->add<Label>("Coming up")->setSize(15)->setWeight(600)->setColor("primary", false);
+    if (items.empty()) {
+        c->add<Label>("Nothing in the next two weeks")->setSize(13)->setColor("on_surface_variant", false);
+        return;
+    }
+    const std::tm today = localNow();
+    int lastDay = -1;
+    for (size_t i = 0; i < items.size() && i < 5; ++i) {
+        const auto& o = items[i];
+        std::tm tm{};
+        localtime_r(&o.start, &tm);
+        if (tm.tm_yday != lastDay) {
+            lastDay = tm.tm_yday;
+            const bool isToday = tm.tm_yday == today.tm_yday && tm.tm_year == today.tm_year;
+            const bool isTomorrow = (tm.tm_yday == today.tm_yday + 1 && tm.tm_year == today.tm_year);
+            c->add<Label>(isToday ? std::string("Today") : isTomorrow ? std::string("Tomorrow") : format("%A %-d %B", tm))
+                ->setSize(12)->setWeight(600)->setColor("on_surface_variant", false);
+        }
+        auto* r = c->add<Flex>(Flex::Direction::Row);
+        r->setSpacing(10)->setAlignItems(Align::Center);
+        auto* bar = r->add<Flex>(Flex::Direction::Row);
+        pill(bar->setBackground(o.event->source.empty() ? "primary" : "tertiary", false));
+        bar->fixedWidth = 4;
+        bar->fixedHeight = 30 * m_k;
+        auto* texts = r->add<Flex>(Flex::Direction::Column);
+        texts->setSpacing(0)->setAlignItems(Align::Start);
+        texts->grow = true;
+        texts->add<Label>(o.event->title.empty() ? "(No title)" : o.event->title)->setSize(14)->setWeight(500)->setMaxWidth(270 * m_k);
+        texts->add<Label>(o.event->allDay ? std::string("All day") : format("%H:%M", tm) + (o.event->location.empty() ? "" : " · " + o.event->location))
+            ->setSize(12)->setMaxWidth(270 * m_k)->setColor("on_surface_variant", false);
     }
 }
 
@@ -335,7 +384,7 @@ void Styled::weatherCard() {
 } // namespace
 
 Node* addStyledWidget(Node* parent, const std::string& id, bool greeter, Align align) {
-    static const char* ids[] = {"cal-day", "cal-week", "cal-month", "music-disc", "music-bar", "weather-big", "weather-card"};
+    static const char* ids[] = {"cal-day", "cal-week", "cal-month", "cal-agenda", "music-disc", "music-bar", "weather-big", "weather-card"};
     for (const char* known : ids)
         if (id == known) return parent->add<Styled>(id, greeter, align);
     return nullptr;
