@@ -1,5 +1,13 @@
 # Changelog
 
+## v5.5.3 — 2026-10-23
+
+- **Clipboard previews.** Spotlight's clipboard (`#`) and the clipboard panel show a small preview instead of text:
+  - Screenshots and other copied images show a thumbnail, with their type, size and file size (e.g. PNG · 1044×493 · 141 KiB).
+  - A picture or video copied from a file manager shows the picture, or a frame from the video.
+  - Type `#image`, `#screenshot` or `#video` to find them.
+- **New screenshots in the README**, including Quick Share with its QR code.
+
 ## v5.5.2 — 2026-10-23
 
 - **Quick Share with a QR code.** In the send popup, choose **Use a QR code** and scan it with the phone's camera. The files go straight to the phone, without Bluetooth and without the phone set to "Everyone". Tested with a real Android phone.
