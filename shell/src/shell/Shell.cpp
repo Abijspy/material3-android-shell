@@ -635,7 +635,7 @@ void Shell::registerIpc() {
         const auto* p = m.active();
         return p ? std::format("{}: {} — {} [{}]", p->identity, p->title, p->artist, p->status) : std::string("no player");
     });
-    ipc.add("settings", "settings [network|bluetooth|sound|display|appearance|style|bar|dock|tools|weather|notifications|lockscreen|lock|keybinds|packages|about]",
+    ipc.add("settings", "settings [network|vpn|bluetooth|sound|display|appearance|style|bar|dock|tools|weather|notifications|lockscreen|lock|firewall|keybinds|packages|about]",
             [this](const IpcServer::Args& a) {
         openSettings(a.empty() ? "" : a[0]);
         return std::string(m_settings && !m_settings->closing() ? "open" : "closed");

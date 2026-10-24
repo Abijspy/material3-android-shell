@@ -5,6 +5,7 @@
 #include "core/Paths.h"
 #include "core/Process.h"
 #include "render/Images.h"
+#include "services/Vpn.h"
 #include "services/Wallpaper.h"
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
@@ -65,11 +66,14 @@ std::string fileIcon(const fs::path& p) {
 
 } // namespace
 
-// purpose: "wallpaper", "avatar", or "send" followed by the files already
-// chosen, one per line (they go back to Quick Share with the new ones)
+// purpose: "wallpaper", "avatar", "vpn" (a WireGuard or OpenVPN file to
+// import), or "send" followed by the files already chosen, one per line
+// (they go back to Quick Share with the new ones)
 void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
     const bool avatar = purpose == "avatar";
-    const bool sending = purpose.starts_with("send");
+    const bool vpn = purpose == "vpn";
+    // Files of any kind, picked (several, when sending) by tapping
+    const bool sending = purpose.starts_with("send") || vpn;
     std::string already = sending && purpose.size() > 4 ? purpose.substr(5) : "";
     struct State {
         fs::path dir;
@@ -89,7 +93,7 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
     const std::string shipped = paths::dataFile("wallpapers");
     // Where it opens: the default pictures for a profile picture, the
     // wallpaper's folder for a wallpaper
-    st->dir = sending ? fs::path(paths::home()) : avatar && !avatars.empty() ? fs::path(avatars) : fs::path(Wallpaper::get().directory());
+    st->dir = vpn ? fs::path(paths::home() + "/Downloads") : sending ? fs::path(paths::home()) : avatar && !avatars.empty() ? fs::path(avatars) : fs::path(Wallpaper::get().directory());
     std::error_code ec;
     // No wallpaper folder yet: the ones the shell ships
     if (!fs::is_directory(st->dir, ec) && !avatar && !shipped.empty()) st->dir = shipped;
@@ -99,14 +103,17 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
     // Title
     auto* head = card->add<Flex>(Flex::Direction::Row);
     head->setSpacing(12)->setAlignItems(Align::Center);
-    head->add<Icon>(sending ? "send" : avatar ? "account_circle" : "wallpaper", 26)->setColor("primary", false);
-    auto* title = head->add<Label>(sending ? "Choose files to send" : avatar ? "Choose your picture" : "Choose a wallpaper");
+    head->add<Icon>(vpn ? "vpn_key" : sending ? "send" : avatar ? "account_circle" : "wallpaper", 26)->setColor("primary", false);
+    auto* title = head->add<Label>(vpn       ? "Choose a VPN file"
+                                   : sending ? "Choose files to send"
+                                   : avatar  ? "Choose your picture"
+                                             : "Choose a wallpaper");
     title->setSize(22)->setWeight(600);
     title->grow = true;
     // Closing while sending goes back to Quick Share, files kept
-    iconButton(head, "close", [&popup, sending, already] {
+    iconButton(head, "close", [&popup, sending, vpn, already] {
         popup.close();
-        if (sending) open("quickshare-send " + already);
+        if (sending && !vpn) open("quickshare-send " + already);
     });
 
     auto* columns = card->add<Flex>(Flex::Direction::Row);
@@ -147,15 +154,16 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
     if (!avatar && !sending && !shipped.empty()) placeList.push_back({"palette", "Material3UI wallpapers", shipped});
 
     // Sending: what's picked, said in the footer
-    const auto showPicked = [st] {
+    const auto showPicked = [st, vpn] {
         if (!st->chosenName) return;
-        st->chosenName->setText(st->picked.empty()         ? "Pick files: tap again to leave one out"
+        st->chosenName->setText(st->picked.empty() && vpn  ? "Pick your provider's .conf (WireGuard) or .ovpn (OpenVPN) file"
+                                : st->picked.empty()       ? "Pick files: tap again to leave one out"
                                 : st->picked.size() == 1 ? fs::path(st->picked.front()).filename().string()
                                                          : std::format("{} files", st->picked.size()));
         if (st->choose) st->choose->setOpacity(st->picked.empty() ? 0.4f : 1);
     };
 
-    st->fill = [st, placeList, avatar, sending, showPicked] {
+    st->fill = [st, placeList, avatar, sending, vpn, showPicked] {
         std::error_code ec;
         // Places, the current one highlighted
         st->places->clearChildren();
@@ -199,7 +207,9 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
             const auto name = e.path().filename().string();
             if (name.starts_with(".")) continue;
             if (e.is_directory(ec)) folders.push_back(e.path());
-            else if (e.is_regular_file(ec) && (sending || isPicture(e.path()))) pictures.push_back(e.path());
+            else if (e.is_regular_file(ec) && (vpn ? e.path().extension() == ".conf" || e.path().extension() == ".ovpn"
+                                                   : sending || isPicture(e.path())))
+                pictures.push_back(e.path());
         }
         std::ranges::sort(folders);
         std::ranges::sort(pictures);
@@ -257,8 +267,13 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
                     b->setBorder(on ? 3 : 0, "primary")->setBackground(on ? ColorRef("secondary_container") : ColorRef::none());
                 };
                 mark(picked);
-                b->onClicked = [st, file, mark, showPicked](uint32_t button) {
+                b->onClicked = [st, file, mark, showPicked, vpn](uint32_t button) {
                     if (button != BTN_LEFT) return;
+                    // One VPN file at a time: picking another moves the mark
+                    if (vpn && !st->picked.empty() && st->picked.front() != file) {
+                        st->picked.clear();
+                        EventLoop::get().defer([st] { st->fill(); });
+                    }
                     const auto it = std::ranges::find(st->picked, file);
                     const bool on = it == st->picked.end();
                     if (on) st->picked.push_back(file);
@@ -297,10 +312,20 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
     st->chosenName = foot->add<Label>("Pick a picture");
     st->chosenName->setSize(14)->setMaxWidth(520)->setColor("on_surface_variant", false);
     st->chosenName->grow = true;
-    pillButton(foot, "Cancel", false, [&popup, sending, already] {
+    pillButton(foot, "Cancel", false, [&popup, sending, vpn, already] {
         popup.close();
-        if (sending) open("quickshare-send " + already);
+        if (sending && !vpn) open("quickshare-send " + already);
     });
+    if (vpn) {
+        st->choose = pillButton(foot, "Import", true, [st, &popup] {
+            if (st->picked.empty()) return;
+            Vpn::get().import(st->picked.front());
+            popup.close();
+            settingsPage("vpn");
+        }, "check");
+        st->fill();
+        return;
+    }
     if (sending) {
         st->choose = pillButton(foot, "Add", true, [st, already, &popup] {
             if (st->picked.empty()) return;

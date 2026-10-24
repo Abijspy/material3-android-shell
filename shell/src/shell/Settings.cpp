@@ -24,6 +24,7 @@
 #include "services/Weather.h"
 #include "shell/Dock.h"
 #include "shell/HyprPages.h"
+#include "shell/SecurityPages.h"
 #include "shell/KeyCapture.h"
 #include "shell/LockLayout.h"
 #include "shell/PanelKit.h"
@@ -3501,13 +3502,13 @@ HueChip categoryColours(const std::string& id) {
         orange{"#fad8bc", "#6a3a0a"}, yellow{"#fcde7a", "#5c4300"}, green{"#c0e4ba", "#0c4c23"}, grey{"#dedede", "#424242"},
         teal{"#a8eafa", "#00505f"}, red{"#fcd2d2", "#6a1e1e"}, purple{"#ecdcfc", "#4c258e"};
     static const std::vector<std::pair<std::vector<std::string>, const Pair*>> table = {
-        {{"network", "bluetooth", "weather", "hypr-windows", "hypr-layouts", "hypr-groups"}, &blue},
+        {{"network", "vpn", "bluetooth", "weather", "hypr-windows", "hypr-layouts", "hypr-groups"}, &blue},
         {{"defaults", "hypr-input"}, &apps},
         {{"notifications", "sound", "hypr-animations"}, &pink},
         {{"display", "appearance", "style", "bar", "dock", "hypr-decoration", "hypr-monitors"}, &orange},
         {{"storage", "monitor", "calendar", "hypr-render"}, &yellow},
         {{"battery", "packages", "hypr-startup"}, &green},
-        {{"lock", "lockscreen", "users", "hypr-window-rules", "hypr-layer-rules", "hypr-workspace-rules", "hypr-profiles"}, &teal},
+        {{"lock", "firewall", "lockscreen", "users", "hypr-window-rules", "hypr-layer-rules", "hypr-workspace-rules", "hypr-profiles"}, &teal},
         {{"hypr-debug"}, &red},
         {{"accessibility", "tools", "hypr-plugins"}, &purple},
     };
@@ -3570,6 +3571,7 @@ struct PageDef {
 // their nearest kin
 const PageDef kPages[] = {
     {"network", "wifi", "Network & internet", "Wi-Fi, Ethernet and your connection", networkPage},
+    {"vpn", "vpn_key", "VPN", "WireGuard, OpenVPN and Cloudflare WARP", vpnPage},
     {"bluetooth", "bluetooth", "Connected devices", "Bluetooth, pairing and devices", bluetoothPage},
     {"defaults", "apps", "Apps", "Default apps for links, files and the terminal", defaultAppsPage},
     {"notifications", "notifications", "Notifications", "Do not disturb and pop-ups", notificationsPage},
@@ -3588,6 +3590,7 @@ const PageDef kPages[] = {
     {"lockscreen", "lock_person", "Lock screen", "Clock, widgets and the login screen", lockScreenPage},
     {"accessibility", "accessibility_new", "Accessibility", "Text, colour correction, magnifier and motion", accessibilityPage},
     {"lock", "security", "Security & privacy", "Screen lock, idle and sleep", lockPage},
+    {"firewall", "shield_lock", "Firewall", "Which devices on the network may connect", firewallPage},
     {"users", "account_circle", "Users", "Your profile, password, administrators and new profiles", usersPage},
     {"system", "settings_suggest", "System", "Date & time, languages and reset", systemPage},
     // Hyprland itself: every compositor option, live
@@ -3638,11 +3641,11 @@ int pageGroup(const std::string& id) {
         return 1;
     if (id == "hypr-keybinds" || id == "hypr-startup" || id == "hypr-environment" || id.ends_with("-rules")) return 3;
     if (id.starts_with("hypr-")) return 2;
-    if (id == "network" || id == "bluetooth") return 0;
+    if (id == "network" || id == "vpn" || id == "bluetooth") return 0;
     if (id == "defaults" || id == "notifications" || id == "tools" || id == "calendar" || id == "weather") return 1;
     if (id == "battery" || id == "storage" || id == "monitor" || id == "sound" || id == "display") return 2;
     if (id == "appearance" || id == "style" || id == "bar" || id == "dock" || id == "lockscreen") return 3;
-    if (id == "accessibility" || id == "lock" || id == "users") return 4;
+    if (id == "accessibility" || id == "lock" || id == "firewall" || id == "users") return 4;
     return 5; // system, keyboard, updates, about
 }
 

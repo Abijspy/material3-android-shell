@@ -4,6 +4,7 @@
 #include "services/Network.h"
 #include "services/Notifications.h"
 #include "services/Search.h"
+#include "services/Vpn.h"
 #include "quickshare/QuickShare.h"
 #include "services/Wallpaper.h"
 #include "core/Config.h"
@@ -308,6 +309,24 @@ const std::vector<TileDef>& tileDefs() {
          [](Popup&) {
              Config::get().set("/background/darkmode", !Config::get().value<bool>("/background/darkmode", true));
              Wallpaper::get().recolour();
+         }},
+        {"vpn", "vpn_key", "VPN", [] { return Vpn::get().anyActive(); },
+         [] {
+             auto& v = Vpn::get();
+             if (!v.busy().empty()) return std::string("Connecting…");
+             return v.anyActive() ? v.activeName() : std::string("Off");
+         },
+         [] { return std::string(Vpn::get().anyActive() ? "vpn_lock" : "vpn_key"); },
+         [](Popup& popup) {
+             // Nothing to switch yet: where VPNs are added
+             auto& v = Vpn::get();
+             if (v.connections().empty() && (v.warp() == Vpn::Warp::Absent || v.warp() == Vpn::Warp::NoDaemon ||
+                                             v.warp() == Vpn::Warp::Unregistered)) {
+                 popup.close();
+                 settingsPage("vpn");
+                 return;
+             }
+             v.toggleLast();
          }},
         {"airplane", "flight", "Airplane mode",
          [] { return !Network::get().wifiEnabled() && !Bluetooth::get().powered(); },
@@ -788,6 +807,7 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
     live->watch(Bluetooth::get().changed);
     live->watch(Notifications::get().changed);
     live->watch(Idle::get().changed);
+    live->watch(Vpn::get().changed);
     live->watch(Mpris::get().changed);
     live->watch(Power::get().changed);
     live->watch(Config::get().changed); // dark theme, and tiles edited elsewhere
