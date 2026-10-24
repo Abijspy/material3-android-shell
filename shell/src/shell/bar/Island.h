@@ -35,7 +35,7 @@ private:
     Mode m_mode = Mode::Clock;
     bool m_hovered = false;
     ui::Flex* m_content = nullptr;
-    ui::Tween m_width{120, ui::motion::longMs, ui::Easing::emphasizedDecelerate()};
+    ui::Tween m_width{120, ui::Spring::spatialDefault()};
     std::string m_noticeIcon, m_noticeText;
     EventLoop::TimerId m_clock = 0, m_noticeTimer = 0;
     int m_lastWorkspace = 0;

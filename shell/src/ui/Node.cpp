@@ -102,6 +102,9 @@ void Node::paint(Renderer& r) {
     if (o < 1) r.pushOpacity(o);
     const bool moved = dx != 0 || dy != 0;
     if (moved) r.pushTranslate(dx, dy);
+    const float sc = m_scale.value();
+    const bool scaled = sc != 1;
+    if (scaled) r.pushScale(m_rect.x + m_rect.w / 2, m_rect.y + m_rect.h / 2, std::max(0.0f, sc));
     // On the desktop and lock screen, the card's backdrop blurred in the frame
     if (blurBehind && r.inlineBlur > 0) r.blurBackdrop(m_rect, r.inlineBlur, Radii(cornerRadius()));
     doPaint(r);
@@ -109,9 +112,10 @@ void Node::paint(Renderer& r) {
     for (auto& c : m_children) c->paint(r);
     doPaintOver(r);
     if (clipsChildren()) r.popClip();
+    if (scaled) r.popTranslate();
     if (moved) r.popTranslate();
     if (o < 1) r.popOpacity();
-    if (m_opacity.running() || m_translateY.running() || m_translateX.running()) requestRedraw();
+    if (m_opacity.running() || m_translateY.running() || m_translateX.running() || m_scale.running()) requestRedraw();
 }
 
 Node* Node::hitTest(float x, float y, bool any) {
@@ -135,6 +139,11 @@ void Node::setTranslateX(float dx, bool animate) {
     requestRedraw();
 }
 
+void Node::setScale(float sc, bool animate) {
+    m_scale.set(sc, animate);
+    requestRedraw();
+}
+
 void Node::setTranslateY(float dy, bool animate) {
     m_translateY.set(dy, animate);
     requestRedraw();
@@ -142,7 +151,7 @@ void Node::setTranslateY(float dy, bool animate) {
 
 bool Node::animating() const {
     if (!shown()) return false;
-    if (doAnimating() || m_opacity.running() || m_translateY.running() || m_translateX.running()) return true;
+    if (doAnimating() || m_opacity.running() || m_translateY.running() || m_translateX.running() || m_scale.running()) return true;
     return std::any_of(m_children.begin(), m_children.end(), [](auto& c) { return c->animating(); });
 }
 
@@ -200,8 +209,23 @@ Flex* Flex::setBackground(const ColorRef& c, bool animate) {
 }
 
 Flex* Flex::setRadius(Radii r) {
+    m_radius = m_morphFrom = r;
+    m_pill = false;
+    requestRedraw();
+    return this;
+}
+
+Flex* Flex::morphRadius(Radii r, bool animate) {
+    if (r.tl == m_radius.tl && r.tr == m_radius.tr && r.br == m_radius.br && r.bl == m_radius.bl && !m_pill) return this;
+    // From what's shown now, even mid-morph
+    const float t = m_morph.value();
+    auto mix = [t](float a, float b) { return a + (b - a) * t; };
+    m_morphFrom = {mix(m_morphFrom.tl, m_radius.tl), mix(m_morphFrom.tr, m_radius.tr), mix(m_morphFrom.br, m_radius.br),
+                   mix(m_morphFrom.bl, m_radius.bl)};
     m_radius = r;
     m_pill = false;
+    m_morph.set(0, false);
+    m_morph.set(1, animate);
     requestRedraw();
     return this;
 }
@@ -223,8 +247,11 @@ Radii Flex::baseRadius() const {
     const float half = std::min(rect().w, rect().h) / 2;
     // Pills only lose roundness, so "Sharp" squares chips off too
     if (m_pill) return Radii(half * std::min(k, 1.0f));
-    auto f = [&](float v) { return std::min(v * k, half); };
-    return {f(m_radius.tl), f(m_radius.tr), f(m_radius.br), f(m_radius.bl)};
+    // Mid-morph: between the old corners and the new (the spring may
+    // overshoot; corners never go negative)
+    const float t = m_morph.value();
+    auto f = [&](float from, float to) { return std::clamp((from + (to - from) * t) * k, 0.0f, half); };
+    return {f(m_morphFrom.tl, m_radius.tl), f(m_morphFrom.tr, m_radius.tr), f(m_morphFrom.br, m_radius.br), f(m_morphFrom.bl, m_radius.bl)};
 }
 
 Radii Flex::effectiveRadius() const {
@@ -314,7 +341,7 @@ void Flex::doPaint(Renderer& r) {
     const Color bg = m_background.value();
     const Color border = m_border.resolve();
     if (bg.a > 0 || (m_borderWidth > 0 && border.a > 0)) r.rect(rect(), bg, effectiveRadius(), m_borderWidth, border);
-    if (m_background.running()) requestRedraw();
+    if (m_background.running() || m_morph.running()) requestRedraw();
 }
 
 // ── Label ──
@@ -441,12 +468,19 @@ void Button::onHover(bool hovered) {
 void Button::onPress(uint32_t, float, float) {
     m_state.set(0.12f);
     if (pressedRadius >= 0) m_press.set(1);
+    if (squish) {
+        // About four pixels in from each side: small buttons more, big
+        // rows less (6% to 2%)
+        const float side = std::max({rect().w, rect().h, 1.0f});
+        setScale(1 - std::clamp(8 / side, 0.02f, 0.06f));
+    }
     requestRedraw();
 }
 
 void Button::onRelease() {
     m_state.set(m_hovered ? 0.08f : 0.0f);
     m_press.set(0);
+    setScale(1); // the bouncy spring overshoots back: the release's "pop"
     requestRedraw();
 }
 

@@ -14,7 +14,7 @@ using namespace m3::ui;
 // A thick progress track that eases to its value
 class Osd::Bar : public Node {
 public:
-    Tween value{0, motion::shortMs, Easing::standard()};
+    Tween value{0, Spring::spatialFast()};
 
 protected:
     SizeF doMeasure(SizeF) override { return {180, 12}; }
@@ -97,7 +97,7 @@ void Osd::show(const std::string& icon, float value, const std::string& label) {
         m_hide = 0;
         m_pill->setOpacity(0);
         m_pill->setTranslateY(12);
-        m_destroy = EventLoop::get().addTimer(ui::motion::mediumMs + 50, [this] {
+        m_destroy = EventLoop::get().addTimer(ui::motion::ms(ui::motion::mediumMs + 50), [this] {
             m_destroy = 0;
             m_surface.reset();
         });

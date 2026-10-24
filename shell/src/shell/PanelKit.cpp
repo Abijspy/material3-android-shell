@@ -456,8 +456,10 @@ void Tile::set(bool active, const std::string& status, const std::string& icon) 
     const bool filled = active && !chipOnly;
     // Off: a translucent tint, so the blurred desktop shows through
     setBackground(filled ? ColorRef("primary") : ColorRef("on_surface", 0.1f));
-    // The chip: a circle while off, a rounded square while on
-    m_chip->setRadius(Radii(active ? 14 : 22));
+    // The chip: a circle while off, a rounded square while on, morphing
+    // between them (at once the first time)
+    m_chip->morphRadius(Radii(active ? 14 : 22), m_shaped);
+    m_shaped = true;
     m_chip->setBackground(active && chipOnly ? ColorRef("primary") : filled ? ColorRef::none() : ColorRef("on_surface", 0.1f));
     if (!icon.empty()) m_icon->setText(icon);
     m_icon->setFill(active)->setColor(active ? "on_primary" : "on_surface");

@@ -219,6 +219,7 @@ private:
     ui::Label* m_title;
     ui::Label* m_status;
     bool m_active = false;
+    bool m_shaped = false; // the chip has its first shape
 };
 
 // Small Quick Settings tile: the icon alone in a pill, filled when on

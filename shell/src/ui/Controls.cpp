@@ -179,8 +179,19 @@ Switch::Switch() = default;
 Switch* Switch::setChecked(bool c, bool animate) {
     m_checked = c;
     m_t.set(c ? 1 : 0, animate);
+    m_pos.set(c ? 1 : 0, animate);
     requestRedraw();
     return this;
+}
+
+void Switch::onPress(uint32_t, float, float) {
+    m_held.set(1);
+    requestRedraw();
+}
+
+void Switch::onRelease() {
+    m_held.set(0);
+    requestRedraw();
 }
 
 void Switch::onClick(uint32_t) {
@@ -198,8 +209,11 @@ void Switch::doPaint(Renderer& r) {
     r.rect(track, Color::mix(off, on, t), Radii(16), 2 * (1 - t), border);
     // M3 switch with icons (as Android 16): a full-size thumb carrying ✕
     // when off and ✓ when on
-    const float d = 24;
-    const float cx = track.x + 16 + (52 - 32) * t;
+    // 24 px, 28 while held; the position springs a little past the end
+    // and back (kept inside the track)
+    const float d = 24 + 4 * m_held.value();
+    const float pos = std::clamp(m_pos.value(), -0.08f, 1.08f);
+    const float cx = track.x + 16 + (52 - 32) * pos;
     const Color thumb = Color::mix(Theme::get().color("outline"), Theme::get().color("on_primary"), t);
     r.rect({cx - d / 2, track.y + 16 - d / 2, d, d}, thumb, Radii(d / 2));
     TextStyle st;
@@ -217,7 +231,7 @@ void Switch::doPaint(Renderer& r) {
            // from the thumb (on_primary_container can match on_primary in
            // dark palettes, and the ✓ vanished)
            Theme::get().color(checked ? "primary" : "surface_container_highest"));
-    if (m_t.running()) requestRedraw();
+    if (m_t.running() || m_pos.running() || m_held.running()) requestRedraw();
 }
 
 // ── ScrollView ──

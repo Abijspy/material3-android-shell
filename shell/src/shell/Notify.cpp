@@ -150,7 +150,9 @@ void NotificationCard::onHoverWithin(bool hovered) {
 
 namespace {
 
-// Column of toasts that reports where they are, for the input region
+// Column of toasts that reports where they are, for the input region.
+// When one comes or goes the others glide to their new places: each starts
+// drawn where it was and springs the difference away.
 class ToastColumn : public Flex {
 public:
     std::function<void()> onArranged;
@@ -158,7 +160,16 @@ public:
 
 protected:
     void doArrange() override {
+        std::vector<std::pair<Node*, float>> before;
+        for (const auto& c : children())
+            if (c->rect().w > 0) before.emplace_back(c.get(), c->rect().y + c->translateY());
         Flex::doArrange();
+        for (const auto& [node, y] : before) {
+            const float dy = y - node->rect().y;
+            if (std::abs(dy) < 0.5f) continue;
+            node->setTranslateY(dy, false);
+            node->setTranslateY(0);
+        }
         if (onArranged) onArranged();
     }
 };
@@ -229,10 +240,13 @@ void Toasts::show(uint32_t id) {
     auto card = std::make_unique<NotificationCard>(*n, true);
     NotificationCard* raw = card.get();
     m_column->adopt(std::move(card), 0); // newest on top
+    // In from the side, popping up to size
     raw->setOpacity(0, false);
     raw->setTranslateX(kToastWidth / 2, false);
+    raw->setScale(0.85f, false);
     raw->setOpacity(1);
     raw->setTranslateX(0);
+    raw->setScale(1);
     m_toasts.insert(m_toasts.begin(), Toast{id, raw});
 
     raw->onHoverChanged = [this, id](bool hovered) {
@@ -277,7 +291,8 @@ void Toasts::hide(uint32_t id, bool animate) {
     updateInput();
     card->setOpacity(0);
     card->setTranslateX(kToastWidth / 2);
-    EventLoop::get().addTimer(ui::motion::mediumMs, remove);
+    card->setScale(0.9f);
+    EventLoop::get().addTimer(ui::motion::ms(ui::motion::mediumMs), remove);
 }
 
 } // namespace m3::shell

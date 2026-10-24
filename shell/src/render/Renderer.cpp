@@ -316,7 +316,7 @@ void Renderer::begin(EGLSurface surface, int bufferWidth, int bufferHeight, floa
     m_scale = scale;
     m_opacity = {1.0f};
     m_clips.clear();
-    m_offsets = {{0.0f, 0.0f}};
+    m_xforms = {Xform{}};
 
     glViewport(0, 0, bufferWidth, bufferHeight);
     glDisable(GL_SCISSOR_TEST);
@@ -339,12 +339,14 @@ void Renderer::rect(const RectF& r, const Color& fill, Radii radii, float border
     auto& p = m_rectProg;
     glUseProgram(p.id);
     glUniform2f(p.viewport, m_bufferWidth / m_scale, m_bufferHeight / m_scale);
-    const auto [ox, oy] = m_offsets.back();
-    glUniform4f(p.rect, r.x + ox, r.y + oy, r.w, r.h);
-    glUniform4f(p.radii, radii.tl, radii.tr, radii.br, radii.bl);
+    const auto& xf = m_xforms.back();
+    const RectF m = xf.map(r);
+    const Radii rr = scaled(radii, xf.s);
+    glUniform4f(p.rect, m.x, m.y, m.w, m.h);
+    glUniform4f(p.radii, rr.tl, rr.tr, rr.br, rr.bl);
     premultiplied(p.fill, fill, o);
     premultiplied(p.border, border, o);
-    glUniform1f(p.borderWidth, borderWidth);
+    glUniform1f(p.borderWidth, borderWidth * xf.s);
     glUniform1f(p.px, 1.0f / m_scale);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
@@ -355,8 +357,8 @@ void Renderer::mask(GLuint texture, const RectF& r, const Color& tint) {
     auto& p = m_maskProg;
     glUseProgram(p.id);
     glUniform2f(p.viewport, m_bufferWidth / m_scale, m_bufferHeight / m_scale);
-    const auto [ox, oy] = m_offsets.back();
-    glUniform4f(p.rect, r.x + ox, r.y + oy, r.w, r.h);
+    const RectF m = m_xforms.back().map(r);
+    glUniform4f(p.rect, m.x, m.y, m.w, m.h);
     premultiplied(p.tint, tint, o);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
@@ -370,10 +372,12 @@ void Renderer::image(GLuint texture, const RectF& r, float opacity, Radii radii)
     auto& p = m_imageProg;
     glUseProgram(p.id);
     glUniform2f(p.viewport, m_bufferWidth / m_scale, m_bufferHeight / m_scale);
-    const auto [ox, oy] = m_offsets.back();
-    glUniform4f(p.rect, r.x + ox, r.y + oy, r.w, r.h);
+    const auto& xf = m_xforms.back();
+    const RectF m = xf.map(r);
+    const Radii rr = scaled(radii, xf.s);
+    glUniform4f(p.rect, m.x, m.y, m.w, m.h);
     glUniform1f(p.opacity, o);
-    glUniform4f(p.radii, radii.tl, radii.tr, radii.br, radii.bl);
+    glUniform4f(p.radii, rr.tl, rr.tr, rr.br, rr.bl);
     glUniform1f(p.px, 1.0f / m_scale);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
@@ -383,12 +387,12 @@ void Renderer::image(GLuint texture, const RectF& r, float opacity, Radii radii)
 
 void Renderer::blurEdge(const RectF& r, float radius, bool strongAtTop) {
     if (!m_blurProg.id || radius <= 0.25f || r.w <= 0 || r.h <= 0) return;
-    const auto [ox, oy] = m_offsets.back();
+    const RectF m = m_xforms.back().map(r);
     // Whole device pixels inside the buffer, so the copy lines up exactly
-    const int x0 = std::max(0, static_cast<int>(std::floor((r.x + ox) * m_scale)));
-    const int y0 = std::max(0, static_cast<int>(std::floor((r.y + oy) * m_scale)));
-    const int x1 = std::min(m_bufferWidth, static_cast<int>(std::ceil((r.right() + ox) * m_scale)));
-    const int y1 = std::min(m_bufferHeight, static_cast<int>(std::ceil((r.bottom() + oy) * m_scale)));
+    const int x0 = std::max(0, static_cast<int>(std::floor(m.x * m_scale)));
+    const int y0 = std::max(0, static_cast<int>(std::floor(m.y * m_scale)));
+    const int x1 = std::min(m_bufferWidth, static_cast<int>(std::ceil(m.right() * m_scale)));
+    const int y1 = std::min(m_bufferHeight, static_cast<int>(std::ceil(m.bottom() * m_scale)));
     const int w = x1 - x0, h = y1 - y0;
     if (w <= 0 || h <= 0) return;
 
@@ -454,11 +458,11 @@ void Renderer::blurEdge(const RectF& r, float radius, bool strongAtTop) {
 
 void Renderer::blurBackdrop(const RectF& r, float radius, Radii radii) {
     if (!m_blurProg.id || !m_backdropProg.id || radius <= 0.25f || r.w <= 0 || r.h <= 0) return;
-    const auto [ox, oy] = m_offsets.back();
-    const int x0 = std::max(0, static_cast<int>(std::floor((r.x + ox) * m_scale)));
-    const int y0 = std::max(0, static_cast<int>(std::floor((r.y + oy) * m_scale)));
-    const int x1 = std::min(m_bufferWidth, static_cast<int>(std::ceil((r.right() + ox) * m_scale)));
-    const int y1 = std::min(m_bufferHeight, static_cast<int>(std::ceil((r.bottom() + oy) * m_scale)));
+    const RectF m = m_xforms.back().map(r);
+    const int x0 = std::max(0, static_cast<int>(std::floor(m.x * m_scale)));
+    const int y0 = std::max(0, static_cast<int>(std::floor(m.y * m_scale)));
+    const int x1 = std::min(m_bufferWidth, static_cast<int>(std::ceil(m.right() * m_scale)));
+    const int y1 = std::min(m_bufferHeight, static_cast<int>(std::ceil(m.bottom() * m_scale)));
     const int w = x1 - x0, h = y1 - y0;
     if (w <= 0 || h <= 0) return;
 
@@ -537,18 +541,28 @@ void Renderer::popOpacity() {
 }
 
 void Renderer::pushTranslate(float dx, float dy) {
-    const auto [ox, oy] = m_offsets.back();
-    m_offsets.emplace_back(ox + dx, oy + dy);
+    Xform x = m_xforms.back();
+    x.x += dx * x.s;
+    x.y += dy * x.s;
+    m_xforms.push_back(x);
+}
+
+void Renderer::pushScale(float cx, float cy, float factor) {
+    // p → c + (p − c)·k, then the transform already there
+    Xform x = m_xforms.back();
+    x.x += x.s * cx * (1 - factor);
+    x.y += x.s * cy * (1 - factor);
+    x.s *= factor;
+    m_xforms.push_back(x);
 }
 
 void Renderer::popTranslate() {
-    if (m_offsets.size() > 1) m_offsets.pop_back();
+    if (m_xforms.size() > 1) m_xforms.pop_back();
 }
 
 void Renderer::pushClip(const RectF& rect) {
-    // Clips are given in layout coordinates; apply the current offset
-    const auto [ox, oy] = m_offsets.back();
-    const RectF r{rect.x + ox, rect.y + oy, rect.w, rect.h};
+    // Clips are given in layout coordinates; apply the current transform
+    const RectF r = m_xforms.back().map(rect);
     m_clips.push_back(m_clips.empty() ? r : m_clips.back().intersected(r));
     applyClip();
 }
@@ -560,12 +574,11 @@ void Renderer::popClip() {
 
 bool Renderer::visible(const RectF& rect) const {
     if (m_clips.empty()) return true;
-    const auto [ox, oy] = m_offsets.back();
+    const RectF m = m_xforms.back().map(rect);
     const auto& c = m_clips.back();
     // A little slack for borders and focus rings drawn just outside a rect
     constexpr float slack = 8;
-    return rect.x + ox - slack < c.right() && rect.right() + ox + slack > c.x && rect.y + oy - slack < c.bottom() &&
-           rect.bottom() + oy + slack > c.y;
+    return m.x - slack < c.right() && m.right() + slack > c.x && m.y - slack < c.bottom() && m.bottom() + slack > c.y;
 }
 
 void Renderer::applyClip() {

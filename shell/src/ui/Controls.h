@@ -54,8 +54,8 @@ private:
     float m_track = 16; // M3 "XS" by default
     std::string m_icon;
     bool m_centred = false, m_dragging = false;
-    Tween m_shown{0, motion::shortMs, Easing::standard()}; // displayed fraction
-    Tween m_handle{4, motion::shortMs, Easing::standard()}; // handle width (pressed: 2)
+    Tween m_shown{0, Spring::spatialFast()}; // displayed fraction
+    Tween m_handle{4, Spring::spatialFast()}; // handle width (pressed: 2)
 };
 
 // M3 switch: pill track with a thumb that grows and slides when on.
@@ -68,15 +68,19 @@ public:
 
     bool interactive() const override { return true; }
     void onClick(uint32_t) override;
+    void onPress(uint32_t, float, float) override;
+    void onRelease() override;
 
 protected:
     SizeF doMeasure(SizeF) override { return {52, 32}; }
     void doPaint(Renderer& r) override;
-    bool doAnimating() const override { return m_t.running(); }
+    bool doAnimating() const override { return m_t.running() || m_pos.running() || m_held.running(); }
 
 private:
     bool m_checked = false;
-    Tween m_t{0, motion::shortMs, Easing::standard()};
+    Tween m_t{0, Spring::effectsDefault()}; // colours
+    Tween m_pos{0, Spring::bouncy()};       // where the thumb is: overshoots and settles
+    Tween m_held{0, Spring::spatialFast()}; // the thumb grows while pressed
 };
 
 // Vertical scrolling for one content node, clipped, with eased wheel steps.
@@ -128,7 +132,7 @@ private:
     float m_warmedHeight = -1, m_warmedScale = 0;
     // Starts fast and settles: wheel steps chain without stalling
     Tween m_offset{0, kWheelMs, Easing::emphasizedDecelerate()};
-    Tween m_bar{0, motion::shortMs, Easing::standard()}; // 0 idle … 1 hovered/dragging
+    Tween m_bar{0, Spring::effectsDefault()}; // 0 idle … 1 hovered/dragging
     static constexpr int kWheelMs = 260;
     // Touchpad speed (px per ms), for the glide when the fingers lift
     float m_velocity = 0;

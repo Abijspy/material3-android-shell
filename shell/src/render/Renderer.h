@@ -59,6 +59,9 @@ public:
     // Offsets everything drawn until popped (slide transitions, scrolling)
     void pushTranslate(float dx, float dy);
     void popTranslate();
+    // Scales everything drawn until popped about (cx, cy), in layout
+    // coordinates: springy pops and presses. Popped with popTranslate.
+    void pushScale(float cx, float cy, float factor);
 
     void pushClip(const RectF& r);
     void popClip();
@@ -108,7 +111,13 @@ private:
     float m_scale = 1;
     std::vector<float> m_opacity{1.0f};
     std::vector<RectF> m_clips;
-    std::vector<std::pair<float, float>> m_offsets{{0.0f, 0.0f}};
+    // Layout → surface: scaled, then offset
+    struct Xform {
+        float s = 1, x = 0, y = 0;
+        RectF map(const RectF& r) const { return {r.x * s + x, r.y * s + y, r.w * s, r.h * s}; }
+    };
+    std::vector<Xform> m_xforms{Xform{}};
+    static Radii scaled(const Radii& r, float s) { return {r.tl * s, r.tr * s, r.br * s, r.bl * s}; }
 };
 
 } // namespace m3

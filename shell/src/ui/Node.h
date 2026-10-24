@@ -89,6 +89,10 @@ public:
     void setOpacity(float o, bool animate = true);
     void setTranslateY(float dy, bool animate = true);
     void setTranslateX(float dx, bool animate = true);
+    // Drawn scaled about its centre (springy pops); layout and hit tests
+    // ignore it
+    void setScale(float s, bool animate = true);
+    float translateY() const { return m_translateY.value(); }
 
     // Animations still running in this subtree
     bool animating() const;
@@ -148,9 +152,12 @@ protected:
     Node* parent() const { return m_parent; }
 
 private:
-    Tween m_opacity{1, motion::mediumMs, Easing::emphasizedDecelerate()};
-    Tween m_translateY{0, motion::mediumMs, Easing::emphasizedDecelerate()};
-    Tween m_translateX{0, motion::mediumMs, Easing::emphasizedDecelerate()};
+    // M3 Expressive: fades on an effects spring, moves on a spatial one, and
+    // scale on the bouncier spring pops are made of
+    Tween m_opacity{1, Spring::effectsDefault()};
+    Tween m_translateY{0, Spring::spatialDefault()};
+    Tween m_translateX{0, Spring::spatialDefault()};
+    Tween m_scale{1, Spring::bouncy()};
     Host* host() const;
 
     Node* m_parent = nullptr;
@@ -182,6 +189,9 @@ public:
     Flex* setAlignItems(Align a);
     Flex* setBackground(const ColorRef& c, bool animate = true);
     Flex* setRadius(Radii r);
+    // The same, as M3 Expressive's shape morph: the corners spring from the
+    // shape they have to the new one
+    Flex* morphRadius(Radii r, bool animate = true);
     const Radii& radius() const { return m_radius; }
     Flex* setBorder(float width, const ColorRef& c);
     float cornerRadius() const override;
@@ -190,7 +200,7 @@ protected:
     SizeF doMeasure(SizeF available) override;
     void doArrange() override;
     void doPaint(Renderer& r) override;
-    bool doAnimating() const override { return m_background.running(); }
+    bool doAnimating() const override { return m_background.running() || m_morph.running(); }
     // The set radius scaled by the theme's roundness, never past a pill
     virtual Radii effectiveRadius() const;
     Radii baseRadius() const;
@@ -202,6 +212,8 @@ protected:
     Align m_alignItems = Align::Center;
     ColorTween m_background;
     Radii m_radius;
+    Radii m_morphFrom;               // the shape a morph started from
+    Tween m_morph{1, Spring::bouncy()}; // 0 → 1: from m_morphFrom to m_radius
     float m_borderWidth = 0;
     ColorRef m_border = ColorRef::none();
     // Pill radius: half the smaller side, whatever the final size
@@ -270,6 +282,8 @@ public:
     // M3 Expressive shape morph: while pressed the corners spring towards
     // this radius (< 0: no morph)
     float pressedRadius = -1;
+    // Pressed, it squishes a few pixels and springs back on release
+    bool squish = true;
 
     bool interactive() const override { return true; }
     void onHover(bool hovered) override;
@@ -285,8 +299,8 @@ protected:
     Radii effectiveRadius() const override;
 
 private:
-    Tween m_state{0, motion::shortMs, Easing::standard()};
-    Tween m_press{0, motion::mediumMs, Easing::expressiveFast()};
+    Tween m_state{0, Spring::effectsFast()};
+    Tween m_press{0, Spring::bouncy()};
     bool m_hovered = false;
 };
 

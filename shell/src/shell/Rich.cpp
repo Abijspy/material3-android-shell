@@ -58,7 +58,7 @@ protected:
 // Usage bar with an eased value
 class Meter : public Node {
 public:
-    Tween value{0, motion::mediumMs, Easing::standard()};
+    Tween value{0, Spring::spatialDefault()};
     float height = 10;
 
 protected:

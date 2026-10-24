@@ -92,7 +92,7 @@ Flex* capsule(Node* parent, bool filled) {
 // The indicator: a dot that stretches into a pill for the active workspace
 class Workspaces::Dot : public Node {
 public:
-    Tween width{8, motion::mediumMs, Easing::emphasizedDecelerate()};
+    Tween width{8, Spring::bouncy()}; // stretches with a little bounce
     ColorTween color{ColorRef("outline_variant")};
 
 protected:

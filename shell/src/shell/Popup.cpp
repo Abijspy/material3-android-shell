@@ -135,10 +135,13 @@ Popup::Popup(wl::Output* output, Options options, const std::function<void(Flex*
     m_card->blurBehind = true;
     if (!m_options.fill && m_options.width > 0) m_card->fixedWidth = m_options.width;
     // Enter: fade in while dropping a few pixels into place
+    // In with a pop: from a little smaller and lower, springing past full size
     m_card->setOpacity(0, false);
     m_card->setTranslateY(12 * m_drop, false);
+    m_card->setScale(0.92f, false);
     m_card->setOpacity(1);
     m_card->setTranslateY(0);
+    m_card->setScale(1);
 
     // Opacity and roundness are live: Settings previews them on itself
     m_theme = Theme::get().changed.connect([this] {
@@ -224,7 +227,8 @@ void Popup::close() {
     }
     m_card->setOpacity(0);
     m_card->setTranslateY(8 * m_drop);
-    m_closeTimer = EventLoop::get().addTimer(ui::motion::mediumMs, [this] {
+    m_card->setScale(0.96f);
+    m_closeTimer = EventLoop::get().addTimer(ui::motion::ms(ui::motion::mediumMs), [this] {
         m_closeTimer = 0;
         if (onClosed) onClosed(); // the owner destroys us here
     });
