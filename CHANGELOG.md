@@ -1,5 +1,23 @@
 # Changelog
 
+## v5.6.0 — 2026-10-24
+
+- **VPN in Settings.** A new VPN page next to Network: your WireGuard and other NetworkManager VPNs, each with an on/off switch, plus **Add a VPN** from a WireGuard `.conf` or OpenVPN `.ovpn` file. Imported VPNs stay off until you turn them on. Cloudflare WARP is supported too when installed. A new VPN tile for Quick Settings turns your last VPN on or off.
+- **Firewall in Settings.** A new Firewall page next to Security & privacy, for ufw or firewalld:
+  - Turn it on or off, and choose whether incoming connections are blocked.
+  - Let apps through in one tap: Quick Share, KDE Connect, LocalSend, Syncthing and SSH.
+  - See and delete rules, or add your own by port.
+  - No firewall yet? Install ufw from there.
+- **Export and import your settings.** Settings → System → Backups saves the shell's settings as a JSON file in Downloads, and imports one back (your current settings are backed up first). Also from the command line: `material3ui msg config export|import`.
+- **Material 3 Expressive motion.** Animations now run on springs, so interrupted motion stays smooth:
+  - Buttons squish when pressed and bounce back.
+  - Switches bounce across.
+  - Quick Settings tiles morph between circle and rounded square.
+  - Popups pop in.
+  - Notifications spring in, and the others glide into place when one comes or goes.
+- **Cooler and lighter.** Endless decoration (the wavy music progress, scrolling titles, spinners) now draws at 30 fps instead of at full refresh rate. With music playing, the shell's CPU use drops by almost half.
+- **Quick Share's own icon**, in Quick Settings, its popups, Settings and notifications.
+
 ## v5.5.3 — 2026-10-23
 
 - **Clipboard previews.** Spotlight's clipboard (`#`) and the clipboard panel show a small preview instead of text:
