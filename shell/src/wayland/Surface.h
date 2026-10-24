@@ -1,10 +1,12 @@
 #pragma once
 
+#include "core/EventLoop.h"
 #include "core/Signal.h"
 #include "ui/Input.h"
 #include "ui/Node.h"
 
 #include <EGL/egl.h>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -64,6 +66,7 @@ public:
     // ui::Host
     void requestLayout() override;
     void requestRedraw() override;
+    void requestAmbientRedraw() override;
     void nodeDestroyed(ui::Node* node) override;
     void requestFocus(ui::Node* node) override { setFocus(node); }
 
@@ -104,6 +107,7 @@ protected:
 
 private:
     void schedule();
+    void scheduleAmbient(); // a frame when the ambient frame rate allows
     void render();
     void layout();
     void resizeBuffer();
@@ -125,6 +129,10 @@ private:
     bool m_needsLayout = true;
     bool m_dirty = true;
     bool m_scheduled = false;
+    // Only ambient motion running: frames at kAmbientFps, not every vblank
+    bool m_ambient = false;
+    EventLoop::TimerId m_ambientTimer = 0;
+    std::chrono::steady_clock::time_point m_lastFrame{};
     bool m_hasKeyboard = false;
 
     // Deferred renders check this so a surface destroyed meanwhile is skipped

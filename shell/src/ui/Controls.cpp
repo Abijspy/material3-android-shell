@@ -735,7 +735,7 @@ void Marquee::doPaint(Renderer&) {
     const float over = m_natural - rect().w;
     if (over <= 0.5f || m_mode == Mode::Off) {
         m_offset = 0;
-        m_label->setTranslateX(0, false);
+        m_label->shiftX(0);
         return;
     }
     const double speed = m_speed, t0 = std::chrono::duration<double>(std::chrono::steady_clock::now() - m_start).count();
@@ -754,8 +754,8 @@ void Marquee::doPaint(Renderer&) {
         else offset = over - (t - 2 * kMarqueePause - run) * speed;
     }
     m_offset = -static_cast<float>(std::round(offset));
-    m_label->setTranslateX(m_offset, false);
-    if (wait <= 0) return requestRedraw();
+    m_label->shiftX(m_offset);
+    if (wait <= 0) return requestAmbientRedraw(); // scrolling: at the calm frame rate
     // Still: wake when it moves again, no frames in between
     if (!m_wake)
         m_wake = EventLoop::get().addTimer(static_cast<int>(wait * 1000) + 16, [this] {
@@ -768,9 +768,9 @@ void Marquee::doPaintOver(Renderer& r) {
     if (m_mode != Mode::Loop || m_natural - rect().w <= 0.5f) return;
     // The beginning again, one text and a gap along: the loop is seamless.
     // Moved by the label's own offset (culling looks at its layout place)
-    m_label->setTranslateX(m_offset + m_natural + kMarqueeGap, false);
+    m_label->shiftX(m_offset + m_natural + kMarqueeGap);
     m_label->paint(r);
-    m_label->setTranslateX(m_offset, false);
+    m_label->shiftX(m_offset);
 }
 
 } // namespace m3::ui

@@ -97,6 +97,7 @@ Surface::Surface(Output* output) : m_output(output) {
 Surface::~Surface() {
     std::erase(registry(), this);
     *m_alive = false;
+    if (m_ambientTimer) EventLoop::get().cancel(m_ambientTimer);
     // Subclasses call destroySurface() in their destructors (their role
     // must go first); this is the safety net.
     destroySurface();
@@ -228,7 +229,28 @@ void Surface::schedule() {
 void Surface::frameDone() {
     wl_callback_destroy(m_frame);
     m_frame = nullptr;
-    if (m_dirty || (m_root && m_root->animating())) render();
+    if (m_dirty) render();
+    else if (m_ambient) scheduleAmbient();
+}
+
+void Surface::requestAmbientRedraw() {
+    m_ambient = true;
+    if (!m_frame) scheduleAmbient(); // else frameDone does
+}
+
+void Surface::scheduleAmbient() {
+    // Waves and scrolling text read as smooth at 30 fps; drawing them at
+    // the display's 60–144 only heats the CPU, the GPU and the compositor
+    constexpr int kAmbientFps = 30;
+    if (m_ambientTimer || m_dirty) return;
+    const auto since = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - m_lastFrame).count();
+    const int wait = std::max(0, static_cast<int>(1000 / kAmbientFps - since));
+    m_ambientTimer = EventLoop::get().addTimer(wait, [this, alive = m_alive] {
+        if (!*alive) return;
+        m_ambientTimer = 0;
+        m_dirty = true;
+        render();
+    });
 }
 
 void Surface::layout() {
@@ -263,12 +285,17 @@ void Surface::render() {
     if (m_root) m_root->paint(r);
     r.inlineBlur = 0;
     const auto t2 = Clock::now();
-    // Painting may flag more work (running animations); that becomes the next frame
-    m_dirty = m_dirty || (m_root && m_root->animating());
+    // Painting may flag more work (running animations); that becomes the
+    // next frame, or, for ambient motion alone, one at the ambient rate
+    const auto motion = m_root ? m_root->motion() : ui::Node::Motion::None;
+    m_dirty = m_dirty || motion == ui::Node::Motion::Live;
+    m_ambient = motion == ui::Node::Motion::Ambient;
+    m_lastFrame = t0;
     if (debugFrames()) {
         auto ms = [](auto d) { return std::chrono::duration<double, std::milli>(d).count(); };
-        log::info("frame {} {}x{}@{} dirty={} layout={} {:.2f}ms ({} measures) paint {:.2f}ms", m_tag, m_width, m_height,
-                  m_scale, m_dirty, laidOut, ms(t1 - t0), ui::Node::measureCount() - measuresBefore, ms(t2 - t1));
+        log::info("frame {} {}x{}@{} dirty={} motion={} layout={} {:.2f}ms ({} measures) paint {:.2f}ms", m_tag, m_width, m_height,
+                  m_scale, m_dirty, static_cast<int>(motion), laidOut, ms(t1 - t0), ui::Node::measureCount() - measuresBefore,
+                  ms(t2 - t1));
     }
 
     m_frame = wl_surface_frame(m_surface);

@@ -103,7 +103,7 @@ void WavyLoader::doPaint(Renderer& r) {
         const float x = cx + rr * std::cos(a), y = cy + rr * std::sin(a);
         r.rect({x - stroke / 2, y - stroke / 2, stroke, stroke}, c, Radii(stroke / 2));
     }
-    requestRedraw();
+    // More frames come from doAnimating, at the ambient rate
 }
 
 void WavyBar::doPaint(Renderer& r) {
@@ -131,7 +131,6 @@ void WavyBar::doPaint(Renderer& r) {
         const float y = cy + amp * std::sin(2 * static_cast<float>(M_PI) * (x - b.x) / wavelength - phase);
         r.rect({x - stroke / 2, y - stroke / 2, stroke, stroke}, active, Radii(stroke / 2));
     }
-    requestRedraw();
 }
 
 WavyRing::WavyRing(float size) : Flex(Direction::Row), m_size(size) {
@@ -169,7 +168,6 @@ void WavyRing::doPaint(Renderer& r) {
     const float phase = static_cast<float>(std::fmod(seconds() * 5.0, tau));
     const float waves = std::max(8.0f, std::round(m_size / 2.5f)); // small rings: small, tight waves
     for (float a = top; a <= end; a += step) dot(a, radius + amp * std::sin(waves * a - phase), active);
-    if (m_playing || m_amp.running()) requestRedraw();
 }
 
 // ── WavyProgress ──
@@ -227,7 +225,6 @@ void WavyProgress::doPaint(Renderer& r) {
     r.rect({b.right() - stroke, cy - stroke / 2, stroke, stroke}, active, Radii(stroke / 2));
     // The handle where playback is
     r.rect({split - 2, cy - 10, 4, 20}, active, Radii(2));
-    if (m_playing || m_amp.running()) requestRedraw();
 }
 
 // ── MediaCard ──

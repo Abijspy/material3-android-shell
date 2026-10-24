@@ -54,6 +54,7 @@ protected:
     SizeF doMeasure(SizeF available) override { return {available.w, 36}; }
     void doPaint(Renderer& r) override;
     bool doAnimating() const override { return true; }
+    bool doAmbient() const override { return true; } // the preview's endless loop
 
 private:
     std::shared_ptr<Bezier> m_curve;

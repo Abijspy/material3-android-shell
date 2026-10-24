@@ -92,6 +92,7 @@ protected:
     SizeF doMeasure(SizeF) override { return {m_size, m_size}; }
     void doPaint(Renderer& r) override;
     bool doAnimating() const override { return true; }
+    bool doAmbient() const override { return true; }
 
 private:
     float m_size;
@@ -103,6 +104,7 @@ protected:
     SizeF doMeasure(SizeF available) override { return {available.w, 16}; }
     void doPaint(Renderer& r) override;
     bool doAnimating() const override { return true; }
+    bool doAmbient() const override { return true; }
 };
 
 // The active player's progress as a ring around its children (an icon):
@@ -114,6 +116,8 @@ public:
 protected:
     void doPaint(Renderer& r) override;
     bool doAnimating() const override { return Flex::doAnimating() || m_playing || m_amp.running(); }
+    // Waving while playing is decoration; flattening or a colour change isn't
+    bool doAmbient() const override { return !Flex::doAnimating() && !m_amp.running(); }
 
 private:
     float m_size;
@@ -138,6 +142,7 @@ protected:
     SizeF doMeasure(SizeF available) override { return {available.w, 24}; }
     void doPaint(Renderer& r) override;
     bool doAnimating() const override { return m_playing || m_amp.running(); }
+    bool doAmbient() const override { return !m_amp.running() && m_drag < 0; }
 
 private:
     float m_value = 0, m_drag = -1;
