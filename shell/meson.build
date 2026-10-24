@@ -91,6 +91,7 @@ sources = files(
   'src/services/PacmanLog.cpp',
   'src/services/Polkit.cpp',
   'src/services/Search.cpp',
+  'src/services/ThemedIcons.cpp',
   'src/services/Screenshot.cpp',
   'src/services/Session.cpp',
   'src/services/SystemStats.cpp',

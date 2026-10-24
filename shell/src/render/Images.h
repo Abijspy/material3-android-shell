@@ -33,6 +33,9 @@ public:
     void rescan();
     // A file changed (a new ~/.face): its pictures are decoded again
     void forget(const std::string& path);
+    // A themed icon was rewritten (Settings' follows the wallpaper): drawn
+    // and looked up afresh
+    void reloadIcon(const std::string& name);
     // ARGB32 big-endian pixmap (StatusNotifierItem IconPixmap)
     const Texture* pixmap(const std::string& key, int w, int h, const std::vector<uint8_t>& argb);
 

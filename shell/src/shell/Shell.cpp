@@ -17,6 +17,7 @@
 #include "services/Hyprland.h"
 #include "services/Audio.h"
 #include "services/Backups.h"
+#include "services/ThemedIcons.h"
 #include "services/Calendar.h"
 #include "quickshare/QuickShare.h"
 #include "services/Clipboard.h"
@@ -79,7 +80,12 @@ bool Shell::start() {
         if (o->ready) addOutput(o.get());
 
     // Wallpaper colours only need a repaint; config edits may change sizes and fonts
-    Theme::get().changed.connectForever([this] { restyle(false); });
+    // The Settings icon follows the wallpaper's colours too
+    themedicons::update();
+    Theme::get().changed.connectForever([this] {
+        themedicons::update();
+        restyle(false);
+    });
     Config::get().changed.connectForever([this] { restyle(true); });
 
     // Transient surfaces follow the focused output
