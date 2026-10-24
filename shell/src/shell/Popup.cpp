@@ -177,7 +177,8 @@ void Popup::buildTitleBar(Flex* card) {
     drag->minHeight = 32;
     drag->onDrag = [this] { m_window->startMove(); };
     drag->onDouble = [this] { toggleMaximized(); };
-    // Round tonal buttons, close last
+    // Round tonal buttons, close last. No minimise: Hyprland has no
+    // minimised state, and the dock or a workspace switch does the job
     auto button = [&](const char* icon, std::function<void()> fn, const char* hover) -> Icon* {
         auto* b = bar->add<Button>();
         pill(b)->setPadding(Insets(7));
@@ -190,7 +191,6 @@ void Popup::buildTitleBar(Flex* card) {
         };
         return i;
     };
-    button("remove", [this] { minimize(); }, "on_surface");
     m_maxIcon = button("crop_square", [this] { toggleMaximized(); }, "on_surface");
     button("close", [this] { close(); }, "error");
 }
