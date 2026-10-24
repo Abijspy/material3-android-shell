@@ -1,5 +1,11 @@
 # Changelog
 
+## v5.6.1 — 2026-10-24
+
+- **Android's Settings icon.** The Settings app has Android's icon: a gear with a long shadow on a circle.
+- **It follows your wallpaper's colours**, as Android's themed icons do: a deep tint behind a light gear in dark mode, a pale tint behind a deep gear in light mode. The dock, Spotlight and other launchers update as soon as the wallpaper changes.
+- **No minimise button** on the Settings and Hyprland Settings windows. Hyprland has no minimised state; maximise and close remain.
+
 ## v5.6.0 — 2026-10-24
 
 - **VPN in Settings.** A new VPN page next to Network: your WireGuard and other NetworkManager VPNs, each with an on/off switch, plus **Add a VPN** from a WireGuard `.conf` or OpenVPN `.ovpn` file. Imported VPNs stay off until you turn them on. Cloudflare WARP is supported too when installed. A new VPN tile for Quick Settings turns your last VPN on or off.
