@@ -1831,6 +1831,24 @@ void backupRows(Flex* page) {
         status->setText("Backing up…");
         Backups::get().create("manual", [status](bool ok) { status->setText(ok ? "Backed up" : "Nothing to back up"); });
     }, "save");
+    // The shell's settings as one JSON file, to keep or bring to another computer
+    auto ex = row(head, "file_export", "Export settings", "As a JSON file in Downloads");
+    auto* exStatus = ex.subtitle;
+    pillButton(ex.row, "Export", false, [exStatus] {
+        std::error_code ec;
+        const std::string dir = paths::home() + "/Downloads";
+        std::filesystem::create_directories(dir, ec);
+        const std::time_t now = std::time(nullptr);
+        char stamp[32];
+        std::strftime(stamp, sizeof stamp, "%Y-%m-%d_%H-%M", std::localtime(&now));
+        const std::string file = dir + "/material3ui-settings-" + stamp + ".json";
+        const std::string error = Config::get().exportTo(file);
+        exStatus->setText(error.empty() ? "Saved as Downloads/" + std::filesystem::path(file).filename().string() : error);
+    }, "download");
+    auto im = row(head, "file_open", "Import settings", "From an exported file: the ones now are backed up first");
+    pillButton(im.row, "Import", false, [] {
+        if (open) open("files settings");
+    }, "upload");
 
     // Which backup is asking, and what for ("restore" or "delete"), and how
     // the last restore went
@@ -1859,6 +1877,7 @@ void backupRows(Flex* page) {
             const std::string why = e.reason == "before-update"    ? "Before an update"
                                   : e.reason == "before-restore" ? "Before a restore"
                                   : e.reason == "before-reset"   ? "Before a reset"
+                                  : e.reason == "before-import"  ? "Before an import"
                                                                  : "Made by you";
             const std::string size = std::format("{} KB", std::max<std::uintmax_t>(1, e.size / 1024));
             auto r = row(g, e.reason == "manual" ? "bookmark" : "history", when, why + "  ·  " + size);

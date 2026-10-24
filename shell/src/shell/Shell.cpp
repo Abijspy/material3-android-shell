@@ -6,6 +6,7 @@
 #include "build_config.h"
 #include "core/Config.h"
 #include "core/EventLoop.h"
+#include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Process.h"
 #include "ipc/IpcServer.h"
@@ -776,6 +777,28 @@ void Shell::registerIpc() {
             out += std::format("{}  {}{}  {}  pin {}  {} file(s) {}/{} bytes{}\n", id, t.outgoing ? "→ " : "", states[static_cast<int>(t.state)], t.sender, t.pin, t.files.size(),
                                t.received, t.total, t.error.empty() ? "" : "  " + t.error);
         return out;
+    });
+    ipc.add("config", "config export [file]|import <file>: the shell's settings as a JSON file, and back (backed up first)",
+            [](const IpcServer::Args& a) {
+        const auto absolute = [](const std::string& p) {
+            std::error_code ec;
+            const auto abs = std::filesystem::absolute(p, ec);
+            return ec ? p : abs.string();
+        };
+        if (!a.empty() && a[0] == "export") {
+            const std::string file = a.size() > 1 ? absolute(a[1]) : paths::home() + "/Downloads/material3ui-settings.json";
+            const std::string error = Config::get().exportTo(file);
+            return error.empty() ? "exported to " + file : "error: " + error;
+        }
+        if (a.size() > 1 && a[0] == "import") {
+            const std::string file = absolute(a[1]);
+            Backups::get().create("before-import", [file](bool) {
+                const std::string error = Config::get().importFrom(file);
+                if (!error.empty()) log::warn("config import: {}", error);
+            });
+            return "importing " + file + " (the settings now are backed up first)";
+        }
+        return std::string("usage: config export [file] | config import <file>");
     });
     ipc.add("calendar", "calendar [list [days]|subscribe <name> <ics-url>|refresh]: events coming up, or add a calendar", [](const IpcServer::Args& a) {
         auto& cal = Calendar::get();

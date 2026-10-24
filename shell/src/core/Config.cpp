@@ -4,6 +4,7 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 
@@ -34,6 +35,10 @@ void Config::set(const std::string& pointer, const nlohmann::json& value) {
         log::warn("config: cannot set {}: {}", pointer, e.what());
         return;
     }
+    write();
+}
+
+void Config::write() {
     std::error_code ec;
     std::filesystem::create_directories(paths::configDir(), ec);
     const std::string tmp = paths::configFile() + ".tmp";
@@ -42,6 +47,36 @@ void Config::set(const std::string& pointer, const nlohmann::json& value) {
         out << m_data.dump(2);
     }
     std::filesystem::rename(tmp, paths::configFile(), ec);
+}
+
+std::string Config::exportTo(const std::string& path) const {
+    std::ofstream out(path);
+    if (!out) return "Couldn't write " + path;
+    out << m_data.dump(2) << '\n';
+    return out.good() ? "" : "Couldn't write " + path;
+}
+
+std::string Config::importFrom(const std::string& path) {
+    std::ifstream in(path);
+    if (!in) return "Couldn't open that file";
+    nlohmann::json data;
+    try {
+        data = nlohmann::json::parse(in, nullptr, true, true);
+    } catch (const std::exception&) {
+        return "That file isn't valid JSON";
+    }
+    // Shell settings are one object of sections ("bar", "dock"…)
+    if (!data.is_object() || data.empty()) return "That file doesn't hold Material3UI settings";
+    const bool ours = std::ranges::any_of(data.items(), [](const auto& kv) {
+        static const std::vector<std::string> known = {"bar", "statusBar", "dock", "appearance", "background", "lockscreen",
+                                                       "notifications", "quickSettings", "launcher", "desktop", "weather",
+                                                       "clock", "idle", "screenshot", "quickshare", "calendar", "hyprland"};
+        return std::ranges::find(known, kv.key()) != known.end();
+    });
+    if (!ours) return "That file doesn't hold Material3UI settings";
+    m_data = std::move(data);
+    write(); // the file watcher reloads everyone
+    return "";
 }
 
 void Config::reload() {

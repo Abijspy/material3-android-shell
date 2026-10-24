@@ -32,7 +32,14 @@ public:
     // atomically; listeners run when the file watcher sees the change.
     void set(const std::string& pointer, const nlohmann::json& value);
 
+    // The whole of it as a file to keep or move to another computer, and
+    // back: import replaces every setting (the caller backs up first). An
+    // empty string on success, else why not.
+    std::string exportTo(const std::string& path) const;
+    std::string importFrom(const std::string& path);
+
 private:
+    void write();
     Config();
 
     nlohmann::json m_data = nlohmann::json::object();
