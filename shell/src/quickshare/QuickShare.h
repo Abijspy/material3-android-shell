@@ -25,6 +25,9 @@ class MdnsResponder;
 // phone shows; files land in ~/Downloads.
 class QuickShare {
 public:
+    // Quick Share's symbol for an Icon: its SVG, else Nearby's glyph
+    static std::string symbol();
+
     struct File {
         std::string name, mime;
         int64_t size = 0, payloadId = 0;

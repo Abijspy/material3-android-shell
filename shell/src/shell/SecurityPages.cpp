@@ -3,6 +3,7 @@
 // in, and the rules)
 #include "shell/SecurityPages.h"
 
+#include "quickshare/QuickShare.h"
 #include "services/Firewall.h"
 #include "services/Vpn.h"
 #include "shell/PanelKit.h"
@@ -152,7 +153,8 @@ void firewallPage(Flex* page, Popup&) {
             const bool allowed = std::ranges::all_of(p.ports, [&](const std::string& x) { return f.allows(x); });
             std::string ports;
             for (const auto& x : p.ports) ports += (ports.empty() ? "" : ", ") + x;
-            auto r = row(apps, p.icon, p.name, allowed ? "Allowed · " + ports : ports);
+            const std::string icon = std::string(p.icon) == "quickshare" ? quickshare::QuickShare::symbol() : p.icon;
+            auto r = row(apps, icon, p.name, allowed ? "Allowed · " + ports : ports);
             if (allowed) {
                 r.row->add<Icon>("check_circle", 22)->setFill(true)->setColor("primary", false);
             } else {

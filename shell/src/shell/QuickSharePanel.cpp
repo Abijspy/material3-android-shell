@@ -104,7 +104,7 @@ void quickSharePanel(Flex* card, Popup& popup, const std::string& arg) {
         auto* badge = head->add<Flex>(Flex::Direction::Row);
         badge->setJustify(Align::Center)->setRadius(Radii(18))->setBackground("primary_container", false);
         badge->fixedWidth = badge->fixedHeight = 52;
-        badge->add<Icon>(t->outgoing ? "send" : "share", 28)->setFill(true)->setColor("on_primary_container", false);
+        badge->add<Icon>(QuickShare::symbol(), 28)->setFill(true)->setColor("on_primary_container", false);
         auto* titles = head->add<Flex>(Flex::Direction::Column);
         titles->setSpacing(2)->setAlignItems(Align::Start);
         titles->grow = true;
@@ -195,7 +195,7 @@ void quickShareSend(Flex* card, Popup& popup, const std::string& arg) {
 
     auto* head = card->add<Flex>(Flex::Direction::Row);
     head->setSpacing(12)->setAlignItems(Align::Center);
-    head->add<Icon>("send", 26)->setFill(true)->setColor("primary", false);
+    head->add<Icon>(QuickShare::symbol(), 26)->setColor("primary", false);
     auto* title = head->add<Label>("Quick Share");
     title->setSize(22)->setWeight(600);
     title->grow = true;

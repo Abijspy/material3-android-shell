@@ -364,7 +364,7 @@ void quickShareRows(Flex* page) {
         auto& qs = quickshare::QuickShare::get();
         auto* g = group(live, "Quick Share", "Share files with Android phones and Chromebooks on the same Wi-Fi, both ways");
         const bool on = Config::get().value<bool>("/quickshare/receive", true);
-        auto vis = row(g, "share", "Let devices nearby share with you",
+        auto vis = row(g, quickshare::QuickShare::symbol(), "Let devices nearby share with you",
                        !on ? "Off" : qs.receiving() ? "Visible as \"" + qs.deviceName() + "\": each transfer is asked first"
                            : qs.status().empty() ? "Starting…" : qs.status());
         auto* sw = vis.row->add<Switch>();
@@ -400,7 +400,7 @@ void quickShareRows(Flex* page) {
                                  : !t.files.empty()     ? std::format("{} files", t.files.size())
                                  : !t.texts.empty()     ? std::string("Text")
                                                         : std::string("");
-                auto r = row(recent, t.outgoing ? "send" : t.state == quickshare::QuickShare::State::Done ? "download_done" : "share",
+                auto r = row(recent, t.outgoing ? "send" : t.state == quickshare::QuickShare::State::Done ? "download_done" : quickshare::QuickShare::symbol(),
                              t.sender.empty() ? "A device nearby" : t.sender,
                              std::string((t.outgoing ? sending : states)[static_cast<int>(t.state)]) + (what.empty() ? "" : " · " + what) + (t.error.empty() ? "" : " · " + t.error));
                 const int id = t.id;

@@ -340,8 +340,9 @@ const std::vector<TileDef>& tileDefs() {
         {"powersaver", "eco", "Power saver", [] { return Power::get().profile() == "power-saver"; },
          [] { return std::string(Power::get().profile() == "power-saver" ? "On" : "Off"); }, {},
          [](Popup&) { Power::get().setProfile(Power::get().profile() == "power-saver" ? "balanced" : "power-saver"); }},
-        {"quickshare", "share", "Quick Share", [] { return quickshare::QuickShare::get().receiving(); },
-         [] { return std::string(quickshare::QuickShare::get().receiving() ? "Visible nearby" : "Off"); }, {},
+        {"quickshare", "nearby", "Quick Share", [] { return quickshare::QuickShare::get().receiving(); },
+         [] { return std::string(quickshare::QuickShare::get().receiving() ? "Visible nearby" : "Off"); },
+         [] { return quickshare::QuickShare::symbol(); },
          [](Popup&) { Config::get().set("/quickshare/receive", !Config::get().value<bool>("/quickshare/receive", true)); }},
         {"screenshot", "screenshot_region", "Screenshot", [] { return false; }, [] { return std::string("Region"); }, {},
          [](Popup& popup) {

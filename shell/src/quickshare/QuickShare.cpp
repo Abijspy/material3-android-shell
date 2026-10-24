@@ -297,7 +297,7 @@ private:
             if (!error.empty() && tr->state != QuickShare::State::Done && tr->state != QuickShare::State::Declined) {
                 tr->state = QuickShare::State::Failed;
                 tr->error = error;
-                run({"notify-send", "-a", "Quick Share", "-i", "send-to", "Quick Share stopped", tr->sender + ": " + error}, nullptr);
+                run({"notify-send", "-a", "Quick Share", "-i", "material3ui-quickshare", "Quick Share stopped", tr->sender + ": " + error}, nullptr);
             }
         }
         QuickShare::get().notifyChanged();
@@ -504,7 +504,7 @@ private:
         m_doneOk = true;
         tr->state = QuickShare::State::Done;
         const std::string what = tr->files.size() == 1 ? tr->files.front().name : std::format("{} files", tr->files.size());
-        run({"notify-send", "-a", "Quick Share", "-i", "send-to", "Sent to " + tr->sender, what}, nullptr);
+        run({"notify-send", "-a", "Quick Share", "-i", "material3ui-quickshare", "Sent to " + tr->sender, what}, nullptr);
         QuickShare::get().notifyChanged();
     }
 
@@ -720,7 +720,7 @@ private:
             // Onto the clipboard; a link opens from the notification
             run({"wl-copy"}, nullptr, text);
             const bool url = text.starts_with("http://") || text.starts_with("https://");
-            run({"notify-send", "-a", "Quick Share", "-i", "send-to", url ? "Link received (copied)" : "Text received (copied)",
+            run({"notify-send", "-a", "Quick Share", "-i", "material3ui-quickshare", url ? "Link received (copied)" : "Text received (copied)",
                  tr->sender + ": " + text.substr(0, 200)},
                 nullptr);
         }
@@ -736,7 +736,7 @@ private:
         if (!tr->saved.empty()) {
             const std::string what = tr->saved.size() == 1 ? fs::path(tr->saved.front()).filename().string()
                                                            : std::format("{} files", tr->saved.size());
-            run({"notify-send", "-a", "Quick Share", "-i", "send-to", "Received from " + tr->sender, what + " · in Downloads"}, nullptr);
+            run({"notify-send", "-a", "Quick Share", "-i", "material3ui-quickshare", "Received from " + tr->sender, what + " · in Downloads"}, nullptr);
         }
         QuickShare::get().notifyChanged();
         // Done: say so, and leave
@@ -834,6 +834,11 @@ public:
 private:
     QuickShare& m_qs;
 };
+
+std::string QuickShare::symbol() {
+    static const std::string path = paths::dataFile("icons/quickshare-symbol.svg");
+    return path.empty() ? "nearby" : path;
+}
 
 QuickShare& QuickShare::get() {
     static QuickShare instance;

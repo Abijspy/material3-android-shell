@@ -1,5 +1,6 @@
 #include "ui/Node.h"
 
+#include "render/Images.h"
 #include "ui/Theme.h"
 
 #include <algorithm>
@@ -149,10 +150,15 @@ void Node::setTranslateY(float dy, bool animate) {
     requestRedraw();
 }
 
-bool Node::animating() const {
-    if (!shown()) return false;
-    if (doAnimating() || m_opacity.running() || m_translateY.running() || m_translateX.running() || m_scale.running()) return true;
-    return std::any_of(m_children.begin(), m_children.end(), [](auto& c) { return c->animating(); });
+Node::Motion Node::motion() const {
+    if (!shown()) return Motion::None;
+    if (m_opacity.running() || m_translateY.running() || m_translateX.running() || m_scale.running()) return Motion::Live;
+    Motion m = !doAnimating() ? Motion::None : doAmbient() ? Motion::Ambient : Motion::Live;
+    for (const auto& c : m_children) {
+        m = std::max(m, c->motion());
+        if (m == Motion::Live) break;
+    }
+    return m;
 }
 
 void Node::setVisible(bool v) {
@@ -174,6 +180,10 @@ void Node::requestLayout() {
 
 void Node::requestRedraw() {
     if (auto* h = host()) h->requestRedraw();
+}
+
+void Node::requestAmbientRedraw() {
+    if (auto* h = host()) h->requestAmbientRedraw();
 }
 
 // ── Flex ──
@@ -447,6 +457,24 @@ Icon::Icon(std::string name, float size) : Label(std::move(name)) {
     m_icon = true;
     m_family = Theme::get().iconFamily();
     m_size = size;
+}
+
+SizeF Icon::doMeasure(SizeF available) {
+    if (!isFile()) return Label::doMeasure(available);
+    const float px = shownSize();
+    return {px, px};
+}
+
+void Icon::doPaint(Renderer& r) {
+    if (!isFile()) return Label::doPaint(r);
+    // The SVG's alpha, tinted: the mask shader reads only alpha
+    const float px = shownSize();
+    const auto* tex = Images::get().icon(m_text, static_cast<int>(std::lround(px * r.scale())));
+    if (!tex) return;
+    const RectF b = rect();
+    const float s = r.scale();
+    r.mask(tex->id, {std::round((b.x + (b.w - px) / 2) * s) / s, std::round((b.y + (b.h - px) / 2) * s) / s, px, px}, m_color.value());
+    if (m_color.running()) requestRedraw();
 }
 
 Icon* Icon::setFill(bool filled) {

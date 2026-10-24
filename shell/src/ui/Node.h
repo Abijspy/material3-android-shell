@@ -22,6 +22,8 @@ public:
     virtual ~Host() = default;
     virtual void requestLayout() = 0;
     virtual void requestRedraw() = 0;
+    // A redraw that can wait for the ambient frame rate (endless decoration)
+    virtual void requestAmbientRedraw() { requestRedraw(); }
     // A node is going away; drop any pointer to it (hover, press, focus)
     virtual void nodeDestroyed(class Node*) {}
     virtual void requestFocus(class Node*) {}
@@ -89,13 +91,21 @@ public:
     void setOpacity(float o, bool animate = true);
     void setTranslateY(float dy, bool animate = true);
     void setTranslateX(float dx, bool animate = true);
+    // Moved at once without asking for a frame: for a node that is
+    // painting it this very frame (a scrolling title)
+    void shiftX(float dx) { m_translateX.set(dx, false); }
     // Drawn scaled about its centre (springy pops); layout and hit tests
     // ignore it
     void setScale(float s, bool animate = true);
     float translateY() const { return m_translateY.value(); }
 
     // Animations still running in this subtree
-    bool animating() const;
+    // What animates under this node: nothing; only ambient motion, endless
+    // decoration (waves while music plays, scrolling titles, spinners),
+    // drawn at a calm frame rate; or live transitions, drawn every frame
+    enum class Motion { None, Ambient, Live };
+    Motion motion() const;
+    bool animating() const { return motion() != Motion::None; }
 
     // Shown in a tooltip while the pointer rests on this node (or inside it).
     // setTooltip also updates one already showing (the volume as it changes)
@@ -138,6 +148,7 @@ public:
 
     void requestLayout();
     void requestRedraw();
+    void requestAmbientRedraw();
     void setHost(Host* host) { m_host = host; }
 
 protected:
@@ -147,6 +158,8 @@ protected:
     // After the children, inside this node's clip (effects over its content)
     virtual void doPaintOver(Renderer&) {}
     virtual bool doAnimating() const { return false; }
+    // doAnimating's motion is endless decoration (see Motion)
+    virtual bool doAmbient() const { return false; }
     virtual bool clipsChildren() const { return false; }
 
     Node* parent() const { return m_parent; }
@@ -263,11 +276,20 @@ protected:
     ColorTween m_color{ColorRef("on_surface")};
 };
 
-// A Material Symbols glyph by ligature name ("wifi", "volume_up").
+// A Material Symbols glyph by ligature name ("wifi", "volume_up"), or an
+// SVG file by its path, drawn as a shape in the icon's colour (symbols the
+// font lacks: Quick Share's)
 class Icon : public Label {
 public:
     explicit Icon(std::string name = {}, float size = 20);
     Icon* setFill(bool filled);
+
+protected:
+    SizeF doMeasure(SizeF available) override;
+    void doPaint(Renderer& r) override;
+
+private:
+    bool isFile() const { return m_text.starts_with('/'); }
 };
 
 // Clickable container with the Material state layer: an on-surface tint at

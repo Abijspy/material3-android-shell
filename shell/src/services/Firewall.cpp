@@ -42,7 +42,7 @@ bool validPort(const std::string& p) {
 
 const std::vector<Firewall::Preset>& Firewall::presets() {
     static const std::vector<Preset> list = {
-        {"Quick Share", "share", {"47893/tcp"}},
+        {"Quick Share", "quickshare", {"47893/tcp"}}, // its own symbol (SecurityPages)
         {"KDE Connect", "phonelink", {"1714:1764/tcp", "1714:1764/udp"}},
         {"LocalSend", "send_to_mobile", {"53317/tcp", "53317/udp"}},
         {"Syncthing", "sync", {"22000/tcp", "22000/udp", "21027/udp"}},
