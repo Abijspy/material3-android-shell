@@ -525,7 +525,7 @@ void Shell::registerIpc() {
         if (cmd == "clear") n.clear();
         if (cmd == "dnd") n.setDoNotDisturb(a.size() > 1 && a[1] == "on");
         std::string out = std::format("daemon: {}  dnd: {}\n", n.active() ? "active" : "inactive", n.doNotDisturb());
-        for (const auto& x : n.history()) out += std::format("{}\t{}\t{}\t{}\n", x.id, x.app, x.summary, x.body);
+        for (const auto& x : n.current()) out += std::format("{}\t{}\t{}\t{}\n", x.id, x.app, x.summary, x.body);
         return out;
     });
     ipc.add("volume", "volume up|down|mute|set <0-150>|balance <-100..100>", [](const IpcServer::Args& a) {

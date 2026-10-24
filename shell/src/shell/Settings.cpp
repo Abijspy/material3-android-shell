@@ -2898,6 +2898,18 @@ void notificationsPage(Flex* page, Popup&) {
     sw->setChecked(Notifications::get().doNotDisturb(), false);
     sw->onToggled = [](bool on) { Notifications::get().setDoNotDisturb(on); };
     choiceRow<int>(g, "timer", "Pop-ups stay for", "", "/notifications/timeout", 6, {{3, "3 s"}, {6, "6 s"}, {10, "10 s"}, {0, "Until closed"}});
+    // The history: dismissed notifications, by day, in the notification centre
+    auto* h = group(page, "Notification history", "Dismissed notifications, kept for 30 days, under the centre's History tab");
+    auto keep = row(h, "history", "Keep notification history", std::format("{} kept", Notifications::get().history().size()));
+    auto* keepSw = keep.row->add<Switch>();
+    keepSw->setChecked(Notifications::get().keepsHistory(), false);
+    keepSw->onToggled = [](bool on) { Config::get().set("/notifications/history", on); };
+    auto clear = row(h, "delete_sweep", "Clear history", "Forgets every dismissed notification");
+    auto* count = keep.subtitle;
+    confirmButton(clear.row, "notif-history", "delete", [count] {
+        Notifications::get().clearHistory();
+        count->setText("0 kept");
+    });
     auto daemon = row(g, "info", Notifications::get().active() ? "Material3UI is your notification daemon"
                                                               : "Another notification daemon is running",
                       Notifications::get().active() ? "" : "Stop it (mako, dunst, swaync…) and restart the shell");

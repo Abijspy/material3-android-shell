@@ -3,6 +3,7 @@
 #include "core/Config.h"
 #include "render/Images.h"
 #include "services/Search.h"
+#include "shell/Panels.h"
 #include "ui/Controls.h"
 #include "ui/Theme.h"
 #include "wayland/Display.h"
@@ -74,10 +75,57 @@ ImageView::Provider imageFor(const Notifications::Notification& n) {
 
 } // namespace
 
+// ── HistoryItem ──
+
+HistoryItem::HistoryItem(const Notifications::Notification& n) : Button(Direction::Row) {
+    setPadding({14, 10, 8, 10})->setSpacing(12)->setAlignItems(Align::Center);
+    setBackground("surface_container_highest", false);
+    glideKey = "h:" + std::to_string(n.id) + ":" + std::to_string(n.time);
+    if (auto provider = imageFor(n)) {
+        auto* img = add<ImageView>(32, provider);
+        img->cover = !n.imagePath.empty();
+    } else {
+        auto* bubble = add<Flex>(Direction::Row);
+        pill(bubble->setBackground("primary_container", false))->setJustify(Align::Center);
+        bubble->fixedWidth = bubble->fixedHeight = 32;
+        bubble->add<Icon>("notifications", 18)->setColor("on_primary_container", false);
+    }
+    auto* texts = add<Flex>(Direction::Column);
+    texts->setSpacing(1)->setAlignItems(Align::Start);
+    texts->grow = true;
+    // Today's and yesterday's say when; older ones the day too
+    char when[32];
+    std::tm tm{};
+    localtime_r(&n.time, &tm);
+    const bool recent = std::time(nullptr) - n.time < 2 * 86400;
+    std::strftime(when, sizeof when, recent ? "%H:%M" : "%a %-d %b, %H:%M", &tm);
+    texts->add<Label>(std::format("{} · {}", n.app.empty() ? "Notification" : n.app, when))
+        ->setSize(12)
+        ->setColor("on_surface_variant", false)
+        ->setMaxWidth(300);
+    texts->add<Label>(n.summary.empty() ? n.body : n.summary)->setSize(14)->setWeight(600)->setMaxWidth(300);
+    if (!n.summary.empty() && !n.body.empty())
+        texts->add<Label>(n.body)->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(300);
+    auto* remove = add<Button>();
+    pill(remove)->setPadding(Insets(6));
+    remove->add<Icon>("close", 16)->setColor("on_surface_variant", false);
+    const uint32_t id = n.id;
+    const std::time_t time = n.time;
+    remove->onClicked = [id, time](uint32_t) { Notifications::get().forget(id, time); };
+    // Its app, when one can be found
+    const std::string entry = n.desktopEntry, app = n.app;
+    onClicked = [entry, app](uint32_t button) {
+        if (button != BTN_LEFT) return;
+        for (const auto& a : Apps::get().all())
+            if ((!entry.empty() && a.id == entry + ".desktop") || (!app.empty() && a.name == app)) return Apps::get().launch(a);
+    };
+}
+
 // ── NotificationCard ──
 
-NotificationCard::NotificationCard(const Notifications::Notification& n, bool toast)
+NotificationCard::NotificationCard(const Notifications::Notification& n, bool toast, int more)
     : Button(Direction::Column), m_id(n.id) {
+    squish = false; // it swipes instead
     setPadding(Insets(16))->setSpacing(10)->setAlignItems(Align::Stretch)->setRadius(Radii(24));
     if (toast) {
         // Toasts float over windows: translucent and blurred like panels
@@ -115,10 +163,20 @@ NotificationCard::NotificationCard(const Notifications::Notification& n, bool to
     meta->setSize(12)->setColor("on_surface_variant", false)->setMaxWidth(260);
     auto* summary = texts->add<Label>(n.summary);
     summary->setSize(15)->setWeight(600)->setMaxWidth(toast ? 280 : 300)->setMaxLines(2);
+    // A pile's count: tap to spread it out
+    if (more > 0) {
+        auto* chip = head->add<Button>();
+        pill(chip->setBackground("secondary_container", false))->setPadding({10, 4, 6, 4})->setSpacing(2);
+        chip->add<Label>(std::format("+{}", more))->setSize(12)->setWeight(600)->setColor("on_secondary_container", false);
+        chip->add<Icon>("expand_more", 18)->setColor("on_secondary_container", false);
+        chip->onClicked = [this](uint32_t) {
+            if (onExpand) onExpand();
+        };
+    }
     auto* close = head->add<Button>();
     pill(close)->setPadding(Insets(4));
     close->add<Icon>("close", 18)->setColor("on_surface_variant", false);
-    close->onClicked = [id](uint32_t) { Notifications::get().dismiss(id); };
+    close->onClicked = [this](uint32_t) { flyOff(1); };
 
     if (!n.body.empty()) {
         auto* body = add<Label>(n.body);
@@ -139,6 +197,53 @@ NotificationCard::NotificationCard(const Notifications::Notification& n, bool to
             b->onClicked = [id, key = a.key](uint32_t) { Notifications::get().invoke(id, key); };
         }
     }
+}
+
+void NotificationCard::onPress(uint32_t button, float x, float y) {
+    Button::onPress(button, x, y);
+    m_pressing = button == BTN_LEFT;
+    m_x0 = x;
+    m_dx = 0;
+    m_swiping = m_swiped = false;
+}
+
+void NotificationCard::onDrag(float x, float) {
+    if (!m_pressing) return;
+    m_dx = x - m_x0;
+    // A few pixels first, so a slightly moving click is still a click
+    if (!m_swiping && std::abs(m_dx) < 8) return;
+    m_swiping = true;
+    const float w = std::max(rect().w, 1.0f);
+    setTranslateX(m_dx, false);
+    setOpacity(std::clamp(1 - std::abs(m_dx) / w * 0.9f, 0.1f, 1.0f), false);
+}
+
+void NotificationCard::onRelease() {
+    Button::onRelease();
+    m_pressing = false;
+    if (!m_swiping) return;
+    m_swiped = true;
+    if (std::abs(m_dx) > rect().w * 0.35f) return flyOff(m_dx < 0 ? -1 : 1);
+    // Not far enough: back, with a little bounce
+    setTranslateX(0);
+    setOpacity(1);
+}
+
+void NotificationCard::onClick(uint32_t button) {
+    // The end of a swipe isn't a click
+    if (m_swiped) {
+        m_swiped = false;
+        return;
+    }
+    Button::onClick(button);
+}
+
+void NotificationCard::flyOff(float direction) {
+    setTranslateX(direction * (rect().w + 40));
+    setOpacity(0);
+    const uint32_t id = m_id;
+    // By id: dismissed even if the card is rebuilt meanwhile
+    EventLoop::get().addTimer(motion::ms(220), [id] { Notifications::get().dismiss(id); });
 }
 
 void NotificationCard::onHoverWithin(bool hovered) {
@@ -232,6 +337,8 @@ void Toasts::show(uint32_t id) {
     if (!n) return;
     auto& svc = Notifications::get();
     if (svc.doNotDisturb() && n->urgency != Notifications::Critical) return;
+    // The centre is open: it shows the new one already
+    if (panels::notificationCentreShown() && n->urgency != Notifications::Critical) return;
     ensureSurface();
     if (!m_column) return;
 

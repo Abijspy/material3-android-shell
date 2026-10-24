@@ -230,7 +230,7 @@ private:
             c->add<Label>(std::format("{}%{}", p.percent(), p.charging() ? " · charging" : ""))->setSize(15)->setColor("on_surface", false);
         } else if (m_id == "notifications") {
             // A count, never the content: anyone can see a lock screen
-            const size_t n = m_greeter ? 0 : Notifications::get().history().size();
+            const size_t n = m_greeter ? 0 : Notifications::get().current().size();
             if (n == 0) return setVisible(false);
             setVisible(true);
             auto* c = chip();

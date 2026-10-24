@@ -6,6 +6,7 @@
 #include "ui/Node.h"
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -79,6 +80,22 @@ private:
         }
         return {widest, y + line};
     }
+};
+
+// A column whose children glide between layouts: each with a glideKey
+// springs from where it was drawn last to its new place, and new ones pop
+// in, even when the whole list is rebuilt (Live). Children without a key
+// just appear.
+class GlideColumn : public ui::Flex {
+public:
+    GlideColumn() : Flex(Direction::Column) {}
+
+protected:
+    void doArrange() override;
+
+private:
+    std::map<std::string, float> m_last; // key → y, last layout
+    bool m_laidOut = false;
 };
 
 // M3 Expressive loading indicators, for work of unknown length. Both animate

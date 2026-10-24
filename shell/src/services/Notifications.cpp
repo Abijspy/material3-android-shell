@@ -1,10 +1,15 @@
 #include "services/Notifications.h"
 
+#include "core/Config.h"
+#include "core/EventLoop.h"
 #include "core/Guard.h"
 #include "core/Log.h"
+#include "core/Paths.h"
 
 #include <algorithm>
 #include <cerrno>
+#include <filesystem>
+#include <fstream>
 #include <systemd/sd-bus.h>
 
 namespace m3 {
@@ -48,6 +53,7 @@ Notifications& Notifications::get() {
 }
 
 Notifications::Notifications() {
+    loadHistory();
     auto& bus = dbus::Bus::session();
     if (!bus.connected()) return;
     sd_bus_add_object(bus.raw(), &m_object, kPath, onMessage, this);
@@ -170,9 +176,10 @@ int Notifications::handle(sd_bus_message* m) {
 }
 
 void Notifications::close(uint32_t id, uint32_t reason) {
-    const auto before = m_list.size();
-    std::erase_if(m_list, [id](const auto& n) { return n.id == id; });
-    if (m_list.size() == before) return;
+    const auto it = std::ranges::find(m_list, id, &Notification::id);
+    if (it == m_list.end()) return;
+    remember(*it);
+    m_list.erase(it);
     if (m_active) sd_bus_emit_signal(dbus::Bus::session().raw(), kPath, kName, "NotificationClosed", "uu", id, reason);
     closed.emit(id);
     changed.emit();
@@ -191,6 +198,94 @@ void Notifications::dismiss(uint32_t id) {
 
 void Notifications::clear() {
     while (!m_list.empty()) close(m_list.front().id, 2);
+}
+
+// ── History ──
+
+namespace {
+constexpr size_t kHistoryMax = 300;
+constexpr std::time_t kHistoryDays = 30;
+std::string historyFile() {
+    return paths::stateDir() + "/notification-history.json";
+}
+} // namespace
+
+bool Notifications::keepsHistory() const {
+    return Config::get().value<bool>("/notifications/history", true);
+}
+
+void Notifications::remember(const Notification& n) {
+    if (n.transient || !keepsHistory() || (n.summary.empty() && n.body.empty())) return;
+    Notification h = n;
+    h.image = {};     // raw pixels stay out of the file
+    h.actions.clear(); // the app that offered them may be gone
+    m_history.insert(m_history.begin(), std::move(h));
+    const std::time_t old = std::time(nullptr) - kHistoryDays * 86400;
+    std::erase_if(m_history, [old](const Notification& x) { return x.time < old; });
+    if (m_history.size() > kHistoryMax) m_history.resize(kHistoryMax);
+    saveHistory();
+}
+
+void Notifications::forget(uint32_t id, std::time_t time) {
+    // Ids start again each session: the time tells same-numbered ones apart
+    std::erase_if(m_history, [&](const Notification& x) { return x.id == id && x.time == time; });
+    saveHistory();
+    changed.emit();
+}
+
+void Notifications::clearHistory() {
+    m_history.clear();
+    saveHistory();
+    changed.emit();
+}
+
+void Notifications::loadHistory() {
+    std::ifstream in(historyFile());
+    if (!in) return;
+    try {
+        const auto doc = nlohmann::json::parse(in);
+        const std::time_t old = std::time(nullptr) - kHistoryDays * 86400;
+        for (const auto& j : doc) {
+            Notification n;
+            n.id = j.value("id", 0u);
+            n.app = j.value("app", "");
+            n.appIcon = j.value("appIcon", "");
+            n.desktopEntry = j.value("desktopEntry", "");
+            n.summary = j.value("summary", "");
+            n.body = j.value("body", "");
+            n.imagePath = j.value("imagePath", "");
+            n.urgency = static_cast<Urgency>(std::clamp(j.value("urgency", 1), 0, 2));
+            n.time = j.value("time", static_cast<std::time_t>(0));
+            if (n.time >= old) m_history.push_back(std::move(n));
+        }
+    } catch (const std::exception& e) {
+        log::warn("notification history: {}", e.what());
+    }
+}
+
+void Notifications::saveHistory() {
+    EventLoop::get().debounce(m_saveTimer, 1000, [this] { writeHistory(); });
+}
+
+Notifications::~Notifications() {
+    // Quitting within a second of a dismissal: still kept
+    if (m_saveTimer) writeHistory();
+}
+
+void Notifications::writeHistory() {
+    nlohmann::json doc = nlohmann::json::array();
+    for (const auto& n : m_history)
+        doc.push_back({{"id", n.id}, {"app", n.app}, {"appIcon", n.appIcon}, {"desktopEntry", n.desktopEntry},
+                       {"summary", n.summary}, {"body", n.body}, {"imagePath", n.imagePath},
+                       {"urgency", static_cast<int>(n.urgency)}, {"time", n.time}});
+    std::error_code ec;
+    std::filesystem::create_directories(paths::stateDir(), ec);
+    const std::string tmp = historyFile() + ".tmp";
+    {
+        std::ofstream out(tmp);
+        out << doc.dump();
+    }
+    std::filesystem::rename(tmp, historyFile(), ec);
 }
 
 void Notifications::setDoNotDisturb(bool on) {

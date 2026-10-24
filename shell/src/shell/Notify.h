@@ -13,16 +13,35 @@
 namespace m3::shell {
 
 // One notification: icon or image, app and time, summary, wrapped body,
-// action buttons, a close button. Clicking it runs the default action.
+// action buttons, a close button. Clicking it runs the default action;
+// swiped sideways it follows the pointer and, let go far enough, flies off
+// and is dismissed (else it springs back). `more` > 0 shows a "+N" chip
+// that expands a pile of the app's notifications (onExpand).
 class NotificationCard : public ui::Button {
 public:
-    NotificationCard(const Notifications::Notification& n, bool toast);
+    NotificationCard(const Notifications::Notification& n, bool toast, int more = 0);
     uint32_t id() const { return m_id; }
     std::function<void(bool hovered)> onHoverChanged;
+    std::function<void()> onExpand;
     void onHoverWithin(bool hovered) override;
+    void onPress(uint32_t button, float x, float y) override;
+    void onDrag(float x, float y) override;
+    void onRelease() override;
+    void onClick(uint32_t button) override;
+    // Off to the side, then dismissed
+    void flyOff(float direction);
 
 private:
     uint32_t m_id;
+    float m_x0 = 0, m_dx = 0;
+    bool m_pressing = false, m_swiping = false, m_swiped = false;
+};
+
+// A dismissed notification in the history: its icon, app and time,
+// summary and a line of the body, and a remove button. Opens its app.
+class HistoryItem : public ui::Button {
+public:
+    explicit HistoryItem(const Notifications::Notification& n);
 };
 
 // Toasts in the top-right corner of one output.

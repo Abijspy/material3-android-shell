@@ -28,6 +28,9 @@ void battery(ui::Flex* card, Popup& popup);
 void run(ui::Flex* card, Popup& popup);
 void quickSettings(ui::Flex* card, Popup& popup, const std::string& view = {}); // view: "wifi", "bluetooth", "edit"
 void notifications(ui::Flex* card, Popup& popup);
+// The notification centre is on screen: new notifications show there, not
+// as pop-ups over it
+bool notificationCentreShown();
 void power(ui::Flex* card, Popup& popup);
 void launcher(ui::Flex* card, Popup& popup, const std::string& initial);
 void trayMenu(ui::Flex* card, Popup& popup, const std::string& itemKey);

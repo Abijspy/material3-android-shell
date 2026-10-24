@@ -177,7 +177,7 @@ public:
 private:
     void sync() {
         auto& n = Notifications::get();
-        const size_t count = n.history().size();
+        const size_t count = n.current().size();
         set(n.doNotDisturb() ? "notifications_off" : count ? "notifications_unread" : "notifications",
             count ? std::to_string(count) : "");
     }

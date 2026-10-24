@@ -145,6 +145,9 @@ public:
     // Visible, and, for collapseWhenEmpty containers, has a shown child
     bool shown() const;
     bool collapseWhenEmpty = false;
+    // Who this is across rebuilds, for containers that animate their
+    // children between layouts (kit::GlideColumn)
+    std::string glideKey;
 
     void requestLayout();
     void requestRedraw();

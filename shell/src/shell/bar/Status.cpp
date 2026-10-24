@@ -102,16 +102,16 @@ void StatusIcons::sync() {
     m_volIcon->setText(volumeIcon());
     m_vol->setVisible(Audio::get().ready());
     auto& n = Notifications::get();
-    m_bellIcon->setText(n.doNotDisturb() ? "notifications_off" : n.history().empty() ? "notifications" : "notifications_unread");
-    m_bellIcon->setFill(!n.history().empty());
+    m_bellIcon->setText(n.doNotDisturb() ? "notifications_off" : n.current().empty() ? "notifications" : "notifications_unread");
+    m_bellIcon->setFill(!n.current().empty());
     // What each says, for its tooltip
     auto& net = Network::get();
     m_net->setTooltip(net.kind() == Network::Kind::None ? "Not connected" : net.name().empty() ? "Connected" : net.name());
     m_bt->setTooltip(Bluetooth::get().powered() ? "Bluetooth on" : "Bluetooth off");
     const auto* sink = Audio::get().sink();
     m_vol->setTooltip(!sink ? "Sound" : sink->muted ? "Muted" : std::format("Volume {}%", std::lround(sink->volume() * 100)));
-    m_bell->setTooltip(n.doNotDisturb() ? "Do not disturb" : n.history().empty() ? "No notifications"
-                       : std::format("{} notification{}", n.history().size(), n.history().size() == 1 ? "" : "s"));
+    m_bell->setTooltip(n.doNotDisturb() ? "Do not disturb" : n.current().empty() ? "No notifications"
+                       : std::format("{} notification{}", n.current().size(), n.current().size() == 1 ? "" : "s"));
 }
 
 // ── BatteryStatus ──

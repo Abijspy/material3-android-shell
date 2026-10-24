@@ -68,6 +68,36 @@ void Meter::doPaint(Renderer& r) {
     if (fill.w > 0) r.rect(fill, m_color.resolve(), round);
 }
 
+// ── GlideColumn ──
+
+void GlideColumn::doArrange() {
+    Flex::doArrange();
+    std::map<std::string, float> now;
+    for (const auto& c : children()) {
+        if (c->glideKey.empty() || !c->shown()) continue;
+        const float y = c->rect().y;
+        now[c->glideKey] = y;
+        if (auto it = m_last.find(c->glideKey); it != m_last.end()) {
+            // Moved: drawn where it was, then sprung home
+            const float dy = it->second - y;
+            if (std::abs(dy) > 0.5f) {
+                c->setTranslateY(dy + c->translateY(), false);
+                c->setTranslateY(0);
+            }
+        } else if (m_laidOut) {
+            // New since the last layout: pops in (not on the first one)
+            c->setOpacity(0, false);
+            c->setScale(0.94f, false);
+            c->setTranslateY(-12, false);
+            c->setOpacity(1);
+            c->setScale(1);
+            c->setTranslateY(0);
+        }
+    }
+    m_last = std::move(now);
+    m_laidOut = true;
+}
+
 // ── Loading indicators ──
 
 namespace {
