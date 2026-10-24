@@ -1,5 +1,12 @@
 # Changelog
 
+## v5.6.2 — 2026-10-24
+
+- **Notification history.** Dismissed and cleared notifications are kept for 30 days (up to 300) and survive restarts. The notification centre's **History** tab shows them under **Today**, **Yesterday** and **Earlier**. Tap one to open its app, remove single ones, or clear them all. Turn history off in Settings → Notifications.
+- **Notification pile-ups, as on Android 16.** Several notifications from one app stack into one card, the newest on top with the others peeking out underneath and a **+N** chip. Tap it to fan them out into a connected group; **Less** stacks them again.
+- **Material 3 Expressive motion in the centre.** Cards glide into place when others arrive or leave, and new ones pop in. Swipe a card sideways to dismiss it: it follows your pointer and flies off, or springs back if you let go early.
+- **No pop-ups over the open notification centre.** New notifications appear in the centre instead.
+
 ## v5.6.1 — 2026-10-24
 
 - **Android's Settings icon.** The Settings app has Android's icon: a gear with a long shadow on a circle.
