@@ -355,6 +355,15 @@ void collectBlur(const ui::Node* n, std::vector<RectF>& out) {
 } // namespace
 
 void Surface::updateBlurRegion() {
+    // Blurred by its alpha already: a region would only add the steps
+    if (Display::get().shapedBlur(m_tag)) {
+        if (m_blur) {
+            ext_background_effect_surface_v1_destroy(m_blur);
+            m_blur = nullptr;
+            m_blurRects.clear();
+        }
+        return;
+    }
     auto* manager = Display::get().backgroundEffect();
     std::vector<RectF> rects;
     if (manager && m_root && Theme::get().blur()) collectBlur(m_root.get(), rects);

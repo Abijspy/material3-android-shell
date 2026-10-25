@@ -7,8 +7,9 @@ namespace m3 {
 // Compositor-side effects for the shell's layers. Blur on Hyprland is a
 // layer rule, not something a client can ask for: this writes the rules (and
 // the blur strength) from config.json into effects_custom.lua, which
-// shell.lua reads, and reloads Hyprland when they change. Compositors with
-// ext-background-effect get per-surface blur regions from wl::Surface instead.
+// shell.lua reads, and reloads Hyprland when they change. Hyprland shapes
+// that blur by the layers' alpha, so they send it no region; compositors
+// with only ext-background-effect get per-surface regions from wl::Surface.
 class Effects {
 public:
     static Effects& get();

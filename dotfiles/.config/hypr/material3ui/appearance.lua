@@ -41,7 +41,8 @@ hl.config({
 			size = 10,
 			passes = 3,
 			brightness = 1,
-			noise = 0.05,
+			-- Just enough to keep gradients from banding; more shows as grain
+			noise = 0.01,
 			contrast = 0.89,
 			vibrancy = 0.5,
 			vibrancy_darkness = 0.5,

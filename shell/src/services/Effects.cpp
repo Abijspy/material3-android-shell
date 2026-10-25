@@ -6,6 +6,7 @@
 #include "core/Paths.h"
 #include "services/Hyprland.h"
 #include "ui/Theme.h"
+#include "wayland/Display.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -42,6 +43,13 @@ Effects& Effects::get() {
 }
 
 Effects::Effects() {
+    // Hyprland blurs these by their alpha, as the rules below say: corners
+    // as smooth as they're drawn, so they're sent no blur region
+    if (Hyprland::get().available()) {
+        std::vector<std::string> shaped;
+        for (const char* l : kLayers) shaped.push_back(std::string("material3ui-") + l);
+        wl::Display::get().setShapedBlur(std::move(shaped));
+    }
     apply();
     Config::get().changed.connectForever([this] { apply(); });
 }

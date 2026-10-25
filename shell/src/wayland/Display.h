@@ -2,6 +2,7 @@
 
 #include "core/EventLoop.h"
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <string>
@@ -64,6 +65,11 @@ public:
     wp_viewporter* viewporter() const { return m_viewporter; }
     // Set when the compositor can blur behind surfaces (ext-background-effect)
     ext_background_effect_manager_v1* backgroundEffect() const { return m_blurCapable ? m_backgroundEffect : nullptr; }
+    // Layers the compositor blurs by their own alpha (Hyprland's layer
+    // rules, with ignore_alpha), by namespace. They get no blur region:
+    // that is whole-pixel rectangles, which cut steps into rounded corners
+    void setShapedBlur(std::vector<std::string> namespaces) { m_shapedBlur = std::move(namespaces); }
+    bool shapedBlur(const std::string& ns) const { return std::find(m_shapedBlur.begin(), m_shapedBlur.end(), ns) != m_shapedBlur.end(); }
     void backgroundEffectCapabilities(uint32_t flags);
 
     const std::vector<std::unique_ptr<Output>>& outputs() const { return m_outputs; }
@@ -115,6 +121,7 @@ private:
     wp_fractional_scale_manager_v1* m_fractionalScale = nullptr;
     wp_viewporter* m_viewporter = nullptr;
     ext_background_effect_manager_v1* m_backgroundEffect = nullptr;
+    std::vector<std::string> m_shapedBlur;
     bool m_blurCapable = false;
     wl_keyboard* m_keyboard = nullptr;
     void* m_lockManager = nullptr;
