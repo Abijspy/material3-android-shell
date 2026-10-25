@@ -5,6 +5,7 @@
 #include "services/Firewall.h"
 #include "services/Network.h"
 #include "services/Notifications.h"
+#include "services/Printers.h"
 #include "services/SystemStats.h"
 #include "services/Vpn.h"
 #include "services/Weather.h"
@@ -271,6 +272,32 @@ private:
     Connection m_conn;
 };
 
+// Printing: the jobs waiting, while the bar shows it (it watches the queue)
+class PrintersChip : public Chip {
+public:
+    explicit PrintersChip(std::function<void()> click) : Chip("print", std::move(click)) {
+        m_lease = Printers::get().watch();
+        m_conn = Printers::get().changed.connect([this] { sync(); });
+        sync();
+    }
+
+private:
+    void sync() {
+        auto& p = Printers::get();
+        const size_t n = p.jobs().size();
+        bool paused = false;
+        for (const auto& x : p.printers()) paused = paused || (x.isDefault && x.state == "stopped");
+        set(paused ? "print_disabled" : n ? "print_connect" : "print", n ? std::to_string(n) : "");
+        m_icon->setColor(paused ? "error" : "on_surface");
+        tooltip = !p.installed() ? "Printing isn't set up"
+                  : n            ? std::format("{} print job{} waiting", n, n == 1 ? "" : "s")
+                  : paused       ? "The printer is paused"
+                                 : "Printers";
+    }
+    Printers::Lease m_lease;
+    Connection m_conn;
+};
+
 // The firewall: a shield, struck through while it's off
 class FirewallChip : public Chip {
 public:
@@ -334,6 +361,7 @@ const std::vector<Bar::Module>& Bar::modules() {
         {"vpn", "vpn_key", "VPN", "The VPN in use; click to connect or disconnect"},
         {"quickshare", quickShare.c_str(), "Quick Share", "Transfers' progress; opens Send files"},
         {"firewall", "shield_lock", "Firewall", "On or off; opens Firewall settings"},
+        {"printers", "print", "Printers", "Jobs waiting; opens Printers"},
         {"quicksettings", "tune", "Quick Settings", "Opens Quick Settings"},
         {"status", "wifi", "Status icons", "Network, Bluetooth, volume; opens Quick Settings"},
         {"battery", "battery_full", "Battery", "Charge level (hidden on desktops)"},
@@ -487,7 +515,8 @@ void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
         c->add<BatteryStatus>(m_openPopup);
     } else if (id == "media") {
         capsule(zone, filled)->add<Media>();
-    } else if (id == "screentime" || id == "vpn" || id == "quickshare" || id == "firewall" || id == "focus" || id == "bedtime") {
+    } else if (id == "screentime" || id == "vpn" || id == "quickshare" || id == "firewall" || id == "focus" || id == "bedtime" ||
+               id == "printers") {
         auto* c = capsule(zone, filled);
         c->setPadding({4, 0});
         auto open = [this](const std::string& name, Node* from) { m_openPopup(name, from->rect().x + from->rect().w / 2); };
@@ -508,6 +537,11 @@ void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
             chip->onClicked = [open, chip](uint32_t b) {
                 if (b == BTN_LEFT) open("quickshare-send", chip);
                 else if (b == BTN_RIGHT) open("settings bluetooth", chip);
+            };
+        } else if (id == "printers") {
+            chip = c->add<PrintersChip>(std::function<void()>{});
+            chip->onClicked = [open, chip](uint32_t b) {
+                if (b == BTN_LEFT) open("settings printers", chip);
             };
         } else if (id == "firewall") {
             chip = c->add<FirewallChip>(std::function<void()>{});

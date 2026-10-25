@@ -17,6 +17,7 @@
 #include "services/Hyprland.h"
 #include "services/Audio.h"
 #include "services/Backups.h"
+#include "services/Printers.h"
 #include "services/ThemedIcons.h"
 #include "services/Wellbeing.h"
 #include "services/Calendar.h"
@@ -40,6 +41,7 @@
 #include "shell/Osd.h"
 #include "shell/Panels.h"
 #include "shell/Popup.h"
+#include "shell/PrintersPage.h"
 #include "shell/bar/Bar.h"
 #include "ui/Theme.h"
 #include "wayland/Display.h"
@@ -375,6 +377,11 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         opts.anchorX = -1;
         opts.centredVertically = true;
         build = [arg](ui::Flex* card, Popup& p) { panels::quickSharePanel(card, p, arg); };
+    } else if (name == "print") {
+        opts.width = 520;
+        opts.anchorX = -1;
+        opts.centredVertically = true;
+        build = [arg](ui::Flex* card, Popup& p) { panels::printDialog(card, p, arg); };
     } else if (name == "quickshare-send") {
         opts.width = 560;
         opts.anchorX = -1;
@@ -822,6 +829,24 @@ void Shell::registerIpc() {
                                       w.bedtime() ? "on" : "off", w.focus() ? "on" : "off");
         for (const auto& [cls, secs] : w.today().seconds) out += std::format("  {}  {} s\n", cls, secs);
         return out;
+    });
+    ipc.add("print", "print [files…]: the print dialog for these files (or printers status)", [](const IpcServer::Args& a) {
+        if (a.empty()) {
+            auto& pr = Printers::get();
+            std::string out = !pr.installed() ? "printing isn't set up\n" : !pr.running() ? "the print service isn't running\n" : "";
+            for (const auto& p : pr.printers())
+                out += std::format("{}  {}{}{}\n", p.name, p.state, p.isDefault ? "  default" : "", p.message.empty() ? "" : "  " + p.message);
+            for (const auto& j : pr.jobs()) out += std::format("job {}  {}  {} bytes\n", j.id, j.user, j.size);
+            return out.empty() ? std::string("no printers\n") : out;
+        }
+        std::string files;
+        for (const auto& f : a) {
+            std::error_code ec;
+            const auto abs = std::filesystem::absolute(f, ec);
+            files += (ec ? f : abs.string()) + "\n";
+        }
+        panels::open("print " + files);
+        return std::string("choose a printer");
     });
     ipc.add("calendar", "calendar [list [days]|subscribe <name> <ics-url>|refresh]: events coming up, or add a calendar", [](const IpcServer::Args& a) {
         auto& cal = Calendar::get();

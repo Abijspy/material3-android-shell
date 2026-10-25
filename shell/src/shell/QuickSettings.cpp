@@ -3,6 +3,7 @@
 #include "services/Mpris.h"
 #include "services/Network.h"
 #include "services/Notifications.h"
+#include "services/Printers.h"
 #include "services/Search.h"
 #include "services/Vpn.h"
 #include "services/Wellbeing.h"
@@ -324,7 +325,7 @@ const std::vector<TileDef>& tileDefs() {
              if (v.connections().empty() && (v.warp() == Vpn::Warp::Absent || v.warp() == Vpn::Warp::NoDaemon ||
                                              v.warp() == Vpn::Warp::Unregistered)) {
                  popup.close();
-                 settingsPage("vpn");
+                 if (open) open("settings vpn"); // opens Settings too, if it's closed
                  return;
              }
              v.toggleLast();
@@ -335,6 +336,21 @@ const std::vector<TileDef>& tileDefs() {
         {"bedtime", "bedtime", "Bedtime", [] { return Wellbeing::get().bedtime(); },
          [] { return std::string(Wellbeing::get().bedtime() ? "On" : "Off"); }, {},
          [](Popup&) { Wellbeing::get().setBedtimeNow(!Wellbeing::get().bedtime()); }},
+        {"printers", "print", "Printers", [] { return !Printers::get().jobs().empty(); },
+         [] {
+             auto& p = Printers::get();
+             if (!p.installed()) return std::string("Not set up");
+             if (!p.running()) return std::string("Not running");
+             if (!p.jobs().empty()) return std::format("Printing · {} job{}", p.jobs().size(), p.jobs().size() == 1 ? "" : "s");
+             for (const auto& x : p.printers())
+                 if (x.isDefault) return x.state == "stopped" ? std::string("Paused") : std::string("Ready");
+             return p.printers().empty() ? std::string("No printers") : std::string("Ready");
+         },
+         {},
+         [](Popup& popup) {
+             popup.close();
+             if (open) open("settings printers"); // opens Settings too, if it's closed
+         }},
         {"airplane", "flight", "Airplane mode",
          [] { return !Network::get().wifiEnabled() && !Bluetooth::get().powered(); },
          [] { return std::string(!Network::get().wifiEnabled() && !Bluetooth::get().powered() ? "On" : "Off"); }, {},
@@ -827,6 +843,7 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
     live->watch(Idle::get().changed);
     live->watch(Vpn::get().changed);
     live->watch(Wellbeing::get().changed);
+    live->watch(Printers::get().changed);
     live->watch(Mpris::get().changed);
     live->watch(Power::get().changed);
     live->watch(Config::get().changed); // dark theme, and tiles edited elsewhere

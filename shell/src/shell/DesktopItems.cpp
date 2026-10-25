@@ -211,6 +211,7 @@ const std::vector<WidgetDef>& widgets() {
         {"wellbeing-modes", "self_improvement", "Focus & Bedtime", "Switch Focus mode or Bedtime"},
         {"vpn", "vpn_key", "VPN", "The VPN in use, with a switch"},
         {"quickshare", quickShare.c_str(), "Quick Share", "Visible or not, and Send"},
+        {"printers", "print", "Printers", "The default printer and the queue"},
     };
     return all;
 }

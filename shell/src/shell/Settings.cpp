@@ -24,6 +24,7 @@
 #include "services/Weather.h"
 #include "shell/Dock.h"
 #include "shell/HyprPages.h"
+#include "shell/PrintersPage.h"
 #include "shell/SecurityPages.h"
 #include "shell/WellbeingPage.h"
 #include "shell/KeyCapture.h"
@@ -3534,7 +3535,7 @@ HueChip categoryColours(const std::string& id) {
         orange{"#fad8bc", "#6a3a0a"}, yellow{"#fcde7a", "#5c4300"}, green{"#c0e4ba", "#0c4c23"}, grey{"#dedede", "#424242"},
         teal{"#a8eafa", "#00505f"}, red{"#fcd2d2", "#6a1e1e"}, purple{"#ecdcfc", "#4c258e"};
     static const std::vector<std::pair<std::vector<std::string>, const Pair*>> table = {
-        {{"network", "vpn", "bluetooth", "weather", "hypr-windows", "hypr-layouts", "hypr-groups"}, &blue},
+        {{"network", "vpn", "bluetooth", "printers", "weather", "hypr-windows", "hypr-layouts", "hypr-groups"}, &blue},
         {{"defaults", "hypr-input"}, &apps},
         {{"notifications", "sound", "hypr-animations"}, &pink},
         {{"display", "appearance", "style", "bar", "dock", "hypr-decoration", "hypr-monitors"}, &orange},
@@ -3605,6 +3606,7 @@ const PageDef kPages[] = {
     {"network", "wifi", "Network & internet", "Wi-Fi, Ethernet and your connection", networkPage},
     {"vpn", "vpn_key", "VPN", "WireGuard, OpenVPN and Cloudflare WARP", vpnPage},
     {"bluetooth", "bluetooth", "Connected devices", "Bluetooth, pairing and devices", bluetoothPage},
+    {"printers", "print", "Printers", "Printers nearby, the default and the queue", printersPage},
     {"defaults", "apps", "Apps", "Default apps for links, files and the terminal", defaultAppsPage},
     {"notifications", "notifications", "Notifications", "Do not disturb and pop-ups", notificationsPage},
     {"tools", "construction", "Tools", "Clipboard history and screenshots", toolsPage},
@@ -3674,7 +3676,7 @@ int pageGroup(const std::string& id) {
         return 1;
     if (id == "hypr-keybinds" || id == "hypr-startup" || id == "hypr-environment" || id.ends_with("-rules")) return 3;
     if (id.starts_with("hypr-")) return 2;
-    if (id == "network" || id == "vpn" || id == "bluetooth") return 0;
+    if (id == "network" || id == "vpn" || id == "bluetooth" || id == "printers") return 0;
     if (id == "defaults" || id == "notifications" || id == "wellbeing" || id == "tools" || id == "calendar" || id == "weather") return 1;
     if (id == "battery" || id == "storage" || id == "monitor" || id == "sound" || id == "display") return 2;
     if (id == "appearance" || id == "style" || id == "bar" || id == "dock" || id == "lockscreen") return 3;

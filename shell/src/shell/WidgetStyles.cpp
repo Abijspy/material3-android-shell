@@ -6,6 +6,7 @@
 #include "quickshare/QuickShare.h"
 #include "services/Calendar.h"
 #include "services/Mpris.h"
+#include "services/Printers.h"
 #include "services/Vpn.h"
 #include "services/Weather.h"
 #include "services/Wellbeing.h"
@@ -62,6 +63,10 @@ public:
         if (m_id.starts_with("screentime") || m_id == "wellbeing-modes") watch(Wellbeing::get().changed);
         if (m_id == "vpn") watch(Vpn::get().changed);
         if (m_id == "quickshare") watch(quickshare::QuickShare::get().changed);
+        if (m_id == "printers") {
+            watch(Printers::get().changed);
+            m_printers = Printers::get().watch(); // the queue, while it shows
+        }
         if (m_id.starts_with("music")) {
             watch(Mpris::get().changed);
             // The progress moves on by itself
@@ -96,6 +101,7 @@ private:
     void wellbeingModes();
     void vpn();
     void quickShare();
+    void printers();
     Flex* controls(Node* parent, const Mpris::Player& p, float big);
     void progress() {
         const auto* p = Mpris::get().active();
@@ -108,6 +114,7 @@ private:
     float m_k = widgetScale(); // Widget size
     EventLoop::TimerId m_timer = 0;
     std::unique_ptr<SecondTicker> m_ticker;
+    Printers::Lease m_printers;
     WavyProgress* m_progress = nullptr;
 };
 
@@ -148,13 +155,15 @@ void Styled::build() {
     if (m_id == "cal-month") return calendarMonth();
     if (m_id == "cal-agenda") return calendarAgenda();
     // Nothing personal on the login screen
-    if (m_greeter && (m_id.starts_with("screentime") || m_id == "wellbeing-modes" || m_id == "vpn" || m_id == "quickshare"))
+    if (m_greeter && (m_id.starts_with("screentime") || m_id == "wellbeing-modes" || m_id == "vpn" || m_id == "quickshare" ||
+                      m_id == "printers"))
         return setVisible(false);
     if (m_id == "screentime") return screenTime();
     if (m_id == "screentime-week") return screenTimeWeek();
     if (m_id == "wellbeing-modes") return wellbeingModes();
     if (m_id == "vpn") return vpn();
     if (m_id == "quickshare") return quickShare();
+    if (m_id == "printers") return printers();
     if (m_id.starts_with("music")) {
         // Never on the login screen: nobody's music plays there
         const auto* p = m_greeter ? nullptr : Mpris::get().active();
@@ -568,11 +577,52 @@ void Styled::quickShare() {
     };
 }
 
+// The default printer, its state and the queue
+void Styled::printers() {
+    auto& pr = Printers::get();
+    const Printers::Printer* def = nullptr;
+    for (const auto& p : pr.printers())
+        if (p.isDefault || !def) def = &p;
+    const size_t jobs = pr.jobs().size();
+    const bool paused = def && def->state == "stopped";
+    auto* c = card(this, Flex::Direction::Row);
+    c->setSpacing(14 * m_k)->setAlignItems(Align::Center);
+    auto* bubble = c->add<Flex>(Flex::Direction::Row);
+    pill(bubble->setBackground(jobs ? "primary" : paused ? "error_container" : "primary_container", false))->setJustify(Align::Center);
+    bubble->fixedWidth = bubble->fixedHeight = 44 * m_k;
+    bubble->add<Icon>(paused ? "print_disabled" : jobs ? "print_connect" : "print", 22 * m_k)
+        ->setColor(jobs ? "on_primary" : paused ? "on_error_container" : "on_primary_container", false);
+    auto* text = c->add<Flex>(Flex::Direction::Column);
+    text->setSpacing(2)->setAlignItems(Align::Start);
+    text->grow = true;
+    text->add<Label>(def ? (def->description.empty() ? def->name : def->description) : "Printers")
+        ->setSize(15 * m_k)
+        ->setWeight(600)
+        ->setMaxWidth(200 * m_k)
+        ->setColor("on_surface", false);
+    const std::string status = !pr.installed() ? "Printing isn't set up"
+                               : !pr.running() ? "The print service isn't running"
+                               : !def          ? "No printers"
+                               : jobs          ? std::format("Printing · {} job{} waiting", jobs, jobs == 1 ? "" : "s")
+                               : paused        ? "Paused"
+                                               : "Ready";
+    text->add<Label>(status)->setSize(12 * m_k)->setMaxWidth(200 * m_k)->setColor("on_surface_variant", false);
+    // Settings → Printers, open or not
+    auto* settings = c->add<Button>(Flex::Direction::Row);
+    pill(settings->setBackground("surface_container_highest", false))->setPadding({10 * m_k, 8 * m_k});
+    settings->add<Icon>("settings", 18 * m_k)->setColor("on_surface", false);
+    settings->tooltip = "Printer settings";
+    settings->onClicked = [](uint32_t button) {
+        if (button == BTN_LEFT && panels::open) panels::open("settings printers");
+    };
+}
+
 } // namespace
 
 Node* addStyledWidget(Node* parent, const std::string& id, bool greeter, Align align) {
     static const char* ids[] = {"cal-day",     "cal-week",     "cal-month",  "cal-agenda",      "music-disc", "music-bar",
-                                "weather-big", "weather-card", "screentime", "screentime-week", "wellbeing-modes", "vpn", "quickshare"};
+                                "weather-big", "weather-card", "screentime", "screentime-week", "wellbeing-modes", "vpn", "quickshare",
+                                "printers"};
     for (const char* known : ids)
         if (id == known) return parent->add<Styled>(id, greeter, align);
     return nullptr;

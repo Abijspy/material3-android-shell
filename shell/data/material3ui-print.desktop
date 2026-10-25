@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Print
+GenericName=Print files
+Comment=Print documents and pictures
+Exec=material3ui msg print %F
+Icon=printer
+Categories=Utility;Printing;
+Keywords=print;printer;cups;paper;
+MimeType=application/pdf;application/postscript;image/jpeg;image/png;image/gif;image/webp;image/tiff;text/plain;
+StartupNotify=false
