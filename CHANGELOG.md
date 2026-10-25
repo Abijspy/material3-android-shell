@@ -1,5 +1,18 @@
 # Changelog
 
+## v5.8.2 — 2026-10-25
+
+- **Hooks:** your own commands that run when things happen, in **Settings → Hooks**. There are 41 events: the screen locking and unlocking, sleep and wake, logging out, a new wallpaper or colours, the battery and power mode, the network, Wi-Fi, Bluetooth and VPN, notifications, Do not disturb, the song, workspaces, screens, screenshots and recordings, and Focus and Bedtime.
+  - **Commands:** each event takes one or more, run in order. **Run now** tries them with sample values, and each event shows its last result.
+  - **Variables:** details of what happened reach your commands as environment variables, such as `$M3_FILE` or `$M3_NOTIFICATION_SUMMARY`. They're never inserted into the command itself, so a notification's text can't run as a command.
+  - **Before power actions:** logging out, restarting and shutting down wait up to 5 seconds for their hooks to finish.
+  - **Noctalia's names:** events use the same names as Noctalia's hooks where the two match.
+- **For scripts and automated tests:**
+  - **Event file:** every event is written as a line of JSON to `$XDG_RUNTIME_DIR/material3ui/events.jsonl`.
+  - **Waiting:** `material3ui events wait <event> --since <ms>` waits for an event, even one that happened just before it started.
+  - **Hooks from a terminal:** `material3ui msg hooks set|fire|run|list|events|log` sets up and runs hooks without opening Settings.
+  - **Reference:** see [Hooks and events](docs/IPC.md#hooks-and-events).
+
 ## v5.8.1 — 2026-10-25
 
 - **Fixed: slider values in Settings no longer break onto a second line** over their title ("45" above "%"). The fault came in with 5.8.0.
