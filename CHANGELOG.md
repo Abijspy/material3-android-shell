@@ -1,5 +1,19 @@
 # Changelog
 
+## v5.8.1 — 2026-10-25
+
+- **Fixed: slider values in Settings no longer break onto a second line** over their title ("45" above "%"). The fault came in with 5.8.0.
+- **Lighter at rest.** Sitting idle, the shell now uses under 0.1% of one CPU core, down from about 4%. Long titles scroll three times and then rest, as on Android, and endless animations keep to their calm 30 fps. The README has the measured numbers and how to repeat them.
+- **Synced lyrics.** The line being sung shows in the media player (dashboard, desktop and lock screen), and as a new **Lyrics** bar widget. Songs are looked up once on lrclib.net, a free lyrics library, and kept. Turn it off in Settings → Sound → Synced lyrics, and then nothing is sent.
+- **Dock magnification and a taskbar style**, in Settings → Dock:
+  - **Magnification** (Off, Small, Large): icons grow as the pointer passes over them.
+  - **Taskbar:** the dock runs edge to edge along the bottom, apps from the left.
+- **Keyboard navigation in Settings and Hyprland Settings.**
+  - **Tab** and **Shift+Tab** move through the controls, and the **arrow keys** move to the nearest one that way.
+  - **Enter** or **Space** presses the control, and a ring shows where you are.
+  - **Ctrl+F** jumps to the search.
+  - Hyprland Settings' **Ctrl+Z** undo now works.
+
 ## v5.8.0 — 2026-10-25
 
 - **New bar looks**, in Settings → Status bar → Looks. Pick one with a tap, then fine-tune it:
