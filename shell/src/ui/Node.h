@@ -220,6 +220,9 @@ protected:
     // The set radius scaled by the theme's roundness, never past a pill
     virtual Radii effectiveRadius() const;
     Radii baseRadius() const;
+    // Across a row: the width each growing child has once the others are
+    // in (0: nothing grows, or the others fill it)
+    float growRoom(SizeF inner);
 
     Direction m_dir;
     float m_spacing = 0;
@@ -263,9 +266,13 @@ public:
 
 protected:
     SizeF doMeasure(SizeF available) override;
+    void doArrange() override;
     void doPaint(Renderer& r) override;
     bool doAnimating() const override { return m_color.running(); }
     TextStyle style() const;
+    // The width it wraps (or ellipsizes) within, offered `room`: its
+    // maxWidth, or less when that's all there is
+    float fitWidth(float room) const;
 
     std::string m_text;
     std::string m_family; // empty: the theme font
@@ -273,6 +280,7 @@ protected:
     float m_size = 14;
     int m_weight = 400;
     float m_maxWidth = 0;
+    float m_fit = 0; // arranged narrower than maxWidth: drawn within this
     int m_maxLines = 1;
     bool m_icon = false;
     float m_fill = 0;

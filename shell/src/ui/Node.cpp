@@ -279,12 +279,16 @@ SizeF Flex::doMeasure(SizeF available) {
                       std::max(0.0f, available.h - m_padding.top - m_padding.bottom)};
     float main = 0, cross = 0;
     int count = 0;
+    const float grown = row ? growRoom(inner) : 0;
     for (auto& c : children()) {
         if (!c->shown() || c->floating) continue;
         // Down a column each child gets the height its earlier siblings left,
-        // so a scroll view under a header caps to the room really there
+        // so a scroll view under a header caps to the room really there;
+        // across a row, what grows gets the width the others leave (its text
+        // wraps to fit beside them, and the row is as tall as that)
         const float spent = main + (count > 0 ? m_spacing * static_cast<float>(count) : 0);
-        const auto s = c->measure(row ? inner : SizeF{inner.w, std::max(0.0f, inner.h - spent)});
+        const auto s = c->measure(row ? SizeF{c->grow && grown > 0 ? grown : inner.w, inner.h}
+                                      : SizeF{inner.w, std::max(0.0f, inner.h - spent)});
         main += row ? s.w : s.h;
         cross = std::max(cross, row ? s.h : s.w);
         ++count;
@@ -293,6 +297,21 @@ SizeF Flex::doMeasure(SizeF available) {
     const float padMain = row ? m_padding.left + m_padding.right : m_padding.top + m_padding.bottom;
     const float padCross = row ? m_padding.top + m_padding.bottom : m_padding.left + m_padding.right;
     return row ? SizeF{main + padMain, cross + padCross} : SizeF{cross + padCross, main + padMain};
+}
+
+float Flex::growRoom(SizeF inner) {
+    if (inner.w <= 0) return 0;
+    float fixed = 0;
+    int count = 0, growing = 0;
+    for (auto& c : children()) {
+        if (!c->shown() || c->floating) continue;
+        ++count;
+        if (c->grow) ++growing;
+        else fixed += c->measure(inner).w;
+    }
+    if (growing == 0) return 0;
+    fixed += m_spacing * static_cast<float>(count - 1);
+    return std::max(0.0f, inner.w - fixed) / static_cast<float>(growing);
 }
 
 void Flex::doArrange() {
@@ -306,10 +325,12 @@ void Flex::doArrange() {
     std::vector<SizeF> sizes;
     float used = 0;
     int visibleCount = 0, growCount = 0;
+    const float grown = row ? growRoom({content.w, content.h}) : 0;
     for (auto& c : children()) {
         // As in doMeasure: only the room left after the earlier siblings
         const float spent = used + m_spacing * static_cast<float>(visibleCount);
-        const SizeF room = row ? SizeF{content.w, content.h} : SizeF{content.w, std::max(0.0f, content.h - spent)};
+        const SizeF room = row ? SizeF{c->grow && grown > 0 ? grown : content.w, content.h}
+                               : SizeF{content.w, std::max(0.0f, content.h - spent)};
         sizes.push_back(c->shown() && !c->floating ? c->measure(room) : SizeF{});
         if (!c->shown() || c->floating) continue;
         used += row ? sizes.back().w : sizes.back().h;
@@ -424,7 +445,7 @@ TextStyle Label::style() const {
     }
     s.size = std::round(m_size * (m_icon ? iconScale : scale));
     s.weight = !m_icon && theme.boldText() ? std::min(900, m_weight + 200) : m_weight;
-    s.maxWidth = m_maxWidth;
+    s.maxWidth = m_fit > 0 ? m_fit : m_maxWidth;
     s.maxLines = m_maxLines;
     s.center = m_center;
     s.icon = m_icon;
@@ -432,10 +453,26 @@ TextStyle Label::style() const {
     return s;
 }
 
-SizeF Label::doMeasure(SizeF) {
+float Label::fitWidth(float room) const {
+    if (m_maxWidth <= 0 || room <= 0) return m_maxWidth; // 0: room unknown
+    return std::min(m_maxWidth, std::ceil(room));
+}
+
+// Text that wraps or ellipsizes (it has a maxWidth) keeps to the room it's
+// offered as well: beside a row's controls there can be less than that
+SizeF Label::doMeasure(SizeF available) {
     if (m_text.empty()) return {};
-    const auto m = TextEngine::get().measure(m_text, style());
+    TextStyle s = style();
+    s.maxWidth = fitWidth(available.w);
+    const auto m = TextEngine::get().measure(m_text, s);
     return {std::ceil(m.width), std::ceil(m.height)};
+}
+
+// Drawn within the width it was given: the lines it was measured with, or
+// fewer words a line if its parent had to squeeze it
+void Label::doArrange() {
+    const float fit = fitWidth(rect().w);
+    m_fit = fit < m_maxWidth ? fit : 0;
 }
 
 void Label::doPaint(Renderer& r) {
