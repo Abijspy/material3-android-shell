@@ -207,6 +207,7 @@ const std::vector<WidgetDef>& widgets() {
         {"battery", "battery_full", "Battery", "Charge and status"},
         {"notifications", "notifications", "Notifications", "How many are waiting"},
         {"screentime", "digital_wellbeing", "Screen time", "Today's time, by app"},
+        {"screentime-week", "bar_chart", "Screen time: week", "The week as bars, and the daily average"},
         {"wellbeing-modes", "self_improvement", "Focus & Bedtime", "Switch Focus mode or Bedtime"},
         {"vpn", "vpn_key", "VPN", "The VPN in use, with a switch"},
         {"quickshare", quickShare.c_str(), "Quick Share", "Visible or not, and Send"},

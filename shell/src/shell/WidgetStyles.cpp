@@ -59,7 +59,7 @@ public:
         sync = [this] { build(); };
         if (m_id.starts_with("weather")) watch(Weather::get().changed);
         if (m_id == "cal-agenda") watch(m3::Calendar::get().changed);
-        if (m_id == "screentime" || m_id == "wellbeing-modes") watch(Wellbeing::get().changed);
+        if (m_id.starts_with("screentime") || m_id == "wellbeing-modes") watch(Wellbeing::get().changed);
         if (m_id == "vpn") watch(Vpn::get().changed);
         if (m_id == "quickshare") watch(quickshare::QuickShare::get().changed);
         if (m_id.starts_with("music")) {
@@ -92,6 +92,7 @@ private:
     void weatherBig();
     void weatherCard();
     void screenTime();
+    void screenTimeWeek();
     void wellbeingModes();
     void vpn();
     void quickShare();
@@ -147,8 +148,10 @@ void Styled::build() {
     if (m_id == "cal-month") return calendarMonth();
     if (m_id == "cal-agenda") return calendarAgenda();
     // Nothing personal on the login screen
-    if (m_greeter && (m_id == "screentime" || m_id == "wellbeing-modes" || m_id == "vpn" || m_id == "quickshare")) return setVisible(false);
+    if (m_greeter && (m_id.starts_with("screentime") || m_id == "wellbeing-modes" || m_id == "vpn" || m_id == "quickshare"))
+        return setVisible(false);
     if (m_id == "screentime") return screenTime();
+    if (m_id == "screentime-week") return screenTimeWeek();
     if (m_id == "wellbeing-modes") return wellbeingModes();
     if (m_id == "vpn") return vpn();
     if (m_id == "quickshare") return quickShare();
@@ -461,6 +464,46 @@ void Styled::screenTime() {
     }
 }
 
+// The week's screen time: a bar a day (today's in the primary colour), the
+// average and today's total
+void Styled::screenTimeWeek() {
+    auto& w = Wellbeing::get();
+    std::vector<int> days;
+    std::vector<std::string> names;
+    int sum = 0, counted = 0, most = 1;
+    for (int ago = 6; ago >= 0; --ago) {
+        const int t = w.day(ago).total();
+        days.push_back(t);
+        sum += t;
+        counted += t > 0;
+        most = std::max(most, t);
+        names.push_back(format("%a", localNow(-ago)).substr(0, 1));
+    }
+    auto* c = card(this);
+    c->setSpacing(12 * m_k)->setAlignItems(Align::Stretch);
+    auto* head = c->add<Flex>(Flex::Direction::Row);
+    head->setSpacing(8 * m_k)->setAlignItems(Align::Center);
+    head->add<Icon>("bar_chart", 20 * m_k)->setColor("primary", false);
+    auto* title = head->add<Label>(std::format("This week · {} a day", minutes(counted ? sum / counted : 0)));
+    title->setSize(13 * m_k)->setWeight(600)->setColor("on_surface", false);
+    title->grow = true;
+    head->add<Label>("Today " + minutes(days.back()))->setSize(12 * m_k)->setColor("on_surface_variant", false);
+    auto* bars = c->add<Flex>(Flex::Direction::Row);
+    bars->setSpacing(10 * m_k)->setAlignItems(Align::End);
+    const float tall = 72 * m_k, thick = 18 * m_k;
+    for (size_t i = 0; i < days.size(); ++i) {
+        const bool today = i + 1 == days.size();
+        auto* col = bars->add<Flex>(Flex::Direction::Column);
+        col->setSpacing(6 * m_k)->setAlignItems(Align::Center);
+        col->grow = true; // the days share the card's width
+        auto* bar = col->add<Flex>(Flex::Direction::Column);
+        pill(bar->setBackground(today ? "primary" : days[i] ? "secondary_container" : "surface_container_highest", false));
+        bar->fixedWidth = thick;
+        bar->fixedHeight = std::max(thick, tall * static_cast<float>(days[i]) / static_cast<float>(most));
+        col->add<Label>(names[i])->setSize(11 * m_k)->setWeight(today ? 700 : 500)->setColor(today ? "primary" : "on_surface_variant", false);
+    }
+}
+
 // Focus mode and Bedtime, a tap each
 void Styled::wellbeingModes() {
     auto& w = Wellbeing::get();
@@ -529,7 +572,7 @@ void Styled::quickShare() {
 
 Node* addStyledWidget(Node* parent, const std::string& id, bool greeter, Align align) {
     static const char* ids[] = {"cal-day",     "cal-week",     "cal-month",  "cal-agenda",      "music-disc", "music-bar",
-                                "weather-big", "weather-card", "screentime", "wellbeing-modes", "vpn",        "quickshare"};
+                                "weather-big", "weather-card", "screentime", "screentime-week", "wellbeing-modes", "vpn", "quickshare"};
     for (const char* known : ids)
         if (id == known) return parent->add<Styled>(id, greeter, align);
     return nullptr;
