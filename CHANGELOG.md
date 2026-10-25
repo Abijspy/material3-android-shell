@@ -1,5 +1,24 @@
 # Changelog
 
+## v5.8.0 — 2026-10-25
+
+- **New bar looks**, in Settings → Status bar → Looks. Pick one with a tap, then fine-tune it:
+  - **Material 3**, the default: pills along the top.
+  - **Single bar:** one bar across the top, its widgets highlighted.
+  - **Caelestia:** a bar down the left edge that runs on round the screen as a thin frame with rounded inner corners. It shows the system's logo, the workspaces, the window's title, the tray, the clock, status and power.
+- **The bar on any edge:** top, bottom, left or right. On a side bar the widgets stack: the workspaces run down it, the clock shows hours over minutes, the window's title reads down the bar, and popups and tooltips open beside it. A side bar keeps its own widget arrangement, so your top bar's stays as it was.
+- **A Framed style** for any edge, with the frame's thickness and corners in Settings, and a **Logo** widget.
+- **The Clock widget opens the calendar** (right-click: notifications), as the island does.
+- **Printers**, in Settings → Printers:
+  - Add printers found on your network, or one by its address. No drivers needed (IPP Everywhere, AirPrint, Mopria).
+  - Set the default, print a test page, pause or remove a printer, and see or cancel what's in the queue.
+  - A print dialog (`material3ui msg print <file>`, or "Open with"): printer, copies, pages, two-sided, colour and orientation.
+  - A Quick Settings tile, a bar widget and a desktop widget.
+  - Most printers need Ghostscript to print documents; if it's missing, Settings offers to install it.
+- **Wallpaper colours as on Android.** Each swatch shows the palette it makes, in three colours. Each of your wallpaper's colours comes in four styles: Content, Tonal, Vibrant and Expressive. Basic colours use the same swatches, and the Style row follows your pick.
+- **Smoother bar and panels.** Rounded corners no longer show stepped, pixelated edges where the blur met them, and the blur's grain is gone.
+- **Text no longer runs under buttons** in Settings rows: long text wraps or shortens to fit, at any text size.
+
 ## v5.7.5 — 2026-10-25
 
 - **A friendlier lock screen editor.** Your lock screen stays on the left, and a side sheet on the right follows what you pick:
