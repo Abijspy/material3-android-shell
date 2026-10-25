@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cmath>
 #include <format>
+#include <linux/input-event-codes.h>
 #include <map>
 #include <memory>
 
@@ -42,44 +43,77 @@ std::vector<std::pair<std::string, int>> ranked(const Wellbeing::Day& d) {
     return out;
 }
 
-// The week: a bar a day, today's in the primary colour, the day under it
+// The week: a bar a day, the oldest first. Tap one to pick that day: it
+// fills in the primary colour (the others recede) and its details show
+// below. Heights spring to new totals.
 class WeekBars : public Node {
 public:
+    std::function<void(int index)> onSelect;
+
     void set(std::vector<int> days, std::vector<std::string> labels) {
         m_days = std::move(days);
         m_labels = std::move(labels);
+        int most = 1;
+        for (int d : m_days) most = std::max(most, d);
+        m_heights.resize(m_days.size(), Tween(0, Spring::spatialDefault()));
+        for (size_t i = 0; i < m_days.size(); ++i) m_heights[i].set(static_cast<float>(m_days[i]) / static_cast<float>(most));
         requestRedraw();
+    }
+    void select(int index) {
+        m_selected = index;
+        requestRedraw();
+    }
+    int selected() const { return m_selected; }
+
+    bool interactive() const override { return true; }
+    void onPress(uint32_t, float x, float) override { m_pressX = x; }
+    void onClick(uint32_t button) override {
+        if (button != BTN_LEFT || m_days.empty()) return;
+        const int i = indexAt(m_pressX);
+        if (i < 0) return;
+        select(i);
+        if (onSelect) onSelect(i);
     }
 
 protected:
-    SizeF doMeasure(SizeF available) override { return {available.w, 150}; }
+    SizeF doMeasure(SizeF available) override { return {available.w, 160}; }
+    bool doAnimating() const override {
+        return std::ranges::any_of(m_heights, [](const Tween& t) { return t.running(); });
+    }
     void doPaint(Renderer& r) override {
         const auto& b = rect();
-        int most = 1;
-        for (int d : m_days) most = std::max(most, d);
         const float n = static_cast<float>(std::max<size_t>(1, m_days.size()));
-        const float slot = b.w / n, bar = std::min(36.0f, slot * 0.55f), chart = b.h - 26;
+        const float slot = b.w / n, bar = std::min(40.0f, slot * 0.6f), chart = b.h - 28;
         const auto& t = Theme::get();
         TextStyle st;
         st.family = t.fontFamily();
         st.size = 12;
         for (size_t i = 0; i < m_days.size(); ++i) {
-            const bool today = i + 1 == m_days.size();
-            const float h = std::max(bar, chart * static_cast<float>(m_days[i]) / static_cast<float>(most));
+            const bool chosen = static_cast<int>(i) == m_selected;
+            const float h = std::max(bar, chart * std::max(0.0f, i < m_heights.size() ? m_heights[i].value() : 0.0f));
             const float x = b.x + slot * static_cast<float>(i) + (slot - bar) / 2;
-            r.rect({x, b.y + chart - h, bar, h}, t.color(today ? "primary" : m_days[i] ? "secondary_container" : "surface_container_highest"),
-                   Radii(bar / 2));
+            const Color c = t.color(chosen ? "primary" : m_days[i] ? "secondary_container" : "surface_container_highest");
+            r.rect({x, b.y + chart - h, bar, h}, c, Radii(bar / 2));
             if (i < m_labels.size()) {
+                st.weight = chosen ? 700 : 400;
                 const auto& tex = TextEngine::get().texture(m_labels[i], st, r.scale());
-                r.mask(tex.id, {std::round(x + bar / 2 - tex.logical.width / 2), b.y + chart + 8, tex.logical.width, tex.logical.height},
-                       t.color(today ? "primary" : "on_surface_variant"));
+                r.mask(tex.id, {std::round(x + bar / 2 - tex.logical.width / 2), b.y + chart + 10, tex.logical.width, tex.logical.height},
+                       t.color(chosen ? "primary" : "on_surface_variant"));
             }
         }
     }
 
 private:
+    int indexAt(float x) const {
+        if (m_days.empty() || rect().w <= 0) return -1;
+        const int i = static_cast<int>((x - rect().x) / (rect().w / static_cast<float>(m_days.size())));
+        return i >= 0 && i < static_cast<int>(m_days.size()) ? i : -1;
+    }
     std::vector<int> m_days;
     std::vector<std::string> m_labels;
+    std::vector<Tween> m_heights;
+    int m_selected = 6;
+    float m_pressX = 0;
 };
 
 // An app's icon, for rows
@@ -144,6 +178,59 @@ void wellbeingPage(Flex* page, Popup&) {
     barsBox->setPadding({20, 18})->setAlignItems(Align::Stretch);
     auto* bars = barsBox->add<WeekBars>();
 
+    // The picked day, under the bars: its date and totals, then each app
+    // with its time and a bar against the day's busiest
+    auto* dayHead = barsBox->add<Flex>(Flex::Direction::Column);
+    dayHead->setPadding({0, 14, 0, 6})->setSpacing(2)->setAlignItems(Align::Start);
+    auto* dayTitle = dayHead->add<Label>();
+    dayTitle->setSize(18)->setWeight(600);
+    auto* daySummary = dayHead->add<Label>();
+    daySummary->setSize(13)->setColor("on_surface_variant", false);
+    auto* dayApps = barsBox->add<GlideColumn>();
+    dayApps->setSpacing(4)->setAlignItems(Align::Stretch);
+    auto picked = std::make_shared<int>(0); // days ago
+    auto showDay = [dayTitle, daySummary, dayApps, picked] {
+        const int ago = *picked;
+        const auto d = Wellbeing::get().day(ago);
+        const std::time_t when = std::time(nullptr) - static_cast<std::time_t>(ago) * 86400;
+        std::tm tm{};
+        localtime_r(&when, &tm);
+        char date[48];
+        std::strftime(date, sizeof date, "%A, %-d %B", &tm);
+        dayTitle->setText(ago == 0 ? std::string("Today") : ago == 1 ? std::string("Yesterday") : std::string(date));
+        int notes = 0;
+        for (const auto& [_, c] : d.notifications) notes += c;
+        daySummary->setText(std::format("{} · {} unlock{} · {} notification{}", duration(d.total()), d.unlocks, d.unlocks == 1 ? "" : "s",
+                                        notes, notes == 1 ? "" : "s"));
+        dayApps->clearChildren();
+        const auto apps = ranked(d);
+        const int most = apps.empty() ? 1 : std::max(1, apps.front().second);
+        for (const auto& [cls, secs] : apps) {
+            auto* row = dayApps->add<Flex>(Flex::Direction::Row);
+            row->glideKey = "app:" + cls;
+            row->setPadding({0, 6})->setSpacing(14)->setAlignItems(Align::Center);
+            row->adopt(appIcon(cls, 32), 0);
+            auto* mid = row->add<Flex>(Flex::Direction::Column);
+            mid->setSpacing(6)->setAlignItems(Align::Stretch);
+            mid->grow = true;
+            auto* top = mid->add<Flex>(Flex::Direction::Row);
+            auto* name = top->add<Label>(Wellbeing::nameOf(cls));
+            name->setSize(14)->setWeight(500)->setMaxWidth(320);
+            name->grow = true;
+            top->add<Label>(duration(secs))->setSize(13)->setColor("on_surface_variant", false);
+            mid->add<Meter>(static_cast<float>(secs) / static_cast<float>(most), ColorRef("primary"), 8);
+        }
+        if (apps.empty()) {
+            auto* none = dayApps->add<Label>(ago == 0 ? "Nothing yet today" : "No screen time recorded");
+            none->setSize(13)->setColor("on_surface_variant", false);
+            none->glideKey = "none";
+        }
+    };
+    bars->onSelect = [picked, showDay](int index) {
+        *picked = 6 - index;
+        showDay();
+    };
+
     // The lists: rebuilt only when what's in them changes (an app, a
     // timer, Focus, Bedtime), so an open dropdown stays open; between,
     // only the times move
@@ -201,7 +288,9 @@ void wellbeingPage(Flex* page, Popup&) {
             labels.push_back(buf);
         }
         bars->set(days, labels);
+        bars->select(6 - *picked);
         average->setText(duration(counted ? sum / counted : 0));
+        showDay(); // today's moves on; another day's stays as it was
 
         const auto weekApps = [&] {
             // Today's apps first, then the week's others
