@@ -83,6 +83,8 @@ sources = files(
   'src/services/HyprOptions.cpp',
   'src/services/Idle.cpp',
   'src/services/Keybinds.cpp',
+  'src/services/HookEvents.cpp',
+  'src/services/Hooks.cpp',
   'src/services/Lyrics.cpp',
   'src/services/LyricsParse.cpp',
   'src/services/Mpris.cpp',

@@ -49,7 +49,8 @@ public:
     std::time_t recordingSince() const { return m_since; }
     std::vector<std::string> recent(size_t count) const; // newest first
 
-    Signal<const std::string&> taken; // the saved file
+    Signal<const std::string&> taken;    // the saved file
+    Signal<const std::string&> recorded; // a recording's file, saved
     Signal<> recordingChanged;
 
 private:

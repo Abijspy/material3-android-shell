@@ -1,3 +1,4 @@
+#include "services/Hooks.h"
 #include "build_config.h"
 #include "core/EventLoop.h"
 #include "core/Process.h"
@@ -29,6 +30,9 @@ void usage() {
               << "usage:\n"
               << "  material3ui              run the shell\n"
               << "  material3ui msg <cmd>    send a command to the running shell (msg help)\n"
+              << "  material3ui events [follow]                         print the shell's events as they happen\n"
+              << "  material3ui events wait <event|*> [--since <ms>] [--timeout <s>]\n"
+              << "                           wait for one (since <ms>: one already over counts too)\n"
               << "  material3ui greeter      run as the greetd login screen\n"
               << "  material3ui share-picker choose what an app may share (xdg-desktop-portal-hyprland)\n"
               << "  material3ui --version\n";
@@ -189,6 +193,7 @@ int main(int argc, char** argv) {
     const std::vector<std::string> args(argv + 1, argv + argc);
     if (!args.empty()) {
         if (args[0] == "msg") return m3::ipcSend({args.begin() + 1, args.end()});
+        if (args[0] == "events") return m3::Hooks::cli({args.begin() + 1, args.end()});
         if (args[0] == "greeter") {
             SignalSource signals;
             m3::EventLoop::get().add(&signals);

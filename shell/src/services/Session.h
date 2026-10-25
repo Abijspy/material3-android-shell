@@ -30,6 +30,7 @@ private:
     Session();
     void takeSleepInhibitor();
     void manager(const char* method);
+    void endSession(); // logout(), once its hooks have run
 
     std::string m_sessionPath;
     int m_inhibitFd = -1;

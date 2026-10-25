@@ -158,6 +158,7 @@ Most settings live in the built-in **Settings** app (<kbd>Super</kbd><kbd>I</kbd
 - **Lock screen and weather:** the clock and widgets on the lock and login screens; your location, units and forecast.
 - **Tools:** clipboard and screenshots.
 - **Session:** notifications, and lock & idle.
+- **Hooks:** your own commands when things happen (the screen locks, the wallpaper changes, the battery runs low, a notification arrives, a screenshot is saved: 41 events in all), each with a test run and its last result.
 - **Packages & Updates, and About.**
 
 **Hyprland Settings** is its companion app for the compositor itself: a window of its own (Hyprland Settings in the launcher, `material3ui msg hyprsettings`, or the button at the foot of either app's sidebar). Every change applies live, is saved at once, undoes with <kbd>Ctrl</kbd><kbd>Z</kbd> and resets per option to what your config files had. It has:
@@ -198,9 +199,10 @@ material3ui msg wallpaper set ~/sunset.jpg   # apply a wallpaper; "next" cycles
 material3ui msg screenshot region            # or window, screen, ocr
 material3ui msg volume set 40
 material3ui msg lock
+material3ui msg hooks set session_locked "playerctl pause"   # a hook: run on an event
 ```
 
-`material3ui msg help` lists every command, and the [IPC reference](docs/IPC.md) documents them.
+`material3ui msg help` lists every command, and the [IPC reference](docs/IPC.md) documents them. Every event (a lock, a new wallpaper, a screenshot saved…) is also written as a line of JSON to `$XDG_RUNTIME_DIR/material3ui/events.jsonl`, so scripts and automated tests can wait for what they set off (`material3ui events wait screenshot_taken`): [Hooks and events](docs/IPC.md#hooks-and-events).
 
 ## Safe by default
 

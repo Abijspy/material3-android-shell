@@ -42,6 +42,7 @@
 #include "shell/Panels.h"
 #include "shell/Popup.h"
 #include "shell/PrintersPage.h"
+#include "services/Hooks.h"
 #include "shell/bar/Bar.h"
 #include "shell/bar/Frame.h"
 #include "shell/bar/Widgets.h"
@@ -52,6 +53,7 @@
 #include <cmath>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <unistd.h>
 
 namespace m3::shell {
@@ -106,6 +108,7 @@ bool Shell::start() {
     Idle::get().lockRequested.connectForever([] { LockScreen::get().lock(); });
     Idle::get().start();
     LockScreen::get().lockedChanged.connectForever([this] {
+        Hooks::get().fire(LockScreen::get().locked() ? "session_locked" : "session_unlocked");
         if (LockScreen::get().locked()) m_popup.reset();
         else Wellbeing::get().unlocked();
     });
@@ -161,6 +164,10 @@ bool Shell::start() {
     };
 
     registerIpc();
+    // Hooks: the services' events from here on, and this one (IPC is up)
+    Hooks::get().watch();
+    m_started = true;
+    Hooks::get().fire("started");
     // Once the desktop is up and settled
     EventLoop::get().addTimer(2500, [this, fresh] { greet(fresh); });
     return true;
@@ -178,6 +185,7 @@ void Shell::addOutput(wl::Output* output) {
     m_bars[output] = std::move(bar);
     syncFrame(output); // after the bar: its zone comes first
     syncDock(output);
+    if (m_started) Hooks::get().fire("monitor_added", {{"M3_MONITOR", output->name}});
 }
 
 void Shell::syncFrame(wl::Output* output) {
@@ -198,6 +206,7 @@ void Shell::syncDock(wl::Output* output) {
 }
 
 void Shell::removeOutput(wl::Output* output) {
+    Hooks::get().fire("monitor_removed", {{"M3_MONITOR", output->name}});
     LockScreen::get().removeOutput(output);
     m_desktops.erase(output);
     m_docks.erase(output);
@@ -675,7 +684,7 @@ void Shell::registerIpc() {
         return p ? std::format("{}: {} — {} [{}]", p->identity, p->title, p->artist, p->status) : std::string("no player");
     });
     ipc.add("settings", "settings [network|vpn|bluetooth|printers|defaults|notifications|tools|wellbeing|calendar|weather|battery|storage|monitor|"
-                        "sound|display|appearance|style|bar|dock|lockscreen|accessibility|lock|firewall|users|system|mouse|keybinds|packages|about]",
+                        "sound|display|appearance|style|bar|dock|lockscreen|accessibility|lock|firewall|users|system|mouse|keybinds|hooks|packages|about]",
             [this](const IpcServer::Args& a) {
         openSettings(a.empty() ? "" : a[0]);
         return std::string(m_settings && !m_settings->closing() ? "open" : "closed");
@@ -816,6 +825,65 @@ void Shell::registerIpc() {
             out += std::format("{}  {}{}  {}  pin {}  {} file(s) {}/{} bytes{}\n", id, t.outgoing ? "→ " : "", states[static_cast<int>(t.state)], t.sender, t.pin, t.files.size(),
                                t.received, t.total, t.error.empty() ? "" : "  " + t.error);
         return out;
+    });
+    ipc.add("hooks",
+            "hooks [list] | fire <event> [NAME=value…] | run <event> | set <event> <command> | clear <event> | events [n] | log [n]: "
+            "commands that run on events (Settings → Hooks); fire acts as if it happened, run tries a hook with sample values",
+            [](const IpcServer::Args& a) {
+        auto& h = Hooks::get();
+        const std::string cmd = a.empty() ? "list" : a[0];
+        auto tail = [](const std::string& file, size_t n) {
+            std::ifstream in(file);
+            std::vector<std::string> lines;
+            for (std::string l; std::getline(in, l);) lines.push_back(l);
+            std::string out;
+            for (size_t i = lines.size() > n ? lines.size() - n : 0; i < lines.size(); ++i) out += lines[i] + "\n";
+            return out.empty() ? std::string("(nothing yet)\n") : out;
+        };
+        auto count = [&](size_t fallback) {
+            const int n = a.size() > 1 ? std::atoi(a[1].c_str()) : 0;
+            return n > 0 ? static_cast<size_t>(n) : fallback;
+        };
+        if (cmd == "events") return tail(Hooks::eventsFile(), count(20));
+        if (cmd == "log") return tail(Hooks::logFile(), count(40));
+        if (cmd == "list") {
+            std::string out = std::format("hooks {} · events recorded to {}\n", h.enabled() ? "on" : "off", Hooks::eventsFile());
+            for (const auto& e : Hooks::events()) {
+                const auto list = h.commands(e.id);
+                out += std::format("{:<28}{}", e.id, list.empty() ? "-" : h.paused(e.id) ? "paused" : "");
+                for (const auto& c : list) out += "\n    " + c;
+                out += "\n";
+            }
+            return out;
+        }
+        if (a.size() < 2) return std::string("error: hooks ") + cmd + " needs an event (hooks list shows them)";
+        const std::string event = a[1];
+        if (!Hooks::find(event)) return "error: no event \"" + event + "\" (hooks list shows them)";
+        if (cmd == "fire") {
+            Hooks::Env env;
+            for (size_t i = 2; i < a.size(); ++i)
+                if (const auto eq = a[i].find('='); eq != std::string::npos && eq > 0) env.emplace_back(a[i].substr(0, eq), a[i].substr(eq + 1));
+            h.simulate(event, env);
+            return "fired " + event + (h.commands(event).empty() ? " (no hooks set for it)" : "");
+        }
+        if (cmd == "run") {
+            if (h.commands(event).empty()) return "error: no hooks set for " + event;
+            h.test(event);
+            return "running " + event + "'s hooks with sample values; see hooks log";
+        }
+        if (cmd == "set" && a.size() > 2) {
+            std::string command;
+            for (size_t i = 2; i < a.size(); ++i) command += (i > 2 ? " " : "") + a[i];
+            auto list = h.commands(event);
+            list.push_back(command);
+            h.setCommands(event, list);
+            return std::format("{} now runs {} command{}", event, list.size(), list.size() == 1 ? "" : "s");
+        }
+        if (cmd == "clear") {
+            h.setCommands(event, {});
+            return "cleared " + event;
+        }
+        return std::string("error: hooks [list|fire|run|set|clear|events|log]");
     });
     ipc.add("config", "config export [file]|import <file>: the shell's settings as a JSON file, and back (backed up first)",
             [](const IpcServer::Args& a) {

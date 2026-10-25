@@ -11,6 +11,7 @@
 #include "services/Calendar.h"
 #include "quickshare/QuickShare.h"
 #include "services/Clipboard.h"
+#include "services/Hooks.h"
 #include "services/HyprOptions.h"
 #include "services/Hyprland.h"
 #include "services/Keybinds.h"
@@ -2686,6 +2687,152 @@ void calendarPage(Flex* page, Popup&) {
     live->sync();
 }
 
+// Hooks: your own commands on the shell's events. Each event is a segment:
+// what it is, when it runs and what it's told; set, its commands, an on/off
+// switch and the last run; open, an editor (a field a command, Run now)
+void hooksPage(Flex* page, Popup&) {
+    auto* top = group(page, "Hooks",
+                      "Your own commands, run through sh when these happen. What happened comes to them as environment variables, "
+                      "never written into the command, so nothing in a notification can run as one");
+    switchRow(top, "webhook", "Run hooks", "Off: none of them run (the events are still recorded)", "/hookSettings/enabled", true);
+    switchRow(top, "data_object", "Record events",
+              "Each one as a line of JSON in $XDG_RUNTIME_DIR/material3ui/events.jsonl, for scripts and tests to follow. Yours alone, gone "
+              "at logout",
+              "/hookSettings/record", true);
+    auto logRow = row(top, "description", "Their output", "What hooks print goes to ~/.local/state/material3ui/hooks.log");
+    pillButton(logRow.row, "Open", false, [] { m3::run({"xdg-open", Hooks::logFile()}, nullptr); }, "open_in_new");
+    row(top, "terminal", "From a terminal",
+        "material3ui msg hooks fire <event> acts as if it happened · hooks events shows the latest · hooks list, set, clear, run, log");
+
+    // Which event is open for editing, and what's typed there
+    struct Editing {
+        std::string event;
+        std::vector<std::string> drafts;
+        EventLoop::TimerId save = 0;
+        std::shared_ptr<bool> alive = std::make_shared<bool>(true);
+        ~Editing() {
+            *alive = false;
+            if (save) EventLoop::get().cancel(save);
+            if (!event.empty()) Hooks::get().setCommands(event, drafts); // typed, never lost
+        }
+    };
+    auto editing = std::make_shared<Editing>();
+    auto saveSoon = [editing] {
+        if (editing->save) EventLoop::get().cancel(editing->save);
+        editing->save = EventLoop::get().addTimer(700, [e = editing.get(), alive = editing->alive] {
+            if (!*alive) return;
+            e->save = 0;
+            Hooks::get().setCommands(e->event, e->drafts);
+        });
+    };
+
+    std::string heading;
+    Flex* g = nullptr;
+    // Each event's segment: opening one closes the other, redrawn too
+    auto segments = std::make_shared<std::map<std::string, Live*>>();
+    for (const auto& e : Hooks::events()) {
+        if (heading != e.group) g = group(page, heading = e.group);
+        auto* live = g->add<Live>();
+        live->setSpacing(0);
+        const std::string id = e.id;
+        (*segments)[id] = live;
+        live->sync = [live, id, editing, saveSoon, segments, &e] {
+            live->clearChildren();
+            auto& h = Hooks::get();
+            const auto commands = h.commands(id);
+            const bool open = editing->event == id;
+            std::string about = e.when;
+            if (!e.vars.empty()) {
+                about += " · ";
+                for (size_t i = 0; i < e.vars.size(); ++i) about += (i ? ", $" : "$") + std::string(e.vars[i].name);
+            }
+            auto r = row(live, e.icon, e.name, about);
+            auto expand = [live, id, editing, segments] {
+                if (!editing->event.empty() && editing->event != id) {
+                    Hooks::get().setCommands(editing->event, editing->drafts);
+                    if (const auto it = segments->find(editing->event); it != segments->end()) it->second->syncSoon();
+                }
+                editing->event = id;
+                editing->drafts = Hooks::get().commands(id);
+                if (editing->drafts.empty()) editing->drafts.push_back("");
+                live->syncSoon();
+            };
+            if (commands.empty() && !open) {
+                pillButton(r.row, "Add", false, expand, "add");
+                return;
+            }
+            if (!open) {
+                auto* sw = r.row->add<Switch>();
+                sw->setChecked(!h.paused(id), false);
+                sw->onToggled = [id](bool on) { Hooks::get().setPaused(id, !on); };
+                iconButton(r.row, "edit", expand)->tooltip = "Edit";
+                // Its commands, and how the last run went
+                auto* info = live->add<Flex>(Flex::Direction::Column);
+                info->setAlignItems(Align::Start)->setSpacing(2)->setPadding({58, 0, 20, 12});
+                for (const auto& c : commands)
+                    info->add<Label>(c)->setSize(13)->setFamily(Config::get().value<std::string>("/appearance/fonts/monospace", "monospace"))
+                        ->setMaxWidth(560)->setColor("on_surface", false);
+                if (const auto* last = h.last(id)) {
+                    char when[16];
+                    std::tm tm{};
+                    localtime_r(&last->at, &tm);
+                    std::strftime(when, sizeof when, "%H:%M:%S", &tm);
+                    auto* status = info->add<Label>(std::format("{} {}{}", last->code == 0 ? "Ran at" : "Failed at", when,
+                                                                last->code == 0 ? "" : std::format(" · exit status {}", last->code)) +
+                                                    (last->test ? " (a test)" : ""));
+                    status->setSize(12)->setColor(last->code == 0 ? "on_surface_variant" : "error", false);
+                }
+                return;
+            }
+            // Open: a field a command, run one after another
+            for (size_t i = 0; i < editing->drafts.size(); ++i) {
+                auto* line = live->add<Flex>(Flex::Direction::Row);
+                line->setSpacing(6)->setPadding({58, 0, 20, 6});
+                auto* field = line->add<TextField>();
+                field->grow = true;
+                field->setPlaceholder(i == 0 ? "A command, e.g. notify-send \"Hello\" \"$M3_EVENT\"" : "Then this one");
+                field->setText(editing->drafts[i]);
+                field->onChanged = [editing, saveSoon, i](const std::string& t) {
+                    if (i < editing->drafts.size()) editing->drafts[i] = t;
+                    saveSoon();
+                };
+                field->onSubmit = [editing](const std::string&) { Hooks::get().setCommands(editing->event, editing->drafts); };
+                if (i == 0) field->focus();
+                if (editing->drafts.size() > 1)
+                    iconButton(line, "close", [live, editing, i] {
+                        if (i < editing->drafts.size()) editing->drafts.erase(editing->drafts.begin() + static_cast<long>(i));
+                        Hooks::get().setCommands(editing->event, editing->drafts);
+                        live->syncSoon();
+                    })->tooltip = "Remove";
+            }
+            auto* foot = live->add<Flex>(Flex::Direction::Row);
+            foot->setSpacing(8)->setPadding({58, 4, 20, 14});
+            pillButton(foot, "Another", false, [live, editing] {
+                editing->drafts.push_back("");
+                live->syncSoon();
+            }, "add");
+            pillButton(foot, "Run now", false, [editing, id] {
+                Hooks::get().setCommands(id, editing->drafts);
+                Hooks::get().test(id);
+            }, "play_arrow");
+            auto* gap = foot->add<Node>();
+            gap->grow = true;
+            pillButton(foot, "Done", true, [live, editing, id] {
+                Hooks::get().setCommands(id, editing->drafts);
+                editing->event.clear();
+                editing->drafts.clear();
+                live->syncSoon();
+            }, "check");
+        };
+        // A run finished: its status (not while it's being edited: the
+        // field would lose what's being typed)
+        live->conns.push_back(Hooks::get().ran.connect([live, id, editing] {
+            if (editing->event != id) live->syncSoon();
+        }));
+        live->sync();
+    }
+}
+
 void toolsPage(Flex* page, Popup& popup) {
     // Screen sharing: what apps (browsers, calls) see, asked through the portal
     auto* share = group(page, "Screen sharing", "When an app asks to share your screen, a window or a part of it");
@@ -3687,7 +3834,7 @@ HueChip categoryColours(const std::string& id) {
         {{"battery", "packages", "wellbeing", "hypr-startup"}, &green},
         {{"lock", "firewall", "lockscreen", "users", "hypr-window-rules", "hypr-layer-rules", "hypr-workspace-rules", "hypr-profiles"}, &teal},
         {{"hypr-debug"}, &red},
-        {{"accessibility", "tools", "hypr-plugins"}, &purple},
+        {{"accessibility", "tools", "hooks", "hypr-plugins"}, &purple},
     };
     const Pair* pair = &grey; // the rest: system, about, keyboard, mouse…
     for (const auto& [ids, p] : table)
@@ -3795,6 +3942,7 @@ const PageDef kPages[] = {
     {"hypr-debug", "bug_report", "Debug", "Logs, overlays and damage tracking", hyprDebugPage},
     {"mouse", "touchpad_mouse", "Mouse & touchpad", "Touchpad, pointer and gestures, in Hyprland Settings", mousePage},
     {"keybinds", "keyboard", "Keyboard", "Layouts, typing and shortcuts", keyboardPage},
+    {"hooks", "webhook", "Hooks", "Your own commands when things happen: locking, a new wallpaper, a low battery…", hooksPage},
     {"packages", "system_update", "Software & updates", "Updates from the repos, the AUR and Flathub", packagesPage},
     {"about", "info", "About", "This device and the shell", aboutPage},
 };

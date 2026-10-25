@@ -4,6 +4,7 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Process.h"
+#include "services/Hooks.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -96,6 +97,7 @@ void Wallpaper::set(const std::string& p) {
     Config::get().set("/background/wallpaperPath", "file://" + p);
     m_last = p;
     changed.emit();
+    Hooks::get().fire("wallpaper_changed", {{"M3_WALLPAPER_PATH", p}});
     recolour();
 }
 
@@ -120,11 +122,12 @@ void Wallpaper::recolour() {
     // you, as Android does) its first, the best scored
     if (cmd[1] == "image")
         cmd.insert(cmd.end(), {"--source-color-index", fromWallpaper ? std::to_string(std::clamp(std::atoi(accent.c_str() + 10), 0, 3)) : "0"});
-    run(cmd, [](int code, const std::string&) {
+    run(cmd, [dark](int code, const std::string&) {
         if (code != 0) {
             log::warn("matugen failed ({}); the palette is unchanged", code);
             return;
         }
+        Hooks::get().fire("colors_changed", {{"M3_THEME_MODE", dark ? "dark" : "light"}});
         // The login screen follows: copy the new wallpaper and palette to it
         if (Config::get().value<bool>("/lock/syncGreeter", true) && access("/var/lib/material3ui-greeter", W_OK) == 0)
             run({"material3ui-greeter", "sync", "--quiet"}, nullptr);

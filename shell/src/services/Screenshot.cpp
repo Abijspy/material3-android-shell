@@ -182,6 +182,7 @@ void Screenshot::startRecording(const RecordOptions& o, const std::string& outpu
             }
             if (!gif) {
                 run({"notify-send", "-a", "Screen recording", "Recording saved", fs::path(file).filename().string()}, nullptr);
+                recorded.emit(file);
                 return;
             }
             // 15 frames a second, at most 960 wide, with its own palette
@@ -189,9 +190,10 @@ void Screenshot::startRecording(const RecordOptions& o, const std::string& outpu
             run({"ffmpeg", "-y", "-loglevel", "error", "-i", capture, "-vf",
                  "fps=15,scale='min(960,iw)':-2:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer",
                  file},
-                [capture, file](int c, const std::string&) {
+                [this, capture, file](int c, const std::string&) {
                     std::error_code e;
                     fs::remove(capture, e);
+                    if (c == 0) recorded.emit(file);
                     run({"notify-send", "-a", "Screen recording", c == 0 ? "GIF saved" : "The GIF couldn't be made",
                          fs::path(file).filename().string()},
                         nullptr);

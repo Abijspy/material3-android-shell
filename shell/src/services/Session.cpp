@@ -2,6 +2,7 @@
 
 #include "core/Config.h"
 #include "core/Process.h"
+#include "services/Hooks.h"
 #include "services/Hyprland.h"
 
 #include <unistd.h>
@@ -24,6 +25,7 @@ Session::Session() {
     m_sleep = bus.subscribe(kLogin, kManagerPath, kManager, "PrepareForSleep", [this](const dbus::Value& a, auto*) {
         if (a.empty() || !a[0].is_boolean()) return;
         if (a[0].get<bool>()) {
+            Hooks::get().fire("suspending");
             if (Config::get().value<bool>("/lock/lockBeforeSleep", true)) {
                 lockRequested.emit();
             } else {
@@ -31,6 +33,7 @@ Session::Session() {
             }
         } else {
             takeSleepInhibitor(); // resumed: be ready for the next suspend
+            Hooks::get().fire("resumed");
         }
     });
     // Our own session's object, for lock-session / unlock-session
@@ -71,10 +74,20 @@ void Session::manager(const char* method) {
 
 void Session::suspend() { manager("Suspend"); }
 void Session::hibernate() { manager("Hibernate"); }
-void Session::reboot() { manager("Reboot"); }
-void Session::powerOff() { manager("PowerOff"); }
+// Their hooks first (5 seconds at most), then the deed
+void Session::reboot() {
+    Hooks::get().fireThen("rebooting", {}, [this] { manager("Reboot"); });
+}
+
+void Session::powerOff() {
+    Hooks::get().fireThen("shutting_down", {}, [this] { manager("PowerOff"); });
+}
 
 void Session::logout() {
+    Hooks::get().fireThen("logging_out", {}, [this] { endSession(); });
+}
+
+void Session::endSession() {
     auto& h = Hyprland::get();
     if (h.available()) {
         h.request(h.usingLua() ? "dispatch hl.dsp.exit()" : "dispatch exit");
