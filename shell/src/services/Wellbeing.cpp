@@ -103,6 +103,13 @@ void Wellbeing::start() {
     // Stepping away (or back): what came before counts, the gap doesn't
     Idle::get().changed.connectForever([this] { flush(m_current); });
     m_timer = EventLoop::get().addTimer(10000, [this] { tick(); }, true);
+    // Settings changing (the schedule, greyscale, Focus): applied at once,
+    // not at the next tick
+    Config::get().changed.connectForever([this] {
+        applyBedtime();
+        enforce();
+        changed.emit();
+    });
     applyBedtime();
 }
 

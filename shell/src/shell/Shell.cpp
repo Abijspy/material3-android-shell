@@ -811,6 +811,18 @@ void Shell::registerIpc() {
         }
         return std::string("usage: config export [file] | config import <file>");
     });
+    ipc.add("wellbeing", "wellbeing [status|bedtime on|off|focus on|off]: Digital Wellbeing", [](const IpcServer::Args& a) {
+        auto& w = Wellbeing::get();
+        const std::string cmd = a.empty() ? "status" : a[0];
+        const bool on = a.size() > 1 && a[1] == "on";
+        if (cmd == "bedtime" && a.size() > 1) w.setBedtimeNow(on);
+        else if (cmd == "focus" && a.size() > 1) w.setFocus(on);
+        else if (cmd != "status") return std::string("usage: wellbeing [status|bedtime on|off|focus on|off]");
+        std::string out = std::format("screen time {} min, unlocks {}, bedtime {}, focus {}\n", w.today().total() / 60, w.today().unlocks,
+                                      w.bedtime() ? "on" : "off", w.focus() ? "on" : "off");
+        for (const auto& [cls, secs] : w.today().seconds) out += std::format("  {}  {} s\n", cls, secs);
+        return out;
+    });
     ipc.add("calendar", "calendar [list [days]|subscribe <name> <ics-url>|refresh]: events coming up, or add a calendar", [](const IpcServer::Args& a) {
         auto& cal = Calendar::get();
         const std::string cmd = a.empty() ? "list" : a[0];

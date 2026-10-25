@@ -298,11 +298,12 @@ void wellbeingPage(Flex* page, Popup&) {
         auto end = row(endItem, "wb_twilight", "Ends at", "");
         dropdown(end.row, endItem, cfg.value<std::string>("/wellbeing/bedtime/end", "07:00"), halfHours(4 * 60, 11 * 60),
                  [](const std::string& v) { Config::get().set("/wellbeing/bedtime/end", v); });
-        auto grey = row(bed, "filter_b_and_w", "Greyscale", "Colours fade, the screen is less inviting");
+        auto grey = row(bed, "filter_b_and_w", "Greyscale at bedtime",
+                        w.bedtime() ? "Colours fade while Bedtime is on" : "Colours fade during Bedtime: Start now to see it");
         auto* gsw = grey.row->add<Switch>();
         gsw->setChecked(cfg.value<bool>("/wellbeing/bedtime/grayscale", true), false);
         gsw->onToggled = [](bool on) { Config::get().set("/wellbeing/bedtime/grayscale", on); };
-        auto dnd = row(bed, "do_not_disturb_on", "Do not disturb", "Only critical notifications pop up");
+        auto dnd = row(bed, "do_not_disturb_on", "Do not disturb at bedtime", "Only critical notifications pop up");
         auto* dsw = dnd.row->add<Switch>();
         dsw->setChecked(cfg.value<bool>("/wellbeing/bedtime/dnd", true), false);
         dsw->onToggled = [](bool on) { Config::get().set("/wellbeing/bedtime/dnd", on); };
