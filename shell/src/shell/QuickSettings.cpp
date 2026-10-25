@@ -353,6 +353,16 @@ const std::vector<TileDef>& tileDefs() {
     return defs;
 }
 
+// What a tile shows: its state's glyph when it has one (Quick Share's own
+// symbol, the muted microphone…), else its fixed icon
+std::string iconOf(const TileDef& d) {
+    if (d.glyph) {
+        const std::string g = d.glyph();
+        if (!g.empty()) return g;
+    }
+    return d.icon;
+}
+
 const TileDef* findTile(const std::string& id) {
     for (const auto& d : tileDefs())
         if (id == d.id) return &d;
@@ -406,7 +416,7 @@ std::function<void()> buildTiles(Node* parent, const std::vector<Placed>& tiles,
             if (live) live->syncSoon(); // night light and the like have no service to say so
         };
         if (t.large) {
-            auto* tile = row->add<Tile>(def->icon, def->title);
+            auto* tile = row->add<Tile>(iconOf(*def), def->title);
             tile->grow = false;
             tile->fixedWidth = kCol * 2 + 8;
             tile->onToggle = use;
@@ -416,7 +426,7 @@ std::function<void()> buildTiles(Node* parent, const std::vector<Placed>& tiles,
                 tile->onDetails = showBluetooth;
             updates.push_back([tile, def] { tile->set(def->active(), def->status(), def->glyph ? def->glyph() : ""); });
         } else {
-            auto* tile = row->add<SmallTile>(def->icon, kCol);
+            auto* tile = row->add<SmallTile>(iconOf(*def), kCol);
             tile->onClicked = [use](uint32_t button) {
                 if (button == BTN_LEFT) use();
             };
@@ -606,13 +616,13 @@ void editView(Flex* body, const std::function<void()>& back) {
             auto* edit = row->add<EditTile>();
             edits->push_back(edit);
             if (tiles[i].large) {
-                auto* t = edit->add<Tile>(def->icon, def->title);
+                auto* t = edit->add<Tile>(iconOf(*def), def->title);
                 t->grow = false;
                 t->fixedWidth = kCol * 2 + 8;
                 t->set(false, "");
                 t->setSelected(on);
             } else {
-                auto* t = edit->add<SmallTile>(def->icon, kCol);
+                auto* t = edit->add<SmallTile>(iconOf(*def), kCol);
                 t->setSelected(on);
             }
             auto* catcher = edit->add<DragCatcher>();
@@ -683,7 +693,7 @@ void editView(Flex* body, const std::function<void()>& back) {
             chip->fixedWidth = 64;
             chip->fixedHeight = 52;
             chip->alignSelf = Align::Center;
-            chip->add<Icon>(def.icon, 22)->setColor("on_surface", false);
+            chip->add<Icon>(iconOf(def), 22)->setColor("on_surface", false);
             auto* label = item->add<Label>(def.title);
             label->setSize(12)->setMaxWidth(kCol - 8)->setMaxLines(2)->setCentered(true)->setColor("on_surface_variant", false);
             label->alignSelf = Align::Center;
