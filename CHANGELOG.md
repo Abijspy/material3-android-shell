@@ -1,5 +1,10 @@
 # Changelog
 
+## v5.7.4 — 2026-10-25
+
+- **Scrolling Digital Wellbeing no longer smears the page.** The chosen day's app rows lagged behind while scrolling and drew over the week chart and the app timers. The notification centre had the same problem; both are fixed.
+- **New widget: Screen time: week**, for the desktop and the lock screen. It shows a bar for each day, with the daily average and today's total.
+
 ## v5.7.3 — 2026-10-25
 
 - **Tap a day in Digital Wellbeing**, as on Android. In the week chart, tap a day's bar to see that day: its date, screen time, unlocks and notifications, and every app you used with its time and a bar. The chart highlights the chosen day, and the list glides as you switch days.
