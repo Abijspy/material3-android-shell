@@ -1,5 +1,11 @@
 # Changelog
 
+## v5.6.3 — 2026-10-25
+
+- **The music player no longer shifts the dashboard.** The player card is now the same height whether or not something is playing, so the system monitor stays put. The dashboard's two columns now end level with each other.
+- **A tidier player card.** Elapsed time, the wavy progress bar and the time left share one line, as on Android. The card is a little more compact everywhere: dashboard, desktop, lock screen and Quick Settings.
+- **Quick Share's own icon in Quick Settings**, on the tile itself, in the tile editor and in the list of tiles to add.
+
 ## v5.6.2 — 2026-10-24
 
 - **Notification history.** Dismissed and cleared notifications are kept for 30 days (up to 300) and survive restarts. The notification centre's **History** tab shows them under **Today**, **Yesterday** and **Earlier**. Tap one to open its app, remove single ones, or clear them all. Turn history off in Settings → Notifications.
