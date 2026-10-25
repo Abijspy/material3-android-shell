@@ -74,12 +74,15 @@ void Printers::refresh() {
         if (was) changed.emit();
         return;
     }
-    if (!m_installed) {
+    if (!m_installed || m_converts != have("gs")) {
         m_installed = true; // just installed: the page moves on
+        m_converts = have("gs");
         changed.emit();
     }
     // Is the scheduler there (lpstat -r), then its printers, default and queue
-    run(c({"sh", "-c", "lpstat -r; echo '--'; lpstat -l -p 2>/dev/null; echo '--'; lpstat -d 2>/dev/null; echo '--'; lpstat -o 2>/dev/null"}),
+    // (and the queue's titles, which only lpq lists)
+    run(c({"sh", "-c", "lpstat -r; echo '--'; lpstat -l -p 2>/dev/null; echo '--'; lpstat -d 2>/dev/null; echo '--'; lpstat -o 2>/dev/null; "
+           "echo '--'; lpq -a 2>/dev/null"}),
         [this](int, const std::string& out) {
             std::vector<std::string> parts(1);
             std::stringstream ss(out);
@@ -87,10 +90,11 @@ void Printers::refresh() {
                 if (l == "--") parts.emplace_back();
                 else parts.back() += l + "\n";
             }
-            parts.resize(4);
+            parts.resize(5);
             const bool running = parts[0].find("is running") != std::string::npos;
             auto printers = parsePrinters(parts[1], parts[2]);
             auto jobs = parseJobs(parts[3]);
+            parseTitles(parts[4], jobs);
             // Told only when something moved: this runs every few seconds
             // while watched, and pages rebuild on it
             if (running == m_running && printers == m_printers && jobs == m_jobs) return;
@@ -256,7 +260,12 @@ void Printers::print(const std::string& printer, const std::vector<std::string>&
 }
 
 void Printers::setUp() {
-    asRoot("Setting up printing…", "pacman -S --needed --noconfirm cups cups-filters ipp-usb && systemctl enable --now cups.socket cups.service");
+    asRoot("Setting up printing…",
+           "pacman -S --needed --noconfirm cups cups-filters ghostscript ipp-usb && systemctl enable --now cups.socket cups.service");
+}
+
+void Printers::installConverter() {
+    asRoot("Installing Ghostscript…", "pacman -S --needed --noconfirm ghostscript");
 }
 
 void Printers::start() {

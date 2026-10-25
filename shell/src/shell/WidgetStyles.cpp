@@ -588,10 +588,11 @@ void Styled::printers() {
     auto* c = card(this, Flex::Direction::Row);
     c->setSpacing(14 * m_k)->setAlignItems(Align::Center);
     auto* bubble = c->add<Flex>(Flex::Direction::Row);
-    pill(bubble->setBackground(jobs ? "primary" : paused ? "error_container" : "primary_container", false))->setJustify(Align::Center);
+    // Paused first: it's why anything waits
+    pill(bubble->setBackground(paused ? "error_container" : jobs ? "primary" : "primary_container", false))->setJustify(Align::Center);
     bubble->fixedWidth = bubble->fixedHeight = 44 * m_k;
     bubble->add<Icon>(paused ? "print_disabled" : jobs ? "print_connect" : "print", 22 * m_k)
-        ->setColor(jobs ? "on_primary" : paused ? "on_error_container" : "on_primary_container", false);
+        ->setColor(paused ? "on_error_container" : jobs ? "on_primary" : "on_primary_container", false);
     auto* text = c->add<Flex>(Flex::Direction::Column);
     text->setSpacing(2)->setAlignItems(Align::Start);
     text->grow = true;
@@ -600,13 +601,7 @@ void Styled::printers() {
         ->setWeight(600)
         ->setMaxWidth(200 * m_k)
         ->setColor("on_surface", false);
-    const std::string status = !pr.installed() ? "Printing isn't set up"
-                               : !pr.running() ? "The print service isn't running"
-                               : !def          ? "No printers"
-                               : jobs          ? std::format("Printing · {} job{} waiting", jobs, jobs == 1 ? "" : "s")
-                               : paused        ? "Paused"
-                                               : "Ready";
-    text->add<Label>(status)->setSize(12 * m_k)->setMaxWidth(200 * m_k)->setColor("on_surface_variant", false);
+    text->add<Label>(pr.summary())->setSize(12 * m_k)->setMaxWidth(200 * m_k)->setColor("on_surface_variant", false);
     // Settings → Printers, open or not
     auto* settings = c->add<Button>(Flex::Direction::Row);
     pill(settings->setBackground("surface_container_highest", false))->setPadding({10 * m_k, 8 * m_k});

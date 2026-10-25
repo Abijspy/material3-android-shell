@@ -289,10 +289,7 @@ private:
         for (const auto& x : p.printers()) paused = paused || (x.isDefault && x.state == "stopped");
         set(paused ? "print_disabled" : n ? "print_connect" : "print", n ? std::to_string(n) : "");
         m_icon->setColor(paused ? "error" : "on_surface");
-        tooltip = !p.installed() ? "Printing isn't set up"
-                  : n            ? std::format("{} print job{} waiting", n, n == 1 ? "" : "s")
-                  : paused       ? "The printer is paused"
-                                 : "Printers";
+        tooltip = "Printers: " + p.summary();
     }
     Printers::Lease m_lease;
     Connection m_conn;

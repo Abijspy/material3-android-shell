@@ -84,12 +84,19 @@ void printersPage(Flex* page, Popup&) {
                 on ? "Pause" : "Resume";
             confirmButton(r.row, "printer:" + name, "delete", [name] { Printers::get().remove(name); });
         }
+        // CUPS without Ghostscript takes jobs and fails them: say so first
+        if (!pr.converts()) {
+            auto r = row(mine, "warning", "Most printers can't print yet",
+                         "They need Ghostscript to turn documents into pages (printers that take PDF don't)");
+            r.title->setColor("error", false);
+            pillButton(r.row, !pr.busy().empty() ? "Working…" : "Install", true, [] { Printers::get().installConverter(); }, "download");
+        }
         if (!pr.busy().empty()) caption(live, pr.busy());
         error();
 
         // Nearby: on the network, or over USB
         auto* near = group(live, "Add a printer", "Printers that describe themselves (IPP Everywhere, AirPrint, Mopria): no driver needed");
-        auto find = row(near, "search", pr.searching() ? "Looking…" : "Find printers", "On this network, and USB printers shared by ipp-usb");
+        auto find = row(near, "search", pr.searching() ? "Looking…" : "Find printers", "On this network, and plugged in over USB");
         pillButton(find.row, pr.searching() ? "Looking…" : "Search", !pr.searching(), [searched] {
             *searched = true;
             Printers::get().search();
@@ -104,18 +111,23 @@ void printersPage(Flex* page, Popup&) {
             auto r = row(near, "print_disabled", "None found", "Is it on, and on this Wi-Fi? Or add it by its address below");
             r.title->setColor("on_surface_variant", false);
         }
-        // One that doesn't announce itself: by its IP or name
-        auto byAddress = row(near, "lan", "Add by address", "Its IP, from the printer's own menu");
-        auto* field = byAddress.row->add<TextField>();
-        field->fixedWidth = 190;
-        field->setPlaceholder("192.168.1.20");
+        // One that doesn't announce itself: by its IP or name, typed on a
+        // line of its own under the row (the whole width, whatever the text size)
+        auto* segment = near->add<Flex>(Flex::Direction::Column);
+        segment->setAlignItems(Align::Stretch);
+        row(segment, "lan", "Add by address", "Its IP address or name, as the printer's own menu shows it");
+        auto* line = segment->add<Flex>(Flex::Direction::Row);
+        line->setSpacing(8)->setPadding({58, 0, 20, 14});
+        auto* field = line->add<TextField>();
+        field->grow = true;
+        field->setPlaceholder("192.168.1.20 or printer.local");
         field->setText(*typed);
         field->onChanged = [typed](const std::string& t) { *typed = t; };
         field->onSubmit = [typed](const std::string& t) {
             if (!t.empty()) Printers::get().addAddress(t);
             typed->clear();
         };
-        pillButton(byAddress.row, "Add", false, [typed] {
+        pillButton(line, "Add", false, [typed] {
             if (typed->empty()) return;
             Printers::get().addAddress(*typed);
             typed->clear();
@@ -124,8 +136,18 @@ void printersPage(Flex* page, Popup&) {
         // The queue
         auto* queue = group(live, "Print queue", pr.jobs().empty() ? "Nothing waiting" : "");
         for (const auto& j : pr.jobs()) {
-            auto r = row(queue, "description", std::format("Job {}", j.id.substr(j.id.rfind('-') + 1)),
-                         std::format("{} · {} · {}", j.printer, j.user, sizeText(j.size)));
+            // Its printer by name, and what it's doing: printing, or waiting
+            // (for a paused printer: why)
+            std::string printer = j.printer, state = "Waiting";
+            for (const auto& p : pr.printers())
+                if (p.name == j.printer) {
+                    if (!p.description.empty()) printer = p.description;
+                    state = p.job == j.id ? "Printing" : p.state == "stopped" ? "Waiting · printer paused" : "Waiting";
+                }
+            auto r = row(queue, state == "Printing" ? "print_connect" : "description",
+                         j.title.empty() ? std::format("Job {}", j.id.substr(j.id.rfind('-') + 1)) : j.title,
+                         std::format("{} · {} · {}", state, printer, sizeText(j.size)));
+            r.title->setMaxWidth(360);
             const std::string id = j.id;
             iconButton(r.row, "close", [id] { Printers::get().cancel(id); })->tooltip = "Cancel";
         }
@@ -229,6 +251,8 @@ void printDialog(Flex* card, Popup& popup, const std::string& arg) {
         toggle("palette", "Colour", &Printers::PrintOptions::colour);
         toggle("screen_rotation", "Landscape", &Printers::PrintOptions::landscape);
 
+        if (!pr.converts())
+            caption(live, "Ghostscript isn't installed, so most printers can't print this: install it in Printer settings")->setMaxWidth(440);
         auto* foot = live->add<Flex>(Flex::Direction::Row);
         foot->setSpacing(8)->setJustify(Align::End);
         pillButton(foot, "Cancel", false, [&popup] { popup.close(); });

@@ -58,6 +58,12 @@ std::vector<Printers::Printer> Printers::parsePrinters(const std::string& lpstat
             const std::string rest = line.substr(8 + p.name.size());
             p.enabled = rest.find("disabled") == std::string::npos;
             p.state = !p.enabled ? "stopped" : rest.find("now printing") != std::string::npos ? "printing" : "idle";
+            // "now printing HP-3.  enabled since…"
+            if (const auto at = rest.find("now printing "); at != std::string::npos) {
+                std::stringstream js(rest.substr(at + 13));
+                js >> p.job;
+                if (p.job.ends_with('.')) p.job.pop_back();
+            }
             out.push_back(std::move(p));
             continue;
         }
@@ -93,6 +99,44 @@ std::vector<Printers::Job> Printers::parseJobs(const std::string& lpstatO) {
         out.push_back(std::move(j));
     }
     return out;
+}
+
+// "Rank    Owner   Job     File(s)          Total Size" then
+// "1st     abishek 1       hello.txt        1024 bytes"
+void Printers::parseTitles(const std::string& lpqA, std::vector<Job>& jobs) {
+    std::stringstream ss(lpqA);
+    for (std::string line; std::getline(ss, line);) {
+        std::stringstream ls(line);
+        std::vector<std::string> words;
+        for (std::string w; ls >> w;) words.push_back(w);
+        if (words.size() < 6 || words.back() != "bytes") continue; // the header, "no entries"
+        std::string title;
+        for (size_t i = 3; i + 2 < words.size(); ++i) title += (title.empty() ? "" : " ") + words[i];
+        for (auto& j : jobs)
+            if (j.id.ends_with("-" + words[2])) j.title = title;
+    }
+}
+
+std::string Printers::summary(bool installed, bool running, const std::vector<Printer>& printers, const std::vector<Job>& jobs) {
+    if (!installed) return "Not set up";
+    if (!running) return "Not running";
+    if (printers.empty()) return "No printers";
+    const auto stateOf = [&](const std::string& name) {
+        for (const auto& p : printers)
+            if (p.name == name) return p.state;
+        return std::string();
+    };
+    if (!jobs.empty()) {
+        const std::string count = std::to_string(jobs.size()) + (jobs.size() == 1 ? " job" : " jobs");
+        if (std::ranges::any_of(printers, [](const Printer& p) { return p.state == "printing"; })) return "Printing · " + count;
+        // Held by a paused printer: paused comes first, it's why they wait
+        if (std::ranges::any_of(jobs, [&](const Job& j) { return stateOf(j.printer) == "stopped"; })) return "Paused · " + count + " waiting";
+        return count + " waiting";
+    }
+    const Printer* def = &printers.front();
+    for (const auto& p : printers)
+        if (p.isDefault) def = &p;
+    return def->state == "stopped" ? "Paused" : "Ready";
 }
 
 } // namespace m3
