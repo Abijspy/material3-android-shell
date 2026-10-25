@@ -53,6 +53,11 @@ public:
     void forget(uint32_t id, std::time_t time); // one, from the history
     void clearHistory();
 
+    // Muted apps' notifications are dropped (critical ones still come);
+    // by the name apps give
+    bool muted(const std::string& app) const;
+    void setMuted(const std::string& app, bool muted);
+
     bool doNotDisturb() const { return m_dnd; }
     void setDoNotDisturb(bool on);
 

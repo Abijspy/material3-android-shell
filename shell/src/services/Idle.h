@@ -16,6 +16,9 @@ public:
     void start(); // after the Wayland connection is up
     bool inhibited() const { return m_inhibited; }
     void setInhibited(bool on);
+    // No input for a couple of minutes: someone stepped away (screen time
+    // stops counting)
+    bool away() const { return m_away; }
 
     Signal<> lockRequested;
     Signal<> changed;
@@ -29,12 +32,13 @@ private:
     void arm();
     void disarm();
 
+    enum class Kind { Lock, ScreenOff, Away };
     struct Watch {
         void* notification = nullptr; // ext_idle_notification_v1*
-        bool lock = false;            // else: screen off
+        Kind kind = Kind::Lock;
     };
     std::vector<Watch> m_watches;
-    bool m_inhibited = false, m_screenOff = false;
+    bool m_inhibited = false, m_screenOff = false, m_away = false;
 };
 
 } // namespace m3

@@ -12,8 +12,12 @@ namespace m3 {
 class Effects {
 public:
     static Effects& get();
+    // A colour filter over the Accessibility one for a while ("grayscale"
+    // at bedtime); "" ends it
+    void setTemporaryFilter(const std::string& filter);
 
 private:
+    std::string m_temporaryFilter;
     Effects();
     void apply();
 

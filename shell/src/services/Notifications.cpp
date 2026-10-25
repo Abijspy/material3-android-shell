@@ -157,6 +157,8 @@ int Notifications::handle(sd_bus_message* m) {
         if (auto r = hints.find("resident"); r != hints.end()) n.resident = r->is_boolean() ? r->get<bool>() : r->get<int>() != 0;
         n.timeoutMs = a[7].get<int>();
         n.time = std::time(nullptr);
+        // Muted (Digital Wellbeing → Manage notifications): an id back, nothing shown
+        if (muted(n.app) && n.urgency != Critical) return sd_bus_reply_method_return(m, "u", m_nextId++);
 
         uint32_t id = 0;
         auto existing = replaces ? std::ranges::find(m_list, replaces, &Notification::id) : m_list.end();
@@ -209,6 +211,22 @@ std::string historyFile() {
     return paths::stateDir() + "/notification-history.json";
 }
 } // namespace
+
+bool Notifications::muted(const std::string& app) const {
+    const auto list = Config::get().value<nlohmann::json>("/notifications/muted", nlohmann::json::array());
+    return list.is_array() && std::ranges::find(list, nlohmann::json(app)) != list.end();
+}
+
+void Notifications::setMuted(const std::string& app, bool on) {
+    std::vector<std::string> list;
+    const auto old = Config::get().value<nlohmann::json>("/notifications/muted", nlohmann::json::array());
+    if (old.is_array())
+        for (const auto& x : old)
+            if (x.is_string() && x != app) list.push_back(x);
+    if (on) list.push_back(app);
+    Config::get().set("/notifications/muted", list);
+    changed.emit();
+}
 
 bool Notifications::keepsHistory() const {
     return Config::get().value<bool>("/notifications/history", true);

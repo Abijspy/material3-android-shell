@@ -5,6 +5,7 @@
 #include "services/Notifications.h"
 #include "services/Search.h"
 #include "services/Vpn.h"
+#include "services/Wellbeing.h"
 #include "quickshare/QuickShare.h"
 #include "services/Wallpaper.h"
 #include "core/Config.h"
@@ -328,6 +329,12 @@ const std::vector<TileDef>& tileDefs() {
              }
              v.toggleLast();
          }},
+        {"focus", "self_improvement", "Focus mode", [] { return Wellbeing::get().focus(); },
+         [] { return std::string(Wellbeing::get().focus() ? "Distracting apps paused" : "Off"); }, {},
+         [](Popup&) { Wellbeing::get().setFocus(!Wellbeing::get().focus()); }},
+        {"bedtime", "bedtime", "Bedtime", [] { return Wellbeing::get().bedtime(); },
+         [] { return std::string(Wellbeing::get().bedtime() ? "On" : "Off"); }, {},
+         [](Popup&) { Wellbeing::get().setBedtimeNow(!Wellbeing::get().bedtime()); }},
         {"airplane", "flight", "Airplane mode",
          [] { return !Network::get().wifiEnabled() && !Bluetooth::get().powered(); },
          [] { return std::string(!Network::get().wifiEnabled() && !Bluetooth::get().powered() ? "On" : "Off"); }, {},
@@ -819,6 +826,7 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
     live->watch(Notifications::get().changed);
     live->watch(Idle::get().changed);
     live->watch(Vpn::get().changed);
+    live->watch(Wellbeing::get().changed);
     live->watch(Mpris::get().changed);
     live->watch(Power::get().changed);
     live->watch(Config::get().changed); // dark theme, and tiles edited elsewhere

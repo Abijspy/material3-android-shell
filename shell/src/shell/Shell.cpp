@@ -18,6 +18,7 @@
 #include "services/Audio.h"
 #include "services/Backups.h"
 #include "services/ThemedIcons.h"
+#include "services/Wellbeing.h"
 #include "services/Calendar.h"
 #include "quickshare/QuickShare.h"
 #include "services/Clipboard.h"
@@ -102,7 +103,11 @@ bool Shell::start() {
     Idle::get().start();
     LockScreen::get().lockedChanged.connectForever([this] {
         if (LockScreen::get().locked()) m_popup.reset();
+        else Wellbeing::get().unlocked();
     });
+    // Digital Wellbeing: screen time while unlocked
+    Wellbeing::get().locked = [] { return LockScreen::get().locked(); };
+    Wellbeing::get().start();
 
     // Polkit: a dialog per request, closed when polkitd is done with it
     Polkit::get().requested.connectForever([this](int id) {

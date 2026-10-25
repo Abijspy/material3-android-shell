@@ -143,7 +143,8 @@ void Effects::applyAccessibility() {
     auto& h = Hyprland::get();
     const auto& c = Config::get();
     const double zoom = std::clamp(c.value<double>("/accessibility/zoom", 1.0), 1.0, 4.0);
-    const std::string filter = c.value<std::string>("/accessibility/colorFilter", "none");
+    const std::string filter =
+        m_temporaryFilter.empty() ? c.value<std::string>("/accessibility/colorFilter", "none") : m_temporaryFilter;
     std::string shader;
     if (const std::string src = shaderSource(filter); !src.empty()) {
         const std::string dir = paths::stateDir() + "/shaders";
@@ -167,6 +168,12 @@ void Effects::applyAccessibility() {
                                         zoom, shader);
     const std::string file = (fs::path(luaFile()).parent_path() / "a11y_custom.lua").string();
     if (readAll(file) != lua) std::ofstream(file) << lua;
+}
+
+void Effects::setTemporaryFilter(const std::string& filter) {
+    if (filter == m_temporaryFilter) return;
+    m_temporaryFilter = filter;
+    applyAccessibility();
 }
 
 // Screen sharing: xdg-desktop-portal-hyprland's config, with the shell's
