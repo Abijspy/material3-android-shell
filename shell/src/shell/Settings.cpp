@@ -483,6 +483,9 @@ void bluetoothPage(Flex* page, Popup&) {
 
 void soundPage(Flex* page, Popup& popup) {
     audio(panelGroup(page, "Output and input", "Volume, balance, channels and devices"), popup);
+    auto* media = group(page, "Music");
+    switchRow(media, "lyrics", "Synced lyrics", "The line being sung, in the media player. Looks the song up on lrclib.net, a free lyrics library",
+              "/media/lyrics", true);
 }
 
 void displayPage(Flex* page, Popup&) {
@@ -1266,6 +1269,10 @@ void dockPage(Flex* page, Popup&) {
     auto* g = group(page, "Dock", "Pinned and running apps on the bottom edge");
     choiceRow<std::string>(g, "dock_to_bottom", "Show", "", "/dock/mode", "autohide",
                            {{"off", "Off"}, {"autohide", "Auto-hide"}, {"always", "Always"}});
+    choiceRow<std::string>(g, "call_to_action", "Style", "Taskbar: along the whole edge, apps from the left", "/dock/style", "floating",
+                           {{"floating", "Floating"}, {"taskbar", "Taskbar"}});
+    choiceRow<double>(g, "zoom_in", "Magnification", "Icons grow as the pointer passes over them", "/dock/magnify", 1.0,
+                      {{1.0, "Off"}, {1.3, "Small"}, {1.55, "Large"}});
     sliderRow(g, "photo_size_select_small", "Icon size", "/dock/iconSize", 44, 32, 64, 2,
               [](double v) { return std::format("{:.0f} px", v); });
     switchRow(g, "apps", "Running apps", "Apps that are open but not pinned, after a divider", "/dock/showRunning", true);
@@ -3869,6 +3876,14 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
     searchBox->add<Icon>("search", 20)->setColor("on_surface_variant", false);
     auto* search = searchBox->add<TextField>();
     search->setPlaceholder(Hypr ? "Search Hyprland options" : "Search settings");
+    // Ctrl+F: to the search, from anywhere in the app
+    popup.onKey = [undo = popup.onKey, search](const KeyEvent& e) {
+        if (e.ctrl() && (e.sym == XKB_KEY_f || e.sym == XKB_KEY_F)) {
+            search->focus();
+            return true;
+        }
+        return undo && undo(e);
+    };
     search->bare = true;
     search->grow = true;
     search->minWidth = 120;

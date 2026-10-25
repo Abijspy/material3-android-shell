@@ -192,6 +192,29 @@ private:
 // tint; the title and artist, wavy progress with times, and the controls,
 // whose play button is a circle when paused and a rounded square while
 // playing. Follows the active MPRIS player by itself.
+// The line of the lyrics being sung (services/Lyrics), moving on with the
+// track: woken at each line's time, never per frame. A line too long for its
+// room comes down a little in size before it's cut short. `keepRoom`: there
+// with nothing to show (the media card stays one height); else hidden then.
+// `turned`: reads down a side bar
+class LyricsLine : public ui::Flex {
+public:
+    LyricsLine(float size, bool keepRoom, bool turned = false);
+    ~LyricsLine() override;
+    LyricsLine* setMaxWidth(float w);
+
+private:
+    void sync();
+    void show(const std::string& text);
+    ui::Label* m_now;
+    float m_size, m_room;
+    bool m_keepRoom;
+    int m_shown = -2; // the line on show (-1: before the first)
+    EventLoop::TimerId m_timer = 0;
+    Connection m_lyrics, m_media;
+    std::shared_ptr<void> m_lease;
+};
+
 class MediaCard : public ui::Flex {
 public:
     // Compact (Quick Settings): the text beside the controls, half the height
@@ -208,6 +231,7 @@ private:
     void sync();
     ui::Label *m_app, *m_artist, *m_elapsed, *m_left;
     ui::Marquee* m_title;
+    LyricsLine* m_lyrics = nullptr; // with synced lyrics on (Settings → Sound)
     ui::Flex* m_progressBox;
     WavyProgress* m_progress;
     ui::Button *m_play, *m_prev, *m_next;

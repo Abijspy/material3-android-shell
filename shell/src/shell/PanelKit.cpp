@@ -3,7 +3,9 @@
 #include "core/Config.h"
 
 #include "core/EventLoop.h"
+#include "render/Text.h"
 #include "render/Images.h"
+#include "services/Lyrics.h"
 #include "services/Mpris.h"
 #include "ui/Controls.h"
 #include "ui/Theme.h"
@@ -304,6 +306,76 @@ std::string clockText(long long us) {
 }
 } // namespace
 
+LyricsLine::LyricsLine(float size, bool keepRoom, bool turned) : Flex(Direction::Row), m_size(size), m_keepRoom(keepRoom) {
+    m_now = add<Label>();
+    m_room = turned ? 220 : 340;
+    m_now->setSize(size)->setWeight(600)->setMaxWidth(m_room)->setTurned(turned);
+    m_now->setColor("on_surface", false);
+    if (keepRoom) (turned ? minWidth : minHeight) = std::ceil(size * 1.4f);
+    m_lease = Mpris::get().watchPosition();
+    m_lyrics = Lyrics::get().changed.connect([this] {
+        m_shown = -2;
+        sync();
+    });
+    m_media = Mpris::get().changed.connect([this] { sync(); }); // played, paused, sought
+    sync();
+}
+
+LyricsLine::~LyricsLine() {
+    if (m_timer) EventLoop::get().cancel(m_timer);
+}
+
+LyricsLine* LyricsLine::setMaxWidth(float w) {
+    m_room = w;
+    m_now->setMaxWidth(w);
+    m_shown = -2; // fitted again
+    sync();
+    return this;
+}
+
+void LyricsLine::show(const std::string& text) {
+    // A line longer than the room comes down a little before it's cut short
+    m_now->setText(text);
+    for (float size = m_size; size > m_size - 3.5f; size -= 1) {
+        m_now->setSize(size);
+        TextStyle style = m_now->textStyle();
+        style.maxWidth = 0;
+        if (TextEngine::get().measure(text, style).width <= m_room) break;
+    }
+}
+
+void LyricsLine::sync() {
+    if (m_timer) EventLoop::get().cancel(m_timer);
+    m_timer = 0;
+    const auto& lines = Lyrics::get().lines();
+    const auto* p = Mpris::get().active();
+    if (lines.empty() || !p) {
+        m_now->setText("");
+        m_shown = -2;
+        setVisible(m_keepRoom);
+        return;
+    }
+    setVisible(true);
+    const long long at = p->positionNow();
+    const int i = Lyrics::get().lineAt(at);
+    if (i != m_shown) {
+        m_shown = i;
+        // Before the first line, and in the breaks: a note
+        const std::string text = i >= 0 ? lines[static_cast<size_t>(i)].text : "";
+        show(text.empty() ? "♪" : text);
+        m_now->setOpacity(0, false);
+        m_now->setOpacity(1); // each line fades in
+    }
+    // Woken when the next line starts, while it plays
+    if (p->status == "Playing" && static_cast<size_t>(i + 1) < lines.size()) {
+        const long long wait = lines[static_cast<size_t>(i + 1)].at - at;
+        m_timer = EventLoop::get().addTimer(static_cast<int>(std::max(30LL, wait / 1000 + 15)), [this] {
+            m_timer = 0;
+            sync();
+        });
+    }
+}
+
 MediaCard::MediaCard(bool compact) : Flex(Direction::Column) {
     setPadding(Insets(16))->setSpacing(compact ? 6 : 8)->setAlignItems(Align::Stretch)->setRadius(Radii(28));
     setBackground(ColorRef("on_surface", 0.1f), false);
@@ -328,6 +400,8 @@ MediaCard::MediaCard(bool compact) : Flex(Direction::Column) {
     m_artist = textHost->add<Label>();
     m_artist->setSize(compact ? 13 : 14)->setColor("on_surface_variant", false)->setMaxWidth(compact ? 200 : 340);
     if (compact) m_app->setVisible(false);
+    // The line being sung, under the artist
+    if (!compact && Lyrics::get().enabled()) m_lyrics = add<LyricsLine>(15, true);
     // One row, as Android's: elapsed, the wavy progress, what's left. It
     // keeps its room when there's nothing to show, so the card is one
     // height playing or not (and what's under it on the dashboard stays put)
@@ -370,6 +444,7 @@ void MediaCard::doArrange() {
         m_room = room;
         m_title->setMaxWidth(room);
         m_artist->setMaxWidth(room);
+        if (m_lyrics) m_lyrics->setMaxWidth(room);
     }
     Flex::doArrange();
 }

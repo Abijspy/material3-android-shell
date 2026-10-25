@@ -83,6 +83,8 @@ sources = files(
   'src/services/HyprOptions.cpp',
   'src/services/Idle.cpp',
   'src/services/Keybinds.cpp',
+  'src/services/Lyrics.cpp',
+  'src/services/LyricsParse.cpp',
   'src/services/Mpris.cpp',
   'src/services/Network.cpp',
   'src/services/Notifications.cpp',
@@ -196,3 +198,5 @@ test('pacman-log', executable('pacman_log_test', 'tests/pacman_log_test.cpp', 's
   include_directories: include_directories('src')))
 test('printers', executable('printers_test', 'tests/printers_test.cpp', 'src/services/PrintersParse.cpp',
   include_directories: include_directories('src')))
+test('lyrics', executable('lyrics_test', 'tests/lyrics_test.cpp', 'src/services/LyricsParse.cpp',
+  include_directories: include_directories('src'), dependencies: [json]))

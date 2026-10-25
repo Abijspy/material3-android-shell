@@ -31,6 +31,7 @@ public:
     std::function<void()> onIconClicked;    // a press on the icon (mute), with setIcon
 
     bool interactive() const override { return true; }
+    bool keyboardNavigable() const override { return true; }
     bool focusable() const override { return true; }
     void onHover(bool h) override;
     void onPress(uint32_t, float x, float y) override;
@@ -67,6 +68,7 @@ public:
     std::function<void(bool)> onToggled;
 
     bool interactive() const override { return true; }
+    bool keyboardNavigable() const override { return true; }
     void onClick(uint32_t) override;
     void onPress(uint32_t, float, float) override;
     void onRelease() override;
@@ -98,6 +100,9 @@ public:
 
     Node* content() const { return children().empty() ? nullptr : children().front().get(); }
     void scrollTo(float y, bool animate = true);
+    // Scrolls just enough to show `r` (a rect of something inside), with a
+    // little room round it
+    void reveal(const RectF& r);
     bool onScroll(int d) override;
     bool onScrollPixels(float dy, bool precise) override;
     void onScrollEnd() override;
@@ -144,10 +149,12 @@ private:
 };
 
 // One line of text in at most `maxWidth`. When it's longer, by its mode:
-// Loop scrolls continuously, a ticker (the text, a gap, its beginning
-// again, pausing as the start comes round); Bounce scrolls to the end and
-// back, pausing at each; Off just shows what fits. While paused it waits on
-// a timer, not on frames.
+// Loop scrolls as a ticker (the text, a gap, its beginning again, pausing
+// as the start comes round); Bounce scrolls to the end and back, pausing at
+// each; Off just shows what fits. Either goes round three times when its
+// text changes, then rests at the beginning, as Android's marquees do: a
+// long title left on screen costs no frames. While paused it waits on a
+// timer, not on frames.
 class Marquee : public Node {
 public:
     enum class Mode { Loop, Bounce, Off };
@@ -196,6 +203,7 @@ public:
     std::function<void()> onCancel;
 
     bool interactive() const override { return true; }
+    bool keyboardNavigable() const override { return true; }
     bool focusable() const override { return true; }
     void onFocus(bool f) override;
     bool onKey(const KeyEvent& e) override;

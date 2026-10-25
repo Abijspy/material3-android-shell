@@ -15,8 +15,10 @@ struct Output;
 namespace m3::shell {
 
 // The dock on one output: pinned apps, then running ones, centred on the
-// bottom edge. "always" reserves its space; "autohide" slides away and comes
-// back when the pointer reaches the edge (or the workspace is empty).
+// bottom edge (or along it, edge to edge, as a taskbar). "always" reserves
+// its space; "autohide" slides away and comes back when the pointer reaches
+// the edge (or the workspace is empty). Icons can grow as the pointer passes
+// over them (magnification), drawn larger without moving the others.
 // Click focuses an app's window (cycling through several) or launches it,
 // middle click opens a new one, right click pins or unpins.
 class Dock {
@@ -39,12 +41,20 @@ private:
     void reveal(bool show); // autohide
     void updateInput();
     bool autoHide() const;
-    int panelHeight() const;
+    int panelHeight() const; // the surface: the dock and room for magnified icons
+    int zoneHeight() const;  // the dock itself: the space "always" keeps
+    void magnify(float x);   // at the pointer's x; < 0: all back to size
 
     wl::Output* m_output;
     std::unique_ptr<wl::LayerSurface> m_surface;
     class DockRoot* m_root = nullptr;
     ui::Flex* m_card = nullptr;
+    struct Magnified {
+        ui::Node* slot;   // where it sits, for the distance to the pointer
+        ui::Node* visual; // what grows
+        float size;
+    };
+    std::vector<Magnified> m_magnified;
     bool m_shown = true, m_hovered = false, m_held = false;
     EventLoop::TimerId m_hideTimer = 0, m_refreshTimer = 0;
     Connection m_events, m_workspaces, m_apps;

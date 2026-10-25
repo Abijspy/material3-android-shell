@@ -113,6 +113,12 @@ void Node::paint(Renderer& r) {
     for (auto& c : m_children) c->paint(r);
     doPaintOver(r);
     if (clipsChildren()) r.popClip();
+    // The keyboard is here: a ring just outside it, as M3's focus indicator
+    if (this == focusRing) {
+        const RectF ring{m_rect.x - 3, m_rect.y - 3, m_rect.w + 6, m_rect.h + 6};
+        const float radius = cornerRadius() > 0 ? cornerRadius() + 3 : std::min(ring.w, ring.h) / 2; // a pill round switches and sliders
+        r.rect(ring, Color{0, 0, 0, 0}, Radii(radius), 2, ColorRef("primary").resolve());
+    }
     if (scaled) r.popTranslate();
     if (moved) r.popTranslate();
     if (o < 1) r.popOpacity();
@@ -470,16 +476,23 @@ SizeF Label::doMeasure(SizeF available) {
     if (m_text.empty()) return {};
     TextStyle s = style();
     s.maxWidth = fitWidth(m_turned ? available.h : available.w);
+    m_measuredWith = s.maxWidth;
     const auto m = TextEngine::get().measure(m_text, s);
     if (m_turned) return {std::ceil(m.height), std::ceil(m.width)};
     return {std::ceil(m.width), std::ceil(m.height)};
 }
 
-// Drawn within the width it was given: the lines it was measured with, or
-// fewer words a line if its parent had to squeeze it
+// Drawn as measured, unless its parent had to squeeze it below the room the
+// text needs: then within the width it was measured in (its lines then are
+// the ones measured). Never just the width it was laid out at: drawn at the
+// screen's scale, text can need a hair more than measured, and "45%" broke
+// into "45" over "%"
 void Label::doArrange() {
-    const float fit = fitWidth(m_turned ? rect().h : rect().w);
-    m_fit = fit < m_maxWidth ? fit : 0;
+    m_fit = 0;
+    if (m_maxWidth <= 0 || m_text.empty()) return;
+    const float room = m_turned ? rect().h : rect().w;
+    const float natural = std::ceil(TextEngine::get().measure(m_text, style()).width);
+    if (room + 0.5f < natural) m_fit = std::min(m_maxWidth, std::max(std::ceil(room), m_measuredWith));
 }
 
 void Label::doPaint(Renderer& r) {

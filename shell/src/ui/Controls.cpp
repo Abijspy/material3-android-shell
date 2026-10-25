@@ -260,6 +260,13 @@ void ScrollView::scrollTo(float y, bool animate) {
     requestRedraw();
 }
 
+void ScrollView::reveal(const RectF& r) {
+    if (!content()) return;
+    const float top = r.y - content()->rect().y, bottom = top + r.h, off = m_offset.target(), view = rect().h;
+    if (top < off + 8) scrollTo(top - 24);
+    else if (bottom > off + view - 8) scrollTo(bottom - view + 24);
+}
+
 void ScrollView::placeContent() {
     if (!content() || rect().w <= 0) return;
     const float off = std::clamp(m_offset.value(), 0.0f, maxOffset());
@@ -711,6 +718,7 @@ void Marquee::doArrange() {
 namespace {
 constexpr float kMarqueeGap = 40;    // px between the end and the beginning again (Loop)
 constexpr double kMarqueePause = 2;  // s at the start of each round, and at the end (Bounce)
+constexpr int kMarqueeRounds = 3;    // then it rests at the start
 } // namespace
 
 Marquee::Mode Marquee::modeOf(const std::string& name) {
@@ -740,14 +748,21 @@ void Marquee::doPaint(Renderer&) {
     }
     const double speed = m_speed, t0 = std::chrono::duration<double>(std::chrono::steady_clock::now() - m_start).count();
     double offset = 0, wait = 0;
+    const double cycle = m_mode == Mode::Loop ? kMarqueePause + (m_natural + kMarqueeGap) / speed : 2 * (kMarqueePause + over / speed);
+    if (t0 >= cycle * kMarqueeRounds) {
+        // Gone round enough: at rest, its beginning showing, no more frames
+        m_offset = 0;
+        m_label->shiftX(0);
+        return;
+    }
     if (m_mode == Mode::Loop) {
         // A round: a pause, then the text and the gap go by
-        const double travel = m_natural + kMarqueeGap, cycle = kMarqueePause + travel / speed, t = std::fmod(t0, cycle);
+        const double t = std::fmod(t0, cycle);
         if (t < kMarqueePause) wait = kMarqueePause - t;
         else offset = (t - kMarqueePause) * speed;
     } else {
         // Pause, to the end, pause, back
-        const double run = over / speed, cycle = 2 * (kMarqueePause + run), t = std::fmod(t0, cycle);
+        const double run = over / speed, t = std::fmod(t0, cycle);
         if (t < kMarqueePause) wait = kMarqueePause - t;
         else if (t < kMarqueePause + run) offset = (t - kMarqueePause) * speed;
         else if (t < 2 * kMarqueePause + run) offset = over, wait = 2 * kMarqueePause + run - t;

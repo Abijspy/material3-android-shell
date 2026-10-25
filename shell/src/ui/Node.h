@@ -67,9 +67,19 @@ public:
     virtual Node* hitTest(float x, float y, bool any = false);
     virtual bool interactive() const { return false; }
     virtual bool focusable() const { return false; }
+    // Reached with Tab and the arrow keys where a surface allows it (the
+    // Settings apps): buttons, switches, sliders, text fields
+    virtual bool keyboardNavigable() const { return false; }
+    // The node the keyboard is on, ringed while the keyboard moves it (one at
+    // a time: the surface that has the keyboard sets it)
+    static inline Node* focusRing = nullptr;
+    bool skipKeyboard = false; // left out of that (a window's own buttons)
     virtual void onHover(bool) {}
     // The pointer entered or left this node or any of its descendants
     virtual void onHoverWithin(bool) {}
+    // The pointer moved over this node or something inside it (the dock's
+    // magnification follows it)
+    virtual void onPointerMove(float /*x*/, float /*y*/) {}
     virtual void onPress(uint32_t /*button*/, float /*x*/, float /*y*/) {}
     virtual void onDrag(float /*x*/, float /*y*/) {}
     virtual void onRelease() {}
@@ -98,6 +108,7 @@ public:
     // ignore it
     void setScale(float s, bool animate = true);
     float translateY() const { return m_translateY.value(); }
+    float opacity() const { return m_opacity.target(); } // where it's heading
 
     // Animations still running in this subtree
     // What animates under this node: nothing; only ambient motion, endless
@@ -110,6 +121,9 @@ public:
     // Shown in a tooltip while the pointer rests on this node (or inside it).
     // setTooltip also updates one already showing (the volume as it changes)
     std::string tooltip;
+    // Drawn this much taller than laid out, above (a magnified dock icon):
+    // its tooltip keeps clear of it
+    float tooltipLift = 0;
     void setTooltip(std::string text) {
         if (text == tooltip) return;
         tooltip = std::move(text);
@@ -283,7 +297,8 @@ protected:
     float m_size = 14;
     int m_weight = 400;
     float m_maxWidth = 0;
-    float m_fit = 0; // arranged narrower than maxWidth: drawn within this
+    float m_fit = 0; // squeezed below what it needs: drawn within this
+    float m_measuredWith = 0; // the width its last measure wrapped within
     bool m_turned = false;
     int m_maxLines = 1;
     bool m_icon = false;
@@ -323,6 +338,7 @@ public:
     bool squish = true;
 
     bool interactive() const override { return true; }
+    bool keyboardNavigable() const override { return true; }
     void onHover(bool hovered) override;
     void onPress(uint32_t button, float x, float y) override;
     void onRelease() override;

@@ -20,7 +20,9 @@ void Tooltip::hover(wl::Surface* surface, Node* node) {
     m_timer = 0;
     if (!node) return hide();
     m_node = node;
-    const auto r = node->rect();
+    auto r = node->rect();
+    r.y -= node->tooltipLift;
+    r.h += node->tooltipLift;
     // Shown at once when one is already up (moving along the dock), else
     // after a pause. The text is taken now: the node may be gone by then
     // (a rebuilt dock), and only its words are needed.

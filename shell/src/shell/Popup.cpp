@@ -105,6 +105,8 @@ Popup::Popup(wl::Output* output, Options options, const std::function<void(Flex*
         wo.minWidth = 860;
         wo.minHeight = 560;
         m_window = std::make_unique<wl::Window>(wo);
+        // An app: Tab, the arrow keys and Enter get round it
+        m_window->keyboardNavigation = true;
         // The compositor rounds, borders and blurs the window: a plain,
         // translucent card that fills it
         auto root = std::make_unique<Flex>(Flex::Direction::Column);
@@ -123,6 +125,8 @@ Popup::Popup(wl::Output* output, Options options, const std::function<void(Flex*
         m_window->setRoot(std::move(root));
         if (initialFocus) m_window->setFocus(initialFocus);
         m_window->onCloseRequested = [this] { close(); };
+        // Keys nothing in it took: the app's own (Ctrl+F, Ctrl+Z)
+        m_window->onKey = [this](const KeyEvent& e) { return onKey && onKey(e); };
         m_window->onStateChanged = [this] {
             if (m_maxIcon) m_maxIcon->setText(m_window->maximized() ? "filter_none" : "crop_square");
         };
@@ -209,6 +213,7 @@ void Popup::buildTitleBar(Flex* card) {
     // minimised state, and the dock or a workspace switch does the job
     auto button = [&](const char* icon, std::function<void()> fn, const char* hover) -> Icon* {
         auto* b = bar->add<Button>();
+        b->skipKeyboard = true; // the compositor's keys close and maximise
         pill(b)->setPadding(Insets(7));
         b->pressedRadius = 8;
         b->setBackground("surface_container_highest", false);

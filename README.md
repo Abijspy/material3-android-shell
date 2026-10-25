@@ -38,6 +38,8 @@ Most Linux desktops are a patchwork. The bar comes from one project, the lock sc
 
 **v4 is native.** The shell is one C++ program that talks to Wayland, D-Bus, PipeWire and PAM directly. It renders every pixel itself with OpenGL ES and leaves the blur to the compositor. Qt, QML and Quickshell are gone.
 
+**It's light on your machine.** Sitting idle, the whole shell (bar, dock, desktop and every service behind them) uses **under 0.1% of one CPU core** and draws about 20 frames a minute, when the clock or a status icon changes. It uses **about 75 MB of memory**, 25 MB of it its own; the rest is its share of the graphics libraries every app loads. [How it's measured](#how-its-measured).
+
 ## Screenshots
 
 <table>
@@ -232,6 +234,16 @@ flowchart LR
 | [`dotfiles/.local/share/material3ui/`](dotfiles/.local/share/material3ui) | Theme hooks Matugen runs (GTK, KDE, terminals) |
 | [`greeter/`](greeter) | The greetd session for the login screen and the `material3ui-greeter` tool |
 | [`data/dependencies.json`](data/dependencies.json) | What the installer installs ([readable list](docs/DEPENDENCIES.md)) |
+
+### How it's measured
+
+On a Ryzen 5 5500U laptop with Radeon graphics, Hyprland 0.56 and one 1920×1080 screen at 1.5× scale, with the default bar, dock and desktop and nothing else open:
+
+- **CPU:** the shell's own CPU time over 60 seconds, starting a minute after it launched (`/proc/<pid>/stat`): 0.08%.
+- **Frames:** 23 in that minute, counted with `M3_DEBUG_FRAMES=1`.
+- **Memory:** 74 MB PSS, 25 MB of it anonymous (`/proc/<pid>/smaps_rollup`), plus 4 MB for the small supervisor that restarts the shell if it crashes. PSS splits shared libraries fairly between the programs that use them; RSS counts them in full, so it reads about twice as high.
+
+Animations draw at your screen's refresh rate only while they run. Endless ones, like the music waves, draw at 30 fps, and long titles scroll three times and then rest, as on Android.
 
 ## FAQ
 

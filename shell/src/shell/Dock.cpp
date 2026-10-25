@@ -52,14 +52,20 @@ const Apps::App* appForClass(const std::string& cls) {
 
 } // namespace
 
-// Centres the card on the bottom edge and takes the hover for autohide
+// Centres the card on the bottom edge (or stretches it along it, as a
+// taskbar) and takes the hover for autohide and magnification
 class DockRoot : public Node {
 public:
     std::function<void(bool)> hover;
+    std::function<void(float)> moved; // the pointer's x, for magnification
     std::function<void()> arranged; // the card has its rect: input follows
+    bool taskbar = false;
     bool interactive() const override { return true; } // the reveal strip
     void onHoverWithin(bool h) override {
         if (hover) hover(h);
+    }
+    void onPointerMove(float x, float) override {
+        if (moved) moved(x);
     }
 
 protected:
@@ -70,22 +76,31 @@ protected:
     void doArrange() override {
         if (children().empty()) return;
         auto& card = children().front();
-        const SizeF s = card->measure({rect().w - kMargin * 2, rect().h});
-        card->arrange({rect().x + (rect().w - s.w) / 2, rect().bottom() - kMargin - s.h, s.w, s.h});
+        if (taskbar) {
+            // Edge to edge, on the edge
+            const SizeF s = card->measure({rect().w, rect().h});
+            card->arrange({rect().x, rect().bottom() - s.h, rect().w, s.h});
+        } else {
+            const SizeF s = card->measure({rect().w - kMargin * 2, rect().h});
+            card->arrange({rect().x + (rect().w - s.w) / 2, rect().bottom() - kMargin - s.h, s.w, s.h});
+        }
         if (arranged) arranged();
     }
 };
 
-// One app: icon, running indicator, lift on hover
+// One app: icon, running indicator, lift on hover (or growing with the
+// magnification, its texture drawn at the largest size it can grow to)
 class DockIcon : public Button {
 public:
-    DockIcon(const std::string& icon, float size, int windows, bool focused) : Button(Direction::Column) {
+    DockIcon(const std::string& icon, float size, int windows, bool focused, float magnify, bool lift)
+        : Button(Direction::Column), m_lift(lift && magnify <= 1) {
         setPadding({6, 6, 6, 2})->setSpacing(2)->setRadius(Radii(16));
         pressedRadius = 24;
         const std::string name = icon;
-        add<ImageView>(size, [name, size](float scale, int& w, int& h) -> GLuint {
-            auto* t = Images::get().icon(name.empty() ? "application-x-executable" : name, static_cast<int>(std::lround(size * scale)));
-            if (!t) t = Images::get().icon("application-x-executable", static_cast<int>(std::lround(size * scale)));
+        const float px = size * std::max(1.0f, magnify);
+        m_image = add<ImageView>(size, [name, px](float scale, int& w, int& h) -> GLuint {
+            auto* t = Images::get().icon(name.empty() ? "application-x-executable" : name, static_cast<int>(std::lround(px * scale)));
+            if (!t) t = Images::get().icon("application-x-executable", static_cast<int>(std::lround(px * scale)));
             if (!t) return 0;
             w = t->width;
             h = t->height;
@@ -104,9 +119,23 @@ public:
     }
     void onHover(bool h) override {
         Button::onHover(h);
-        setTranslateY(h ? -4 : 0);
+        if (m_lift) setTranslateY(h ? -4 : 0);
     }
+    Node* image() const { return m_image; }
+
+private:
+    Node* m_image;
+    bool m_lift;
 };
+
+// How much the icon under the pointer grows (Settings → Dock: 1 is off)
+float magnification() {
+    return static_cast<float>(std::clamp(Config::get().value<double>("/dock/magnify", 1.0), 1.0, 2.0));
+}
+
+bool taskbarStyle() {
+    return Config::get().value<std::string>("/dock/style", "floating") == "taskbar";
+}
 
 Dock::Dock(wl::Output* output) : m_output(output) {
     LayerSurface::Options o;
@@ -144,8 +173,27 @@ bool Dock::autoHide() const {
 
 int Dock::panelHeight() const {
     const float icon = static_cast<float>(Config::get().value<double>("/dock/iconSize", 44));
-    // card padding, icon padding, indicator, margin, and room for the lift
-    return static_cast<int>(icon + kPad * 2 + 8 + kIndicator + kMargin + 6);
+    // Room above for an icon at its largest, magnified
+    return zoneHeight() + static_cast<int>(std::ceil(icon * (magnification() - 1)));
+}
+
+int Dock::zoneHeight() const {
+    const float icon = static_cast<float>(Config::get().value<double>("/dock/iconSize", 44));
+    // card padding, icon padding, indicator, and (floating) margin and room
+    // for the lift
+    return static_cast<int>(icon + kPad * 2 + 8 + kIndicator + (taskbarStyle() ? 0 : kMargin + 6));
+}
+
+void Dock::magnify(float x) {
+    const float most = magnification();
+    for (const auto& [slot, visual, size] : m_magnified) {
+        // The icon under the pointer at its largest, its neighbours less
+        const RectF& r = slot->rect();
+        const float d = x < 0 ? 1e6f : std::abs(x - (r.x + r.w / 2)) / std::max(1.0f, r.w);
+        const float m = 1 + (most - 1) * std::exp(-d * d / 1.2f);
+        visual->setScale(m);
+        visual->setTranslateY(-(m - 1) * size / 2); // grows up, from the dock
+    }
 }
 
 std::vector<std::string> Dock::pinned() {
@@ -186,6 +234,7 @@ void Dock::rebuild() {
     m_root = root.get();
     m_root->hover = [this](bool h) {
         m_hovered = h;
+        if (!h) magnify(-1); // all back to size
         if (h) reveal(true);
         else if (autoHide()) {
             if (m_hideTimer) EventLoop::get().cancel(m_hideTimer);
@@ -196,8 +245,10 @@ void Dock::rebuild() {
         }
     };
     m_root->arranged = [this] { updateInput(); };
+    m_root->taskbar = taskbarStyle();
+    if (magnification() > 1) m_root->moved = [this](float x) { magnify(x); };
     m_card = root->add<Flex>(Flex::Direction::Row);
-    m_card->setPadding(Insets(kPad))->setSpacing(4)->setRadius(Radii(28));
+    m_card->setPadding(Insets(kPad))->setSpacing(4)->setRadius(Radii(m_root->taskbar ? 0 : 28));
     // Settings → Dock: its own opacity and blur
     const auto& config = Config::get();
     m_card->setBackground(ColorRef("surface_container", static_cast<float>(std::clamp(
@@ -206,14 +257,17 @@ void Dock::rebuild() {
     m_card->blurBehind = config.value<bool>("/dock/blur", true);
     m_surface->setRoot(std::move(root));
     m_surface->setSize(0, panelHeight());
-    m_surface->setExclusiveZone(autoHide() ? 0 : panelHeight());
+    m_surface->setExclusiveZone(autoHide() ? 0 : zoneHeight());
     refresh();
 }
 
 void Dock::refresh() {
     if (!m_card) return;
     m_card->clearChildren();
+    m_magnified.clear();
     const float size = static_cast<float>(Config::get().value<double>("/dock/iconSize", 44));
+    const float most = magnification();
+    const bool taskbar = taskbarStyle();
     const auto clients = Hyprland::get().clients(true); // minimised ones too: a click brings them back
     const std::string activeClass = lower(Hyprland::get().activeWindowClass());
 
@@ -258,6 +312,11 @@ void Dock::refresh() {
     bubble->setJustify(Align::Center)->setRadius(Radii(size * 0.32f))->setBackground("primary_container", false);
     bubble->fixedWidth = bubble->fixedHeight = size;
     bubble->add<Icon>("apps", size * 0.5f)->setColor("on_primary_container", false);
+    m_magnified.push_back({apps, bubble, size});
+    if (most > 1) {
+        apps->stateLayer = ColorRef::none();
+        apps->tooltipLift = size * (most - 1);
+    }
     auto* gap = apps->add<Node>();
     gap->fixedHeight = 4;
     apps->tooltip = "All apps";
@@ -268,7 +327,14 @@ void Dock::refresh() {
     auto add = [&](const Entry& e) {
         bool focused = false;
         for (const auto& w : e.windows) focused = focused || lower(w.cls) == activeClass;
-        auto* icon = m_card->add<DockIcon>(e.icon, size, static_cast<int>(e.windows.size()), focused);
+        auto* icon = m_card->add<DockIcon>(e.icon, size, static_cast<int>(e.windows.size()), focused, most, !taskbar);
+        m_magnified.push_back({icon, icon->image(), size});
+        // Magnified, growing is the hover: no highlight under it, and the
+        // tooltip clear of it at its largest
+        if (most > 1) {
+            icon->stateLayer = ColorRef::none();
+            icon->tooltipLift = size * (most - 1);
+        }
         // Its name (the app's, else its window class), and how many windows
         std::string name = e.app ? e.app->name : !e.cls.empty() ? e.cls : e.id;
         if (e.windows.size() > 1) name += std::format(" · {} windows", e.windows.size());

@@ -11,6 +11,7 @@
 #include "services/Vpn.h"
 #include "services/Weather.h"
 #include "services/Wellbeing.h"
+#include "shell/PanelKit.h"
 #include "shell/Panels.h"
 #include "shell/bar/Island.h"
 #include "shell/bar/Widgets.h"
@@ -407,6 +408,7 @@ const std::vector<Bar::Module>& Bar::modules() {
         {"calendar", "calendar_month", "Date", "Today's date; opens the dashboard calendar"},
         {"weather", "partly_cloudy_day", "Weather", "Live temperature and sky"},
         {"media", "music_note", "Media", "Now playing; click to pause, scroll to skip"},
+        {"lyrics", "lyrics", "Lyrics", "The line being sung, as music plays (synced lyrics)"},
         {"netspeed", "swap_vert", "Network speed", "Live download and upload"},
         {"sysmon", "memory", "CPU & memory", "Usage now; opens the system monitor"},
         {"tray", "more_horiz", "System tray", "App icons and their menus"},
@@ -586,6 +588,9 @@ void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
         b->onClicked = [this, b](uint32_t button) {
             if (button == BTN_LEFT) m_openPopup("launcher", alongBar(b));
         };
+    } else if (id == "lyrics") {
+        // Only while there's a line to show: the capsule goes with it
+        capsule(zone, filled)->add<kit::LyricsLine>(13, false, vertical)->setMaxWidth(vertical ? 220 : 320);
     } else if (id == "netspeed") {
         capsule(zone, filled)->add<NetSpeed>();
     } else if (id == "tray") {

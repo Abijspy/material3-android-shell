@@ -53,6 +53,10 @@ public:
     // Where the pointer may hit, in logical px; nullopt (default) = everywhere.
     // An empty list makes the surface click-through.
     void setInputRegion(std::optional<std::vector<RectF>> rects);
+    // Tab, Shift+Tab and the arrow keys move between its controls, Enter and
+    // Space press them, a ring showing where the keyboard is (the Settings
+    // apps; popups keep their keys to themselves)
+    bool keyboardNavigation = false;
 
     // Keyboard: the node that receives keys first; keys it doesn't take
     // bubble up its parents, then reach onKey.
@@ -131,6 +135,7 @@ private:
     bool m_scheduled = false;
     // Only ambient motion running: frames at kAmbientFps, not every vblank
     bool m_ambient = false;
+    bool m_painting = false; // ambient requests made now wait for this frame's time
     EventLoop::TimerId m_ambientTimer = 0;
     std::chrono::steady_clock::time_point m_lastFrame{};
     bool m_hasKeyboard = false;
@@ -142,6 +147,7 @@ private:
     ui::Node* m_tooltip = nullptr; // the node whose tooltip is up (or coming)
     ui::Node* m_pressed = nullptr;
     ui::Node* m_focus = nullptr;
+    bool navigate(const ui::KeyEvent& event); // keyboardNavigation's keys
     float m_pointerX = 0, m_pointerY = 0;
     std::optional<std::vector<RectF>> m_input;
     std::vector<ui::Node*> m_hoverChain; // nodes the pointer is within

@@ -6,6 +6,7 @@
 #include "render/Images.h"
 #include "render/Renderer.h"
 #include "render/Text.h"
+#include "ui/Controls.h"
 #include "ui/Theme.h"
 #include "wayland/Display.h"
 
@@ -20,8 +21,10 @@
 #include <format>
 #include <typeinfo>
 #include <cstdlib>
+#include <linux/input-event-codes.h>
 #include <wayland-client.h>
 #include <wayland-egl.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
 
 namespace m3::wl {
 
@@ -213,6 +216,7 @@ void Surface::nodeDestroyed(ui::Node* node) {
     }
     if (m_pressed == node) m_pressed = nullptr;
     if (m_focus == node) m_focus = nullptr;
+    if (ui::Node::focusRing == node) ui::Node::focusRing = nullptr;
 }
 
 void Surface::schedule() {
@@ -235,7 +239,10 @@ void Surface::frameDone() {
 
 void Surface::requestAmbientRedraw() {
     m_ambient = true;
-    if (!m_frame) scheduleAmbient(); // else frameDone does
+    // While painting the frame isn't timed yet: render() schedules it after,
+    // a whole ambient step on (from here it would come at once, and the
+    // calm rate would become the display's)
+    if (!m_frame && !m_painting) scheduleAmbient(); // else frameDone does
 }
 
 void Surface::scheduleAmbient() {
@@ -282,14 +289,17 @@ void Surface::render() {
     auto& r = Renderer::get();
     r.begin(m_eglSurface, bufferWidth(), bufferHeight(), m_scale);
     r.inlineBlur = inlineBlur && Theme::get().widgetBlur() > 0 ? Theme::get().widgetBlur() : 0;
+    m_ambient = false;
+    m_painting = true;
     if (m_root) m_root->paint(r);
+    m_painting = false;
     r.inlineBlur = 0;
     const auto t2 = Clock::now();
     // Painting may flag more work (running animations); that becomes the
     // next frame, or, for ambient motion alone, one at the ambient rate
     const auto motion = m_root ? m_root->motion() : ui::Node::Motion::None;
     m_dirty = m_dirty || motion == ui::Node::Motion::Live;
-    m_ambient = motion == ui::Node::Motion::Ambient;
+    m_ambient = m_ambient || motion == ui::Node::Motion::Ambient;
     m_lastFrame = t0;
     if (debugFrames()) {
         auto ms = [](auto d) { return std::chrono::duration<double, std::milli>(d).count(); };
@@ -419,6 +429,11 @@ void Surface::pointerMotion(double x, double y) {
         m_hovered = hit;
         if (m_hovered) m_hovered->onHover(true);
     }
+    // Everything under the pointer hears where it is (a copy: a handler may
+    // change the tree, and destroyed nodes leave the chain)
+    const auto chain = m_hoverChain;
+    for (ui::Node* n : chain)
+        if (std::ranges::find(m_hoverChain, n) != m_hoverChain.end()) n->onPointerMove(m_pointerX, m_pointerY);
     // A pressed node keeps receiving motion (slider drags)
     if (m_pressed) m_pressed->onDrag(m_pointerX, m_pointerY);
 }
@@ -445,6 +460,11 @@ void Surface::pointerLeave() {
 
 void Surface::pointerButton(uint32_t button, bool pressed) {
     if (pressed && m_tooltip && tooltipHook) tooltipHook(this, nullptr); // a press puts it away
+    // The pointer's back: no ring until the keyboard moves again
+    if (pressed && ui::Node::focusRing) {
+        ui::Node::focusRing = nullptr;
+        requestRedraw();
+    }
     if (pressed) {
         m_pressed = m_hovered;
         if (m_pressed) {
@@ -518,7 +538,88 @@ void Surface::keyboardFocus(bool focused) {
 void Surface::key(const ui::KeyEvent& event) {
     for (ui::Node* n = m_focus; n; n = n->parentNode())
         if (n->onKey(event)) return;
+    if (keyboardNavigation && navigate(event)) return;
     if (onKey) onKey(event);
+}
+
+namespace {
+
+// Everything the keyboard can reach, in the tree's order (reading order)
+void navigable(ui::Node* n, std::vector<ui::Node*>& out) {
+    if (!n->shown() || n->opacity() <= 0.01f) return;
+    if (n->keyboardNavigable() && !n->skipKeyboard && n->rect().w > 0 && n->rect().h > 0) out.push_back(n);
+    for (const auto& c : n->children()) navigable(c.get(), out);
+}
+
+// The nearest in a direction: how far along it, and (counting double) how
+// far off to the side. First among those wholly past this one's edge (Right
+// from the sidebar goes into the page, not up to the search above it), then,
+// if none, any whose centre lies that way
+ui::Node* nearest(const std::vector<ui::Node*>& all, const ui::Node* from, uint32_t key) {
+    const RectF a = from->rect();
+    const float ax = a.x + a.w / 2, ay = a.y + a.h / 2;
+    for (const bool strict : {true, false}) {
+        ui::Node* best = nullptr;
+        float bestScore = 1e9f;
+        for (ui::Node* n : all) {
+            if (n == from) continue;
+            const RectF b = n->rect();
+            const float bx = b.x + b.w / 2, by = b.y + b.h / 2;
+            float along = 0, side = 0;
+            bool past = false, ahead = false;
+            switch (key) {
+            case XKB_KEY_Down: along = b.y - a.bottom(), side = std::abs(bx - ax), past = b.y >= a.bottom() - 4, ahead = by > ay + 1; break;
+            case XKB_KEY_Up: along = a.y - b.bottom(), side = std::abs(bx - ax), past = b.bottom() <= a.y + 4, ahead = by < ay - 1; break;
+            case XKB_KEY_Right: along = b.x - a.right(), side = std::abs(by - ay), past = b.x >= a.right() - 4, ahead = bx > ax + 1; break;
+            default: along = a.x - b.right(), side = std::abs(by - ay), past = b.right() <= a.x + 4, ahead = bx < ax - 1; break;
+            }
+            if (strict ? !past : !ahead) continue;
+            const float score = std::max(0.0f, along) + side * 2;
+            if (score < bestScore) {
+                bestScore = score;
+                best = n;
+            }
+        }
+        if (best) return best;
+    }
+    return nullptr;
+}
+
+} // namespace
+
+bool Surface::navigate(const ui::KeyEvent& e) {
+    const uint32_t k = e.sym;
+    if (e.ctrl() || (e.mods & ui::ModAlt)) return false;
+    // Enter and Space press what the keyboard is on, as a click would
+    if (k == XKB_KEY_Return || k == XKB_KEY_KP_Enter || k == XKB_KEY_space) {
+        if (!m_focus || ui::Node::focusRing != m_focus) return false;
+        m_focus->onClick(BTN_LEFT);
+        return true;
+    }
+    const bool tab = k == XKB_KEY_Tab || k == XKB_KEY_ISO_Left_Tab;
+    const bool arrow = k == XKB_KEY_Up || k == XKB_KEY_Down || k == XKB_KEY_Left || k == XKB_KEY_Right;
+    if ((!tab && !arrow) || !m_root) return false;
+    std::vector<ui::Node*> all;
+    navigable(m_root.get(), all);
+    if (all.empty()) return false;
+    const auto at = std::ranges::find(all, m_focus);
+    ui::Node* next = nullptr;
+    if (at == all.end()) {
+        next = tab && (e.shift() || k == XKB_KEY_ISO_Left_Tab) ? all.back() : all.front(); // from nowhere: an end
+    } else if (tab) {
+        const long n = static_cast<long>(all.size()), i = at - all.begin();
+        next = all[static_cast<size_t>((i + (e.shift() || k == XKB_KEY_ISO_Left_Tab ? n - 1 : 1)) % n)];
+    } else {
+        next = nearest(all, m_focus, k);
+        if (!next) return true; // the edge: stay
+    }
+    setFocus(next);
+    ui::Node::focusRing = next;
+    // Scrolled into view, wherever it sits
+    for (ui::Node* p = next->parentNode(); p; p = p->parentNode())
+        if (auto* scroll = dynamic_cast<ui::ScrollView*>(p)) scroll->reveal(next->rect());
+    requestRedraw();
+    return true;
 }
 
 } // namespace m3::wl
