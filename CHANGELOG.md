@@ -1,5 +1,10 @@
 # Changelog
 
+## v5.7.2 — 2026-10-25
+
+- **Digital Wellbeing settings take effect at once.** Bedtime's greyscale and Do Not Disturb switches used to wait up to 10 seconds to apply, so they looked broken. They're now labelled "Greyscale at bedtime" and "Do not disturb at bedtime", with a hint to use **Start now** to see them.
+- **A `wellbeing` command:** `material3ui msg wellbeing [status|bedtime on|off|focus on|off]`.
+
 ## v5.7.1 — 2026-10-25
 
 - **New bar widgets** (Settings → Status bar):
