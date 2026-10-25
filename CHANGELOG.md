@@ -1,5 +1,9 @@
 # Changelog
 
+## v5.7.3 — 2026-10-25
+
+- **Tap a day in Digital Wellbeing**, as on Android. In the week chart, tap a day's bar to see that day: its date, screen time, unlocks and notifications, and every app you used with its time and a bar. The chart highlights the chosen day, and the list glides as you switch days.
+
 ## v5.7.2 — 2026-10-25
 
 - **Digital Wellbeing settings take effect at once.** Bedtime's greyscale and Do Not Disturb switches used to wait up to 10 seconds to apply, so they looked broken. They're now labelled "Greyscale at bedtime" and "Do not disturb at bedtime", with a hint to use **Start now** to see them.
