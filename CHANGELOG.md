@@ -1,5 +1,16 @@
 # Changelog
 
+## v5.7.0 — 2026-10-25
+
+- **Digital Wellbeing**, as on Android, in Settings → Digital Wellbeing:
+  - **Screen time:** today as a ring of your apps with the total, plus unlocks, notifications and your daily average, and the week as bars. Only time spent unlocked and at the computer counts.
+  - **App timers:** a daily limit per app. A minute's warning, then the app closes for the rest of the day.
+  - **Focus mode:** pick distracting apps; while Focus is on, they close when opened.
+  - **Bedtime mode:** on a schedule or right away, the screen turns greyscale and Do Not Disturb comes on, then both go back.
+  - **Screen time reminders:** a nudge to take a break after a stretch on screen, and a daily goal.
+  - **Reduce interruptions:** Do Not Disturb, and a switch for each app that notified you this week. Muted apps' notifications don't show; critical ones still do.
+  - **Quick Settings tiles** for Focus mode and Bedtime.
+
 ## v5.6.3 — 2026-10-25
 
 - **The music player no longer shifts the dashboard.** The player card is now the same height whether or not something is playing, so the system monitor stays put. The dashboard's two columns now end level with each other.
