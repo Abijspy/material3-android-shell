@@ -370,7 +370,9 @@ ui::Node* dashboardWidget(ui::Node* parent, const std::string& id) {
 
 void dashboard(Flex* card0, Popup&) {
     auto* columns = card0->add<Flex>(Flex::Direction::Row);
-    columns->setSpacing(16)->setAlignItems(Align::Start);
+    // Both columns the same height: the calendar's card stretches to end
+    // where the system card does
+    columns->setSpacing(16)->setAlignItems(Align::Stretch);
 
     auto* left = columns->add<Live>();
     left->setAlignItems(Align::Stretch)->setSpacing(12);
@@ -378,7 +380,9 @@ void dashboard(Flex* card0, Popup&) {
     clock->setSize(56)->setWeight(500)->setColor("primary", false);
     auto* date = left->add<Label>();
     date->setSize(16)->setColor("on_surface_variant", false);
-    card(left)->add<MonthView>();
+    auto* month = card(left);
+    month->add<MonthView>();
+    month->grow = true;
     left->sync = [=] {
         const std::time_t now = std::time(nullptr);
         std::tm tm{};

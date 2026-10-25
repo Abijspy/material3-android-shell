@@ -267,7 +267,7 @@ std::string clockText(long long us) {
 } // namespace
 
 MediaCard::MediaCard(bool compact) : Flex(Direction::Column) {
-    setPadding(Insets(compact ? 16 : 20))->setSpacing(compact ? 6 : 10)->setAlignItems(Align::Stretch)->setRadius(Radii(28));
+    setPadding(Insets(16))->setSpacing(compact ? 6 : 8)->setAlignItems(Align::Stretch)->setRadius(Radii(28));
     setBackground(ColorRef("on_surface", 0.1f), false);
     // Compact: one row of text and controls; full: the text stacked above them
     Flex* textHost = this;
@@ -286,19 +286,21 @@ MediaCard::MediaCard(bool compact) : Flex(Direction::Column) {
     m_title = textHost->add<Marquee>(compact ? 200 : 300, "");
     m_title->setMode(Marquee::modeOf(Config::get().value<std::string>("/bar/scrolling/islandMedia", "loop")))
         ->setSpeed(Config::get().value<float>("/bar/scrolling/speed", 30));
-    m_title->label()->setSize(compact ? 16 : 20)->setWeight(600);
+    m_title->label()->setSize(compact ? 16 : 18)->setWeight(600);
     m_artist = textHost->add<Label>();
     m_artist->setSize(compact ? 13 : 14)->setColor("on_surface_variant", false)->setMaxWidth(compact ? 200 : 340);
     if (compact) m_app->setVisible(false);
-    m_progressBox = add<Flex>(Direction::Column);
-    m_progressBox->setAlignItems(Align::Stretch)->setSpacing(2);
-    m_progress = m_progressBox->add<WavyProgress>();
-    m_progress->onSeek = [](float f) { Mpris::get().seek(f); };
-    auto* times = m_progressBox->add<Flex>(Direction::Row);
-    m_elapsed = times->add<Label>();
+    // One row, as Android's: elapsed, the wavy progress, what's left. It
+    // keeps its room when there's nothing to show, so the card is one
+    // height playing or not (and what's under it on the dashboard stays put)
+    m_progressBox = add<Flex>(Direction::Row);
+    m_progressBox->setSpacing(10);
+    m_elapsed = m_progressBox->add<Label>("0:00");
     m_elapsed->setSize(12)->setColor("on_surface_variant", false);
-    m_elapsed->grow = true;
-    m_left = times->add<Label>();
+    m_progress = m_progressBox->add<WavyProgress>();
+    m_progress->grow = true;
+    m_progress->onSeek = [](float f) { Mpris::get().seek(f); };
+    m_left = m_progressBox->add<Label>("-0:00");
     m_left->setSize(12)->setColor("on_surface_variant", false);
 
     auto* controls = compact ? topRow->add<Flex>(Direction::Row) : add<Flex>(Direction::Row);
@@ -307,7 +309,7 @@ MediaCard::MediaCard(bool compact) : Flex(Direction::Column) {
     // Play: a circle while paused, a rounded square while playing
     m_play = controls->add<Button>(Direction::Row);
     m_play->setJustify(Align::Center)->setBackground("primary", false);
-    m_play->fixedWidth = m_play->fixedHeight = compact ? 52 : 64;
+    m_play->fixedWidth = m_play->fixedHeight = compact ? 52 : 56;
     m_compact = compact;
     m_play->pressedRadius = 12;
     m_playIcon = m_play->add<Icon>("play_arrow", 32);
@@ -348,7 +350,7 @@ void MediaCard::sync() {
     m_artist->setVisible(!m_artist->text().empty());
     const bool playing = p && p->status == "Playing";
     const bool timed = p && p->length > 0;
-    m_progressBox->setVisible(timed);
+    m_progressBox->setOpacity(timed ? 1 : 0);
     if (timed) {
         const long long at = p->positionNow();
         m_progress->set(static_cast<float>(static_cast<double>(at) / static_cast<double>(p->length)), playing);
@@ -357,7 +359,7 @@ void MediaCard::sync() {
         m_left->setText("-" + clockText(p->length - at));
     }
     m_playIcon->setText(playing ? "pause" : "play_arrow");
-    const float size = m_compact ? 52 : 64;
+    const float size = m_compact ? 52 : 56;
     m_play->setRadius(Radii(playing ? size * 0.3f : size / 2));
     m_prev->setOpacity(p && p->canPrevious ? 1.0f : 0.4f);
     m_next->setOpacity(p && p->canNext ? 1.0f : 0.4f);
