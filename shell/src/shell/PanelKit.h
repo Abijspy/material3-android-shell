@@ -94,7 +94,7 @@ protected:
     void doArrange() override;
 
 private:
-    std::map<std::string, float> m_last; // key → y, last layout
+    std::map<std::string, float> m_last; // key → y within the column, last layout
     bool m_laidOut = false;
 };
 

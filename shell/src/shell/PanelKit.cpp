@@ -111,7 +111,9 @@ void GlideColumn::doArrange() {
     std::map<std::string, float> now;
     for (const auto& c : children()) {
         if (c->glideKey.empty() || !c->shown()) continue;
-        const float y = c->rect().y;
+        // Where it sits in the column, not on screen: scrolling moves the
+        // whole column and must not read as every child moving
+        const float y = c->rect().y - rect().y;
         now[c->glideKey] = y;
         if (auto it = m_last.find(c->glideKey); it != m_last.end()) {
             // Moved: drawn where it was, then sprung home
