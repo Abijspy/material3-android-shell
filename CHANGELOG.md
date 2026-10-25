@@ -1,5 +1,13 @@
 # Changelog
 
+## v5.7.5 — 2026-10-25
+
+- **A friendlier lock screen editor.** Your lock screen stays on the left, and a side sheet on the right follows what you pick:
+  - **Nothing picked:** the widget library, grouped into Clock & date, Calendar, Weather, Music and Status. Tap a widget to add it.
+  - **An empty cell:** add a widget right there.
+  - **A widget:** its details, a pad to move it, **Replace** and **Remove**.
+- **No more blank cells.** A widget that's hidden right now, such as the music player with nothing playing, shows as a labelled placeholder that says when it appears.
+
 ## v5.7.4 — 2026-10-25
 
 - **Scrolling Digital Wellbeing no longer smears the page.** The chosen day's app rows lagged behind while scrolling and drew over the week chart and the app timers. The notification centre had the same problem; both are fixed.
