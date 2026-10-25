@@ -26,6 +26,12 @@ struct Def {
 // Every widget a cell can hold
 const std::vector<Def>& widgets();
 const Def* find(const std::string& id);
+// Its kind, for the editor's library: "Clock & date", "Calendar",
+// "Weather", "Music", "Status"
+const char* groupOf(const std::string& id);
+const std::vector<const char*>& groups();
+// When it shows, if not always ("While music plays"); empty: always
+const char* whenShown(const std::string& id);
 
 // The saved grid; without one, the v4.1.0 list (lock.widgets) stacked in
 // one column under the clock

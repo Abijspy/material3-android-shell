@@ -37,6 +37,25 @@ const Def* find(const std::string& id) {
     return nullptr;
 }
 
+const char* groupOf(const std::string& id) {
+    if (id == "clock" || id == "date") return "Clock & date";
+    if (id.starts_with("cal-")) return "Calendar";
+    if (id.starts_with("weather") || id == "forecast") return "Weather";
+    if (id == "media" || id == "player" || id.starts_with("music")) return "Music";
+    return "Status";
+}
+
+const std::vector<const char*>& groups() {
+    static const std::vector<const char*> all = {"Clock & date", "Calendar", "Weather", "Music", "Status"};
+    return all;
+}
+
+const char* whenShown(const std::string& id) {
+    if (groupOf(id) == std::string("Music")) return "Shows while music plays";
+    if (id == "battery") return "Shows on laptops";
+    return "";
+}
+
 std::vector<Item> load() {
     std::vector<Item> out;
     const auto& c = Config::get();

@@ -1,6 +1,10 @@
-// The lock screen editor: the lock screen itself at full size, with its grid
-// laid over it. Click a cell to add a widget there, or a widget to move or
-// remove it. Everything saves at once (lock.grid), and the greeter follows.
+// The lock screen editor: the lock screen itself, its grid laid over it, and
+// a side sheet that follows the selection: the widget library (grouped,
+// each with Add) when nothing is picked; "Add to …" for an empty cell; a
+// widget's details, a pad to move it, Replace and Remove for a placed one.
+// Widgets hidden right now (music with nothing playing) show as a labelled
+// placeholder, never as a blank cell. Everything saves at once (lock.grid),
+// and the greeter follows.
 #include "core/Config.h"
 #include "core/EventLoop.h"
 #include "render/Images.h"
@@ -9,6 +13,7 @@
 #include "shell/LockView.h"
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
+#include "shell/SettingsKit.h"
 #include "ui/Controls.h"
 #include "ui/Theme.h"
 
@@ -129,14 +134,40 @@ protected:
 
 } // namespace
 
+namespace {
+
+// A tonal bubble with an icon (the library's and the details' badge)
+Flex* bubble(Node* parent, const std::string& icon, float size, bool primary) {
+    auto* b = parent->add<Flex>(Flex::Direction::Row);
+    b->setJustify(Align::Center)->setRadius(Radii(size * 0.32f));
+    b->setBackground(primary ? ColorRef("primary_container") : ColorRef("on_surface", 0.1f), false);
+    b->fixedWidth = b->fixedHeight = size;
+    b->add<Icon>(icon, size * 0.5f)->setColor(primary ? "on_primary_container" : "on_surface", false);
+    return b;
+}
+
+// The first free cell, reading order (top left first)
+std::pair<int, int> firstFree(const std::vector<lockgrid::Item>& items) {
+    for (int r = 0; r < lockgrid::kRows; ++r)
+        for (int c = 0; c < lockgrid::kCols; ++c)
+            if (std::ranges::none_of(items, [&](const lockgrid::Item& o) { return o.col == c && o.row == r; })) return {c, r};
+    return {-1, -1};
+}
+
+} // namespace
+
 void lockEditor(Flex* card, Popup& popup) {
     card->setPadding(Insets(16))->setSpacing(12);
     auto* live = card->add<Live>();
     live->setSpacing(12);
     live->grow = true;
-    auto sel = std::make_shared<std::pair<int, int>>(-1, -1);
+    struct State {
+        int col = -1, row = -1;  // the selected cell
+        bool replacing = false;  // choosing a widget for a filled cell
+    };
+    auto st = std::make_shared<State>();
 
-    live->sync = [live, sel, &popup] {
+    live->sync = [live, st, &popup] {
         live->clearChildren();
         using namespace lockgrid;
         const auto items = load();
@@ -145,19 +176,24 @@ void lockEditor(Flex* card, Popup& popup) {
                 if (it.col == c && it.row == r) return &it;
             return nullptr;
         };
+        auto select = [st, live](int c, int r) {
+            st->col = c;
+            st->row = r;
+            st->replacing = false;
+            live->syncSoon();
+        };
 
         // Title and the editor's own buttons
         auto* top = live->add<Flex>(Flex::Direction::Row);
         top->setSpacing(10)->setPadding({8, 0});
-        auto* badge = top->add<Flex>(Flex::Direction::Row);
-        badge->setJustify(Align::Center)->setRadius(Radii(14))->setBackground("primary_container", false);
-        badge->fixedWidth = badge->fixedHeight = 44;
-        badge->add<Icon>("lock_person", 24)->setFill(true)->setColor("on_primary_container", false);
+        bubble(top, "lock_person", 44, true);
         auto* titles = top->add<Flex>(Flex::Direction::Column);
         titles->setAlignItems(Align::Start)->setSpacing(1);
         titles->grow = true;
         titles->add<Label>("Edit lock screen")->setSize(22)->setWeight(600);
-        titles->add<Label>("The login screen shows the same layout")->setSize(13)->setColor("on_surface_variant", false);
+        titles->add<Label>("Tap a cell to add or change its widget · the login screen shows the same layout")
+            ->setSize(13)
+            ->setColor("on_surface_variant", false);
         auto button = [top](const char* icon, const char* label, bool primary, std::function<void()> fn) {
             auto* b = top->add<Button>();
             pill(b->setBackground(primary ? ColorRef("primary") : ColorRef("on_surface", 0.1f), false))->setPadding({16, 9})->setSpacing(6);
@@ -168,8 +204,8 @@ void lockEditor(Flex* card, Popup& popup) {
                 if (btn == BTN_LEFT) fn();
             };
         };
-        button("restart_alt", "Default", false, [sel] {
-            *sel = {-1, -1};
+        button("restart_alt", "Default", false, [st] {
+            *st = {};
             Config::get().set("/lock/grid", nullptr);
             Config::get().set("/lock/widgets", nullptr);
         });
@@ -183,97 +219,52 @@ void lockEditor(Flex* card, Popup& popup) {
         });
         button("check", "Done", true, [&popup] { popup.close(); });
 
-        // What the selection allows
-        const int c = sel->first, r = sel->second;
-        // A row of controls; a column when it lists widgets to add
-        const bool adding = c >= 0 && !at(c, r);
-        auto* actions = live->add<Flex>(adding ? Flex::Direction::Column : Flex::Direction::Row);
-        actions->setSpacing(6)->setPadding({18, 8, 8, 8})->setRadius(Radii(28))->setBackground(ColorRef("on_surface", 0.1f), false);
-        actions->minHeight = 56;
-        if (c < 0) {
-            actions->add<Icon>("touch_app", 20)->setColor("on_surface_variant", false);
-            actions->add<Label>("Click a cell to add a widget, or a widget to move or remove it")->setSize(14)->setColor("on_surface_variant", false);
-        } else if (const Item* it = at(c, r)) {
-            const auto* d = find(it->id);
-            actions->add<Icon>(d->icon, 20)->setColor("primary", false);
-            auto* name = actions->add<Label>(std::format("{}  ·  {}", d->name, cellName(c, r)));
-            name->setSize(14)->setWeight(600);
-            name->grow = true;
-            auto mv = [sel, c, r](int dc, int dr) {
-                const int nc = c + dc, nr = r + dr;
-                if (nc < 0 || nc >= kCols || nr < 0 || nr >= kRows) return;
-                *sel = {nc, nr};
-                lockgrid::move(c, r, dc, dr);
-            };
-            if (c > 0) iconButton(actions, "arrow_back", [mv] { mv(-1, 0); });
-            if (r > 0) iconButton(actions, "arrow_upward", [mv] { mv(0, -1); });
-            if (r < kRows - 1) iconButton(actions, "arrow_downward", [mv] { mv(0, 1); });
-            if (c < kCols - 1) iconButton(actions, "arrow_forward", [mv] { mv(1, 0); });
-            iconButton(actions, "delete", [sel, c, r] {
-                *sel = {-1, -1};
-                lockgrid::remove(c, r);
-            });
-        } else {
-            // As Android's editors add: each free widget an icon chip with
-            // its name under it
-            actions->setAlignItems(Align::Start)->setPadding({18, 10});
-            actions->add<Label>(std::format("Add to the {}", cellName(c, r)))->setSize(14)->setWeight(600);
-            auto* avail = actions->add<Flow>();
-            avail->spacing = 6;
-            size_t free = 0;
-            for (const auto& d : widgets()) {
-                if (std::ranges::any_of(items, [&](const Item& o) { return o.id == d.id; })) continue;
-                ++free;
-                auto* item = avail->add<Button>(Flex::Direction::Column);
-                item->setPadding({4, 6})->setSpacing(4)->setRadius(Radii(18));
-                item->pressedRadius = 12;
-                item->fixedWidth = 96;
-                auto* icon = item->add<Flex>(Flex::Direction::Row);
-                pill(icon->setBackground(ColorRef("on_surface", 0.1f), false))->setJustify(Align::Center);
-                icon->fixedWidth = 60;
-                icon->fixedHeight = 44;
-                icon->alignSelf = Align::Center;
-                icon->add<Icon>(d.icon, 22)->setColor("on_surface", false);
-                auto* label = item->add<Label>(d.name);
-                label->setSize(12)->setMaxWidth(90)->setMaxLines(2)->setCentered(true)->setColor("on_surface_variant", false);
-                label->alignSelf = Align::Center;
-                const std::string id = d.id;
-                item->onClicked = [id, c, r](uint32_t button) {
-                    if (button == BTN_LEFT) lockgrid::put(id, c, r);
-                };
-            }
-            if (free == 0) caption(actions, "Every widget is placed; remove one first");
-        }
+        auto* body = live->add<Flex>(Flex::Direction::Row);
+        body->setSpacing(14)->setAlignItems(Align::Stretch);
+        body->grow = true;
 
-        // The lock screen, at full size
-        auto* stage = live->add<Stage>();
+        // ── The lock screen, its grid over it ──
+        auto* stage = body->add<Stage>();
         stage->grow = true;
         stage->add<StageBackground>();
         auto* cells = stage->add<Cells>();
         for (int row = 0; row < kRows; ++row)
             for (int col = 0; col < kCols; ++col) {
                 const Item* it = at(col, row);
-                const bool selected = sel->first == col && sel->second == row;
+                const bool selected = st->col == col && st->row == row;
                 auto* cell = cells->add<ClippedButton>();
                 cell->setRadius(Radii(22))->setAlignItems(col == 0 ? Align::Start : col == 1 ? Align::Center : Align::End);
                 cell->setJustify(Align::Center)->setPadding({16, 8});
-                cell->setBorder(selected ? 3 : 1.5f, selected ? ColorRef("primary") : ColorRef("outline", 0.55f));
+                cell->setBorder(selected ? 3 : 1.5f, selected ? ColorRef("primary") : ColorRef("outline", 0.45f));
                 cell->setBackground(selected ? ColorRef("primary", 0.14f) : ColorRef::none(), false);
                 if (it) {
                     // The stage is about 3/4 of the screen's height: the clock follows
-                    addLockWidget(cell, it->id, false, col, 0.75f);
+                    Node* w = addLockWidget(cell, it->id, false, col, 0.75f);
                     cell->holdsWidget = true;
+                    // Hidden right now (music with nothing playing): a
+                    // placeholder says what's there and when it shows
+                    if (w && !w->shown()) {
+                        const auto* d = find(it->id);
+                        auto* ph = cell->add<Flex>(Flex::Direction::Column);
+                        ph->setSpacing(4)->setAlignItems(Align::Center)->setPadding({14, 10})->setRadius(Radii(18));
+                        ph->setBackground(ColorRef("on_surface", 0.08f), false);
+                        ph->alignSelf = Align::Center;
+                        ph->add<Icon>(d->icon, 26)->setColor("on_surface_variant", false);
+                        ph->add<Label>(d->name)->setSize(14)->setWeight(600)->setColor("on_surface", false);
+                        if (*whenShown(it->id)) ph->add<Label>(whenShown(it->id))->setSize(12)->setColor("on_surface_variant", false);
+                    }
                 } else {
                     auto* hint = cell->add<Flex>(Flex::Direction::Row);
                     hint->setSpacing(6);
                     hint->alignSelf = Align::Center;
                     hint->add<Icon>("add", 22)->setColor(selected ? "primary" : "on_surface_variant", false);
-                    hint->add<Label>("Add")->setSize(14)->setColor(selected ? "primary" : "on_surface_variant", false);
+                    hint->add<Label>("Add")->setSize(14)->setWeight(selected ? 600 : 400)->setColor(selected ? "primary" : "on_surface_variant", false);
                 }
-                cell->onClicked = [sel, live, col, row](uint32_t button) {
+                cell->onClicked = [st, select, col, row](uint32_t button) {
                     if (button != BTN_LEFT) return;
-                    *sel = sel->first == col && sel->second == row ? std::pair{-1, -1} : std::pair{col, row};
-                    live->syncSoon();
+                    // Tapped again: let go
+                    if (st->col == col && st->row == row) return select(-1, -1);
+                    select(col, row);
                 };
             }
         // Login area preview: what stays fixed under the grid
@@ -290,6 +281,156 @@ void lockEditor(Flex* card, Popup& popup) {
         pill(field->setBackground("surface_container_highest", false))->setPadding({20, 12});
         field->fixedWidth = 360;
         field->add<Label>("Password · stays here")->setSize(14)->setColor("on_surface_variant", false);
+
+        // ── The side sheet ──
+        auto* sheet = body->add<Flex>(Flex::Direction::Column);
+        sheet->setSpacing(12)->setPadding(Insets(16))->setRadius(Radii(28))->setBackground(ColorRef("on_surface", 0.07f), false);
+        sheet->setAlignItems(Align::Stretch);
+        sheet->fixedWidth = 340;
+        const int c = st->col, r = st->row;
+        const Item* chosen = c >= 0 ? at(c, r) : nullptr;
+        auto sheetHead = [&](const std::string& title, const std::string& sub, bool closable) {
+            auto* h = sheet->add<Flex>(Flex::Direction::Row);
+            h->setSpacing(8)->setAlignItems(Align::Start);
+            auto* t = h->add<Flex>(Flex::Direction::Column);
+            t->setSpacing(2)->setAlignItems(Align::Start);
+            t->grow = true;
+            t->add<Label>(title)->setSize(18)->setWeight(600)->setMaxWidth(250);
+            if (!sub.empty()) t->add<Label>(sub)->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(260)->setMaxLines(3);
+            if (closable) iconButton(h, "close", [select] { select(-1, -1); });
+        };
+
+        if (chosen && !st->replacing) {
+            // A placed widget: what it is, a pad to move it, Replace, Remove
+            const auto* d = find(chosen->id);
+            sheetHead(d->name, std::format("In the {}", cellName(c, r)), true);
+            auto* about = sheet->add<Flex>(Flex::Direction::Row);
+            about->setSpacing(14)->setPadding(Insets(14))->setRadius(Radii(22))->setBackground(ColorRef("on_surface", 0.07f), false);
+            bubble(about, d->icon, 52, true);
+            auto* txt = about->add<Flex>(Flex::Direction::Column);
+            txt->setSpacing(3)->setAlignItems(Align::Start);
+            txt->grow = true;
+            txt->add<Label>(d->about)->setSize(13)->setMaxWidth(200)->setMaxLines(3);
+            if (*whenShown(chosen->id)) txt->add<Label>(whenShown(chosen->id))->setSize(12)->setColor("primary", false);
+            sheet->add<Label>("Move")->setSize(13)->setWeight(600)->setColor("primary", false);
+            // A direction pad: the arrows where they point, faint at the edges
+            auto* pad = sheet->add<Flex>(Flex::Direction::Column);
+            pad->setSpacing(6)->setAlignItems(Align::Center);
+            auto arrow = [&](Node* parent, const char* icon, int dc, int dr) {
+                const int nc = c + dc, nr = r + dr;
+                const bool can = nc >= 0 && nc < kCols && nr >= 0 && nr < kRows;
+                auto* b = parent->add<Button>(Flex::Direction::Row);
+                b->setJustify(Align::Center)->setRadius(Radii(18))->setBackground(ColorRef("secondary_container", can ? 1.0f : 0.35f), false);
+                b->pressedRadius = 10;
+                b->fixedWidth = b->fixedHeight = 52;
+                b->add<Icon>(icon, 24)->setColor("on_secondary_container", false);
+                b->setOpacity(can ? 1.0f : 0.4f, false);
+                b->tooltip = can ? std::format("To the {}{}", cellName(nc, nr), at(nc, nr) ? " (swaps with what's there)" : "") : "";
+                b->onClicked = [st, c, r, dc, dr, can](uint32_t button) {
+                    if (button != BTN_LEFT || !can) return;
+                    st->col = c + dc;
+                    st->row = r + dr;
+                    lockgrid::move(c, r, dc, dr); // saves; the editor follows
+                };
+            };
+            arrow(pad, "keyboard_arrow_up", 0, -1);
+            auto* mid = pad->add<Flex>(Flex::Direction::Row);
+            mid->setSpacing(6)->setAlignItems(Align::Center);
+            arrow(mid, "keyboard_arrow_left", -1, 0);
+            auto* centre = mid->add<Flex>(Flex::Direction::Row);
+            centre->setJustify(Align::Center)->setRadius(Radii(18))->setBackground(ColorRef("primary", 0.16f), false);
+            centre->fixedWidth = centre->fixedHeight = 52;
+            centre->add<Icon>(d->icon, 22)->setColor("primary", false);
+            arrow(mid, "keyboard_arrow_right", 1, 0);
+            arrow(pad, "keyboard_arrow_down", 0, 1);
+            auto* actions = sheet->add<Flex>(Flex::Direction::Row);
+            actions->setSpacing(8)->setPadding({0, 6, 0, 0});
+            auto* replace = pillButton(actions, "Replace", false, [st, live] {
+                st->replacing = true;
+                live->syncSoon();
+            }, "swap_horiz");
+            replace->grow = true;
+            auto* remove = actions->add<Button>(Flex::Direction::Row);
+            pill(remove->setBackground("error_container", false))->setPadding({16, 10})->setSpacing(6)->setJustify(Align::Center);
+            remove->grow = true;
+            remove->add<Icon>("delete", 18)->setColor("on_error_container", false);
+            remove->add<Label>("Remove")->setSize(14)->setWeight(500)->setColor("on_error_container", false);
+            remove->onClicked = [c, r](uint32_t button) {
+                if (button == BTN_LEFT) lockgrid::remove(c, r); // the cell stays picked: add another there
+            };
+            return;
+        }
+
+        // The library: every widget by kind. For a picked cell it places
+        // there; otherwise Add takes the first free cell.
+        const bool forCell = c >= 0;
+        if (st->replacing && chosen)
+            sheetHead(std::format("Replace the {}", find(chosen->id)->name), std::format("Pick what the {} shows instead", cellName(c, r)), true);
+        else if (forCell)
+            sheetHead(std::format("Add to the {}", cellName(c, r)), "Pick a widget for this cell", true);
+        else
+            sheetHead("Widgets", "Tap one to add it to the first free cell, or tap a cell first to choose where", false);
+        auto* scroll = sheet->add<ScrollView>();
+        scroll->blurEdges = true;
+        scroll->maxHeight = 1e6f;
+        scroll->grow = true;
+        auto* lib = scroll->add<Flex>(Flex::Direction::Column);
+        lib->setSpacing(4)->setAlignItems(Align::Stretch)->setPadding({0, 0, 6, 0});
+        const auto free = firstFree(items);
+        for (const char* group : groups()) {
+            std::vector<const Def*> members;
+            for (const auto& d : widgets())
+                if (groupOf(d.id) == std::string(group)) members.push_back(&d);
+            auto* label = lib->add<Label>(group);
+            label->setSize(13)->setWeight(600)->setColor("primary", false);
+            label->alignSelf = Align::Start;
+            for (const Def* d : members) {
+                const Item* placed = nullptr;
+                for (const auto& o : items)
+                    if (o.id == d->id) placed = &o;
+                auto* row = lib->add<Button>(Flex::Direction::Row);
+                row->setPadding({10, 8})->setSpacing(12)->setRadius(Radii(18))->setAlignItems(Align::Center);
+                row->pressedRadius = 10;
+                bubble(row, d->icon, 40, false);
+                auto* txt = row->add<Flex>(Flex::Direction::Column);
+                txt->setSpacing(1)->setAlignItems(Align::Start);
+                txt->grow = true;
+                txt->add<Label>(d->name)->setSize(14)->setWeight(600)->setMaxWidth(170);
+                txt->add<Label>(placed ? std::format("In the {}", cellName(placed->col, placed->row)) : std::string(d->about))
+                    ->setSize(12)
+                    ->setMaxWidth(170)
+                    ->setMaxLines(2)
+                    ->setColor(placed ? "primary" : "on_surface_variant", false);
+                const std::string id = d->id;
+                if (forCell) {
+                    // Placed elsewhere: it moves here
+                    row->add<Icon>(placed ? "open_with" : "add_circle", 22)->setColor("primary", false);
+                    row->onClicked = [id, c, r, st, live](uint32_t button) {
+                        if (button != BTN_LEFT) return;
+                        st->replacing = false;
+                        lockgrid::put(id, c, r);
+                        live->syncSoon();
+                    };
+                } else if (placed) {
+                    // Tapping a placed one picks it on the stage
+                    const int pc = placed->col, pr = placed->row;
+                    row->add<Icon>("chevron_right", 22)->setColor("on_surface_variant", false);
+                    row->onClicked = [select, pc, pr](uint32_t button) {
+                        if (button == BTN_LEFT) select(pc, pr);
+                    };
+                } else if (free.first >= 0) {
+                    // The whole row adds it, to the first free cell
+                    row->add<Icon>("add_circle", 22)->setColor("primary", false);
+                    row->onClicked = [id, free, st](uint32_t button) {
+                        if (button != BTN_LEFT) return;
+                        st->col = free.first;
+                        st->row = free.second;
+                        lockgrid::put(id, free.first, free.second);
+                    };
+                }
+            }
+        }
+        if (!forCell && free.first < 0) caption(sheet, "Every cell is taken: pick a widget to replace or remove it")->setMaxWidth(300)->setMaxLines(2);
     };
     live->conns.push_back(Config::get().changed.connect([live] { live->syncSoon(); }));
     live->sync();
