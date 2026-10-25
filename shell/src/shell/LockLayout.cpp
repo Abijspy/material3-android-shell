@@ -25,6 +25,7 @@ const std::vector<Def>& widgets() {
         {"weather-card", "partly_cloudy_day", "Weather card", "Now and the next four days"},
         {"battery", "battery_full", "Battery", "Charge level"},
         {"notifications", "notifications", "Notifications", "How many are waiting"},
+        {"screentime", "digital_wellbeing", "Screen time", "Today's time, by app"},
     };
     return all;
 }

@@ -98,6 +98,27 @@ private:
     bool m_laidOut = false;
 };
 
+// A day's screen time as a ring: an arc per part (apps, the biggest
+// first), a small gap between each, sweeping round once when `sweep`
+class UsageRing : public ui::Node {
+public:
+    // The parts' colours, the first four; the rest outline_variant
+    static constexpr const char* kRoles[] = {"primary", "tertiary", "secondary", "primary_fixed_dim"};
+    UsageRing(float size, bool sweep = true);
+    void set(std::vector<std::pair<std::string, int>> parts, int total);
+
+protected:
+    SizeF doMeasure(SizeF) override { return {m_size, m_size}; }
+    bool doAnimating() const override { return m_sweep.running(); }
+    void doPaint(Renderer& r) override;
+
+private:
+    float m_size;
+    std::vector<std::pair<std::string, int>> m_parts;
+    int m_total = 0;
+    ui::Tween m_sweep{0, ui::Spring::spatialSlow()};
+};
+
 // M3 Expressive loading indicators, for work of unknown length. Both animate
 // for as long as they are shown.
 // Circular: a wavy arc that spins while it grows and shrinks.

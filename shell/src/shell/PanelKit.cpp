@@ -68,6 +68,42 @@ void Meter::doPaint(Renderer& r) {
     if (fill.w > 0) r.rect(fill, m_color.resolve(), round);
 }
 
+// ── UsageRing ──
+
+UsageRing::UsageRing(float size, bool sweep) : m_size(size) {
+    m_sweep.set(1, sweep);
+}
+
+void UsageRing::set(std::vector<std::pair<std::string, int>> parts, int total) {
+    m_parts = std::move(parts);
+    m_total = total;
+    requestRedraw();
+}
+
+void UsageRing::doPaint(Renderer& r) {
+    const auto& b = rect();
+    const float stroke = std::max(6.0f, m_size / 11), cx = b.x + b.w / 2, cy = b.y + b.h / 2, radius = m_size / 2 - stroke / 2;
+    const float tau = 6.2831853f, top = -tau / 4, step = 0.012f;
+    const float sweep = std::clamp(m_sweep.value(), 0.0f, 1.0f) * tau;
+    auto dot = [&](float a, const Color& c) {
+        r.rect({cx + radius * std::cos(a) - stroke / 2, cy + radius * std::sin(a) - stroke / 2, stroke, stroke}, c, Radii(stroke / 2));
+    };
+    const auto& t = Theme::get();
+    if (m_total <= 0) {
+        for (float a = 0; a < sweep; a += step) dot(top + a, t.color("surface_container_highest"));
+        return;
+    }
+    // Each part's share, a small gap after it
+    const float gap = m_parts.size() > 1 ? 0.10f : 0;
+    float at = 0;
+    for (size_t i = 0; i < m_parts.size(); ++i) {
+        const float share = static_cast<float>(m_parts[i].second) / static_cast<float>(m_total) * tau;
+        const Color c = i < 4 ? t.color(kRoles[i]) : t.color("outline_variant");
+        for (float a = at; a < at + std::max(0.0f, share - gap) && a < sweep; a += step) dot(top + a, c);
+        at += share;
+    }
+}
+
 // ── GlideColumn ──
 
 void GlideColumn::doArrange() {

@@ -1,10 +1,14 @@
 #include "shell/bar/Bar.h"
 
 #include "core/Config.h"
+#include "quickshare/QuickShare.h"
+#include "services/Firewall.h"
 #include "services/Network.h"
 #include "services/Notifications.h"
 #include "services/SystemStats.h"
+#include "services/Vpn.h"
 #include "services/Weather.h"
+#include "services/Wellbeing.h"
 #include "shell/Panels.h"
 #include "shell/bar/Island.h"
 #include "shell/bar/Widgets.h"
@@ -184,6 +188,108 @@ private:
     Connection m_conn;
 };
 
+// Today's screen time (Digital Wellbeing), to the minute
+class ScreenTimeChip : public Chip {
+public:
+    explicit ScreenTimeChip(std::function<void()> click) : Chip("digital_wellbeing", std::move(click)) {
+        m_conn = Wellbeing::get().changed.connect([this] { sync(); });
+        sync();
+    }
+
+private:
+    void sync() {
+        const int t = Wellbeing::get().today().total(), h = t / 3600, m = t / 60 % 60;
+        set("digital_wellbeing", h ? std::format("{}h {:02}m", h, m) : std::format("{}m", m));
+        tooltip = std::format("Screen time today{}", Wellbeing::get().focus() ? " · Focus mode on" : "");
+    }
+    Connection m_conn;
+};
+
+// A VPN's name while one is up; the key alone (dimmed) while none is
+class VpnChip : public Chip {
+public:
+    explicit VpnChip(std::function<void()> click) : Chip("vpn_key", std::move(click)) {
+        m_conn = Vpn::get().changed.connect([this] { sync(); });
+        sync();
+    }
+
+private:
+    void sync() {
+        auto& v = Vpn::get();
+        const bool on = v.anyActive();
+        set(on ? "vpn_lock" : "vpn_key", !v.busy().empty() ? "…" : on ? v.activeName() : "");
+        m_text->setMaxWidth(140);
+        m_icon->setFill(on)->setColor(on ? "primary" : "on_surface_variant");
+        tooltip = on ? "VPN: " + v.activeName() + " (click to disconnect, right-click for settings)"
+                     : "VPN off (click to connect, right-click for settings)";
+    }
+    Connection m_conn;
+};
+
+// Quick Share: its symbol, a transfer's progress while one runs
+class QuickShareChip : public Chip {
+public:
+    explicit QuickShareChip(std::function<void()> click) : Chip(quickshare::QuickShare::symbol(), std::move(click)) {
+        m_conn = quickshare::QuickShare::get().changed.connect([this] { sync(); });
+        sync();
+    }
+
+private:
+    void sync() {
+        auto& q = quickshare::QuickShare::get();
+        std::string progress;
+        for (const auto& [_, t] : q.transfers())
+            if (t.state == quickshare::QuickShare::State::Receiving && t.total > 0)
+                progress = std::format("{}%", t.received * 100 / t.total);
+        set(quickshare::QuickShare::symbol(), progress);
+        m_icon->setColor(q.receiving() ? "on_surface" : "on_surface_variant");
+        tooltip = q.receiving() ? "Quick Share: visible as " + q.deviceName() + " (click to send files)" : "Quick Share (click to send files)";
+    }
+    Connection m_conn;
+};
+
+// A switch as a chip: lit while on (Focus mode, Bedtime)
+class ToggleChip : public Chip {
+public:
+    ToggleChip(const std::string& icon, std::function<bool()> on, std::string name, Signal<>& changed)
+        : Chip(icon, {}), m_on(std::move(on)), m_name(std::move(name)), m_iconName(icon) {
+        m_conn = changed.connect([this] { sync(); });
+        sync();
+    }
+
+private:
+    void sync() {
+        const bool on = m_on();
+        set(m_iconName, on ? "On" : "");
+        m_icon->setFill(on)->setColor(on ? "on_primary" : "on_surface");
+        m_text->setColor(on ? "on_primary" : "on_surface");
+        setBackground(on ? ColorRef("primary") : ColorRef::none());
+        tooltip = m_name + (on ? ": on (click to turn off)" : ": off (click to turn on)");
+    }
+    std::function<bool()> m_on;
+    std::string m_name, m_iconName;
+    Connection m_conn;
+};
+
+// The firewall: a shield, struck through while it's off
+class FirewallChip : public Chip {
+public:
+    explicit FirewallChip(std::function<void()> click) : Chip("shield_lock", std::move(click)) {
+        m_conn = Firewall::get().changed.connect([this] { sync(); });
+        sync();
+    }
+
+private:
+    void sync() {
+        auto& f = Firewall::get();
+        const bool on = f.installed() && f.enabled();
+        set(on ? "shield_lock" : "remove_moderator", "");
+        m_icon->setColor(on ? "on_surface" : "error");
+        tooltip = !f.installed() ? "No firewall" : on ? "Firewall on" : "Firewall off";
+    }
+    Connection m_conn;
+};
+
 // CPU and memory use, sampled while on the bar
 class SysmonChip : public Chip {
 public:
@@ -206,6 +312,7 @@ private:
 } // namespace
 
 const std::vector<Bar::Module>& Bar::modules() {
+    static const std::string quickShare = quickshare::QuickShare::symbol(); // its own symbol, as a path
     static const std::vector<Module> all = {
         {"launcher", "apps", "Launcher", "Opens Spotlight"},
         {"workspaces", "view_week", "Workspaces", "Dots for each workspace; click to switch"},
@@ -221,6 +328,12 @@ const std::vector<Bar::Module>& Bar::modules() {
         {"clipboard", "content_paste", "Clipboard", "Opens the clipboard history"},
         {"screenshot", "screenshot_region", "Screenshot", "Opens the screenshot tool"},
         {"notifications", "notifications", "Notifications", "Bell with a count; opens the centre"},
+        {"screentime", "digital_wellbeing", "Screen time", "Today's total; opens Digital Wellbeing"},
+        {"focus", "self_improvement", "Focus mode", "Pauses distracting apps; click to switch"},
+        {"bedtime", "bedtime", "Bedtime", "Greyscale and Do not disturb; click to switch"},
+        {"vpn", "vpn_key", "VPN", "The VPN in use; click to connect or disconnect"},
+        {"quickshare", quickShare.c_str(), "Quick Share", "Transfers' progress; opens Send files"},
+        {"firewall", "shield_lock", "Firewall", "On or off; opens Firewall settings"},
         {"quicksettings", "tune", "Quick Settings", "Opens Quick Settings"},
         {"status", "wifi", "Status icons", "Network, Bluetooth, volume; opens Quick Settings"},
         {"battery", "battery_full", "Battery", "Charge level (hidden on desktops)"},
@@ -374,6 +487,46 @@ void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
         c->add<BatteryStatus>(m_openPopup);
     } else if (id == "media") {
         capsule(zone, filled)->add<Media>();
+    } else if (id == "screentime" || id == "vpn" || id == "quickshare" || id == "firewall" || id == "focus" || id == "bedtime") {
+        auto* c = capsule(zone, filled);
+        c->setPadding({4, 0});
+        auto open = [this](const std::string& name, Node* from) { m_openPopup(name, from->rect().x + from->rect().w / 2); };
+        Chip* chip = nullptr;
+        if (id == "screentime") {
+            chip = c->add<ScreenTimeChip>(std::function<void()>{});
+            chip->onClicked = [open, chip](uint32_t b) {
+                if (b == BTN_LEFT) open("settings wellbeing", chip);
+            };
+        } else if (id == "vpn") {
+            chip = c->add<VpnChip>(std::function<void()>{});
+            chip->onClicked = [open, chip](uint32_t b) {
+                if (b == BTN_LEFT) Vpn::get().toggleLast();
+                else if (b == BTN_RIGHT) open("settings vpn", chip);
+            };
+        } else if (id == "quickshare") {
+            chip = c->add<QuickShareChip>(std::function<void()>{});
+            chip->onClicked = [open, chip](uint32_t b) {
+                if (b == BTN_LEFT) open("quickshare-send", chip);
+                else if (b == BTN_RIGHT) open("settings bluetooth", chip);
+            };
+        } else if (id == "firewall") {
+            chip = c->add<FirewallChip>(std::function<void()>{});
+            chip->onClicked = [open, chip](uint32_t b) {
+                if (b == BTN_LEFT) open("settings firewall", chip);
+            };
+        } else if (id == "focus") {
+            chip = c->add<ToggleChip>("self_improvement", [] { return Wellbeing::get().focus(); }, "Focus mode", Wellbeing::get().changed);
+            chip->onClicked = [open, chip](uint32_t b) {
+                if (b == BTN_LEFT) Wellbeing::get().setFocus(!Wellbeing::get().focus());
+                else if (b == BTN_RIGHT) open("settings wellbeing", chip);
+            };
+        } else {
+            chip = c->add<ToggleChip>("bedtime", [] { return Wellbeing::get().bedtime(); }, "Bedtime", Wellbeing::get().changed);
+            chip->onClicked = [open, chip](uint32_t b) {
+                if (b == BTN_LEFT) Wellbeing::get().setBedtimeNow(!Wellbeing::get().bedtime());
+                else if (b == BTN_RIGHT) open("settings wellbeing", chip);
+            };
+        }
     } else if (id == "weather" || id == "calendar" || id == "notifications" || id == "sysmon") {
         auto* c = capsule(zone, filled);
         c->setPadding({4, 0});

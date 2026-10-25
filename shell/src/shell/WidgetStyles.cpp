@@ -3,16 +3,22 @@
 #include "core/EventLoop.h"
 #include "render/Images.h"
 #include "render/Renderer.h"
+#include "quickshare/QuickShare.h"
 #include "services/Calendar.h"
 #include "services/Mpris.h"
+#include "services/Vpn.h"
 #include "services/Weather.h"
+#include "services/Wellbeing.h"
 #include "shell/ClockFaces.h"
 #include "shell/PanelKit.h"
+#include "shell/Panels.h"
 #include "ui/Controls.h"
 #include "ui/Theme.h"
 
+#include <algorithm>
 #include <cmath>
 #include <ctime>
+#include <format>
 #include <linux/input-event-codes.h>
 #include <memory>
 
@@ -53,6 +59,9 @@ public:
         sync = [this] { build(); };
         if (m_id.starts_with("weather")) watch(Weather::get().changed);
         if (m_id == "cal-agenda") watch(m3::Calendar::get().changed);
+        if (m_id == "screentime" || m_id == "wellbeing-modes") watch(Wellbeing::get().changed);
+        if (m_id == "vpn") watch(Vpn::get().changed);
+        if (m_id == "quickshare") watch(quickshare::QuickShare::get().changed);
         if (m_id.starts_with("music")) {
             watch(Mpris::get().changed);
             // The progress moves on by itself
@@ -82,6 +91,10 @@ private:
     void musicBar(const Mpris::Player& p);
     void weatherBig();
     void weatherCard();
+    void screenTime();
+    void wellbeingModes();
+    void vpn();
+    void quickShare();
     Flex* controls(Node* parent, const Mpris::Player& p, float big);
     void progress() {
         const auto* p = Mpris::get().active();
@@ -133,6 +146,12 @@ void Styled::build() {
     if (m_id == "cal-week") return calendarWeek();
     if (m_id == "cal-month") return calendarMonth();
     if (m_id == "cal-agenda") return calendarAgenda();
+    // Nothing personal on the login screen
+    if (m_greeter && (m_id == "screentime" || m_id == "wellbeing-modes" || m_id == "vpn" || m_id == "quickshare")) return setVisible(false);
+    if (m_id == "screentime") return screenTime();
+    if (m_id == "wellbeing-modes") return wellbeingModes();
+    if (m_id == "vpn") return vpn();
+    if (m_id == "quickshare") return quickShare();
     if (m_id.starts_with("music")) {
         // Never on the login screen: nobody's music plays there
         const auto* p = m_greeter ? nullptr : Mpris::get().active();
@@ -381,10 +400,136 @@ void Styled::weatherCard() {
     }
 }
 
+// ── Digital Wellbeing, VPN, Quick Share ──
+
+namespace {
+
+std::string minutes(int seconds) {
+    if (seconds > 0 && seconds < 60) return "< 1 min";
+    const int h = seconds / 3600, m = seconds / 60 % 60;
+    return h ? std::format("{} h {} min", h, m) : std::format("{} min", m);
+}
+
+// A tonal pill that switches something, filled while on
+Button* togglePill(Node* parent, const std::string& icon, const std::string& label, bool on, float k, std::function<void()> flip) {
+    auto* b = parent->add<Button>(Flex::Direction::Row);
+    pill(b)->setPadding({14 * k, 10 * k})->setSpacing(8 * k);
+    b->setBackground(on ? ColorRef("primary") : ColorRef("surface_container_highest", 0.8f), false);
+    b->pressedRadius = 10;
+    b->grow = true;
+    b->add<Icon>(icon, 20 * k)->setFill(on)->setColor(on ? "on_primary" : "on_surface", false);
+    b->add<Label>(label)->setSize(14 * k)->setWeight(600)->setColor(on ? "on_primary" : "on_surface", false);
+    b->onClicked = [flip = std::move(flip)](uint32_t button) {
+        if (button == BTN_LEFT) flip();
+    };
+    return b;
+}
+
+} // namespace
+
+// Today's screen time: the ring of apps, the total, the top three
+void Styled::screenTime() {
+    const auto& today = Wellbeing::get().today();
+    std::vector<std::pair<std::string, int>> apps(today.seconds.begin(), today.seconds.end());
+    std::ranges::sort(apps, std::greater{}, &std::pair<std::string, int>::second);
+    std::vector<std::pair<std::string, int>> parts;
+    int shown = 0;
+    for (size_t i = 0; i < apps.size() && i < 4; ++i) {
+        parts.push_back(apps[i]);
+        shown += apps[i].second;
+    }
+    if (today.total() > shown) parts.push_back({"", today.total() - shown});
+    auto* c = card(this, Flex::Direction::Row);
+    c->setSpacing(18 * m_k)->setAlignItems(Align::Center);
+    // No sweep: it rebuilds as the minutes pass
+    c->add<UsageRing>(84 * m_k, false)->set(parts, today.total());
+    auto* text = c->add<Flex>(Flex::Direction::Column);
+    text->setSpacing(4 * m_k)->setAlignItems(Align::Start);
+    text->add<Label>(minutes(today.total()))->setSize(26 * m_k)->setWeight(500)->setColor("on_surface", false);
+    text->add<Label>("Screen time today")->setSize(12 * m_k)->setColor("on_surface_variant", false);
+    for (size_t i = 0; i < parts.size() && i < 3; ++i) {
+        if (parts[i].first.empty()) continue;
+        auto* k = text->add<Flex>(Flex::Direction::Row);
+        k->setSpacing(6 * m_k)->setAlignItems(Align::Center);
+        auto* dot = k->add<Flex>(Flex::Direction::Row);
+        pill(dot->setBackground(UsageRing::kRoles[i], false));
+        dot->fixedWidth = dot->fixedHeight = 8 * m_k;
+        k->add<Label>(std::format("{} · {}", Wellbeing::nameOf(parts[i].first), minutes(parts[i].second)))
+            ->setSize(12 * m_k)
+            ->setMaxWidth(200 * m_k)
+            ->setColor("on_surface", false);
+    }
+}
+
+// Focus mode and Bedtime, a tap each
+void Styled::wellbeingModes() {
+    auto& w = Wellbeing::get();
+    auto* c = card(this);
+    auto* head = c->add<Flex>(Flex::Direction::Row);
+    head->setSpacing(8 * m_k)->setAlignItems(Align::Center);
+    head->add<Icon>("digital_wellbeing", 20 * m_k)->setColor("primary", false);
+    head->add<Label>(std::format("Digital Wellbeing · {}", minutes(w.today().total())))->setSize(13 * m_k)->setWeight(600)->setColor(
+        "on_surface", false);
+    auto* row = c->add<Flex>(Flex::Direction::Row);
+    row->setSpacing(8 * m_k);
+    togglePill(row, "self_improvement", "Focus", w.focus(), m_k, [] { Wellbeing::get().setFocus(!Wellbeing::get().focus()); });
+    togglePill(row, "bedtime", "Bedtime", w.bedtime(), m_k, [] { Wellbeing::get().setBedtimeNow(!Wellbeing::get().bedtime()); });
+}
+
+// The VPN in use, and a switch
+void Styled::vpn() {
+    auto& v = Vpn::get();
+    const bool on = v.anyActive(), busy = !v.busy().empty();
+    auto* c = card(this, Flex::Direction::Row);
+    c->setSpacing(14 * m_k)->setAlignItems(Align::Center);
+    auto* bubble = c->add<Flex>(Flex::Direction::Row);
+    pill(bubble->setBackground(on ? "primary" : "surface_container_highest", false))->setJustify(Align::Center);
+    bubble->fixedWidth = bubble->fixedHeight = 44 * m_k;
+    bubble->add<Icon>(on ? "vpn_lock" : "vpn_key", 22 * m_k)->setFill(on)->setColor(on ? "on_primary" : "on_surface", false);
+    auto* text = c->add<Flex>(Flex::Direction::Column);
+    text->setSpacing(2)->setAlignItems(Align::Start);
+    text->grow = true;
+    text->add<Label>(on ? v.activeName() : "VPN")->setSize(15 * m_k)->setWeight(600)->setMaxWidth(180 * m_k)->setColor("on_surface", false);
+    text->add<Label>(busy ? "Connecting…" : on ? "Connected" : v.connections().empty() && v.warp() == Vpn::Warp::Absent ? "None set up" : "Off")
+        ->setSize(12 * m_k)
+        ->setColor("on_surface_variant", false);
+    auto* sw = c->add<Switch>();
+    sw->setChecked(on || busy, false);
+    sw->onToggled = [](bool) { Vpn::get().toggleLast(); };
+}
+
+// Quick Share: visible or not, a transfer's progress, Send
+void Styled::quickShare() {
+    auto& q = quickshare::QuickShare::get();
+    auto* c = card(this, Flex::Direction::Row);
+    c->setSpacing(14 * m_k)->setAlignItems(Align::Center);
+    auto* bubble = c->add<Flex>(Flex::Direction::Row);
+    pill(bubble->setBackground("primary_container", false))->setJustify(Align::Center);
+    bubble->fixedWidth = bubble->fixedHeight = 44 * m_k;
+    bubble->add<Icon>(quickshare::QuickShare::symbol(), 24 * m_k)->setColor("on_primary_container", false);
+    auto* text = c->add<Flex>(Flex::Direction::Column);
+    text->setSpacing(2)->setAlignItems(Align::Start);
+    text->grow = true;
+    text->add<Label>("Quick Share")->setSize(15 * m_k)->setWeight(600)->setColor("on_surface", false);
+    std::string status = q.receiving() ? "Visible as " + q.deviceName() : "Not visible";
+    for (const auto& [_, t] : q.transfers())
+        if (t.state == quickshare::QuickShare::State::Receiving && t.total > 0)
+            status = std::format("{} {} · {}%", t.outgoing ? "To" : "From", t.sender, t.received * 100 / t.total);
+    text->add<Label>(status)->setSize(12 * m_k)->setMaxWidth(190 * m_k)->setColor("on_surface_variant", false);
+    auto* send = c->add<Button>(Flex::Direction::Row);
+    pill(send->setBackground("primary", false))->setPadding({14 * m_k, 8 * m_k})->setSpacing(6 * m_k);
+    send->add<Icon>("send", 18 * m_k)->setColor("on_primary", false);
+    send->add<Label>("Send")->setSize(13 * m_k)->setWeight(600)->setColor("on_primary", false);
+    send->onClicked = [](uint32_t button) {
+        if (button == BTN_LEFT && panels::open) panels::open("quickshare-send ");
+    };
+}
+
 } // namespace
 
 Node* addStyledWidget(Node* parent, const std::string& id, bool greeter, Align align) {
-    static const char* ids[] = {"cal-day", "cal-week", "cal-month", "cal-agenda", "music-disc", "music-bar", "weather-big", "weather-card"};
+    static const char* ids[] = {"cal-day",     "cal-week",     "cal-month",  "cal-agenda",      "music-disc", "music-bar",
+                                "weather-big", "weather-card", "screentime", "wellbeing-modes", "vpn",        "quickshare"};
     for (const char* known : ids)
         if (id == known) return parent->add<Styled>(id, greeter, align);
     return nullptr;

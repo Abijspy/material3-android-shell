@@ -3,6 +3,7 @@
 #include "core/Config.h"
 #include "core/EventLoop.h"
 #include "core/Process.h"
+#include "quickshare/QuickShare.h"
 #include "render/Images.h"
 #include "services/Search.h"
 #include "shell/ClockFaces.h"
@@ -183,6 +184,7 @@ Node* cardWidget(Node* parent, const std::string& id) {
 } // namespace
 
 const std::vector<WidgetDef>& widgets() {
+    static const std::string quickShare = quickshare::QuickShare::symbol(); // its own symbol, as a path
     static const std::vector<WidgetDef> all = {
         {"clock", "schedule", "Digital clock", "The time and date, large"},
         {"clock-stacked", "view_agenda", "Stacked clock", "Hours over minutes, bold, in two tones"},
@@ -204,6 +206,10 @@ const std::vector<WidgetDef>& widgets() {
         {"system", "monitoring", "System", "CPU, memory, disk and uptime"},
         {"battery", "battery_full", "Battery", "Charge and status"},
         {"notifications", "notifications", "Notifications", "How many are waiting"},
+        {"screentime", "digital_wellbeing", "Screen time", "Today's time, by app"},
+        {"wellbeing-modes", "self_improvement", "Focus & Bedtime", "Switch Focus mode or Bedtime"},
+        {"vpn", "vpn_key", "VPN", "The VPN in use, with a switch"},
+        {"quickshare", quickShare.c_str(), "Quick Share", "Visible or not, and Send"},
     };
     return all;
 }
