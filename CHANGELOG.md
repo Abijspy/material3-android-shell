@@ -1,5 +1,21 @@
 # Changelog
 
+## v5.7.1 — 2026-10-25
+
+- **New bar widgets** (Settings → Status bar):
+  - **Screen time**, today's total.
+  - **Focus mode** and **Bedtime**, a click to switch.
+  - **VPN**, the one in use; click to connect or disconnect.
+  - **Quick Share**, with a transfer's progress; click to send files.
+  - **Firewall**, on or off.
+- **New desktop widgets:**
+  - **Screen time**, a ring of today's apps with the total.
+  - **Focus & Bedtime**, a button each.
+  - **VPN**, with a switch.
+  - **Quick Share**, with Send.
+
+  The lock screen can show Screen time too.
+
 ## v5.7.0 — 2026-10-25
 
 - **Digital Wellbeing**, as on Android, in Settings → Digital Wellbeing:
