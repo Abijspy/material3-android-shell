@@ -780,12 +780,7 @@ void appearancePage(Flex* page, Popup& popup) {
 
     auto* colour = group(page, "Colours", "Material You colours come from the wallpaper, or from an accent you pick");
     switchRow(colour, "dark_mode", "Dark theme", "", "/background/darkmode", true, [](bool) { recolour(); });
-    choiceRow<std::string>(colour, "palette", "Scheme", "", "/background/matugenScheme", "scheme-content",
-                           {{"scheme-content", "Content"}, {"scheme-tonal-spot", "Tonal"}, {"scheme-expressive", "Expressive"},
-                            {"scheme-vibrant", "Vibrant"}, {"scheme-monochrome", "Mono"}},
-                           [](std::string) { recolour(); });
-
-    // Accent: the wallpaper, or a seed colour for Matugen
+    // The wallpaper's colours in four styles, basic colours, and the style
     accentRows(colour);
 
     appThemingRows(page);

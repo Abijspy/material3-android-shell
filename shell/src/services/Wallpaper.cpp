@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <nlohmann/json.hpp>
 #include <fstream>
+#include <map>
 #include <sstream>
 #include <unistd.h>
 
@@ -115,9 +116,10 @@ void Wallpaper::recolour() {
     // Templates switched off: Matugen runs a copy of its config without them
     if (const auto filtered = filteredConfig(); !filtered.empty()) cmd.insert(cmd.end(), {"--config", filtered});
     // Matugen 4 asks which colour to use when an image offers several, and
-    // fails without a terminal to ask on: take the most colourful one
-    if (fromWallpaper) cmd.insert(cmd.end(), {"--source-color-index", std::to_string(std::clamp(std::atoi(accent.c_str() + 10), 0, 4))});
-    else cmd.insert(cmd.end(), {"--prefer", "saturation"});
+    // fails without a terminal to ask on: the chosen one, or (picked for
+    // you, as Android does) its first, the best scored
+    if (cmd[1] == "image")
+        cmd.insert(cmd.end(), {"--source-color-index", fromWallpaper ? std::to_string(std::clamp(std::atoi(accent.c_str() + 10), 0, 3)) : "0"});
     run(cmd, [](int code, const std::string&) {
         if (code != 0) {
             log::warn("matugen failed ({}); the palette is unchanged", code);
@@ -216,6 +218,38 @@ void Wallpaper::sourceColours(std::function<void(const std::vector<std::string>&
         cachedFor = image;
         cached = colours;
         done(colours);
+    });
+}
+
+void Wallpaper::swatch(const std::string& seed, const std::string& scheme, std::function<void(const std::vector<Color>&)> done) {
+    static std::map<std::string, std::vector<Color>> known;
+    static std::map<std::string, std::vector<std::function<void(const std::vector<Color>&)>>> waiting;
+    const std::string key = seed + " " + scheme;
+    if (const auto it = known.find(key); it != known.end()) return done(it->second);
+    auto& queue = waiting[key];
+    queue.push_back(std::move(done));
+    if (queue.size() > 1) return; // already asked
+    // One answer holds both modes' roles
+    run({"matugen", "color", "hex", seed, "--dry-run", "--json", "hex", "--type", scheme}, [key](int, const std::string& out) {
+        std::vector<Color> colours;
+        try {
+            // Its roles, not its palettes (those Matugen gives for the seed
+            // whatever the scheme). As ThemePicker draws them: the primary at
+            // tone 90 (primary_fixed), the tertiary at 85 (between tertiary,
+            // 80, and its fixed, 90) and the primary at about 50
+            const auto roles = nlohmann::json::parse(out).at("colors");
+            const auto role = [&](const char* name, const char* mode) {
+                return Color::fromHex(roles.at(name).at(mode).at("color").get<std::string>()).value_or(Color{});
+            };
+            colours = {role("primary_fixed", "dark"), Color::mix(role("tertiary", "dark"), role("tertiary_fixed", "dark"), 0.5f),
+                       Color::mix(role("primary", "light"), role("primary", "dark"), 0.25f)};
+        } catch (const std::exception&) {
+            colours.clear();
+        }
+        known[key] = colours;
+        auto callbacks = std::move(waiting[key]);
+        waiting.erase(key);
+        for (auto& cb : callbacks) cb(colours);
     });
 }
 

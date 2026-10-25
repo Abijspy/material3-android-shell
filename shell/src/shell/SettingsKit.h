@@ -78,9 +78,10 @@ struct Row {
     Label* subtitle;
 };
 Row row(Node* group, const std::string& icon, const std::string& title, const std::string& subtitle = {});
-// The accent, as Android 16 offers it: two rows added to `group`, the
-// wallpaper's own colours and the basic ones; the chosen swatch carries a ✓
-// (in a colour that reads on it)
+// Colours, as Android offers them, added to `group`: the wallpaper's own
+// colours each in four styles, basic colours, and the style alone. Each
+// swatch shows the palette it makes (three colours); the chosen one sits
+// in a ring
 void accentRows(Node* group);
 Button* pillButton(Node* parent, const std::string& label, bool primary, std::function<void()> fn, const std::string& icon = {});
 

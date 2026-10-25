@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Signal.h"
+#include "ui/Color.h"
 
 #include <functional>
 #include <string>
@@ -26,6 +27,11 @@ public:
     // The wallpaper's own colours, most dominant first (what Android offers
     // as "Wallpaper colours"); `done` runs once Matugen has looked
     void sourceColours(std::function<void(const std::vector<std::string>&)> done);
+    // What Android's colour options show for a seed in a scheme ("#826ac1",
+    // "scheme-vibrant"): the primary's light tone (a swatch's top half),
+    // then the tertiary's and the primary's middle one (its quarters below).
+    // Empty when Matugen can't say; remembered once worked out
+    static void swatch(const std::string& seed, const std::string& scheme, std::function<void(const std::vector<Color>&)> done);
     // Matugen's templates (apps it themes), from ~/.config/matugen/config.toml
     std::vector<std::string> templates() const;
     // Switched off in Settings (Wallpaper & style → App theming): left out of
