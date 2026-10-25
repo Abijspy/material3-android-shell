@@ -43,6 +43,8 @@
 #include "shell/Popup.h"
 #include "shell/PrintersPage.h"
 #include "shell/bar/Bar.h"
+#include "shell/bar/Frame.h"
+#include "shell/bar/Widgets.h"
 #include "ui/Theme.h"
 #include "wayland/Display.h"
 #include "wayland/Surface.h"
@@ -125,8 +127,8 @@ bool Shell::start() {
     });
 
     // "settings dock" opens a panel with an argument (here, a Settings page)
-    panels::openAboveDock = [this](const std::string& name, const std::string& arg, float anchorX) {
-        EventLoop::get().defer([this, name, arg, anchorX] { togglePopup(name, focusedOutput(), anchorX, arg); });
+    panels::openAboveDock = [this](const std::string& name, const std::string& arg, float anchor) {
+        EventLoop::get().defer([this, name, arg, anchor] { togglePopup(name, focusedOutput(), anchor, arg); });
     };
     panels::open = [this](const std::string& what) {
         EventLoop::get().defer([this, what] {
@@ -150,6 +152,8 @@ bool Shell::start() {
     panels::editBar = [this](bool on) {
         // Not inside the click that asked: rebuilding destroys that button
         EventLoop::get().defer([this, on] {
+            // A side bar is too narrow to edit in place: Settings does it
+            if (on && barVertical()) return openSettings("bar");
             Bar::editing = on;
             if (on && m_popup) m_popup->close();
             for (auto& [_, bar] : m_bars) bar->rebuild();
@@ -172,7 +176,18 @@ void Shell::addOutput(wl::Output* output) {
     if (!m_barsVisible) bar->setVisible(false);
     if (Config::get().value<bool>("/desktop/wallpaper", true)) m_desktops[output] = std::make_unique<Desktop>(output);
     m_bars[output] = std::move(bar);
+    syncFrame(output); // after the bar: its zone comes first
     syncDock(output);
+}
+
+void Shell::syncFrame(wl::Output* output) {
+    if (!Bar::framed()) {
+        m_frames.erase(output);
+        return;
+    }
+    if (auto it = m_frames.find(output); it != m_frames.end()) it->second->rebuild();
+    else m_frames[output] = std::make_unique<Frame>(output);
+    m_frames[output]->setVisible(m_barsVisible);
 }
 
 void Shell::syncDock(wl::Output* output) {
@@ -186,6 +201,7 @@ void Shell::removeOutput(wl::Output* output) {
     LockScreen::get().removeOutput(output);
     m_desktops.erase(output);
     m_docks.erase(output);
+    m_frames.erase(output);
     if (m_popup && m_popup->output() == output) m_popup.reset();
     m_bars.erase(output);
 }
@@ -281,7 +297,7 @@ void Shell::greet(bool freshInstall) {
     else togglePopup("whatsnew", focusedOutput(), -1, seen);
 }
 
-void Shell::togglePopup(const std::string& name, wl::Output* output, float anchorX, const std::string& arg) {
+void Shell::togglePopup(const std::string& name, wl::Output* output, float anchor, const std::string& arg) {
     if (name == "settings") return openSettings(arg);
     if (name == "welcome") return openWelcome();
     if (name == "hyprsettings") return openHyprSettings(arg);
@@ -300,7 +316,7 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
 
     Popup::Options opts;
     opts.name = name;
-    opts.anchorX = anchorX;
+    opts.anchor = anchor;
     std::function<void(ui::Flex*, Popup&)> build;
     if (name == "audio") {
         opts.width = 400;
@@ -316,7 +332,7 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         build = [arg](ui::Flex* card, Popup& p) { panels::dockMenu(card, p, arg); };
     } else if (name == "btpair") {
         opts.width = 420;
-        opts.anchorX = -1;
+        opts.anchor = -1;
         opts.centredVertically = true;
         build = panels::bluetoothPair;
     } else if (name == "battery") {
@@ -324,7 +340,7 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         build = panels::battery;
     } else if (name == "run") {
         opts.width = 560;
-        opts.anchorX = -1;
+        opts.anchor = -1;
         opts.centredVertically = true;
         build = panels::run;
     } else if (name == "quicksettings") {
@@ -335,12 +351,12 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         build = panels::notifications;
     } else if (name == "power") {
         opts.width = 520;
-        opts.anchorX = -1;
+        opts.anchor = -1;
         opts.centredVertically = true;
         build = panels::power;
     } else if (name == "launcher") {
         opts.width = 680;
-        opts.anchorX = -1;
+        opts.anchor = -1;
         opts.centredVertically = true;
         build = [arg](ui::Flex* card, Popup& p) { panels::launcher(card, p, arg); };
     } else if (name == "dashboard") {
@@ -348,7 +364,7 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         build = panels::dashboard;
     } else if (name == "wallpapers") {
         opts.width = 880;
-        opts.anchorX = -1;
+        opts.anchor = -1;
         opts.centredVertically = true;
         build = panels::wallpapers;
     } else if (name == "lockeditor") {
@@ -359,47 +375,47 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         build = [arg](ui::Flex* card, Popup& p) { panels::barWidgets(card, p, arg); };
     } else if (name == "clipboard") {
         opts.width = 560;
-        opts.anchorX = -1;
+        opts.anchor = -1;
         opts.centredVertically = true;
         build = panels::clipboard;
     } else if (name == "screenshot") {
         opts.width = 540; // the Record tab's rows of choices
-        opts.anchorX = -1;
+        opts.anchor = -1;
         opts.centredVertically = true;
         build = panels::screenshot;
     } else if (name == "settings") {
         opts.width = 1024;
-        opts.anchorX = -1;
+        opts.anchor = -1;
         opts.centredVertically = true;
         build = [arg](ui::Flex* card, Popup& p) { panels::settings(card, p, arg); };
     } else if (name == "quickshare") {
         opts.width = 520;
-        opts.anchorX = -1;
+        opts.anchor = -1;
         opts.centredVertically = true;
         build = [arg](ui::Flex* card, Popup& p) { panels::quickSharePanel(card, p, arg); };
     } else if (name == "print") {
         opts.width = 520;
-        opts.anchorX = -1;
+        opts.anchor = -1;
         opts.centredVertically = true;
         build = [arg](ui::Flex* card, Popup& p) { panels::printDialog(card, p, arg); };
     } else if (name == "quickshare-send") {
         opts.width = 560;
-        opts.anchorX = -1;
+        opts.anchor = -1;
         opts.centredVertically = true;
         build = [arg](ui::Flex* card, Popup& p) { panels::quickShareSend(card, p, arg); };
     } else if (name == "event") {
         opts.width = 560;
-        opts.anchorX = -1;
+        opts.anchor = -1;
         opts.centredVertically = true;
         build = [arg](ui::Flex* card, Popup& p) { panels::eventEditor(card, p, arg); };
     } else if (name == "files") {
         opts.width = 980;
-        opts.anchorX = -1;
+        opts.anchor = -1;
         opts.centredVertically = true;
         build = [arg](ui::Flex* card, Popup& p) { panels::filePicker(card, p, arg.empty() ? "wallpaper" : arg); };
     } else if (name == "whatsnew") {
         opts.width = 560;
-        opts.anchorX = -1;
+        opts.anchor = -1;
         opts.centredVertically = true;
         build = [arg](ui::Flex* card, Popup& p) { panels::whatsNew(card, p, arg); };
     } else if (name == "overview") {
@@ -407,7 +423,7 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         build = panels::overview;
     } else if (name.starts_with("polkit:")) {
         opts.width = 460;
-        opts.anchorX = -1;
+        opts.anchor = -1;
         opts.centredVertically = true;
         const int id = std::stoi(name.substr(7));
         build = [id](ui::Flex* card, Popup& p) { panels::polkit(card, p, id); };
@@ -439,7 +455,10 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
 void Shell::restyle(bool relayout) {
     if (relayout) {
         TextEngine::get().clear();
-        for (auto& [_, bar] : m_bars) bar->rebuild();
+        for (auto& [output, bar] : m_bars) {
+            bar->rebuild();
+            syncFrame(output);
+        }
         // Open panels and windows too: text may have grown (Accessibility)
         for (auto* s : wl::Surface::all()) s->requestLayout();
         // Desktop widgets follow settings too (sizes, formats), on the same
@@ -481,6 +500,7 @@ void Shell::registerIpc() {
         else if (mode == "toggle") m_barsVisible = !m_barsVisible;
         else return std::string("error: bar takes toggle, show or hide");
         for (auto& [_, bar] : m_bars) bar->setVisible(m_barsVisible);
+        for (auto& [_, frame] : m_frames) frame->setVisible(m_barsVisible);
         return std::string(m_barsVisible ? "shown" : "hidden");
     });
     ipc.add("popup", "popup <quicksettings [wifi]|notifications|dashboard|overview|power|audio|network|bluetooth|battery|run>: toggle a panel",

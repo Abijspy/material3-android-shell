@@ -28,6 +28,9 @@ public:
     ~LayerSurface() override;
 
     void setSize(int width, int height);
+    // Edge and size at once, in one commit: moving to another edge in two
+    // would leave a size of 0 along an edge that isn't stretched (an error)
+    void setPlacement(uint32_t anchor, int width, int height);
     void setMargins(int top, int right, int bottom, int left);
     const Options& options() const { return m_options; }
     void setAnchor(uint32_t anchor);

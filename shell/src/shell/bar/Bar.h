@@ -30,11 +30,21 @@ public:
     bool visible() const { return m_surface->visible(); }
     void redraw() { m_surface->requestRedraw(); }
 
-    // Top or bottom edge, from statusBar.position
+    // The edge it's on, from statusBar.position: top, bottom, left or right
     static uint32_t anchor();
+    // How thick it is: its height across the screen, or its width down a side
+    static int thickness();
+    // The space it keeps on its edge: its thickness, and a floating bar's gap
+    static int zone();
+    // The Framed style (Caelestia's look): the bar's surface runs round the
+    // screen as a thin frame (Frame draws it, the bar its widgets)
+    static bool framed();
 
     // Modules the bar can show, and where they are: statusBar.layout holds
-    // {"left": [ids], "center": [ids], "right": [ids]}
+    // {"left": [ids], "center": [ids], "right": [ids]} (left is the top on a
+    // side bar, right the bottom). A side bar keeps its own, layoutSide,
+    // once it has one: switching edges leaves each arrangement be
+    static const char* layoutKey();
     struct Module {
         const char* id;
         const char* icon;
@@ -43,7 +53,8 @@ public:
     };
     static const std::vector<Module>& modules();
     // Edit mode, on every bar at once: widgets get move/remove controls,
-    // each zone a "+" that opens the widget picker, and a Done button
+    // each zone a "+" that opens the widget picker, and a Done button (a
+    // side bar is edited in Settings instead)
     static inline bool editing = false;
     // A zone is a list of groups; a group of two or more widgets shares one
     // capsule on the bar. In config.json a zone lists ids, or arrays of ids
@@ -67,7 +78,7 @@ public:
 private:
     int height() const;
     // The surface: the bar, plus the gap a floating bar keeps from the edge
-    int totalHeight() const;
+    int totalHeight() const { return zone(); }
     void addModule(ui::Flex* zone, const std::string& id, bool filled);
 
     wl::Output* m_output;

@@ -83,6 +83,18 @@ void LayerSurface::setMargins(int top, int right, int bottom, int left) {
     }
 }
 
+void LayerSurface::setPlacement(uint32_t anchor, int width, int height) {
+    if (anchor == m_options.anchor && width == m_options.width && height == m_options.height) return;
+    m_options.anchor = anchor;
+    m_options.width = width;
+    m_options.height = height;
+    if (m_layer) {
+        zwlr_layer_surface_v1_set_anchor(m_layer, anchor);
+        zwlr_layer_surface_v1_set_size(m_layer, width, height);
+        wl_surface_commit(wlSurface());
+    }
+}
+
 void LayerSurface::setSize(int width, int height) {
     if (width == m_options.width && height == m_options.height) return;
     m_options.width = width;

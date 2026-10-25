@@ -61,9 +61,10 @@ B.apply_custom()
 -- written to effects_custom.lua
 local ok_fx, fx = pcall(require, "material3ui.effects_custom")
 if not ok_fx or type(fx) ~= "table" then fx = {} end
-for _, ns in ipairs({ "bar", "popup", "toasts", "osd", "dock", "switcher" }) do
-	-- The bar and the dock each can go without (Settings → Status bar, Dock)
-	local on = fx.blur ~= false and fx[ns] ~= false
+for _, ns in ipairs({ "bar", "frame", "popup", "toasts", "osd", "dock", "switcher" }) do
+	-- The bar and the dock each can go without (Settings → Status bar, Dock);
+	-- the frame round the screen (the Framed bar style) goes with the bar
+	local on = fx.blur ~= false and fx[ns == "frame" and "bar" or ns] ~= false
 	hl.layer_rule({ match = { namespace = "material3ui-" .. ns }, blur = on, ignore_alpha = fx.ignore_alpha or 0.6 })
 end
 hl.layer_rule({ match = { namespace = "material3ui-wallpaper" }, blur = false, no_anim = true })

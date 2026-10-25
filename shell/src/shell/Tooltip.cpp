@@ -56,12 +56,24 @@ void Tooltip::place() {
     using A = wl::LayerSurface;
     const SizeF size = m_root->measure({400, 100});
     const int tw = static_cast<int>(std::ceil(size.w)), th = static_cast<int>(std::ceil(size.h));
+    constexpr int gap = 6;
+    // A side bar: beside it, level with the item, kept on the screen
+    if (!((o.anchor & A::Left) && (o.anchor & A::Right))) {
+        const bool right = o.anchor & A::Right;
+        const float height = m_source->size().h;
+        const int top = o.marginTop + static_cast<int>(std::clamp(m_y + m_h / 2 - static_cast<float>(th) / 2, 4.0f,
+                                                                    std::max(4.0f, height - static_cast<float>(th) - 4)));
+        const int across = static_cast<int>(std::lround(right ? m_source->size().w - m_x : m_x + m_w)) + gap;
+        if (right) m_surface->setMargins(top, o.marginRight + across, 0, 0);
+        else m_surface->setMargins(top, 0, 0, o.marginLeft + across);
+        m_surface->setSize(tw, th);
+        return;
+    }
     // Centred on the item, kept on the screen
     const float width = m_source->size().w;
     const int left = o.marginLeft + static_cast<int>(std::clamp(m_x + m_w / 2 - static_cast<float>(tw) / 2, 4.0f,
                                                                  std::max(4.0f, width - static_cast<float>(tw) - 4)));
     const bool bottom = (o.anchor & A::Bottom) && !(o.anchor & A::Top);
-    constexpr int gap = 6;
     if (bottom) m_surface->setMargins(0, 0, o.marginBottom + static_cast<int>(std::lround(m_source->size().h - m_y)) + gap, left);
     else m_surface->setMargins(o.marginTop + static_cast<int>(std::lround(m_y + m_h)) + gap, 0, 0, left);
     m_surface->setSize(tw, th);
@@ -72,8 +84,11 @@ void Tooltip::show(wl::Surface* source, const std::string& text, float x, float 
     if (!layer || text.empty()) return;
     const auto& o = layer->options();
     using A = wl::LayerSurface;
-    // Only surfaces across the whole output (the bar, the dock) place it
-    if (!(o.anchor & A::Left) || !(o.anchor & A::Right)) return;
+    // Only surfaces across the whole output (the bar, the dock, popups)
+    // place it, or down a whole side (a side bar)
+    const bool across = (o.anchor & A::Left) && (o.anchor & A::Right);
+    const bool down = !across && (o.anchor & A::Top) && (o.anchor & A::Bottom);
+    if (!across && !down) return;
     m_source = source;
     m_x = x;
     m_y = y;
@@ -93,7 +108,8 @@ void Tooltip::show(wl::Surface* source, const std::string& text, float x, float 
     opts.exclusiveZone = -1;
     opts.width = 1;
     opts.height = 1;
-    opts.anchor = ((o.anchor & A::Bottom) && !(o.anchor & A::Top) ? A::Bottom : A::Top) | A::Left;
+    if (down) opts.anchor = A::Top | (o.anchor & A::Right ? A::Right : A::Left); // beside a side bar
+    else opts.anchor = ((o.anchor & A::Bottom) && !(o.anchor & A::Top) ? A::Bottom : A::Top) | A::Left;
     m_surface = std::make_unique<wl::LayerSurface>(source->output(), opts);
     m_surface->setInputRegion(std::vector<RectF>{}); // clicks pass through
     root->setOpacity(0, false);

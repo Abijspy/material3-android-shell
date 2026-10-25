@@ -1,5 +1,7 @@
 #include "shell/bar/Status.h"
 
+#include "shell/bar/Widgets.h"
+
 #include "render/Images.h"
 #include "services/Audio.h"
 #include "services/Mpris.h"
@@ -38,7 +40,7 @@ public:
             const int x = static_cast<int>(rect().x), y = static_cast<int>(rect().bottom());
             if (b == BTN_LEFT) Tray::get().activate(m_item.key, x, y);
             else if (b == BTN_MIDDLE) Tray::get().secondaryActivate(m_item.key, x, y);
-            else if (b == BTN_RIGHT && !m_item.menuPath.empty()) open("traymenu:" + m_item.key, rect().x + rect().w / 2);
+            else if (b == BTN_RIGHT && !m_item.menuPath.empty()) open("traymenu:" + m_item.key, alongBar(this));
             else if (b == BTN_RIGHT) Tray::get().contextMenu(m_item.key, x, y);
         };
         onScrolled = [this](int d) { Tray::get().scroll(m_item.key, d * 120); };
@@ -66,15 +68,20 @@ private:
 
 // ── StatusIcons ──
 
-StatusIcons::StatusIcons(OpenPopup open) : Flex(Direction::Row) {
+StatusIcons::StatusIcons(OpenPopup open, bool vertical) : Flex(vertical ? Direction::Column : Direction::Row) {
     setSpacing(2);
     auto make = [&](const char* popup, Icon*& icon) {
         auto* b = add<Button>();
-        pill(b)->setPadding({6, 0});
-        b->fixedHeight = 28;
+        if (vertical) {
+            pill(b)->setPadding({0, 6})->setJustify(Align::Center);
+            b->fixedWidth = 28;
+        } else {
+            pill(b)->setPadding({6, 0});
+            b->fixedHeight = 28;
+        }
         icon = b->add<Icon>("", 18);
         b->onClicked = [this, b, open, popup](uint32_t button) {
-            if (button == BTN_LEFT) open(popup, b->rect().x + b->rect().w / 2);
+            if (button == BTN_LEFT) open(popup, alongBar(b));
         };
         return b;
     };
@@ -84,7 +91,7 @@ StatusIcons::StatusIcons(OpenPopup open) : Flex(Direction::Row) {
     m_bell = make("notifications", m_bellIcon);
     m_vol->onScrolled = [](int d) { Audio::get().stepVolume(-0.05f * static_cast<float>(d)); };
     m_vol->onClicked = [this, open](uint32_t button) {
-        if (button == BTN_LEFT) open("audio", m_vol->rect().x + m_vol->rect().w / 2);
+        if (button == BTN_LEFT) open("audio", alongBar(m_vol));
         if (button == BTN_MIDDLE) Audio::get().toggleMuted();
     };
     m_a = Network::get().changed.connect([this] { sync(); });
@@ -116,15 +123,21 @@ void StatusIcons::sync() {
 
 // ── BatteryStatus ──
 
-BatteryStatus::BatteryStatus(OpenPopup open) : Button(Direction::Row) {
-    pill(this)->setPadding({10, 0})->setSpacing(4);
-    fixedHeight = 28;
+BatteryStatus::BatteryStatus(OpenPopup open, bool vertical) : Button(vertical ? Direction::Column : Direction::Row), m_vertical(vertical) {
+    if (vertical) {
+        // The icon over its percentage, small enough for the bar's width
+        pill(this)->setPadding({0, 8})->setSpacing(2);
+        fixedWidth = 28;
+    } else {
+        pill(this)->setPadding({10, 0})->setSpacing(4);
+        fixedHeight = 28;
+    }
     onClicked = [this, open = std::move(open)](uint32_t button) {
-        if (button == BTN_LEFT) open("battery", rect().x + rect().w / 2);
+        if (button == BTN_LEFT) open("battery", alongBar(this));
     };
     m_icon = add<Icon>("battery_full", 18);
     m_label = add<Label>();
-    m_label->setSize(13)->setWeight(500);
+    m_label->setSize(vertical ? 11 : 13)->setWeight(500);
     m_conn = Power::get().changed.connect([this] { sync(); });
     sync();
 }
@@ -134,20 +147,21 @@ void BatteryStatus::sync() {
     setVisible(p.hasBattery());
     m_icon->setText(p.icon());
     m_icon->setColor(p.percent() <= 15 && !p.charging() ? ColorRef("error") : ColorRef("on_surface"));
-    m_label->setText(std::to_string(p.percent()) + "%");
+    m_label->setText(std::to_string(p.percent()) + (m_vertical ? "" : "%"));
     setTooltip(std::format("Battery {}% · {}", p.percent(), p.status()));
 }
 
 // ── Media ──
 
-Media::Media() : Button(Direction::Row) {
-    pill(this)->setPadding({10, 0})->setSpacing(6);
+Media::Media(bool vertical) : Button(Direction::Row) {
+    pill(this)->setPadding({vertical ? 1.0f : 10.0f, 0})->setSpacing(6);
     fixedHeight = 28;
     // The play state inside a ring of the track's progress
     m_icon = add<kit::WavyRing>(26)->add<Icon>("music_note", 14);
     m_icon->setColor("primary");
     m_label = add<Label>();
     m_label->setSize(13)->setMaxWidth(240);
+    m_label->setVisible(!vertical);
     onClicked = [](uint32_t b) {
         if (b == BTN_LEFT) Mpris::get().playPause();
         else if (b == BTN_RIGHT) Mpris::get().next();
@@ -168,7 +182,7 @@ void Media::sync() {
 
 // ── TrayIcons ──
 
-TrayIcons::TrayIcons(OpenPopup open) : Flex(Direction::Row), m_open(std::move(open)) {
+TrayIcons::TrayIcons(OpenPopup open, bool vertical) : Flex(vertical ? Direction::Column : Direction::Row), m_open(std::move(open)) {
     setSpacing(2);
     collapseWhenEmpty = true;
     m_conn = Tray::get().changed.connect([this] { sync(); });

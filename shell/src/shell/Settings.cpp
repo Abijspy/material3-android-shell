@@ -842,25 +842,159 @@ void stylePage(Flex* page, Popup&) {
     });
 }
 
+namespace {
+
+// The looks Settings → Status bar offers whole: each sets the edge and the
+// style together (and Caelestia its own widgets for a side bar). Widgets
+// set on a top or bottom bar are never touched
+struct BarLook {
+    const char* id;
+    const char* name;
+    const char* about;
+};
+const BarLook kBarLooks[] = {
+    {"material", "Material 3", "Pills along the top"},
+    {"single", "Single bar", "One bar, its widgets highlighted"},
+    {"caelestia", "Caelestia", "Down the left, framing the screen"},
+};
+
+std::string currentBarLook() {
+    const auto& c = Config::get();
+    const auto position = c.value<std::string>("/statusBar/position", "top");
+    const int style = c.value<int>("/statusBar/backgroundStyle", 0);
+    if (position == "left" && style == 3) return "caelestia";
+    if (position == "top" && style == 1) return "single";
+    if (position == "top" && style == 0) return "material";
+    return "";
+}
+
+void applyBarLook(const std::string& look) {
+    auto& c = Config::get();
+    if (look == "caelestia") {
+        // Caelestia's own order: its logo and the workspaces, the window,
+        // then the tray, clock, status and power
+        using J = nlohmann::json;
+        J side = J::object();
+        side["left"] = J::array({"logo", "workspaces"});
+        side["center"] = J::array({"title"});
+        side["right"] = J::array({"tray", "clock", J::array({"status", "battery"}), "power"});
+        c.set("/statusBar/layoutSide", side);
+        c.set("/statusBar/frame/thickness", 10);
+        c.set("/statusBar/frame/rounding", 25);
+        c.set("/statusBar/height", 44);
+        c.set("/statusBar/pillColor", std::string("auto"));
+        c.set("/statusBar/backgroundStyle", 3);
+        c.set("/statusBar/position", std::string("left"));
+        return;
+    }
+    c.set("/statusBar/height", 40);
+    c.set("/statusBar/pillColor", std::string(look == "single" ? "surface" : "auto"));
+    c.set("/statusBar/backgroundStyle", look == "single" ? 1 : 0);
+    c.set("/statusBar/position", std::string("top"));
+}
+
+// A look in miniature: the screen, its bar and the bar's widgets
+class BarLookPreview : public Node {
+public:
+    explicit BarLookPreview(std::string look) : m_look(std::move(look)) {}
+
+protected:
+    SizeF doMeasure(SizeF) override { return {136, 82}; }
+    void doPaint(Renderer& r) override {
+        const auto& t = Theme::get();
+        const Color desktop = t.color("primary_container"), bar = t.color("surface_container_high"),
+                    pill = t.color("secondary_container"), accent = t.color("primary"), window = t.color("surface_container_highest");
+        const RectF b = rect();
+        r.rect(b, desktop, Radii(14));
+        auto widget = [&](float x, float y, float w, float h, const Color& c) { r.rect({b.x + x, b.y + y, w, h}, c, Radii(std::min(w, h) / 2)); };
+        if (m_look == "caelestia") {
+            // The bar down the left, a thin frame round the rest, its inner
+            // corners rounded; a window inside
+            r.rect(b, bar, Radii(14));
+            r.rect({b.x + 18, b.y + 5, b.w - 23, b.h - 10}, desktop, Radii(9));
+            r.rect({b.x + 26, b.y + 13, b.w - 39, b.h - 26}, window, Radii(5));
+            widget(6, 6, 6, 6, accent);
+            widget(5, 16, 8, 22, pill);
+            widget(5, b.h - 34, 8, 28, pill);
+            return;
+        }
+        r.rect({b.x + 14, b.y + 24, b.w - 28, b.h - 34}, window, Radii(5));
+        if (m_look == "single") {
+            r.rect({b.x, b.y, b.w, 16}, bar, Radii(14, 14, 0, 0));
+            widget(8, 4, 24, 8, pill);
+            widget(b.w / 2 - 12, 4, 24, 8, pill);
+            widget(b.w - 40, 4, 32, 8, pill);
+            return;
+        }
+        // Material 3: pills floating along the top
+        widget(7, 5, 28, 10, bar);
+        widget(b.w / 2 - 14, 5, 28, 10, bar);
+        widget(b.w - 39, 5, 32, 10, bar);
+    }
+
+private:
+    std::string m_look;
+};
+
+} // namespace
+
 void barPage(Flex* page, Popup&) {
+    // Whole looks first, then each setting on its own
+    auto* looks = group(page, "Looks", "A whole bar at a tap: its edge and style, and Caelestia its widgets. Then fine-tune it below");
+    auto* box = looks->add<Flex>(Flex::Direction::Column);
+    box->setPadding({16, 12})->setAlignItems(Align::Start);
+    auto* cards = box->add<Flow>();
+    cards->spacing = 10;
+    const std::string current = currentBarLook();
+    for (const auto& l : kBarLooks) {
+        auto* card = cards->add<Button>(Flex::Direction::Column);
+        card->setPadding(Insets(10))->setSpacing(8)->setRadius(Radii(22));
+        card->pressedRadius = 14;
+        const bool on = current == l.id;
+        card->setBackground(on ? ColorRef("secondary_container") : ColorRef("on_surface", 0.05f), false);
+        if (on) card->setBorder(2, ColorRef("primary"));
+        card->add<BarLookPreview>(l.id);
+        auto* name = card->add<Flex>(Flex::Direction::Row);
+        name->setSpacing(6);
+        if (on) name->add<Icon>("check_circle", 16)->setFill(true)->setColor("primary", false);
+        name->add<Label>(l.name)->setSize(14)->setWeight(600);
+        card->add<Label>(l.about)->setSize(12)->setMaxWidth(136)->setMaxLines(2)->setColor("on_surface_variant", false);
+        card->onClicked = [id = std::string(l.id)](uint32_t button) {
+            if (button != BTN_LEFT) return;
+            applyBarLook(id);
+            EventLoop::get().defer([] { reshowPage("bar"); });
+        };
+    }
+
     auto* layout = group(page, "Layout");
-    choiceRow<std::string>(layout, "vertical_align_top", "Position", "", "/statusBar/position", "top",
-                           {{"top", "Top"}, {"bottom", "Bottom"}});
+    const std::string position = Config::get().value<std::string>("/statusBar/position", "top");
+    const bool side = position == "left" || position == "right";
     const int style = Config::get().value<int>("/statusBar/backgroundStyle", 0);
-    // The floating bar's own rows come and go with it
-    choiceRow<int>(layout, "toolbar", "Style", "",
-                   "/statusBar/backgroundStyle", 0, {{0, "Pills"}, {1, "Full width"}, {2, "Floating bar"}}, [style](int v) {
-                       if ((v == 2) != (style == 2)) EventLoop::get().defer([] { reshowPage("bar"); });
+    // Rows that depend on the edge or the style come and go with them
+    choiceRow<std::string>(layout, "vertical_align_top", "Position", "", "/statusBar/position", "top",
+                           {{"top", "Top"}, {"bottom", "Bottom"}, {"left", "Left"}, {"right", "Right"}}, [side](std::string v) {
+                               if ((v == "left" || v == "right") != side) EventLoop::get().defer([] { reshowPage("bar"); });
+                           });
+    choiceRow<int>(layout, "toolbar", "Style", style == 3 ? "Runs round the screen as a frame, as in Caelestia" : "",
+                   "/statusBar/backgroundStyle", 0, {{0, "Pills"}, {1, "Full width"}, {2, "Floating"}, {3, "Framed"}}, [style](int v) {
+                       if (v != style) EventLoop::get().defer([] { reshowPage("bar"); });
                    });
-    sliderRow(layout, "height", "Height", "/statusBar/height", 40, 32, 56, 2, [](double v) { return std::format("{:.0f} px", v); });
+    sliderRow(layout, side ? "width" : "height", side ? "Width" : "Height", "/statusBar/height", 40, 32, 56, 2,
+              [](double v) { return std::format("{:.0f} px", v); });
     if (style == 2) {
-        sliderRow(layout, "width", "Width", "/statusBar/width", 1.0, 0.4, 1.0, 0.02, percent);
+        sliderRow(layout, side ? "height" : "width", side ? "Length" : "Width", "/statusBar/width", 1.0, 0.4, 1.0, 0.02, percent);
         sliderRow(layout, "padding", "Gap from the edge", "/statusBar/gap", 6, 0, 24, 1, [](double v) { return std::format("{:.0f} px", v); });
         choiceRow<double>(layout, "rounded_corner", "Ends", "", "/statusBar/endRadius", 100,
                           {{100, "Round"}, {16, "Curved"}, {6, "Square"}});
     }
+    if (style == 3) {
+        sliderRow(layout, "border_outer", "Frame thickness", "/statusBar/frame/thickness", 10, 4, 24, 1,
+                  [](double v) { return std::format("{:.0f} px", v); });
+        sliderRow(layout, "rounded_corner", "Frame corners", "/statusBar/frame/rounding", 25, 0, 48, 1,
+                  [](double v) { return v <= 0 ? std::string("Square") : std::format("{:.0f} px", v); });
+    }
 
-    auto* look = group(page, "Pills & blur", "Auto fills the widgets' pills in the Pills style, and leaves them on the bar in the others");
+    auto* look = group(page, "Pills & blur", "Auto fills the widgets' pills in the Pills and Framed styles, and leaves them on the bar in the others. Bar opacity colours the frame too");
     choiceRow<std::string>(look, "highlight", "Pill highlight", "", "/statusBar/pillColor", "auto",
                            {{"auto", "Auto"}, {"none", "None"}, {"surface", "Surface"}, {"tonal", "Tonal"}, {"accent", "Accent"},
                             {"outline", "Outline"}});
@@ -887,11 +1021,17 @@ void barPage(Flex* page, Popup&) {
     live->sync = [live, selected, target] {
         live->clearChildren();
         using shell::Bar;
-        auto* g = group(live, "Widgets", "Tap a widget to move, group or remove it; tap one below to add it");
-        auto onBar = row(g, "edit", "Edit on the bar", "Move and remove widgets in place; right-clicking the bar does this too");
-        pillButton(onBar.row, "Edit bar", false, [] {
-            if (editBar) editBar(true);
-        }, "edit");
+        const bool side = shell::barVertical();
+        auto* g = group(live, side ? "Widgets on the side bar" : "Widgets",
+                        side ? "Its own arrangement: the top and bottom bars keep theirs. Tap a widget to move, group or remove it"
+                             : "Tap a widget to move, group or remove it; tap one below to add it");
+        // In place needs a bar's length across; a side bar is arranged here
+        if (!side) {
+            auto onBar = row(g, "edit", "Edit on the bar", "Move and remove widgets in place; right-clicking the bar does this too");
+            pillButton(onBar.row, "Edit bar", false, [] {
+                if (editBar) editBar(true);
+            }, "edit");
+        }
 
         auto lay = Bar::layout(); // each handler edits its own copy
         auto meta = [](const std::string& id) {
@@ -911,7 +1051,9 @@ void barPage(Flex* page, Popup&) {
 
         auto* zones = g->add<Flex>(Flex::Direction::Column);
         zones->setPadding({16, 12})->setSpacing(10)->setAlignItems(Align::Stretch);
-        const char* names[] = {"Left", "Middle", "Right"};
+        const char* acrossNames[] = {"Left", "Middle", "Right"};
+        const char* downNames[] = {"Top", "Middle", "Bottom"};
+        const char** names = side ? downNames : acrossNames;
         for (size_t z = 0; z < 3; ++z) {
             auto* zone = zones->add<Flex>(Flex::Direction::Column);
             zone->setPadding({14, 10})->setSpacing(8)->setRadius(Radii(24))->setAlignItems(Align::Stretch);
@@ -1003,7 +1145,7 @@ void barPage(Flex* page, Popup&) {
         auto* to = addBox->add<Flex>(Flex::Direction::Row);
         to->setSpacing(10);
         to->add<Label>("Add to")->setSize(14)->setColor("on_surface_variant", false);
-        connectedGroup<int>(to, *target, {{0, "Left"}, {1, "Middle"}, {2, "Right"}}, [target](int z) { *target = z; });
+        connectedGroup<int>(to, *target, {{0, names[0]}, {1, names[1]}, {2, names[2]}}, [target](int z) { *target = z; });
         auto* avail = addBox->add<Flow>();
         avail->spacing = 8;
         size_t free = 0;
@@ -1035,9 +1177,9 @@ void barPage(Flex* page, Popup&) {
 
         auto* reset = live->add<Flex>(Flex::Direction::Row);
         reset->setJustify(Align::End);
-        pillButton(reset, "Default layout", false, [live, selected] {
+        pillButton(reset, side ? "Same as the top bar" : "Default layout", false, [live, selected] {
             selected->clear();
-            Config::get().set("/statusBar/layout", nullptr);
+            Config::get().set(shell::Bar::layoutKey(), nullptr);
             live->syncSoon();
         }, "restart_alt");
     };

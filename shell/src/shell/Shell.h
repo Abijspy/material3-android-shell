@@ -19,6 +19,7 @@ class Toasts;
 class Osd;
 class Desktop;
 class Dock;
+class Frame;
 
 // Owns every surface and wires services to them: one bar per output, kept in
 // step with hotplug, plus the IPC commands the shell itself answers.
@@ -34,7 +35,8 @@ private:
     void removeOutput(wl::Output* output);
     void registerIpc();
     void restyle(bool relayout);
-    void togglePopup(const std::string& name, wl::Output* output, float anchorX, const std::string& arg = {});
+    // `anchor`: along the bar (x, or y on a side bar), < 0 to centre it
+    void togglePopup(const std::string& name, wl::Output* output, float anchor, const std::string& arg = {});
     // The Settings app window: opened, or raised (and restored from
     // minimised) with `page` shown
     void openSettings(const std::string& page);
@@ -53,7 +55,9 @@ private:
     std::unique_ptr<Popup> m_welcome; // the tour window
     std::map<wl::Output*, std::unique_ptr<Desktop>> m_desktops;
     std::map<wl::Output*, std::unique_ptr<Dock>> m_docks;
+    std::map<wl::Output*, std::unique_ptr<Frame>> m_frames; // the Framed bar style
     void syncDock(wl::Output* output);
+    void syncFrame(wl::Output* output); // there in the Framed style, else gone
     void holdDocks(bool held); // the dock stays out while its menu is open
     std::unique_ptr<Toasts> m_toasts;
     std::unique_ptr<Osd> m_osd;

@@ -18,7 +18,8 @@ namespace m3::shell {
 
 // A panel that drops from the bar. The surface covers the output's usable
 // area on the overlay layer with exclusive keyboard focus; the card is placed
-// under `anchorX` (or centred). Esc or a click outside closes it.
+// under `anchor` (or centred), or beside a side bar level with it. Esc or a
+// click outside closes it.
 //
 // With `window`, the same contents live in an app window instead (the
 // Settings app): its own title bar with minimise, maximise and close, a
@@ -27,7 +28,7 @@ class Popup {
 public:
     struct Options {
         std::string name;
-        float anchorX = -1; // < 0: centred horizontally
+        float anchor = -1; // along the bar: x, or y from a side bar; < 0: centred
         float width = 360; // 0: as wide as the content
         bool centredVertically = false;
         bool fill = false; // the card takes the whole output (overview)
@@ -70,6 +71,7 @@ private:
     bool m_closing = false;
     Connection m_theme;
     float m_drop = -1; // which way the card slides in and out
+    float m_slide = 0;  // sideways, from a side bar
     EventLoop::TimerId m_closeTimer = 0;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };

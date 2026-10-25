@@ -150,9 +150,9 @@ Window and workspace binds (<kbd>Super</kbd><kbd>1…0</kbd>, <kbd>Super</kbd><k
 
 Most settings live in the built-in **Settings** app (<kbd>Super</kbd><kbd>I</kbd>, or the gear in Quick Settings). It has pages for:
 - **Network:** Wi-Fi, with the connection's details and live speeds.
-- **Devices and sound:** Bluetooth, sound (with left/right balance), and display.
+- **Devices and sound:** Bluetooth, printers, sound (with left/right balance), and display.
 - **Look:** wallpaper and colour, and Look & feel: blur, transparency, corner roundness and animation speed.
-- **Bar and dock:** the status bar (position, and a widget editor for its left, centre and right) and the dock.
+- **Bar and dock:** the status bar and the dock. The bar has whole looks a tap away (Material 3's pills, a single bar, or Caelestia's side bar framing the screen), any edge (top, bottom, left or right), four styles, and a widget editor.
 - **Lock screen and weather:** the clock and widgets on the lock and login screens; your location, units and forecast.
 - **Tools:** clipboard and screenshots.
 - **Session:** notifications, and lock & idle.
@@ -177,6 +177,7 @@ For everything else, here is which file to edit. Updates never overwrite the fil
 | Remap, disable or add keybinds | **Hyprland Settings → Keybinds** (saved to ✎ `keybinds_custom.lua`) |
 | Change any Hyprland option, monitor, animation or rule | **Hyprland Settings** (saved to `hyprland_custom.lua`) |
 | Rearrange the bar | **Settings → Status bar → Widgets**, or right-click the bar |
+| Give the bar another look (Caelestia, a single bar) or edge | **Settings → Status bar → Looks**, then **Layout** |
 | Change the lock screen | **Settings → Lock screen → Open editor** (the login screen follows) |
 | Set the weather location | **Settings → Weather** |
 | Pin apps to the dock | **Settings → Dock**, or right-click an app in the dock |

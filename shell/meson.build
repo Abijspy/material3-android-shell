@@ -139,6 +139,7 @@ sources = files(
   'src/shell/Popup.cpp',
   'src/shell/Shell.cpp',
   'src/shell/bar/Bar.cpp',
+  'src/shell/bar/Frame.cpp',
   'src/shell/bar/Island.cpp',
   'src/shell/bar/Status.cpp',
   'src/shell/bar/Widgets.cpp',

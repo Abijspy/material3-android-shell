@@ -37,9 +37,14 @@ public:
     void end(EGLSurface surface);
 
     void rect(const RectF& r, const Color& fill, Radii radii = {}, float borderWidth = 0, Color border = {});
-    void mask(GLuint texture, const RectF& r, const Color& tint);
+    // `turned`: a quarter turn clockwise, `r` the turned size (text up a
+    // side bar)
+    void mask(GLuint texture, const RectF& r, const Color& tint, bool turned = false);
     // Full-colour premultiplied BGRA texture (Cairo's ARGB32 layout)
-    void image(GLuint texture, const RectF& r, float opacity = 1, Radii radii = {});
+    void image(GLuint texture, const RectF& r, float opacity = 1, Radii radii = {}, bool turned = false);
+    // Clears what's been drawn inside `r` (rounded, anti-aliased): a hole
+    // through a surface (the frame round the screen)
+    void erase(const RectF& r, Radii radii = {});
 
     // Blurs what has been drawn under `r` so far, strongest (`radius`
     // logical px) at its top edge or its bottom edge and sharp at the
@@ -86,11 +91,11 @@ private:
     } m_rectProg;
     struct MaskProgram {
         GLuint id = 0;
-        GLint viewport, rect, tint, tex;
+        GLint viewport, rect, tint, tex, turn;
     } m_maskProg;
     struct ImageProgram {
         GLuint id = 0;
-        GLint viewport, rect, opacity, tex, radii, px;
+        GLint viewport, rect, opacity, tex, radii, px, turn;
     } m_imageProg;
     struct BlurProgram {
         GLuint id = 0;

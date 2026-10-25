@@ -17,6 +17,21 @@ namespace m3::shell {
 
 using namespace m3::ui;
 
+BarEdge barEdge() {
+    const auto p = Config::get().value<std::string>("/statusBar/position", "top");
+    return p == "bottom" ? BarEdge::Bottom : p == "left" ? BarEdge::Left : p == "right" ? BarEdge::Right : BarEdge::Top;
+}
+
+bool barVertical() {
+    const auto e = barEdge();
+    return e == BarEdge::Left || e == BarEdge::Right;
+}
+
+float alongBar(const Node* n) {
+    const auto& r = n->rect();
+    return barVertical() ? r.y + r.h / 2 : r.x + r.w / 2;
+}
+
 // ── BarLayout ──
 
 SizeF BarLayout::doMeasure(SizeF available) {
@@ -33,6 +48,23 @@ void BarLayout::doArrange() {
     const auto& kids = children();
     auto sizeOf = [&](size_t i) { return i < kids.size() ? kids[i]->measure({r.w, r.h}) : SizeF{}; };
     const SizeF start = sizeOf(0), centre = sizeOf(1), end = sizeOf(2);
+    if (vertical) {
+        // The same, down the bar. A side bar is short of length: the middle
+        // gets what the ends leave (a long title gives way, cut short)
+        const float room = r.h - start.h - end.h - margin * 4;
+        const SizeF mid = centre.h > room && kids.size() > 1 ? kids[1]->measure({r.w, std::max(0.0f, room)}) : centre;
+        const float startBottom = r.y + margin + start.h;
+        const float endTop = r.bottom() - margin - end.h;
+        float cy = r.y + (r.h - mid.h) / 2;
+        cy = std::clamp(cy, startBottom + margin, std::max(startBottom + margin, endTop - margin - mid.h));
+        auto place = [&](size_t i, float y, const SizeF& s) {
+            if (i < kids.size()) kids[i]->arrange({r.x + (r.w - s.w) / 2, y, s.w, s.h});
+        };
+        place(0, r.y + margin, start);
+        place(1, cy, mid);
+        place(2, endTop, end);
+        return;
+    }
 
     const float startRight = r.x + margin + start.w;
     const float endLeft = r.right() - margin - end.w;
@@ -50,7 +82,10 @@ void BarLayout::doArrange() {
 std::optional<ColorRef> pillColour() {
     const auto& c = Config::get();
     std::string kind = c.value<std::string>("/statusBar/pillColor", "auto");
-    if (kind == "auto") kind = c.value<int>("/statusBar/backgroundStyle", 0) == 0 ? "surface" : "none";
+    if (kind == "auto") {
+        const int style = c.value<int>("/statusBar/backgroundStyle", 0);
+        kind = style == 0 || style == 3 ? "surface" : "none";
+    }
     const float alpha = Theme::get().barOpacity();
     if (kind == "surface") return ColorRef("surface_container_high", alpha);
     // Coloured pills stay readable over a busy wallpaper
@@ -76,9 +111,15 @@ void shapePill(Flex* f) {
 }
 
 Flex* capsule(Node* parent, bool filled) {
-    auto* f = parent->add<Flex>(Flex::Direction::Row);
-    f->setPadding({12, 0})->setSpacing(8);
-    f->fixedHeight = 32;
+    const bool vertical = barVertical();
+    auto* f = parent->add<Flex>(vertical ? Flex::Direction::Column : Flex::Direction::Row);
+    if (vertical) {
+        f->setPadding({0, 10})->setSpacing(6);
+        f->fixedWidth = 32;
+    } else {
+        f->setPadding({12, 0})->setSpacing(8);
+        f->fixedHeight = 32;
+    }
     f->collapseWhenEmpty = true;
     if (const auto colour = filled ? pillColour() : std::nullopt) {
         shapePill(f->setBackground(*colour, false));
@@ -90,27 +131,36 @@ Flex* capsule(Node* parent, bool filled) {
 // ── Workspaces ──
 
 // The indicator: a dot that stretches into a pill for the active workspace
+// (down the bar, on a side one)
 class Workspaces::Dot : public Node {
 public:
     Tween width{8, Spring::bouncy()}; // stretches with a little bounce
     ColorTween color{ColorRef("outline_variant")};
+    bool vertical = false;
 
 protected:
-    SizeF doMeasure(SizeF) override { return {width.value(), 8}; }
+    SizeF doMeasure(SizeF) override { return vertical ? SizeF{8, width.value()} : SizeF{width.value(), 8}; }
     void doPaint(Renderer& r) override {
         const auto& b = rect();
-        r.rect({b.x, b.y + (b.h - 8) / 2, b.w, 8}, color.value(), Radii(4));
-        // Compare with the laid-out width, not running(): the animation can
+        if (vertical) r.rect({b.x + (b.w - 8) / 2, b.y, 8, b.h}, color.value(), Radii(4));
+        else r.rect({b.x, b.y + (b.h - 8) / 2, b.w, 8}, color.value(), Radii(4));
+        // Compare with the laid-out length, not running(): the animation can
         // end between this frame's layout and its paint
-        if (std::abs(width.value() - b.w) > 0.01f) requestLayout();
+        if (std::abs(width.value() - (vertical ? b.h : b.w)) > 0.01f) requestLayout();
         else if (color.running()) requestRedraw();
     }
     bool doAnimating() const override { return width.running() || color.running(); }
 };
 
-Workspaces::Workspaces(std::string monitor) : Flex(Direction::Row), m_monitor(std::move(monitor)) {
-    setPadding({10, 0})->setSpacing(2);
-    fixedHeight = 32;
+Workspaces::Workspaces(std::string monitor, bool vertical)
+    : Flex(vertical ? Direction::Column : Direction::Row), m_monitor(std::move(monitor)), m_vertical(vertical) {
+    if (vertical) {
+        setPadding({0, 10})->setSpacing(2);
+        fixedWidth = 32;
+    } else {
+        setPadding({10, 0})->setSpacing(2);
+        fixedHeight = 32;
+    }
     m_conn = Hyprland::get().workspacesChanged.connect([this] { sync(); });
     sync();
 }
@@ -124,15 +174,21 @@ void Workspaces::sync() {
     // Grow or shrink the slot list; existing slots keep their animation state
     while (static_cast<int>(m_slots.size()) < shown) {
         const int id = static_cast<int>(m_slots.size()) + 1;
-        auto* slot = add<Button>(Direction::Row);
-        pill(slot)->setPadding({4, 0});
-        slot->fixedHeight = 24;
+        auto* slot = add<Button>(m_vertical ? Direction::Column : Direction::Row);
+        if (m_vertical) {
+            pill(slot)->setPadding({0, 4});
+            slot->fixedWidth = 24;
+        } else {
+            pill(slot)->setPadding({4, 0});
+            slot->fixedHeight = 24;
+        }
         slot->tooltip = std::format("Workspace {}", id);
         slot->onClicked = [id](uint32_t button) {
             if (button == BTN_LEFT) Hyprland::get().focusWorkspace(id);
         };
         slot->onScrolled = [](int d) { Hyprland::get().focusWorkspaceRelative(d); };
         m_dots.push_back(slot->add<Dot>());
+        m_dots.back()->vertical = m_vertical;
         m_slots.push_back(slot);
     }
     for (size_t i = 0; i < m_slots.size(); ++i) m_slots[i]->setVisible(static_cast<int>(i) < shown);
@@ -210,16 +266,29 @@ Clock::~Clock() {
     if (m_timer) EventLoop::get().cancel(m_timer);
 }
 
+Clock* Clock::setStacked(bool stacked) {
+    m_stacked = stacked;
+    // Each part on a line of its own, centred under the one before
+    setMaxLines(stacked ? 4 : 1)->setCentered(stacked)->setMaxWidth(stacked ? 40 : 0);
+    if (m_timer) EventLoop::get().cancel(m_timer);
+    m_timer = 0;
+    tick();
+    return this;
+}
+
 void Clock::tick() {
     auto& c = Config::get();
     const std::string base = "/bar/clock/" + m_place;
     // Each place's own time format, else the shell's
     const auto time = c.value<std::string>(base + "/timeFormat", c.value<std::string>("/time/format", "hh:mm"));
     std::string format = time;
-    if (c.value<bool>(base + "/showDate", false))
+    if (c.value<bool>(base + "/showDate", false) && !m_stacked)
         format = c.value<std::string>(base + "/dateFormat", "ddd d MMM") + "  ·  " + time;
     m_seconds = time.find('s') != std::string::npos;
-    setText(sample(format));
+    std::string text = sample(format);
+    // Stacked: "15:42" reads 15 over 42 (and "3:42 PM" 3, 42, PM)
+    if (m_stacked) std::ranges::replace_if(text, [](char ch) { return ch == ':' || ch == ' ' || ch == '.'; }, '\n');
+    setText(text);
     schedule();
 }
 
@@ -240,7 +309,7 @@ void Clock::schedule() {
 
 // Long titles scroll in a narrower space instead of taking the bar's;
 // the icon stays put beside them
-WindowTitle::WindowTitle() : Flex(Direction::Row) {
+WindowTitle::WindowTitle(bool vertical) : Flex(vertical ? Direction::Column : Direction::Row) {
     setSpacing(8);
     m_icon = add<ImageView>(18, [this](float scale, int& w, int& h) -> GLuint {
         auto* t = m_iconName.empty() ? nullptr : Images::get().icon(m_iconName, static_cast<int>(std::lround(18 * scale)));
@@ -249,22 +318,32 @@ WindowTitle::WindowTitle() : Flex(Direction::Row) {
         h = t->height;
         return t->id;
     });
-    m_title = add<Marquee>(240);
-    m_title->label()->setSize(13)->setColor("on_surface_variant", false);
-    // How it scrolls (Settings → Status bar → Scrolling text)
-    auto style = [this] {
-        m_title->setMode(Marquee::modeOf(Config::get().value<std::string>("/bar/scrolling/windowTitle", "loop")));
-        m_title->setSpeed(Config::get().value<float>("/bar/scrolling/speed", 30));
-    };
-    style();
-    m_style = Config::get().changed.connect(style);
+    if (vertical) {
+        // Down the bar, cut short at its length (no scrolling sideways)
+        m_turned = add<Label>();
+        m_turned->setTurned(true)->setSize(13)->setMaxWidth(220)->setColor("on_surface_variant", false);
+    } else {
+        m_title = add<Marquee>(240);
+        m_title->label()->setSize(13)->setColor("on_surface_variant", false);
+        // How it scrolls (Settings → Status bar → Scrolling text)
+        auto style = [this] {
+            m_title->setMode(Marquee::modeOf(Config::get().value<std::string>("/bar/scrolling/windowTitle", "loop")));
+            m_title->setSpeed(Config::get().value<float>("/bar/scrolling/speed", 30));
+        };
+        style();
+        m_style = Config::get().changed.connect(style);
+    }
     m_conn = Hyprland::get().activeWindowChanged.connect([this] { sync(); });
     sync();
 }
 
 void WindowTitle::sync() {
     auto& h = Hyprland::get();
-    m_title->setText(h.activeWindowTitle());
+    if (m_title) m_title->setText(h.activeWindowTitle());
+    if (m_turned) {
+        m_turned->setText(h.activeWindowTitle());
+        tooltip = h.activeWindowTitle();
+    }
     // The app's icon from its desktop entry, by window class (as the dock finds it)
     m_iconName = h.activeWindowClass().empty() ? "" : Apps::get().iconForClass(h.activeWindowClass());
     m_icon->setVisible(!m_iconName.empty() && Images::get().icon(m_iconName, 18));

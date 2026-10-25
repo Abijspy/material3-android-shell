@@ -32,8 +32,9 @@ std::string readAll(const std::string& path) {
     return ss.str();
 }
 
-// The blurred layers; the wallpaper and lock never are
-const char* kLayers[] = {"bar", "popup", "toasts", "osd", "dock", "switcher"};
+// The blurred layers; the wallpaper and lock never are. The frame (the
+// Framed bar style) follows the bar
+const char* kLayers[] = {"bar", "frame", "popup", "toasts", "osd", "dock", "switcher"};
 
 } // namespace
 
@@ -251,7 +252,8 @@ void Effects::apply() {
         m_applied = key;
         if (t.blur())
             for (const char* l : kLayers) {
-                if ((l == std::string("bar") && !barBlur) || (l == std::string("dock") && !dockBlur)) continue;
+                const std::string layer = l;
+                if (((layer == "bar" || layer == "frame") && !barBlur) || (layer == "dock" && !dockBlur)) continue;
                 h.request(std::format("keyword layerrule blur,material3ui-{}", l));
                 h.request(std::format("keyword layerrule ignorealpha {:.2f},material3ui-{}", ignore, l));
             }

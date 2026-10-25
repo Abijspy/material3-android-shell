@@ -133,7 +133,7 @@ void tourLayout(Flex* page) {
     auto* g = group(page, "Layout");
     auto pos = row(g, "vertical_align_top", "Bar position");
     connectedGroup<std::string>(pos.row, Config::get().value<std::string>("/statusBar/position", "top"),
-                                {{"top", "Top"}, {"bottom", "Bottom"}},
+                                {{"top", "Top"}, {"bottom", "Bottom"}, {"left", "Left"}, {"right", "Right"}},
                                 [](std::string v) { Config::get().set("/statusBar/position", v); });
     auto dock = row(g, "dock_to_bottom", "Dock");
     connectedGroup<std::string>(dock.row, Config::get().value<std::string>("/dock/mode", "autohide"),

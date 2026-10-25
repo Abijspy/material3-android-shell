@@ -2,6 +2,7 @@
 
 #include "core/Config.h"
 #include "quickshare/QuickShare.h"
+#include "render/Images.h"
 #include "services/Firewall.h"
 #include "services/Network.h"
 #include "services/Notifications.h"
@@ -19,6 +20,7 @@
 #include <algorithm>
 #include <ctime>
 #include <format>
+#include <fstream>
 #include <linux/input-event-codes.h>
 
 namespace m3::shell {
@@ -31,24 +33,37 @@ Bar::Bar(wl::Output* output, OpenPopup openPopup) : m_output(output), m_openPopu
     opts.ns = "material3ui-bar";
     opts.layer = LayerSurface::Layer::Top;
     opts.anchor = anchor();
-    opts.height = totalHeight();
+    (barVertical() ? opts.width : opts.height) = totalHeight();
     opts.exclusiveZone = totalHeight();
     m_surface = std::make_unique<LayerSurface>(output, opts);
     rebuild();
 }
 
 uint32_t Bar::anchor() {
-    const bool bottom = Config::get().value<std::string>("/statusBar/position", "top") == "bottom";
-    return (bottom ? LayerSurface::Bottom : LayerSurface::Top) | LayerSurface::Left | LayerSurface::Right;
+    switch (barEdge()) {
+    case BarEdge::Bottom: return LayerSurface::Bottom | LayerSurface::Left | LayerSurface::Right;
+    case BarEdge::Left: return LayerSurface::Left | LayerSurface::Top | LayerSurface::Bottom;
+    case BarEdge::Right: return LayerSurface::Right | LayerSurface::Top | LayerSurface::Bottom;
+    case BarEdge::Top: break;
+    }
+    return LayerSurface::Top | LayerSurface::Left | LayerSurface::Right;
 }
 
-int Bar::height() const {
+int Bar::thickness() {
     return static_cast<int>(Config::get().value<double>("/statusBar/height", 40));
 }
 
-int Bar::totalHeight() const {
+bool Bar::framed() {
+    return Config::get().value<int>("/statusBar/backgroundStyle", 0) == 3;
+}
+
+int Bar::height() const {
+    return thickness();
+}
+
+int Bar::zone() {
     const bool floating = Config::get().value<int>("/statusBar/backgroundStyle", 0) == 2;
-    return height() + (floating ? static_cast<int>(Config::get().value<double>("/statusBar/gap", 6)) : 0);
+    return thickness() + (floating ? static_cast<int>(Config::get().value<double>("/statusBar/gap", 6)) : 0);
 }
 
 namespace {
@@ -57,10 +72,11 @@ const char* kZones[] = {"left", "center", "right"};
 
 // The bar's surface in the Full width and Floating bar styles: one backdrop
 // with the modules over it. Floating, both stand off the screen's edges,
-// `width` of it wide and centred, with rounded ends.
+// `width` of it long and centred, with rounded ends.
 class BarFrame : public Node {
 public:
-    bool floating = false, bottom = false;
+    bool floating = false;
+    BarEdge edge = BarEdge::Top;
     float width = 1, gap = 6;
 
 protected:
@@ -71,23 +87,49 @@ protected:
     void doArrange() override {
         RectF r = rect();
         if (floating) {
-            const float w = (r.w - gap * 2) * std::clamp(width, 0.3f, 1.0f);
-            r = {r.x + (r.w - w) / 2, r.y + (bottom ? 0 : gap), w, r.h - gap};
+            const float k = std::clamp(width, 0.3f, 1.0f);
+            if (edge == BarEdge::Left || edge == BarEdge::Right) {
+                const float h = (r.h - gap * 2) * k;
+                r = {r.x + (edge == BarEdge::Left ? gap : 0), r.y + (r.h - h) / 2, r.w - gap, h};
+            } else {
+                const float w = (r.w - gap * 2) * k;
+                r = {r.x + (r.w - w) / 2, r.y + (edge == BarEdge::Bottom ? 0 : gap), w, r.h - gap};
+            }
         }
         for (auto& c : children()) c->arrange(r);
     }
 };
 
+// The system's own logo (os-release's LOGO), drawn in the accent like an
+// icon; Spotlight's symbol when there's none to find
+std::string logoIcon() {
+    static const std::string found = [] {
+        std::ifstream in("/etc/os-release");
+        std::string name;
+        for (std::string line; std::getline(in, line);)
+            if (line.starts_with("LOGO=")) {
+                name = line.substr(5);
+                std::erase(name, '"');
+            }
+        if (name.empty()) return std::string();
+        // As an outline it can be tinted: SVG only
+        for (const std::string& path : {Images::get().findIcon(name, 64), "/usr/share/pixmaps/" + name + ".svg"})
+            if (path.ends_with(".svg")) return path;
+        return std::string();
+    }();
+    return found.empty() ? "apps" : found;
+}
+
 // Live download/upload for the bar
 class NetSpeed : public Flex {
 public:
-    NetSpeed() : Flex(Direction::Row) {
-        setSpacing(6);
+    NetSpeed() : Flex(barVertical() ? Direction::Column : Direction::Row), m_compact(barVertical()) {
+        setSpacing(m_compact ? 2 : 6);
         m_down = add<Label>();
         m_up = add<Label>();
         for (Label* l : {m_down, m_up}) {
-            l->setSize(12)->setWeight(500);
-            l->minWidth = 64;
+            l->setSize(m_compact ? 10 : 12)->setWeight(500);
+            l->minWidth = m_compact ? 0 : 64;
         }
         m_lease = Network::get().watchTraffic();
         m_conn = Network::get().detailsChanged.connect([this] { sync(); });
@@ -97,24 +139,36 @@ public:
 private:
     void sync() {
         const auto& d = Network::get().details();
-        m_down->setText("↓ " + panels::formatRate(d.rxRate));
-        m_up->setText("↑ " + panels::formatRate(d.txRate));
+        // A side bar's narrow: "1.2M" for "1.2 MB/s"
+        auto rate = [this](double r) {
+            std::string t = panels::formatRate(r);
+            if (!m_compact) return " " + t;
+            std::erase(t, ' ');
+            if (const auto at = t.find("B/s"); at != std::string::npos) t.erase(at);
+            return t;
+        };
+        m_down->setText("↓" + rate(d.rxRate));
+        m_up->setText("↑" + rate(d.txRate));
     }
+    bool m_compact;
     Label *m_down, *m_up;
     Network::Lease m_lease;
     Connection m_conn;
 };
 
-// A capsule-sized button: icon, optional text, opens a panel
+// A capsule-sized button: icon, optional text, opens a panel. On a side bar
+// the text sits small under the icon
 class Chip : public Button {
 public:
-    Chip(const std::string& icon, std::function<void()> click) : Button(Direction::Row) {
-        pill(this)->setPadding({8, 4})->setSpacing(6);
+    Chip(const std::string& icon, std::function<void()> click)
+        : Button(barVertical() ? Direction::Column : Direction::Row), m_vertical(barVertical()) {
+        pill(this)->setPadding(m_vertical ? Insets{2, 6} : Insets{8, 4})->setSpacing(m_vertical ? 2 : 6);
         pressedRadius = 8;
         m_icon = add<Icon>(icon, 20);
         m_icon->setColor("on_surface", false);
         m_text = add<Label>();
-        m_text->setSize(13)->setWeight(500);
+        m_text->setSize(m_vertical ? 11 : 13)->setWeight(500);
+        if (m_vertical) m_text->setMaxWidth(36)->setMaxLines(2)->setCentered(true);
         m_text->setVisible(false);
         onClicked = [click = std::move(click)](uint32_t b) {
             if (b == BTN_LEFT && click) click();
@@ -127,6 +181,7 @@ public:
     }
 
 protected:
+    bool m_vertical;
     Icon* m_icon;
     Label* m_text;
 };
@@ -161,8 +216,10 @@ private:
         std::tm tm{};
         localtime_r(&t, &tm);
         char buf[32];
-        std::strftime(buf, sizeof buf, "%a %-d %b", &tm);
+        std::strftime(buf, sizeof buf, m_vertical ? "%-d" : "%a %-d %b", &tm);
         set("calendar_month", buf);
+        std::strftime(buf, sizeof buf, "%A %-d %B", &tm);
+        tooltip = buf;
         m_timer = EventLoop::get().addTimer((60 - tm.tm_sec) * 1000 + 50, [this] {
             m_timer = 0;
             tick();
@@ -200,8 +257,10 @@ public:
 private:
     void sync() {
         const int t = Wellbeing::get().today().total(), h = t / 3600, m = t / 60 % 60;
-        set("digital_wellbeing", h ? std::format("{}h {:02}m", h, m) : std::format("{}m", m));
-        tooltip = std::format("Screen time today{}", Wellbeing::get().focus() ? " · Focus mode on" : "");
+        const std::string full = h ? std::format("{}h {:02}m", h, m) : std::format("{}m", m);
+        // A side bar's narrow: the hours alone, once there are some
+        set("digital_wellbeing", m_vertical && h ? std::format("{}h", h) : full);
+        tooltip = std::format("Screen time today: {}{}", full, Wellbeing::get().focus() ? " · Focus mode on" : "");
     }
     Connection m_conn;
 };
@@ -218,7 +277,7 @@ private:
     void sync() {
         auto& v = Vpn::get();
         const bool on = v.anyActive();
-        set(on ? "vpn_lock" : "vpn_key", !v.busy().empty() ? "…" : on ? v.activeName() : "");
+        set(on ? "vpn_lock" : "vpn_key", !v.busy().empty() ? "…" : on && !m_vertical ? v.activeName() : "");
         m_text->setMaxWidth(140);
         m_icon->setFill(on)->setColor(on ? "primary" : "on_surface_variant");
         tooltip = on ? "VPN: " + v.activeName() + " (click to disconnect, right-click for settings)"
@@ -327,7 +386,8 @@ private:
     void sync() {
         auto& s = SystemStats::get();
         const double mem = s.memTotal() ? 100.0 * static_cast<double>(s.memUsed()) / static_cast<double>(s.memTotal()) : 0;
-        set("memory", std::format("{:.0f}%  ·  {:.0f}%", s.cpu(), mem));
+        set("memory", m_vertical ? std::format("{:.0f}%\n{:.0f}%", s.cpu(), mem) : std::format("{:.0f}%  ·  {:.0f}%", s.cpu(), mem));
+        tooltip = std::format("CPU {:.0f}% · memory {:.0f}%", s.cpu(), mem);
     }
     SystemStats::Lease m_lease;
     Connection m_conn;
@@ -338,6 +398,7 @@ private:
 const std::vector<Bar::Module>& Bar::modules() {
     static const std::string quickShare = quickshare::QuickShare::symbol(); // its own symbol, as a path
     static const std::vector<Module> all = {
+        {"logo", "token", "Logo", "Your system's logo; opens Spotlight"},
         {"launcher", "apps", "Launcher", "Opens Spotlight"},
         {"workspaces", "view_week", "Workspaces", "Dots for each workspace; click to switch"},
         {"title", "title", "Window title", "The focused window"},
@@ -367,9 +428,15 @@ const std::vector<Bar::Module>& Bar::modules() {
     return all;
 }
 
+const char* Bar::layoutKey() {
+    return barVertical() ? "/statusBar/layoutSide" : "/statusBar/layout";
+}
+
 Bar::Layout Bar::layout() {
     Layout out;
-    const auto j = Config::get().value<nlohmann::json>("/statusBar/layout", nlohmann::json());
+    auto j = Config::get().value<nlohmann::json>(layoutKey(), nlohmann::json());
+    // A side bar without its own yet: the top bar's, down the side
+    if (!j.is_object() && barVertical()) j = Config::get().value<nlohmann::json>("/statusBar/layout", nlohmann::json());
     if (j.is_object()) {
         for (int z = 0; z < 3; ++z)
             if (auto it = j.find(kZones[z]); it != j.end() && it->is_array())
@@ -403,7 +470,7 @@ void Bar::setLayout(const Layout& layout) {
         }
         j[kZones[z]] = zone;
     }
-    Config::get().set("/statusBar/layout", j);
+    Config::get().set(layoutKey(), j);
 }
 
 bool Bar::placed(const Layout& l, const std::string& id) {
@@ -482,41 +549,68 @@ void Bar::ungroup(Layout& l, const std::string& id) {
 }
 
 void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
+    const bool vertical = barVertical();
     if (id == "workspaces") {
-        auto* ws = zone->add<Workspaces>(m_output->name);
+        auto* ws = zone->add<Workspaces>(m_output->name, vertical);
         if (const auto colour = filled ? pillColour() : std::nullopt) {
             shapePill(ws->setBackground(*colour, false));
             ws->blurBehind = barBlur();
         }
     } else if (id == "title") {
-        capsule(zone, filled)->add<WindowTitle>();
+        capsule(zone, filled)->add<WindowTitle>(vertical);
     } else if (id == "island") {
         zone->add<Island>(m_openPopup);
     } else if (id == "clock") {
-        capsule(zone, filled)->add<Clock>("bar");
+        // As the island's clock does: the calendar (the dashboard) on a
+        // click, the notifications on a right click
+        auto* c = capsule(zone, filled);
+        c->setPadding(vertical ? Insets{0, 2} : Insets{2, 0});
+        auto* b = c->add<Button>();
+        pill(b)->setPadding(vertical ? Insets{2, 8} : Insets{10, 4});
+        b->pressedRadius = 8;
+        b->setJustify(Align::Center);
+        auto* clock = b->add<Clock>("bar");
+        if (vertical) clock->setStacked(true)->setWeight(600);
+        b->tooltip = "Calendar";
+        b->onClicked = [this, b](uint32_t button) {
+            if (button == BTN_LEFT) m_openPopup("dashboard", alongBar(b));
+            else if (button == BTN_RIGHT) m_openPopup("notifications", alongBar(b));
+        };
+    } else if (id == "logo") {
+        // Caelestia's corner: the system's logo, unboxed, in the accent
+        auto* b = zone->add<Button>();
+        pill(b)->setPadding(Insets(5));
+        b->pressedRadius = 8;
+        b->add<Icon>(logoIcon(), 22)->setColor("primary", false);
+        b->tooltip = "Apps";
+        b->onClicked = [this, b](uint32_t button) {
+            if (button == BTN_LEFT) m_openPopup("launcher", alongBar(b));
+        };
     } else if (id == "netspeed") {
         capsule(zone, filled)->add<NetSpeed>();
     } else if (id == "tray") {
         auto* c = capsule(zone, filled);
-        c->setPadding({4, 0});
-        c->add<TrayIcons>(m_openPopup);
+        c->setPadding(vertical ? Insets{0, 4} : Insets{4, 0});
+        c->add<TrayIcons>(m_openPopup, vertical);
     } else if (id == "status") {
         auto* c = capsule(zone, filled);
-        c->setPadding({4, 0});
-        c->add<StatusIcons>(m_openPopup);
+        c->setPadding(vertical ? Insets{0, 4} : Insets{4, 0});
+        c->add<StatusIcons>(m_openPopup, vertical);
     } else if (id == "battery") {
         // The button fills the capsule (2 px in all round) so its hover
         // pill follows the capsule's shape
         auto* c = capsule(zone, filled);
-        c->setPadding({2, 0});
-        c->add<BatteryStatus>(m_openPopup);
+        c->setPadding(vertical ? Insets{0, 2} : Insets{2, 0});
+        c->add<BatteryStatus>(m_openPopup, vertical);
     } else if (id == "media") {
-        capsule(zone, filled)->add<Media>();
+        auto* c = capsule(zone, filled);
+        if (vertical) c->setPadding({0, 2});
+        c->add<Media>(vertical);
     } else if (id == "screentime" || id == "vpn" || id == "quickshare" || id == "firewall" || id == "focus" || id == "bedtime" ||
                id == "printers") {
         auto* c = capsule(zone, filled);
-        c->setPadding({4, 0});
-        auto open = [this](const std::string& name, Node* from) { m_openPopup(name, from->rect().x + from->rect().w / 2); };
+        c->setPadding(vertical ? Insets{0, 4} : Insets{4, 0});
+        auto open = [this](const std::string& name, Node* from) { m_openPopup(name, alongBar(from)); };
         Chip* chip = nullptr;
         if (id == "screentime") {
             chip = c->add<ScreenTimeChip>(std::function<void()>{});
@@ -560,11 +654,9 @@ void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
         }
     } else if (id == "weather" || id == "calendar" || id == "notifications" || id == "sysmon") {
         auto* c = capsule(zone, filled);
-        c->setPadding({4, 0});
+        c->setPadding(vertical ? Insets{0, 4} : Insets{4, 0});
         Chip* chip = nullptr;
-        auto open = [this](const std::string& name, Node* from) {
-            m_openPopup(name, from->rect().x + from->rect().w / 2);
-        };
+        auto open = [this](const std::string& name, Node* from) { m_openPopup(name, alongBar(from)); };
         if (id == "weather") chip = c->add<WeatherChip>(std::function<void()>{});
         else if (id == "calendar") chip = c->add<DateChip>(std::function<void()>{});
         else if (id == "notifications") chip = c->add<NotificationChip>(std::function<void()>{});
@@ -580,28 +672,35 @@ void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
         const auto it = std::ranges::find_if(modules(), [&](const Module& m) { return id == m.id; });
         if (it == modules().end()) return;
         auto* c = capsule(zone, filled);
-        c->setPadding({4, 0});
+        c->setPadding(vertical ? Insets{0, 4} : Insets{4, 0});
         auto* b = c->add<Button>();
         pill(b)->setPadding(Insets(5));
         b->pressedRadius = 6;
-        b->add<Icon>(it->icon, 20)->setColor("on_surface", false);
+        // Power stands out, as in Caelestia's bar
+        b->add<Icon>(it->icon, 20)->setColor(id == "power" && vertical ? "error" : "on_surface", false);
         b->tooltip = it->name;
         b->onClicked = [this, b, id](uint32_t button) {
-            if (button == BTN_LEFT) m_openPopup(id, b->rect().x + b->rect().w / 2);
+            if (button == BTN_LEFT) m_openPopup(id, alongBar(b));
         };
     }
 }
 
 void Bar::rebuild() {
     // backgroundStyle: 0 each module in its own pill, 1 one bar-wide surface,
-    // 2 a floating bar (inset from the edges, rounded ends). The pills are
+    // 2 a floating bar (inset from the edges, rounded ends), 3 framed: the
+    // bar's surface runs round the screen (Frame draws it). The pills are
     // filled in the pill colour in any of them (Pill highlight)
     const auto& config = Config::get();
     const int style = config.value<int>("/statusBar/backgroundStyle", 0);
     const bool filled = pillColour().has_value();
+    const bool vertical = barVertical();
+    // Editing in place needs a bar's length across: a side bar is edited in
+    // Settings (Shell opens it)
+    const bool editingHere = editing && !vertical;
 
     auto root = std::make_unique<BarLayout>();
     auto* bg = root.get();
+    bg->vertical = vertical;
     bg->textArea = Theme::AreaBar;
     // Right click on empty bar space: edit the bar in place
     bg->onContextMenu = [] {
@@ -609,9 +708,9 @@ void Bar::rebuild() {
     };
     const auto zones = layout();
     for (size_t z = 0; z < 3; ++z) {
-        auto* zone = bg->add<Flex>(Flex::Direction::Row);
+        auto* zone = bg->add<Flex>(vertical ? Flex::Direction::Column : Flex::Direction::Row);
         zone->setSpacing(8);
-        if (!editing) {
+        if (!editingHere) {
             for (const auto& g : zones[z]) {
                 if (g.size() == 1) {
                     addModule(zone, g.front(), filled);
@@ -619,7 +718,7 @@ void Bar::rebuild() {
                 }
                 // A group: one capsule around all of its widgets
                 auto* cap = capsule(zone, filled);
-                cap->setPadding({4, 0})->setSpacing(2);
+                cap->setPadding(vertical ? Insets{0, 4} : Insets{4, 0})->setSpacing(2);
                 for (const auto& id : g) addModule(cap, id, false);
             }
             continue;
@@ -672,11 +771,11 @@ void Bar::rebuild() {
     }
 
     auto* surface = m_surface.get();
-    if (style != 0) {
+    if (style == 1 || style == 2) {
         // One surface under everything: edge to edge, or floating
         auto frame = std::make_unique<BarFrame>();
         frame->floating = style == 2;
-        frame->bottom = config.value<std::string>("/statusBar/position", "top") == "bottom";
+        frame->edge = barEdge();
         frame->width = static_cast<float>(config.value<double>("/statusBar/width", 1.0));
         frame->gap = static_cast<float>(config.value<double>("/statusBar/gap", 6));
         auto* back = frame->add<Flex>(Flex::Direction::Row);
@@ -692,8 +791,8 @@ void Bar::rebuild() {
     } else {
         surface->setRoot(std::move(root));
     }
-    m_surface->setAnchor(anchor());
-    m_surface->setSize(0, totalHeight());
+    if (vertical) m_surface->setPlacement(anchor(), totalHeight(), 0);
+    else m_surface->setPlacement(anchor(), 0, totalHeight());
     m_surface->setExclusiveZone(totalHeight());
 }
 

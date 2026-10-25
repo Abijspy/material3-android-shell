@@ -416,6 +416,12 @@ Label* Label::setCentered(bool centered) {
     return this;
 }
 
+Label* Label::setTurned(bool turned) {
+    m_turned = turned;
+    requestLayout();
+    return this;
+}
+
 Label* Label::setMaxLines(int lines) {
     m_maxLines = lines;
     requestLayout();
@@ -463,15 +469,16 @@ float Label::fitWidth(float room) const {
 SizeF Label::doMeasure(SizeF available) {
     if (m_text.empty()) return {};
     TextStyle s = style();
-    s.maxWidth = fitWidth(available.w);
+    s.maxWidth = fitWidth(m_turned ? available.h : available.w);
     const auto m = TextEngine::get().measure(m_text, s);
+    if (m_turned) return {std::ceil(m.height), std::ceil(m.width)};
     return {std::ceil(m.width), std::ceil(m.height)};
 }
 
 // Drawn within the width it was given: the lines it was measured with, or
 // fewer words a line if its parent had to squeeze it
 void Label::doArrange() {
-    const float fit = fitWidth(rect().w);
+    const float fit = fitWidth(m_turned ? rect().h : rect().w);
     m_fit = fit < m_maxWidth ? fit : 0;
 }
 
@@ -479,6 +486,16 @@ void Label::doPaint(Renderer& r) {
     if (m_text.empty()) return;
     const auto& tex = TextEngine::get().texture(m_text, style(), r.scale());
     const float s = r.scale();
+    if (m_turned) {
+        // Along the rect's height, centred across it
+        const float w = tex.logical.height, h = tex.logical.width;
+        const float x = std::round((rect().x + (rect().w - w) / 2) * s) / s, y = std::round(rect().y * s) / s;
+        const Color c = m_color.value();
+        r.mask(tex.id, {x, y, w, h}, c, true);
+        if (tex.color) r.image(tex.color, {x, y, w, h}, c.a, {}, true);
+        if (m_color.running()) requestRedraw();
+        return;
+    }
     // Snap the quad to device pixels so text is never resampled
     const float x = std::round(rect().x * s) / s;
     const float y = std::round((rect().y + (rect().h - tex.logical.height) / 2) * s) / s;

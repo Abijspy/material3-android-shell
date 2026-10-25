@@ -256,6 +256,9 @@ public:
     Label* setFamily(const std::string& family);
     Label* setMaxLines(int lines);
     Label* setCentered(bool centered); // wrapped lines centred under each other // wraps within maxWidth
+    // A quarter turn clockwise: it reads down a side bar; maxWidth then
+    // limits its height
+    Label* setTurned(bool turned);
     const std::string& text() const { return m_text; }
     float size() const { return m_size; }
     // The size it's drawn at: after the text sizes of the parts it's in
@@ -281,6 +284,7 @@ protected:
     int m_weight = 400;
     float m_maxWidth = 0;
     float m_fit = 0; // arranged narrower than maxWidth: drawn within this
+    bool m_turned = false;
     int m_maxLines = 1;
     bool m_icon = false;
     float m_fill = 0;

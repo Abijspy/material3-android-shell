@@ -2,6 +2,9 @@
 
 #include "core/Config.h"
 #include "services/Hyprland.h"
+#include "shell/bar/Bar.h"
+#include "shell/bar/Frame.h"
+#include "shell/bar/Widgets.h"
 #include "ui/Theme.h"
 
 #include <algorithm>
@@ -17,10 +20,16 @@ using wl::LayerSurface;
 namespace {
 
 // Places the card under the anchor, clamped to the surface, and passes
-// clicks outside it through as "empty" so the popup can close.
+// clicks outside it through as "empty" so the popup can close. From a side
+// bar, beside it instead, level with the anchor.
 class PopupLayout : public Node {
 public:
-    float anchorX = -1;
+    float anchor = -1; // along the bar (x, or y from a side bar); < 0: centred
+    // Where this surface starts on the screen: past what the bar (or the
+    // frame) keeps at the left and the top
+    float offsetX = 0, offsetY = 0;
+    BarEdge edge = BarEdge::Top;
+    bool besideBar = true; // false: the dock's menus, over the dock
     float margin = 8;
     bool centreV = false;
     bool fill = false;
@@ -38,7 +47,13 @@ protected:
             return;
         }
         const SizeF s = card->measure({r.w - margin * 2, r.h - margin * 2});
-        float x = anchorX < 0 ? (r.w - s.w) / 2 : anchorX - s.w / 2;
+        if (anchor >= 0 && !centreV && besideBar && (edge == BarEdge::Left || edge == BarEdge::Right)) {
+            const float h = std::min(s.h, r.h - margin * 2);
+            const float y = std::clamp(anchor - offsetY - h / 2, r.y + margin, std::max(r.y + margin, r.bottom() - margin - h));
+            card->arrange({edge == BarEdge::Left ? r.x + margin : r.right() - margin - s.w, y, s.w, h});
+            return;
+        }
+        float x = anchor < 0 ? (r.w - s.w) / 2 : anchor - offsetX - s.w / 2;
         x = std::clamp(x, r.x + margin, std::max(r.x + margin, r.right() - margin - s.w));
         const float h = std::min(s.h, r.h - margin * 2);
         // Centred with the clamped height: a card taller than the screen
@@ -122,13 +137,24 @@ Popup::Popup(wl::Output* output, Options options, const std::function<void(Flex*
     m_surface = std::make_unique<LayerSurface>(output, opts);
 
     auto root = std::make_unique<PopupLayout>();
-    root->anchorX = m_options.anchorX;
+    root->anchor = m_options.anchor;
+    root->edge = barEdge();
+    const float frame = Bar::framed() ? static_cast<float>(Frame::thickness()) : 0;
+    root->offsetX = root->edge == BarEdge::Left ? static_cast<float>(Bar::zone()) : frame;
+    root->offsetY = root->edge == BarEdge::Top ? static_cast<float>(Bar::zone()) : frame;
+    root->besideBar = !m_options.aboveDock;
     root->centreV = m_options.centredVertically;
     root->fill = m_options.fill;
-    root->fromBottom = m_options.aboveDock || Config::get().value<std::string>("/statusBar/position", "top") == "bottom";
+    root->fromBottom = m_options.aboveDock || root->edge == BarEdge::Bottom;
     // The dock's height: its icons and the padding round them
     if (m_options.aboveDock) root->bottomGap = static_cast<float>(Config::get().value<double>("/dock/iconSize", 44)) + 52;
     m_drop = root->fromBottom && !m_options.centredVertically ? 1.0f : -1.0f;
+    // From a side bar it slides out sideways, away from the bar
+    if (m_options.anchor >= 0 && !m_options.centredVertically && !m_options.aboveDock &&
+        (root->edge == BarEdge::Left || root->edge == BarEdge::Right)) {
+        m_slide = root->edge == BarEdge::Left ? -1.0f : 1.0f;
+        m_drop = 0;
+    }
     m_card = root->add<Flex>(Flex::Direction::Column);
     m_card->setPadding(Insets(20))->setSpacing(12)->setAlignItems(Align::Stretch);
     m_card->setBackground(ColorRef("surface_container", Theme::get().panelOpacity()), false)->setRadius(Radii(28));
@@ -138,9 +164,11 @@ Popup::Popup(wl::Output* output, Options options, const std::function<void(Flex*
     // In with a pop: from a little smaller and lower, springing past full size
     m_card->setOpacity(0, false);
     m_card->setTranslateY(12 * m_drop, false);
+    m_card->setTranslateX(12 * m_slide, false);
     m_card->setScale(0.92f, false);
     m_card->setOpacity(1);
     m_card->setTranslateY(0);
+    m_card->setTranslateX(0);
     m_card->setScale(1);
 
     // Opacity and roundness are live: Settings previews them on itself
@@ -227,6 +255,7 @@ void Popup::close() {
     }
     m_card->setOpacity(0);
     m_card->setTranslateY(8 * m_drop);
+    m_card->setTranslateX(8 * m_slide);
     m_card->setScale(0.96f);
     m_closeTimer = EventLoop::get().addTimer(ui::motion::ms(ui::motion::mediumMs), [this] {
         m_closeTimer = 0;

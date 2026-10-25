@@ -68,10 +68,13 @@ precision mediump float;
 #endif
 uniform vec4 u_rect;
 uniform vec4 u_tint;    // premultiplied
+uniform float u_turn;   // 1: a quarter turn clockwise (text up a side bar)
 uniform sampler2D u_tex;
 varying vec2 v_local;
 void main() {
-    float a = texture2D(u_tex, v_local / u_rect.zw).a;
+    vec2 uv = v_local / u_rect.zw;
+    if (u_turn > 0.5) uv = vec2(uv.y, 1.0 - uv.x);
+    float a = texture2D(u_tex, uv).a;
     gl_FragColor = u_tint * a;
 }
 )";
@@ -86,6 +89,7 @@ uniform vec4 u_rect;
 uniform float u_opacity;
 uniform vec4 u_radii;   // tl tr br bl; 0: square corners
 uniform float u_px;
+uniform float u_turn;   // as the mask's
 uniform sampler2D u_tex;
 varying vec2 v_local;
 
@@ -101,8 +105,10 @@ void main() {
     float r = p.x < 0.0 ? (p.y < 0.0 ? u_radii.x : u_radii.w) : (p.y < 0.0 ? u_radii.y : u_radii.z);
     r = min(r, min(halfSize.x, halfSize.y));
     float coverage = clamp(0.5 - sdRoundBox(p, halfSize, r) / u_px, 0.0, 1.0);
+    vec2 uv = v_local / u_rect.zw;
+    if (u_turn > 0.5) uv = vec2(uv.y, 1.0 - uv.x);
     // Cairo stores premultiplied ARGB32 as BGRA bytes on little-endian
-    gl_FragColor = texture2D(u_tex, v_local / u_rect.zw).bgra * u_opacity * coverage;
+    gl_FragColor = texture2D(u_tex, uv).bgra * u_opacity * coverage;
 }
 )";
 
@@ -275,6 +281,7 @@ bool Renderer::buildPrograms() {
     im.radii = glGetUniformLocation(im.id, "u_radii");
     im.px = glGetUniformLocation(im.id, "u_px");
     im.tex = glGetUniformLocation(im.id, "u_tex");
+    im.turn = glGetUniformLocation(im.id, "u_turn");
 
     auto& r = m_rectProg;
     r.viewport = glGetUniformLocation(r.id, "u_viewport");
@@ -290,6 +297,7 @@ bool Renderer::buildPrograms() {
     m.rect = glGetUniformLocation(m.id, "u_rect");
     m.tint = glGetUniformLocation(m.id, "u_tint");
     m.tex = glGetUniformLocation(m.id, "u_tex");
+    m.turn = glGetUniformLocation(m.id, "u_turn");
 
     const float quad[] = {0, 0, 1, 0, 0, 1, 1, 1};
     glGenBuffers(1, &m_quad);
@@ -351,7 +359,18 @@ void Renderer::rect(const RectF& r, const Color& fill, Radii radii, float border
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
-void Renderer::mask(GLuint texture, const RectF& r, const Color& tint) {
+void Renderer::erase(const RectF& r, Radii radii) {
+    if (r.w <= 0 || r.h <= 0) return;
+    // What's drawn keeps (1 − coverage) of itself: a hole as smooth at its
+    // edges as a rect is
+    glBlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
+    m_opacity.push_back(1);
+    rect(r, Color{0, 0, 0, 1}, radii);
+    m_opacity.pop_back();
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+}
+
+void Renderer::mask(GLuint texture, const RectF& r, const Color& tint, bool turned) {
     const float o = m_opacity.back();
     if (!texture || tint.a * o <= 0) return;
     auto& p = m_maskProg;
@@ -360,13 +379,14 @@ void Renderer::mask(GLuint texture, const RectF& r, const Color& tint) {
     const RectF m = m_xforms.back().map(r);
     glUniform4f(p.rect, m.x, m.y, m.w, m.h);
     premultiplied(p.tint, tint, o);
+    glUniform1f(p.turn, turned ? 1.0f : 0.0f);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
     glUniform1i(p.tex, 0);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
-void Renderer::image(GLuint texture, const RectF& r, float opacity, Radii radii) {
+void Renderer::image(GLuint texture, const RectF& r, float opacity, Radii radii, bool turned) {
     const float o = m_opacity.back() * opacity;
     if (!texture || o <= 0) return;
     auto& p = m_imageProg;
@@ -379,6 +399,7 @@ void Renderer::image(GLuint texture, const RectF& r, float opacity, Radii radii)
     glUniform1f(p.opacity, o);
     glUniform4f(p.radii, rr.tl, rr.tr, rr.br, rr.bl);
     glUniform1f(p.px, 1.0f / m_scale);
+    glUniform1f(p.turn, turned ? 1.0f : 0.0f);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
     glUniform1i(p.tex, 0);
