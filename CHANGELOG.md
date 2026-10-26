@@ -1,5 +1,22 @@
 # Changelog
 
+## v5.8.3 — 2026-10-26
+
+- **Alarms and timers**, as in Android's Clock. Open them from the new bar widget or with `material3ui msg popup clock`.
+  - **Alarms:** ring once or on the days you pick, each with a label. Set the time by typing it, scrolling, or with the arrows.
+  - **Timers:** count down in rings. Pause one, resume it, or add a minute. Start one with a tap (1 minute to 1 hour) or type a length such as `25`, `1:30` or `1h20m`. A running timer keeps going if the shell restarts.
+  - **When one goes off:** a card at the top of the screen offers Snooze and Stop for an alarm, or +1:00 and Stop for a timer. The screens wake, and the sound plays over and over, getting louder each time. When the screen is locked, the card takes the place of the lock screen's widgets, so you can stop it without unlocking.
+  - **Sleep:** an alarm or timer that comes due while the computer sleeps goes off when it wakes. An alarm missed by more than 10 minutes shows a "Missed alarm" notification instead of ringing.
+  - **Widgets:** an **Alarms & timers** bar widget shows a running timer or the next alarm, and stops what's ringing with a click. The desktop and lock screen widget shows the next alarm with a switch, and your timers.
+  - **Settings → Alarms & timers:** your alarms, the sound, how long a snooze lasts, and when an alarm nobody answers gives up.
+  - **For scripts:** `material3ui msg alarm …` and `material3ui msg timer …`, and two new hook events, `alarm_ringing` and `timer_finished`.
+- **Public holidays in the calendar**, in Settings → Calendar → Holidays. Pick your country (it's guessed at first from your weather location or language). Holidays show in red on the dashboard calendar, with the holiday's name, and in the day's agenda. Festivals that aren't days off can be shown too.
+- **Fixed: panels no longer run off the screen.**
+  - **Long lists:** the notification centre's Clear history no longer slips below the screen when the history is long; the same fix applies to every panel.
+  - **Too tall for the screen:** a panel taller than the screen scrolls, as the dashboard does on a 720-pixel screen.
+  - **Large text:** text no longer spills out of buttons or windows at large text sizes.
+- **For tests:** `material3ui msg layout check` lists anything drawn outside its card or pill, or off the screen, on every open panel.
+
 ## v5.8.2 — 2026-10-25
 
 - **Hooks:** your own commands that run when things happen, in **Settings → Hooks**. There are 41 events: the screen locking and unlocking, sleep and wake, logging out, a new wallpaper or colours, the battery and power mode, the network, Wi-Fi, Bluetooth and VPN, notifications, Do not disturb, the song, workspaces, screens, screenshots and recordings, and Focus and Bedtime.
