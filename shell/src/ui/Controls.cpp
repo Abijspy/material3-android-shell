@@ -241,6 +241,14 @@ SizeF ScrollView::doMeasure(SizeF available) {
     // Never taller than the room we are given: small screens scroll instead
     // of cutting the content off
     const float cap = available.h > 48 ? std::min(maxHeight, available.h) : maxHeight;
+    if (fitFirst) {
+        // Laid out in the room there is, first
+        const SizeF fit = content()->measure({available.w, cap});
+        if (fit.h <= cap + 0.5f) {
+            m_contentHeight = fit.h;
+            return fit;
+        }
+    }
     SizeF c = content()->measure({available.w, 1e6f});
     // Overflowing: the content gives up a gutter for the scrollbar
     if (c.h > cap) c = content()->measure({available.w - gutter(), 1e6f});
@@ -319,6 +327,17 @@ void ScrollView::onScrollEnd() {
 
 void ScrollView::doArrange() {
     if (!content()) return;
+    if (fitFirst) {
+        const SizeF fit = content()->measure({rect().w, rect().h});
+        if (fit.h <= rect().h + 0.5f) {
+            // It fits: no scrolling, the content as it fits
+            m_contentHeight = fit.h;
+            m_offset.set(0, false);
+            m_placedOffset = 0;
+            content()->arrange({rect().x, rect().y, rect().w, fit.h});
+            return;
+        }
+    }
     SizeF c = content()->measure({rect().w, 1e6f});
     const bool over = c.h > rect().h + 0.5f;
     if (over) c = content()->measure({rect().w - gutter(), 1e6f});

@@ -52,6 +52,7 @@ Running a panel command again closes the panel.
 | `status` | A summary of every service (audio, network, Bluetooth, battery, media…) |
 | `outputs` · `workspaces` · `tray` | What the shell sees |
 | `debug` | Every surface's node tree with positions (used by the UI tests) |
+| `layout check` | Anything drawn outside its box (the card or pill around it) or off its surface, on every open surface: `ok: …` when there's none. A test can open each panel and check it, at any text size |
 
 ## Hooks and events
 

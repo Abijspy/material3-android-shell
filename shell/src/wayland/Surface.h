@@ -90,6 +90,9 @@ public:
     // Every live surface, and a text dump of its tree (for UI tests)
     static const std::vector<Surface*>& all();
     virtual std::string describe() const;
+    // Everything drawn outside its box (the nearest card or pill round it)
+    // or the surface, a line each; `checked` counts what was looked at
+    std::string overflow(int& checked) const;
     std::string dump() const;
 
     // Protocol callbacks

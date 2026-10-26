@@ -5,6 +5,7 @@
 #include "shell/bar/Bar.h"
 #include "shell/bar/Frame.h"
 #include "shell/bar/Widgets.h"
+#include "ui/Controls.h"
 #include "ui/Theme.h"
 
 #include <algorithm>
@@ -181,7 +182,22 @@ Popup::Popup(wl::Output* output, Options options, const std::function<void(Flex*
         m_card->requestLayout();
     });
 
-    build(m_card, *this);
+    // The panel goes in a box that fits it to the room there is, and
+    // scrolls it whole only when it still doesn't fit (CSS's overflow:
+    // auto): nothing of it ends up off the card or the screen. Full-screen
+    // ones (the overview, the editors) lay themselves out
+    Flex* body = m_card;
+    if (!m_options.fill) {
+        m_card->setPadding(Insets(0))->setSpacing(0);
+        auto* box = m_card->add<ScrollView>();
+        box->fitFirst = true;
+        box->maxHeight = 1e6f; // the screen's height caps it
+        box->overlayBar = true;
+        box->blurEdges = true;
+        body = box->add<Flex>(Flex::Direction::Column);
+        body->setPadding(Insets(20))->setSpacing(12)->setAlignItems(Align::Stretch);
+    }
+    build(body, *this);
     m_surface->setRoot(std::move(root));
     if (initialFocus) m_surface->setFocus(initialFocus);
 

@@ -91,6 +91,57 @@ std::string Surface::dump() const {
     return out;
 }
 
+std::string Surface::overflow(int& checked) const {
+    std::string out;
+    auto typeOf = [](const ui::Node* n) {
+        int status = 0;
+        char* name = abi::__cxa_demangle(typeid(*n).name(), nullptr, nullptr, &status);
+        std::string type = status == 0 && name ? name : typeid(*n).name();
+        std::free(name);
+        if (auto pos = type.rfind("::"); pos != std::string::npos) type = type.substr(pos + 2);
+        if (auto* l = dynamic_cast<const ui::Label*>(n); l && !l->text().empty()) type += " \"" + l->text().substr(0, 40) + "\"";
+        return type;
+    };
+    const RectF screen{0, 0, static_cast<float>(m_width), static_cast<float>(m_height)};
+    // How far `r` sticks out of `box` on each side ("" when it doesn't)
+    auto outside = [](const RectF& r, const RectF& box) {
+        const float l = box.x - r.x, t = box.y - r.y, rt = r.right() - box.right(), b = r.bottom() - box.bottom();
+        if (std::max({l, t, rt, b}) <= 1) return std::string();
+        std::string sides;
+        auto side = [&](float d, const char* name) {
+            if (d > 1) sides += std::format("{}{} {:.0f}px", sides.empty() ? "" : ", ", name, d);
+        };
+        side(l, "left");
+        side(t, "top");
+        side(rt, "right");
+        side(b, "bottom");
+        return sides;
+    };
+    // `onScreen`: not inside a box that clips (a scroll view's content may
+    // be scrolled past the surface's edge; it's still checked against the
+    // boxes inside it)
+    std::function<void(const ui::Node*, const ui::Node*, bool)> walk = [&](const ui::Node* n, const ui::Node* box, bool onScreen) {
+        // Hidden, moved on purpose, or empty: nothing to see
+        if (!n->shown() || n->opacity() <= 0.01f || n->transformed()) return;
+        const RectF& r = n->rect();
+        if (r.w <= 0.5f || r.h <= 0.5f) return;
+        ++checked;
+        if (const auto s = onScreen ? outside(r, screen) : std::string(); !s.empty())
+            out += std::format("{}: {} at {:.0f},{:.0f} {:.0f}x{:.0f} is off the surface ({})\n", m_tag, typeOf(n), r.x, r.y, r.w, r.h, s);
+        else if (box)
+            if (const auto s = outside(r, box->rect()); !s.empty())
+                out += std::format("{}: {} at {:.0f},{:.0f} {:.0f}x{:.0f} sticks out of its {} ({})\n", m_tag, typeOf(n), r.x, r.y, r.w, r.h,
+                                   typeOf(box), s);
+        // A box that clips (a scroll view): what's in it can't draw outside
+        // it, but can still stick out of the boxes inside it
+        const auto* flex = dynamic_cast<const ui::Flex*>(n);
+        const ui::Node* next = n->clips() ? nullptr : flex && flex->paintsBox() ? n : box;
+        for (const auto& c : n->children()) walk(c.get(), next, onScreen && !n->clips());
+    };
+    if (m_root) walk(m_root.get(), nullptr, true);
+    return out;
+}
+
 Surface::Surface(Output* output) : m_output(output) {
     registry().push_back(this);
     m_scale = output ? static_cast<float>(output->scale) : 1.0f;

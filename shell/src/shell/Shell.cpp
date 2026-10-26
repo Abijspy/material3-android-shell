@@ -731,6 +731,18 @@ void Shell::registerIpc() {
         for (const auto* s : wl::Surface::all()) out += s->dump();
         return out;
     });
+    ipc.add("layout", "layout check: anything drawn outside its card or pill, or off its surface, on every open surface (for UI tests)",
+            [](const IpcServer::Args& a) {
+        if (!a.empty() && a[0] != "check") return std::string("error: layout check");
+        std::string out;
+        int checked = 0, surfaces = 0;
+        for (const auto* s : wl::Surface::all()) {
+            ++surfaces;
+            out += s->overflow(checked);
+        }
+        if (out.empty()) return std::format("ok: nothing outside its box ({} nodes on {} surfaces)", checked, surfaces);
+        return out + std::format("{} found ({} nodes on {} surfaces)", std::count(out.begin(), out.end(), '\n'), checked, surfaces);
+    });
     ipc.add("lock", "Lock the session", [](const auto&) {
         LockScreen::get().lock();
         return std::string("locked");

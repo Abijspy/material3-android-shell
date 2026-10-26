@@ -393,6 +393,10 @@ void Flex::doArrange() {
         if (!c->shown() || c->floating) continue;
         float m = row ? sizes[i].w : sizes[i].h;
         float x = row ? sizes[i].h : sizes[i].w; // cross size
+        // Down a column nothing is wider than the column, as a block in
+        // HTML: what's wider is laid out to fit it (its text then wraps or
+        // ends in "…") instead of drawing past its sides
+        if (!row) x = std::min(x, contentCross);
         if (c->grow) m = std::max(0.0f, m + growShare);
         float crossPos = 0;
         switch (c->alignSelf.value_or(m_alignItems)) {
@@ -522,10 +526,14 @@ SizeF Label::doMeasure(SizeF available) {
 // into "45" over "%"
 void Label::doArrange() {
     m_fit = 0;
-    if (m_maxWidth <= 0 || m_text.empty()) return;
+    // Icons are glyphs, never cut
+    if (m_icon || m_text.empty()) return;
     const float room = m_turned ? rect().h : rect().w;
     const float natural = std::ceil(TextEngine::get().measure(m_text, style()).width);
-    if (room + 0.5f < natural) m_fit = std::min(m_maxWidth, std::max(std::ceil(room), m_measuredWith));
+    if (room + 0.5f >= natural) return;
+    // Squeezed: within the room, wrapped as measured (a maxWidth's lines), or
+    // ending in "…" (text without one), never past its sides
+    m_fit = m_maxWidth > 0 ? std::min(m_maxWidth, std::max(std::ceil(room), m_measuredWith)) : std::max(1.0f, std::floor(room));
 }
 
 void Label::doPaint(Renderer& r) {

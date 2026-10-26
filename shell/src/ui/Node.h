@@ -113,6 +113,10 @@ public:
     void setScale(float s, bool animate = true);
     float translateY() const { return m_translateY.value(); }
     float opacity() const { return m_opacity.target(); } // where it's heading
+    // Moved or scaled at rest (not just animating): drawn away from its
+    // place on purpose (a magnified dock icon, a hidden dock)
+    bool transformed() const { return m_scale.target() != 1 || m_translateX.target() != 0 || m_translateY.target() != 0; }
+    bool clips() const { return clipsChildren(); } // its children are cut to it
 
     // Animations still running in this subtree
     // What animates under this node: nothing; only ambient motion, endless
@@ -230,6 +234,7 @@ public:
     Flex* setBorder(float width, const ColorRef& c);
     float cornerRadius() const override;
     bool fillsHeight() const override; // holds something that does
+    bool paintsBox() const { return m_background.value().a > 0.001f || m_borderWidth > 0; } // a card, a pill: a visible box
 
 protected:
     SizeF doMeasure(SizeF available) override;

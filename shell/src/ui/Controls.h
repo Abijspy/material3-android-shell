@@ -97,6 +97,10 @@ public:
     // Content softens into a blur at the top and bottom edges while there
     // is more of it beyond them (Settings' panes)
     bool blurEdges = false;
+    // As CSS's overflow: auto on a box of a set height: the content first
+    // gets the room there is (lists in it shrink to it, what's under them
+    // stays), and only when it still doesn't fit does it scroll as a whole
+    bool fitFirst = false;
 
     Node* content() const { return children().empty() ? nullptr : children().front().get(); }
     void scrollTo(float y, bool animate = true);

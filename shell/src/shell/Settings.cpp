@@ -4067,9 +4067,9 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
     heroTexts->setAlignItems(Align::Start)->setSpacing(4);
     heroTexts->grow = true;
     auto* heroTitle = heroTexts->add<Label>();
-    heroTitle->setSize(36)->setWeight(400);
+    heroTitle->setSize(36)->setWeight(400)->setMaxWidth(680);
     auto* heroBlurb = heroTexts->add<Label>();
-    heroBlurb->setSize(14)->setColor("on_surface_variant", false);
+    heroBlurb->setSize(14)->setColor("on_surface_variant", false)->setMaxWidth(680)->setMaxLines(2);
     // Close: a tonal round button in the corner
     auto* close = hero->add<Button>();
     pill(close->setBackground("surface_container_highest", false))->setPadding(Insets(10));
