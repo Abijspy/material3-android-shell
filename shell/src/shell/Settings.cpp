@@ -2635,6 +2635,37 @@ void calendarPage(Flex* page, Popup&) {
             if (open) open(arg);
         }, "add");
 
+        // Public holidays: the country's, in red on every calendar
+        auto* hol = group(live, "Holidays", "Your country's public holidays, in red on the calendars, from Google's public holiday calendars");
+        const std::string country = cal.holidayCountry();
+        std::string countryName = "Off";
+        std::vector<std::pair<std::string, std::string>> countries = {{"", "Off"}};
+        for (const auto& c : m3::Calendar::holidayCountries()) {
+            countries.emplace_back(c.id, c.name);
+            if (country == c.id) countryName = c.name;
+        }
+        std::string about = "None shown";
+        if (!country.empty()) {
+            int count = 0;
+            for (int m = 0; m < 12; ++m) count += static_cast<int>(cal.holidays(tm.tm_year + 1900, m).size());
+            about = !cal.holidaySource().error.empty() ? cal.holidaySource().error
+                    : count == 0                        ? "Looking them up…"
+                                                        : std::format("{} this year", count);
+        }
+        auto* holBox = hol->add<Flex>(Flex::Direction::Column);
+        holBox->setAlignItems(Align::Stretch);
+        auto cr = row(holBox, "celebration", "Country", about);
+        if (!cal.holidaySource().error.empty()) cr.subtitle->setColor("error", false);
+        dropdown(cr.row, holBox, countryName, countries, [](const std::string& id) {
+            EventLoop::get().defer([id] { m3::Calendar::get().setHolidayCountry(id); });
+        });
+        if (!country.empty()) {
+            auto ob = row(hol, "local_activity", "Observances too", "Festivals and days that aren't days off, as well");
+            auto* sw = ob.row->add<Switch>();
+            sw->setChecked(cal.observances(), false);
+            sw->onToggled = [](bool on) { EventLoop::get().defer([on] { m3::Calendar::get().setObservances(on); }); };
+        }
+
         auto* subs = group(live, "Subscribed calendars",
                            "Google, Outlook, Nextcloud, Proton…: paste the calendar's \"secret address in iCal format\" (an ICS link). "
                            "They refresh every half hour");

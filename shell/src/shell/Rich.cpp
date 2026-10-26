@@ -107,8 +107,8 @@ std::string duration(double seconds) {
 }
 
 // The month, as Android's calendar: today filled, days with events dotted,
-// the chosen day's agenda under it (an event opens in the editor) and a
-// button to add one. Follows the calendar service as it changes.
+// holidays in red, the chosen day's agenda under it (an event opens in the
+// editor) and a button to add one. Follows the calendar service as it changes.
 class MonthView : public Flex {
 public:
     MonthView() : Flex(Direction::Column) {
@@ -117,8 +117,7 @@ public:
         localtime_r(&now, &m_today);
         m_year = m_today.tm_year + 1900;
         m_month = m_today.tm_mon;
-        m_day = m_today.tm_mday;
-        m_conn = m3::Calendar::get().changed.connect([this] { rebuildSoon(); });
+        m_day = m_today.tm_mday;        m_conn = m3::Calendar::get().changed.connect([this] { rebuildSoon(); });
         build();
     }
     ~MonthView() override { *m_alive = false; }
@@ -157,6 +156,7 @@ private:
         std::mktime(&last);
         const int days = last.tm_mday;
         const auto busy = cal.busyDays(m_year, m_month);
+        const auto holidays = cal.holidays(m_year, m_month);
         Flex* row = nullptr;
         for (int cell = 0; cell < offset + days; ++cell) {
             if (cell % 7 == 0) row = add<Flex>(Direction::Row);
@@ -176,10 +176,12 @@ private:
             pill(box);
             if (today) box->setBackground("primary", false);
             else if (chosen) box->setBackground("secondary_container", false);
+            const auto holiday = holidays.find(day);
+            if (holiday != holidays.end()) box->tooltip = holiday->second;
             box->add<Label>(std::to_string(day))
                 ->setSize(14)
-                ->setWeight(today || chosen ? 600 : 400)
-                ->setColor(today ? "on_primary" : chosen ? "on_secondary_container" : "on_surface", false);
+                ->setWeight(today || chosen || holiday != holidays.end() ? 600 : 400)
+                ->setColor(today ? "on_primary" : chosen ? "on_secondary_container" : holiday != holidays.end() ? "error" : "on_surface", false);
             // A dot under the days with something on
             auto* dot = box->add<Flex>(Direction::Row);
             pill(dot)->fixedWidth = 4;
@@ -227,7 +229,8 @@ private:
             r->setPadding({10, 6})->setSpacing(10)->setRadius(Radii(12))->setAlignItems(Align::Center);
             r->setBackground(ColorRef("on_surface", 0.05f), false);
             auto* bar = r->add<Flex>(Direction::Row);
-            pill(bar->setBackground(o.event->source.empty() ? "primary" : "tertiary", false));
+            const bool holiday = m3::Calendar::isHoliday(*o.event);
+            pill(bar->setBackground(holiday ? "error" : o.event->source.empty() ? "primary" : "tertiary", false));
             bar->fixedWidth = 4;
             bar->fixedHeight = 28;
             auto* texts = r->add<Flex>(Direction::Column);
@@ -245,6 +248,7 @@ private:
                 std::strftime(buf, sizeof buf, "%H:%M", &z);
                 when += std::string(" – ") + buf;
             }
+            if (holiday) when = o.event->notes; // Public holiday, or Observance
             if (!o.event->location.empty()) when += " · " + o.event->location;
             texts->add<Label>(when)->setSize(12)->setMaxWidth(240)->setColor("on_surface_variant", false);
             const std::string arg = "event " + o.event->id;

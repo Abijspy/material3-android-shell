@@ -132,6 +132,7 @@ Calendar& Calendar::get() {
 Calendar::Calendar() {
     load();
     loadSources();
+    syncHolidays();
     // Subscriptions: from the cache at once, fresh soon after, then each half hour
     for (const auto& s : m_sources) {
         std::ifstream in(cacheDir() + "/" + s.id + ".ics");
@@ -202,7 +203,7 @@ const Calendar::Event* Calendar::find(const std::string& id) const {
 std::vector<Calendar::Occurrence> Calendar::between(std::time_t from, std::time_t to) const {
     std::vector<Occurrence> out;
     auto enabled = [this](const Event& e) {
-        if (e.source.empty()) return true;
+        if (e.source.empty() || isHoliday(e)) return true; // yours, and the holidays (there while a country's set)
         const auto it = std::ranges::find(m_sources, e.source, &Source::id);
         return it != m_sources.end() && it->enabled;
     };
@@ -325,6 +326,116 @@ void Calendar::setEnabled(const std::string& id, bool on) {
 
 void Calendar::refresh() {
     for (const auto& s : m_sources) fetch(s);
+    // Holidays change once a year or so: fetched again after a week
+    std::error_code ec;
+    const auto file = cacheDir() + "/" + kHolidays + ".ics";
+    if (!m_holidays.url.empty() &&
+        (!fs::exists(file, ec) || fs::file_time_type::clock::now() - fs::last_write_time(file, ec) > std::chrono::hours(24 * 7)))
+        fetch(m_holidays);
+}
+
+const std::vector<Calendar::Country>& Calendar::holidayCountries() {
+    // Google's public holiday calendars that answer (checked one by one)
+    static const std::vector<Country> all = {
+        {"en.ar", "Argentina", "AR"}, {"en.australian", "Australia", "AU"}, {"en.austrian", "Austria", "AT"},
+        {"en.bd", "Bangladesh", "BD"}, {"en.be", "Belgium", "BE"}, {"en.brazilian", "Brazil", "BR"},
+        {"en.canadian", "Canada", "CA"}, {"en.cl", "Chile", "CL"}, {"en.china", "China", "CN"},
+        {"en.co", "Colombia", "CO"}, {"en.czech", "Czechia", "CZ"}, {"en.danish", "Denmark", "DK"},
+        {"en.finnish", "Finland", "FI"}, {"en.french", "France", "FR"}, {"en.german", "Germany", "DE"},
+        {"en.greek", "Greece", "GR"}, {"en.hong_kong", "Hong Kong", "HK"}, {"en.hungarian", "Hungary", "HU"},
+        {"en.indian", "India", "IN"}, {"en.indonesian", "Indonesia", "ID"}, {"en.irish", "Ireland", "IE"},
+        {"en.italian", "Italy", "IT"}, {"en.japanese", "Japan", "JP"}, {"en.malaysia", "Malaysia", "MY"},
+        {"en.mexican", "Mexico", "MX"}, {"en.np", "Nepal", "NP"}, {"en.dutch", "Netherlands", "NL"},
+        {"en.new_zealand", "New Zealand", "NZ"}, {"en.norwegian", "Norway", "NO"}, {"en.pk", "Pakistan", "PK"},
+        {"en.pe", "Peru", "PE"}, {"en.philippines", "Philippines", "PH"}, {"en.polish", "Poland", "PL"},
+        {"en.portuguese", "Portugal", "PT"}, {"en.romanian", "Romania", "RO"}, {"en.russian", "Russia", "RU"},
+        {"en.saudiarabian", "Saudi Arabia", "SA"}, {"en.singapore", "Singapore", "SG"}, {"en.sa", "South Africa", "ZA"},
+        {"en.south_korea", "South Korea", "KR"}, {"en.spain", "Spain", "ES"}, {"en.lk", "Sri Lanka", "LK"},
+        {"en.swedish", "Sweden", "SE"}, {"en.taiwan", "Taiwan", "TW"}, {"en.turkish", "Turkey", "TR"},
+        {"en.ukrainian", "Ukraine", "UA"}, {"en.ae", "United Arab Emirates", "AE"}, {"en.uk", "United Kingdom", "GB"},
+        {"en.usa", "United States", "US"}, {"en.vietnamese", "Vietnam", "VN"},
+    };
+    return all;
+}
+
+std::string Calendar::holidayCountry() const {
+    const auto j = Config::get().value<nlohmann::json>("/calendar/holidays", nlohmann::json());
+    if (j.is_string()) return j.get<std::string>(); // "" when turned off
+    // Unset: where the weather is ("Chennai, Tamil Nadu, India"), else the
+    // language's region (en_IN)
+    auto lower = [](std::string s) {
+        std::ranges::transform(s, s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return s;
+    };
+    std::string place = Config::get().value<std::string>("/weather/location/name", "");
+    if (const auto comma = place.rfind(','); comma != std::string::npos) place = place.substr(comma + 1);
+    while (!place.empty() && place.front() == ' ') place.erase(0, 1);
+    static const std::map<std::string, std::string> aliases = {
+        {"united states of america", "united states"}, {"usa", "united states"}, {"uk", "united kingdom"},
+        {"czech republic", "czechia"}, {"türkiye", "turkey"}, {"republic of korea", "south korea"}, {"korea", "south korea"}};
+    if (const auto it = aliases.find(lower(place)); it != aliases.end()) place = it->second;
+    for (const auto& c : holidayCountries())
+        if (!place.empty() && lower(c.name) == lower(place)) return c.id;
+    const char* lang = std::getenv("LANG");
+    const std::string locale = lang ? lang : "";
+    if (const auto us = locale.find('_'); us != std::string::npos && locale.size() >= us + 3)
+        for (const auto& c : holidayCountries())
+            if (locale.compare(us + 1, 2, c.code) == 0) return c.id;
+    return "";
+}
+
+void Calendar::setHolidayCountry(const std::string& id) {
+    Config::get().set("/calendar/holidays", id);
+    std::error_code ec;
+    fs::remove(cacheDir() + "/" + kHolidays + ".ics", ec); // another country's
+    syncHolidays();
+}
+
+bool Calendar::observances() const {
+    return Config::get().value<bool>("/calendar/observances", false);
+}
+
+void Calendar::setObservances(bool on) {
+    Config::get().set("/calendar/observances", on);
+    syncHolidays();
+}
+
+void Calendar::syncHolidays() {
+    const std::string id = holidayCountry();
+    std::erase_if(m_subscribed, [](const Event& e) { return isHoliday(e); });
+    m_holidays = {};
+    if (!id.empty()) {
+        std::string name = id;
+        for (const auto& c : holidayCountries())
+            if (id == c.id) name = c.name;
+        m_holidays = {kHolidays, "Holidays in " + name,
+                      "https://calendar.google.com/calendar/ical/" + id + "%23holiday%40group.v.calendar.google.com/public/basic.ics", "", true, ""};
+        std::ifstream in(cacheDir() + "/" + kHolidays + ".ics");
+        std::stringstream ss;
+        ss << in.rdbuf();
+        if (!ss.str().empty()) parseIcs(kHolidays, ss.str());
+        else fetch(m_holidays);
+    }
+    changed.emit();
+}
+
+std::map<int, std::string> Calendar::holidays(int year, int month) const {
+    std::map<int, std::string> out;
+    std::tm first{};
+    first.tm_year = year - 1900;
+    first.tm_mon = month;
+    first.tm_mday = 1;
+    first.tm_isdst = -1;
+    const std::time_t from = std::mktime(&first);
+    for (const auto& o : between(from, addCalendar(from, 0, 1, 0))) {
+        if (!isHoliday(*o.event)) continue;
+        std::tm tm{};
+        localtime_r(&o.start, &tm);
+        if (tm.tm_mon != month) continue;
+        auto& name = out[tm.tm_mday];
+        name += (name.empty() ? "" : ", ") + o.event->title;
+    }
+    return out;
 }
 
 void Calendar::fetch(const Source& s) {
@@ -334,14 +445,20 @@ void Calendar::fetch(const Source& s) {
     const std::string id = s.id;
     run({"curl", "-fsSL", "--max-time", "30", s.url}, [this, id](int code, const std::string& out) {
         --m_fetching;
-        auto it = std::ranges::find(m_sources, id, &Source::id);
-        if (it == m_sources.end()) return changed.emit(); // unsubscribed meanwhile
+        // A subscription, or the holidays (not one)
+        Source* src = nullptr;
+        if (id == kHolidays) {
+            if (m_holidays.id == kHolidays) src = &m_holidays;
+        } else if (auto it = std::ranges::find(m_sources, id, &Source::id); it != m_sources.end()) {
+            src = &*it;
+        }
+        if (!src) return changed.emit(); // unsubscribed meanwhile
         if (code != 0 || out.find("BEGIN:VCALENDAR") == std::string::npos) {
-            it->error = code != 0 ? "Couldn't reach it" : "Not a calendar: an ICS (iCal) link is needed";
+            src->error = code != 0 ? "Couldn't reach it" : "Not a calendar: an ICS (iCal) link is needed";
             changed.emit();
             return;
         }
-        it->error.clear();
+        src->error.clear();
         std::error_code ec;
         fs::create_directories(cacheDir(), ec);
         std::ofstream(cacheDir() + "/" + id + ".ics") << out;
@@ -389,6 +506,13 @@ void Calendar::parseIcs(const std::string& sourceId, const std::string& text) {
             if (e.start == 0) continue;
             if (e.end == 0) e.end = e.allDay ? e.start + 86400 : e.start;
             e.id = sourceId + ":" + (uid.empty() ? newId() : uid) + ":" + std::to_string(e.start);
+            if (sourceId == kHolidays) {
+                // Google's: "Public holiday", or "Observance\nTo hide observances…"
+                const bool observance = e.notes.starts_with("Observance");
+                if (observance && !observances()) continue;
+                e.notes = observance ? "Observance" : "Public holiday";
+                e.remind = -1;
+            }
             m_subscribed.push_back(e);
             continue;
         }

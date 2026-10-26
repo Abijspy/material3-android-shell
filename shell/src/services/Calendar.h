@@ -4,6 +4,7 @@
 #include "core/Signal.h"
 
 #include <ctime>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -55,6 +56,26 @@ public:
     void save(Event event); // new (empty id) or changed
     void remove(const std::string& id);
 
+    // Public holidays (Settings → Calendar): the country's holidays from
+    // Google's public holiday calendars, kept apart from your subscriptions.
+    // Unset, the country's guessed from the weather's location, else the
+    // language's region
+    struct Country {
+        const char* id;   // Google's: en.indian
+        const char* name; // India
+        const char* code; // IN
+    };
+    static const std::vector<Country>& holidayCountries();
+    std::string holidayCountry() const; // its id; "" for none
+    void setHolidayCountry(const std::string& id);
+    bool observances() const; // festivals and the like too, not just days off
+    void setObservances(bool on);
+    // A month's holidays: day (1–31) → its name (several joined)
+    std::map<int, std::string> holidays(int year, int month) const;
+    const Source& holidaySource() const { return m_holidays; } // its name, and an error if fetching failed
+    static bool isHoliday(const Event& e) { return e.source == kHolidays; }
+    static constexpr const char* kHolidays = "holidays";
+
     // Subscriptions
     const std::vector<Source>& sources() const { return m_sources; }
     void subscribe(const std::string& name, const std::string& url);
@@ -73,11 +94,13 @@ private:
     void storeSources() const;
     void fetch(const Source& s);
     void parseIcs(const std::string& sourceId, const std::string& text);
+    void syncHolidays(); // the country's source, its events from the cache, fetched if old
     void remindLoop();
 
     std::vector<Event> m_own;
     std::vector<Event> m_subscribed;
     std::vector<Source> m_sources;
+    Source m_holidays; // url "" while there's no country
     std::set<std::string> m_reminded; // event id + start, already notified
     int m_fetching = 0;
     EventLoop::TimerId m_refreshTimer = 0, m_remindTimer = 0;
