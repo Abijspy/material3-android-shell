@@ -3,6 +3,7 @@
 #include "core/Config.h"
 #include "quickshare/QuickShare.h"
 #include "render/Images.h"
+#include "services/Alarms.h"
 #include "services/Firewall.h"
 #include "services/Network.h"
 #include "services/Notifications.h"
@@ -11,6 +12,7 @@
 #include "services/Vpn.h"
 #include "services/Weather.h"
 #include "services/Wellbeing.h"
+#include "shell/ClockFaces.h"
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
 #include "shell/bar/Island.h"
@@ -355,6 +357,47 @@ private:
     Connection m_conn;
 };
 
+// Alarms and timers: the timer done soonest counting down while one runs
+// (each second, only then), else the next alarm within a day; lit while
+// something rings, when a click stops it
+class AlarmChip : public Chip {
+public:
+    explicit AlarmChip(std::function<void()> click) : Chip("alarm", std::move(click)) {
+        m_conn = Alarms::get().changed.connect([this] { sync(); });
+        sync();
+    }
+
+    bool ringing() const { return !Alarms::get().ringing().empty(); }
+
+private:
+    void sync() {
+        auto& al = Alarms::get();
+        const Alarms::Timer* soonest = nullptr;
+        for (const auto& t : al.timers())
+            if (t.running() && (!soonest || t.end < soonest->end)) soonest = &t;
+        std::time_t at = 0;
+        const auto* next = al.upcoming(&at);
+        std::tm tm{};
+        localtime_r(&at, &tm);
+        const bool ring = ringing(), soon = next && at - std::time(nullptr) < 24 * 3600;
+        if (ring) set("alarm", m_vertical ? "" : "Stop");
+        else if (soonest) set("timer", Alarms::countdown(soonest->remaining(Alarms::nowMs())));
+        else set(next ? "alarm" : "alarm_off", soon && !m_vertical ? Alarms::timeText(tm.tm_hour, tm.tm_min) : "");
+        m_icon->setFill(ring)->setColor(ring ? "on_primary" : next || soonest ? "on_surface" : "on_surface_variant");
+        m_text->setColor(ring ? "on_primary" : "on_surface");
+        setBackground(ring ? ColorRef("primary") : ColorRef::none());
+        if (ring) tooltip = "Ringing (click to stop)";
+        else if (soonest) tooltip = (soonest->label.empty() ? std::string("Timer") : soonest->label) + " (click for the clock)";
+        else if (next) tooltip = std::format("Next alarm: {} {}{} (click for the clock)", Alarms::daysText(*next), Alarms::timeText(tm.tm_hour, tm.tm_min),
+                                             next->label.empty() ? "" : " · " + next->label);
+        else tooltip = "Alarms & timers";
+        if (soonest && !m_ticker) m_ticker = std::make_unique<kit::SecondTicker>([this] { sync(); });
+        else if (!soonest) m_ticker.reset();
+    }
+    std::unique_ptr<kit::SecondTicker> m_ticker;
+    Connection m_conn;
+};
+
 // The firewall: a shield, struck through while it's off
 class FirewallChip : public Chip {
 public:
@@ -406,6 +449,7 @@ const std::vector<Bar::Module>& Bar::modules() {
         {"island", "radio_button_checked", "Island", "Clock that grows for media and notifications"},
         {"clock", "schedule", "Clock", "Time in your chosen format"},
         {"calendar", "calendar_month", "Date", "Today's date; opens the dashboard calendar"},
+        {"alarms", "alarm", "Alarms & timers", "A timer counting down, or the next alarm; opens the clock"},
         {"weather", "partly_cloudy_day", "Weather", "Live temperature and sky"},
         {"media", "music_note", "Media", "Now playing; click to pause, scroll to skip"},
         {"lyrics", "lyrics", "Lyrics", "The line being sung, as music plays (synced lyrics)"},
@@ -612,7 +656,7 @@ void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
         if (vertical) c->setPadding({0, 2});
         c->add<Media>(vertical);
     } else if (id == "screentime" || id == "vpn" || id == "quickshare" || id == "firewall" || id == "focus" || id == "bedtime" ||
-               id == "printers") {
+               id == "printers" || id == "alarms") {
         auto* c = capsule(zone, filled);
         c->setPadding(vertical ? Insets{0, 4} : Insets{4, 0});
         auto open = [this](const std::string& name, Node* from) { m_openPopup(name, alongBar(from)); };
@@ -638,6 +682,14 @@ void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
             chip = c->add<PrintersChip>(std::function<void()>{});
             chip->onClicked = [open, chip](uint32_t b) {
                 if (b == BTN_LEFT) open("settings printers", chip);
+            };
+        } else if (id == "alarms") {
+            auto* alarms = c->add<AlarmChip>(std::function<void()>{});
+            chip = alarms;
+            chip->onClicked = [open, alarms](uint32_t b) {
+                if (b == BTN_LEFT && alarms->ringing()) Alarms::get().stopAll();
+                else if (b == BTN_LEFT) open("clock", alarms);
+                else if (b == BTN_RIGHT) open("settings clock", alarms);
             };
         } else if (id == "firewall") {
             chip = c->add<FirewallChip>(std::function<void()>{});

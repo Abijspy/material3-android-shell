@@ -106,6 +106,34 @@ void UsageRing::doPaint(Renderer& r) {
     }
 }
 
+// ── TimerRing ──
+
+TimerRing::TimerRing(float size) : Flex(Direction::Column), m_size(size) {
+    fixedWidth = fixedHeight = size;
+    setJustify(Align::Center)->setAlignItems(Align::Center);
+}
+
+void TimerRing::set(float fraction, bool running) {
+    fraction = std::clamp(fraction, 0.0f, 1.0f);
+    if (std::abs(fraction - m_fraction) < 0.0005f && running == m_running) return;
+    m_fraction = fraction;
+    m_running = running;
+    requestRedraw();
+}
+
+void TimerRing::doPaint(Renderer& r) {
+    Flex::doPaint(r);
+    const auto& b = rect();
+    const auto& t = Theme::get();
+    const float stroke = std::max(5.0f, m_size / 14), cx = b.x + b.w / 2, cy = b.y + b.h / 2, radius = m_size / 2 - stroke / 2;
+    r.rect({cx - m_size / 2, cy - m_size / 2, m_size, m_size}, Color{0, 0, 0, 0}, Radii(m_size / 2), stroke, t.color("surface_container_highest"));
+    // Dots along the arc, as UsageRing draws: round ends for free
+    const float tau = 6.2831853f, sweep = m_fraction * tau, step = stroke * 0.3f / radius;
+    const Color c = t.color(m_running ? "primary" : "outline");
+    for (float a = 0; a <= sweep; a += step)
+        r.rect({cx + radius * std::sin(a) - stroke / 2, cy - radius * std::cos(a) - stroke / 2, stroke, stroke}, c, Radii(stroke / 2));
+}
+
 // ── GlideColumn ──
 
 void GlideColumn::doArrange() {

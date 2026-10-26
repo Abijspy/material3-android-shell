@@ -27,6 +27,7 @@ const std::vector<Def>& widgets() {
         {"notifications", "notifications", "Notifications", "How many are waiting"},
         {"screentime", "digital_wellbeing", "Screen time", "Today's time, by app"},
         {"screentime-week", "bar_chart", "Screen time: week", "The week as bars, and the daily average"},
+        {"alarms", "alarm", "Alarms & timers", "The next alarm, and timers counting down"},
     };
     return all;
 }

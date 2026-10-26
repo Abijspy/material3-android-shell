@@ -23,6 +23,7 @@
 #include "services/SystemStats.h"
 #include "services/Wallpaper.h"
 #include "services/Weather.h"
+#include "shell/ClockPanel.h"
 #include "shell/Dock.h"
 #include "shell/HyprPages.h"
 #include "shell/PrintersPage.h"
@@ -3861,7 +3862,7 @@ HueChip categoryColours(const std::string& id) {
         {{"defaults", "hypr-input"}, &apps},
         {{"notifications", "sound", "hypr-animations"}, &pink},
         {{"display", "appearance", "style", "bar", "dock", "hypr-decoration", "hypr-monitors"}, &orange},
-        {{"storage", "monitor", "calendar", "hypr-render"}, &yellow},
+        {{"storage", "monitor", "calendar", "clock", "hypr-render"}, &yellow},
         {{"battery", "packages", "wellbeing", "hypr-startup"}, &green},
         {{"lock", "firewall", "lockscreen", "users", "hypr-window-rules", "hypr-layer-rules", "hypr-workspace-rules", "hypr-profiles"}, &teal},
         {{"hypr-debug"}, &red},
@@ -3934,6 +3935,7 @@ const PageDef kPages[] = {
     {"tools", "construction", "Tools", "Clipboard history and screenshots", toolsPage},
     {"wellbeing", "digital_wellbeing", "Digital Wellbeing", "Screen time, app timers, Focus mode and Bedtime", wellbeingPage},
     {"calendar", "calendar_month", "Calendar", "Your events, subscribed calendars and reminders", calendarPage},
+    {"clock", "alarm", "Alarms & timers", "Alarms, timers, their sound and snooze", clockPage},
     {"weather", "partly_cloudy_day", "Weather", "Location, units and the forecast", weatherPage},
     {"battery", "battery_full", "Battery", "Charge, power draw, health and the power mode", batteryPage},
     {"storage", "storage", "Storage", "Disks, folders and freeing up space", storagePage},
@@ -4000,7 +4002,7 @@ int pageGroup(const std::string& id) {
     if (id == "hypr-keybinds" || id == "hypr-startup" || id == "hypr-environment" || id.ends_with("-rules")) return 3;
     if (id.starts_with("hypr-")) return 2;
     if (id == "network" || id == "vpn" || id == "bluetooth" || id == "printers") return 0;
-    if (id == "defaults" || id == "notifications" || id == "wellbeing" || id == "tools" || id == "calendar" || id == "weather") return 1;
+    if (id == "defaults" || id == "notifications" || id == "wellbeing" || id == "tools" || id == "calendar" || id == "clock" || id == "weather") return 1;
     if (id == "battery" || id == "storage" || id == "monitor" || id == "sound" || id == "display") return 2;
     if (id == "appearance" || id == "style" || id == "bar" || id == "dock" || id == "lockscreen") return 3;
     if (id == "accessibility" || id == "lock" || id == "firewall" || id == "users") return 4;

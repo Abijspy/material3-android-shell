@@ -15,6 +15,7 @@
 #include "render/Text.h"
 #include "services/HyprOptions.h"
 #include "services/Hyprland.h"
+#include "services/Alarms.h"
 #include "services/Audio.h"
 #include "services/Backups.h"
 #include "services/Printers.h"
@@ -34,6 +35,7 @@
 #include "services/Screenshot.h"
 #include "services/Session.h"
 #include "services/Wallpaper.h"
+#include "shell/ClockPanel.h"
 #include "shell/Desktop.h"
 #include "shell/Dock.h"
 #include "shell/LockScreen.h"
@@ -42,6 +44,7 @@
 #include "shell/Panels.h"
 #include "shell/Popup.h"
 #include "shell/PrintersPage.h"
+#include "shell/Ringer.h"
 #include "services/Hooks.h"
 #include "shell/bar/Bar.h"
 #include "shell/bar/Frame.h"
@@ -107,6 +110,9 @@ bool Shell::start() {
     Session::get().lockRequested.connectForever([] { LockScreen::get().lock(); });
     Idle::get().lockRequested.connectForever([] { LockScreen::get().lock(); });
     Idle::get().start();
+    // Alarms and timers: what goes off shows at the top, over everything
+    Alarms::get();
+    m_ringer = std::make_unique<Ringer>(focused);
     LockScreen::get().lockedChanged.connectForever([this] {
         Hooks::get().fire(LockScreen::get().locked() ? "session_locked" : "session_unlocked");
         if (LockScreen::get().locked()) m_popup.reset();
@@ -417,6 +423,9 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         opts.anchor = -1;
         opts.centredVertically = true;
         build = [arg](ui::Flex* card, Popup& p) { panels::eventEditor(card, p, arg); };
+    } else if (name == "clock") {
+        opts.width = 440;
+        build = [arg](ui::Flex* card, Popup& p) { panels::clock(card, p, arg); };
     } else if (name == "files") {
         opts.width = 980;
         opts.anchor = -1;
@@ -512,7 +521,7 @@ void Shell::registerIpc() {
         for (auto& [_, frame] : m_frames) frame->setVisible(m_barsVisible);
         return std::string(m_barsVisible ? "shown" : "hidden");
     });
-    ipc.add("popup", "popup <quicksettings [wifi]|notifications|dashboard|overview|power|audio|network|bluetooth|battery|run>: toggle a panel",
+    ipc.add("popup", "popup <quicksettings [wifi]|notifications|dashboard|overview|power|audio|network|bluetooth|battery|run|clock [alarms|timers]>: toggle a panel",
             [this](const IpcServer::Args& a) {
         if (a.empty()) return std::string("error: popup needs a name");
         // Status panels open under the right end of the bar; the dashboard
@@ -683,7 +692,7 @@ void Shell::registerIpc() {
         const auto* p = m.active();
         return p ? std::format("{}: {} — {} [{}]", p->identity, p->title, p->artist, p->status) : std::string("no player");
     });
-    ipc.add("settings", "settings [network|vpn|bluetooth|printers|defaults|notifications|tools|wellbeing|calendar|weather|battery|storage|monitor|"
+    ipc.add("settings", "settings [network|vpn|bluetooth|printers|defaults|notifications|tools|wellbeing|calendar|clock|weather|battery|storage|monitor|"
                         "sound|display|appearance|style|bar|dock|lockscreen|accessibility|lock|firewall|users|system|mouse|keybinds|hooks|packages|about]",
             [this](const IpcServer::Args& a) {
         openSettings(a.empty() ? "" : a[0]);
@@ -982,6 +991,106 @@ void Shell::registerIpc() {
     ipc.add("idle", "idle [inhibit|allow]: keep the screen awake (Caffeine)", [](const IpcServer::Args& a) {
         if (!a.empty()) Idle::get().setInhibited(a[0] == "inhibit");
         return std::string(Idle::get().inhibited() ? "inhibited" : "allowed");
+    });
+    ipc.add("alarm", "alarm [list] | add <HH:MM> [once|daily|weekdays|weekends|mon,wed…] [label] | on|off|remove <id> | stop|snooze [id]",
+            [](const IpcServer::Args& a) {
+        auto& al = Alarms::get();
+        const std::string cmd = a.empty() ? "list" : a[0];
+        auto join = [&a](size_t from) {
+            std::string out;
+            for (size_t i = from; i < a.size(); ++i) out += (out.empty() ? "" : " ") + a[i];
+            return out;
+        };
+        if (cmd == "list") {
+            std::string out;
+            for (const auto& x : al.alarms())
+                out += std::format("{}\t{:02}:{:02}\t{}\t{}\t{}\n", x.id, x.hour, x.minute, x.snoozed ? "snoozed" : x.enabled ? "on" : "off",
+                                   Alarms::daysText(x), x.label);
+            for (const auto& r : al.ringing())
+                if (!r.timer) out += "ringing: " + r.id + "\n";
+            return out.empty() ? std::string("no alarms") : out;
+        }
+        if (cmd == "add") {
+            Alarms::Alarm x;
+            if (a.size() < 2 || std::sscanf(a[1].c_str(), "%d:%d", &x.hour, &x.minute) != 2 || x.hour < 0 || x.hour > 23 || x.minute < 0 ||
+                x.minute > 59)
+                return std::string("error: alarm add <HH:MM> [days] [label]");
+            size_t labelFrom = 2;
+            if (a.size() > 2) {
+                const std::string& d = a[2];
+                if (d == "daily") x.days = {0, 1, 2, 3, 4, 5, 6};
+                else if (d == "weekdays") x.days = {1, 2, 3, 4, 5};
+                else if (d == "weekends") x.days = {0, 6};
+                else if (d != "once") {
+                    // "mon,wed,fri": each part a day's name, or its start
+                    static const char* names[] = {"sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"};
+                    for (size_t from = 0; from <= d.size();) {
+                        const size_t comma = std::min(d.find(',', from), d.size());
+                        const std::string part = d.substr(from, comma - from);
+                        int day = -1;
+                        for (int i = 0; i < 7 && part.size() >= 3; ++i)
+                            if (std::string_view(names[i]).starts_with(part)) day = i;
+                        if (day < 0) {
+                            x.days.clear();
+                            break;
+                        }
+                        x.days.push_back(day);
+                        from = comma + 1;
+                    }
+                }
+                // A word that isn't days starts the label
+                if (d == "once" || !x.days.empty()) labelFrom = 3;
+            }
+            x.label = join(labelFrom);
+            const std::string id = al.save(x);
+            std::time_t at = 0;
+            if (const auto* saved = al.alarm(id)) at = Alarms::next(*saved, std::time(nullptr));
+            return std::format("{}: {}", id, Alarms::untilText(at));
+        }
+        if (cmd == "stop" || cmd == "snooze") {
+            if (al.ringing().empty() && a.size() < 2) return std::string("nothing ringing");
+            if (a.size() > 1) cmd == "stop" ? al.stop(a[1]) : al.snooze(a[1]);
+            else if (cmd == "stop") al.stopAll();
+            else
+                for (const auto& r : std::vector(al.ringing())) r.timer ? al.stop(r.id) : al.snooze(r.id);
+            return cmd == "stop" ? std::string("stopped") : std::string("snoozed");
+        }
+        if ((cmd == "on" || cmd == "off" || cmd == "remove") && a.size() > 1) {
+            if (!al.alarm(a[1])) return std::string("error: no alarm ") + a[1];
+            if (cmd == "remove") al.remove(a[1]);
+            else al.setEnabled(a[1], cmd == "on");
+            return cmd;
+        }
+        return std::string("error: alarm [list] | add <HH:MM> [days] [label] | on|off|remove <id> | stop|snooze [id]");
+    });
+    ipc.add("timer", "timer [list] | start <length: 5, 1:30, 1h20m, 90s> [label] | pause|resume|reset|remove <id>", [](const IpcServer::Args& a) {
+        auto& al = Alarms::get();
+        const std::string cmd = a.empty() ? "list" : a[0];
+        if (cmd == "list") {
+            std::string out;
+            const int64_t now = Alarms::nowMs();
+            for (const auto& t : al.timers())
+                out += std::format("{}\t{}\t{} of {}\t{}\n", t.id, t.running() ? "running" : "paused", Alarms::countdown(t.remaining(now)),
+                                   Alarms::countdown(t.length), t.label);
+            for (const auto& r : al.ringing())
+                if (r.timer) out += "ringing: " + r.id + "\n";
+            return out.empty() ? std::string("no timers") : out;
+        }
+        if (cmd == "start") {
+            const int64_t ms = a.size() > 1 ? Alarms::parseLength(a[1]) : 0;
+            if (ms <= 0) return std::string("error: timer start <length> [label]: 5 (minutes), 1:30, 1h20m, 90s");
+            std::string label;
+            for (size_t i = 2; i < a.size(); ++i) label += (label.empty() ? "" : " ") + a[i];
+            return al.startTimer(ms, label) + ": " + Alarms::countdown(ms);
+        }
+        if (a.size() < 2 || std::ranges::none_of(al.timers(), [&](const auto& t) { return t.id == a[1]; }))
+            return std::string("error: timer [list] | start <length> [label] | pause|resume|reset|remove <id>");
+        if (cmd == "pause") al.pause(a[1]);
+        else if (cmd == "resume") al.resume(a[1]);
+        else if (cmd == "reset") al.reset(a[1]);
+        else if (cmd == "remove") al.removeTimer(a[1]);
+        else return std::string("error: timer pause|resume|reset|remove <id>");
+        return cmd;
     });
     ipc.add("tray", "List tray items", [](const auto&) {
         std::string out;

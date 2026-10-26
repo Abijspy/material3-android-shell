@@ -66,6 +66,15 @@ void Idle::setInhibited(bool on) {
     changed.emit();
 }
 
+void Idle::wake() {
+    if (m_screenOff) {
+        m_screenOff = false;
+        screens(true);
+    }
+    disarm();
+    arm();
+}
+
 void Idle::idled(void* notification) {
     for (const auto& w : m_watches) {
         if (w.notification != notification) continue;

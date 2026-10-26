@@ -2,6 +2,7 @@
 
 #include "core/Config.h"
 #include "render/Images.h"
+#include "services/Alarms.h"
 #include "services/Auth.h"
 #include "services/Mpris.h"
 #include "services/Network.h"
@@ -11,6 +12,7 @@
 #include "shell/LockLayout.h"
 #include "shell/WidgetStyles.h"
 #include "shell/PanelKit.h"
+#include "shell/Ringer.h"
 #include "ui/Theme.h"
 
 #include <cmath>
@@ -353,6 +355,15 @@ LockView::LockView(Options options) : Flex(Direction::Column), m_options(std::mo
         if (it.id != "clock") w->textArea = Theme::AreaWidgets;
         else w->ownTextSize = true;
         grid->place(w, it.col, it.row);
+    }
+
+    // An alarm or a timer going off: stopped or snoozed from here, locked,
+    // in the widgets' place while it rings (Android's full-screen alarm)
+    if (!m_options.greeter) {
+        addRingingCards(this, 440);
+        auto ringing = [grid] { grid->setVisible(m3::Alarms::get().ringing().empty()); };
+        m_alarms = m3::Alarms::get().changed.connect(ringing);
+        ringing();
     }
 
     auto* spacer = add<Node>();

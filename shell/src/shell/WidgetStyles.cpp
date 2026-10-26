@@ -4,6 +4,7 @@
 #include "render/Images.h"
 #include "render/Renderer.h"
 #include "quickshare/QuickShare.h"
+#include "services/Alarms.h"
 #include "services/Calendar.h"
 #include "services/Mpris.h"
 #include "services/Printers.h"
@@ -63,6 +64,7 @@ public:
         if (m_id.starts_with("screentime") || m_id == "wellbeing-modes") watch(Wellbeing::get().changed);
         if (m_id == "vpn") watch(Vpn::get().changed);
         if (m_id == "quickshare") watch(quickshare::QuickShare::get().changed);
+        if (m_id == "alarms" && !m_greeter) watch(Alarms::get().changed);
         if (m_id == "printers") {
             watch(Printers::get().changed);
             m_printers = Printers::get().watch(); // the queue, while it shows
@@ -102,6 +104,7 @@ private:
     void vpn();
     void quickShare();
     void printers();
+    void alarms();
     Flex* controls(Node* parent, const Mpris::Player& p, float big);
     void progress() {
         const auto* p = Mpris::get().active();
@@ -116,6 +119,15 @@ private:
     std::unique_ptr<SecondTicker> m_ticker;
     Printers::Lease m_printers;
     WavyProgress* m_progress = nullptr;
+    // Alarms & timers: the running timers' countdowns, on each second
+    struct Countdown {
+        std::string id;
+        Label* left;
+        TimerRing* ring;
+    };
+    std::vector<Countdown> m_countdowns;
+    std::unique_ptr<SecondTicker> m_timerTicker;
+    void countdowns();
 };
 
 // The cover, rounded (a circle for the disc); a note when there's none
@@ -156,7 +168,7 @@ void Styled::build() {
     if (m_id == "cal-agenda") return calendarAgenda();
     // Nothing personal on the login screen
     if (m_greeter && (m_id.starts_with("screentime") || m_id == "wellbeing-modes" || m_id == "vpn" || m_id == "quickshare" ||
-                      m_id == "printers"))
+                      m_id == "printers" || m_id == "alarms"))
         return setVisible(false);
     if (m_id == "screentime") return screenTime();
     if (m_id == "screentime-week") return screenTimeWeek();
@@ -164,6 +176,7 @@ void Styled::build() {
     if (m_id == "vpn") return vpn();
     if (m_id == "quickshare") return quickShare();
     if (m_id == "printers") return printers();
+    if (m_id == "alarms") return alarms();
     if (m_id.starts_with("music")) {
         // Never on the login screen: nobody's music plays there
         const auto* p = m_greeter ? nullptr : Mpris::get().active();
@@ -612,12 +625,109 @@ void Styled::printers() {
     };
 }
 
+// The next alarm, with a switch, and the timers counting down, each with
+// its ring and a pause button; + opens the clock
+void Styled::alarms() {
+    auto& al = Alarms::get();
+    m_countdowns.clear();
+    auto* c = card(this);
+    c->setAlignItems(Align::Stretch);
+    c->minWidth = 280 * m_k;
+    auto* head = c->add<Flex>(Flex::Direction::Row);
+    head->setSpacing(8 * m_k);
+    head->add<Icon>("alarm", 18 * m_k)->setColor("primary", false);
+    auto* title = head->add<Label>("Clock");
+    title->setSize(13 * m_k)->setWeight(600)->setColor("on_surface_variant", false);
+    title->grow = true;
+    auto* plus = head->add<Button>();
+    pill(plus->setBackground("surface_container_highest", false))->setPadding(Insets(6 * m_k));
+    plus->add<Icon>("add", 18 * m_k)->setColor("on_surface", false);
+    plus->tooltip = "Alarms & timers";
+    plus->onClicked = [](uint32_t button) {
+        if (button == BTN_LEFT && panels::open) panels::open("clock");
+    };
+
+    std::time_t at = 0;
+    const auto* next = al.upcoming(&at);
+    if (next) {
+        auto* row = c->add<Flex>(Flex::Direction::Row);
+        row->setSpacing(12 * m_k);
+        auto* texts = row->add<Flex>(Flex::Direction::Column);
+        texts->setAlignItems(Align::Start)->setSpacing(0);
+        texts->grow = true;
+        std::tm tm{};
+        localtime_r(&at, &tm);
+        texts->add<Label>(Alarms::timeText(tm.tm_hour, tm.tm_min))->setSize(40 * m_k)->setColor("on_surface", false);
+        std::string about = next->snoozed ? std::string("Snoozed") : Alarms::daysText(*next);
+        if (!next->label.empty()) about += " · " + next->label;
+        texts->add<Label>(about)->setSize(12 * m_k)->setMaxWidth(190 * m_k)->setColor("on_surface_variant", false);
+        auto* sw = row->add<Switch>();
+        sw->setChecked(next->enabled, false);
+        const std::string id = next->id;
+        sw->onToggled = [id](bool on) { Alarms::get().setEnabled(id, on); };
+    } else if (al.timers().empty()) {
+        auto* none = c->add<Button>(Flex::Direction::Row);
+        pill(none->setBackground("primary_container", false))->setPadding({14 * m_k, 10 * m_k})->setSpacing(8 * m_k);
+        none->alignSelf = Align::Start;
+        none->add<Icon>("add_alarm", 20 * m_k)->setColor("on_primary_container", false);
+        none->add<Label>("Add an alarm")->setSize(14 * m_k)->setWeight(600)->setColor("on_primary_container", false);
+        none->onClicked = [](uint32_t button) {
+            if (button == BTN_LEFT && panels::open) panels::open("clock new");
+        };
+    }
+
+    // The timers, three at most
+    const int64_t now = Alarms::nowMs();
+    int shown = 0;
+    for (const auto& t : al.timers()) {
+        if (++shown > 3) break;
+        auto* row = c->add<Flex>(Flex::Direction::Row);
+        row->setSpacing(12 * m_k);
+        auto* ring = row->add<TimerRing>(40 * m_k);
+        auto* texts = row->add<Flex>(Flex::Direction::Column);
+        texts->setAlignItems(Align::Start)->setSpacing(0);
+        texts->grow = true;
+        auto* left = texts->add<Label>(Alarms::countdown(t.remaining(now)));
+        left->setSize(22 * m_k)->setWeight(500)->setColor("on_surface", false);
+        texts->add<Label>(t.label.empty() ? "Timer" : t.label)->setSize(12 * m_k)->setMaxWidth(170 * m_k)->setColor("on_surface_variant", false);
+        m_countdowns.push_back({t.id, left, ring});
+        auto* go = row->add<Button>();
+        pill(go->setBackground(t.running() ? "primary" : "surface_container_highest", false))->setJustify(Align::Center);
+        go->fixedWidth = go->fixedHeight = 40 * m_k;
+        go->add<Icon>(t.running() ? "pause" : t.left > 0 ? "play_arrow" : "replay", 22 * m_k)
+            ->setFill(true)
+            ->setColor(t.running() ? "on_primary" : "on_surface", false);
+        const std::string id = t.id;
+        go->onClicked = [id, running = t.running(), done = t.left <= 0](uint32_t button) {
+            if (button != BTN_LEFT) return;
+            if (running) Alarms::get().pause(id);
+            else if (done) Alarms::get().reset(id);
+            else Alarms::get().resume(id);
+        };
+    }
+    countdowns();
+    if (!al.anyRunning()) m_timerTicker.reset();
+    else if (!m_timerTicker) m_timerTicker = std::make_unique<SecondTicker>([this] { countdowns(); });
+}
+
+void Styled::countdowns() {
+    const int64_t now = Alarms::nowMs();
+    const auto& timers = Alarms::get().timers();
+    for (const auto& c : m_countdowns) {
+        const auto it = std::ranges::find(timers, c.id, &Alarms::Timer::id);
+        if (it == timers.end()) continue;
+        const int64_t left = it->remaining(now);
+        c.left->setText(Alarms::countdown(left));
+        c.ring->set(it->length > 0 ? static_cast<float>(static_cast<double>(left) / static_cast<double>(it->length)) : 0, it->running());
+    }
+}
+
 } // namespace
 
 Node* addStyledWidget(Node* parent, const std::string& id, bool greeter, Align align) {
     static const char* ids[] = {"cal-day",     "cal-week",     "cal-month",  "cal-agenda",      "music-disc", "music-bar",
                                 "weather-big", "weather-card", "screentime", "screentime-week", "wellbeing-modes", "vpn", "quickshare",
-                                "printers"};
+                                "printers", "alarms"};
     for (const char* known : ids)
         if (id == known) return parent->add<Styled>(id, greeter, align);
     return nullptr;

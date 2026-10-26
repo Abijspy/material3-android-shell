@@ -212,6 +212,7 @@ const std::vector<WidgetDef>& widgets() {
         {"vpn", "vpn_key", "VPN", "The VPN in use, with a switch"},
         {"quickshare", quickShare.c_str(), "Quick Share", "Visible or not, and Send"},
         {"printers", "print", "Printers", "The default printer and the queue"},
+        {"alarms", "alarm", "Alarms & timers", "The next alarm, and timers counting down"},
     };
     return all;
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/EventLoop.h"
+#include "core/Signal.h"
 #include "ui/Controls.h"
 #include "ui/Node.h"
 
@@ -78,6 +79,7 @@ private:
     ui::Label* m_avatarLetter;
     ui::TextField* m_field;
     bool m_busy = false;
+    Connection m_alarms; // something rings: its cards stand in for the widgets
 };
 
 } // namespace m3::shell

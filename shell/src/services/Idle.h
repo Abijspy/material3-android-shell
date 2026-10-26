@@ -19,6 +19,9 @@ public:
     // No input for a couple of minutes: someone stepped away (screen time
     // stops counting)
     bool away() const { return m_away; }
+    // Something needs seeing (an alarm): the screens back on, and the idle
+    // countdowns start over
+    void wake();
 
     Signal<> lockRequested;
     Signal<> changed;

@@ -110,7 +110,8 @@ From the moment the machine boots:
 
 **4 · Open the panels.**
 - **Quick Settings:** volume, brightness, Wi-Fi, Bluetooth, Do Not Disturb, Caffeine, night light, and the connected network's live download and upload speed.
-- **Notification Centre** and **Dashboard:** notifications, the clock, a calendar and the week's weather.
+- **Notification Centre** and **Dashboard:** notifications, the clock, a calendar (your country's public holidays in red) and the week's weather.
+- **Clock:** alarms, once or on the days you pick, and timers counting down in rings. When one goes off, a card at the top of the screen (or on the lock screen) snoozes or stops it. The bar, the desktop and the lock screen each have an Alarms & timers widget.
 - **Overview:** every workspace at a glance.
 
 **5 · Change the wallpaper.** Ten wallpapers ship with the shell, eight of them drawn from Material 3 Expressive shapes (<kbd>Ctrl</kbd><kbd>Super</kbd><kbd>T</kbd>). Pick one or your own image and Matugen builds a new Material 3 palette from it, or seed the palette from an accent colour you choose. The whole desktop recolours, GTK, KDE, Alacritty, kitty and Hyprland's window borders included.
@@ -158,7 +159,8 @@ Most settings live in the built-in **Settings** app (<kbd>Super</kbd><kbd>I</kbd
 - **Lock screen and weather:** the clock and widgets on the lock and login screens; your location, units and forecast.
 - **Tools:** clipboard and screenshots.
 - **Session:** notifications, and lock & idle.
-- **Hooks:** your own commands when things happen (the screen locks, the wallpaper changes, the battery runs low, a notification arrives, a screenshot is saved: 41 events in all), each with a test run and its last result.
+- **Calendar and clock:** your events, subscribed calendars and public holidays; alarms, timers, their sound and snooze.
+- **Hooks:** your own commands when things happen (the screen locks, the wallpaper changes, the battery runs low, a notification arrives, a screenshot is saved, an alarm goes off: 43 events in all), each with a test run and its last result.
 - **Packages & Updates, and About.**
 
 **Hyprland Settings** is its companion app for the compositor itself: a window of its own (Hyprland Settings in the launcher, `material3ui msg hyprsettings`, or the button at the foot of either app's sidebar). Every change applies live, is saved at once, undoes with <kbd>Ctrl</kbd><kbd>Z</kbd> and resets per option to what your config files had. It has:

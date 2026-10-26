@@ -107,6 +107,10 @@ const std::vector<Hooks::Event>& Hooks::events() {
         {"focus_disabled", "self_improvement", "Focus mode off", "Focus mode ends", "Digital Wellbeing", {}},
         {"bedtime_started", "bedtime", "Bedtime starts", "On schedule or by hand", "Digital Wellbeing", {}},
         {"bedtime_ended", "wb_twilight", "Bedtime ends", "Bedtime mode is over", "Digital Wellbeing", {}},
+
+        {"alarm_ringing", "alarm", "Alarm ringing", "An alarm goes off (and again after a snooze)", "Clock",
+         {{"M3_ALARM_TIME", "07:00"}, {"M3_ALARM_LABEL", "Wake up"}}},
+        {"timer_finished", "timer", "Timer finished", "A timer runs out", "Clock", {{"M3_TIMER_LABEL", "Tea"}, {"M3_TIMER_LENGTH", "5:00"}}},
     };
     return all;
 }

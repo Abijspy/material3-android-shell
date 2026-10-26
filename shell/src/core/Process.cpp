@@ -103,18 +103,18 @@ bool spawn(const std::string& command) {
     return r == 0;
 }
 
-void run(const std::vector<std::string>& argv, std::function<void(int, const std::string&)> done,
+int run(const std::vector<std::string>& argv, std::function<void(int, const std::string&)> done,
          const std::string& input) {
     int outPipe[2], inPipe[2];
     if (pipe2(outPipe, O_CLOEXEC) < 0) {
         if (done) done(-1, {});
-        return;
+        return -1;
     }
     if (pipe2(inPipe, O_CLOEXEC) < 0) {
         close(outPipe[0]);
         close(outPipe[1]);
         if (done) done(-1, {});
-        return;
+        return -1;
     }
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
@@ -136,7 +136,7 @@ void run(const std::vector<std::string>& argv, std::function<void(int, const std
         close(outPipe[0]);
         close(inPipe[1]);
         if (done) done(-1, {});
-        return;
+        return -1;
     }
     // Small inputs (passwords, clipboard ids) fit the pipe buffer
     if (!input.empty()) [[maybe_unused]] auto w = write(inPipe[1], input.data(), input.size());
@@ -149,6 +149,7 @@ void run(const std::vector<std::string>& argv, std::function<void(int, const std
     job->done = std::move(done);
     EventLoop::get().add(job.get());
     jobs()[pid] = std::move(job);
+    return pid;
 }
 
 void reapChildren() {

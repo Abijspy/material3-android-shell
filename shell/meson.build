@@ -73,6 +73,8 @@ sources = files(
   'src/render/Images.cpp',
   'src/render/Renderer.cpp',
   'src/render/Text.cpp',
+  'src/services/Alarms.cpp',
+  'src/services/AlarmsParse.cpp',
   'src/services/Audio.cpp',
   'src/services/Backups.cpp',
   'src/services/Calendar.cpp',
@@ -116,12 +118,14 @@ sources = files(
   'src/shell/Menus.cpp',
   'src/shell/Notify.cpp',
   'src/shell/Osd.cpp',
+  'src/shell/Ringer.cpp',
   'src/shell/PanelKit.cpp',
   'src/shell/Panels.cpp',
   'src/shell/QuickSettings.cpp',
   'src/shell/QuickSharePanel.cpp',
   'src/shell/Rich.cpp',
   'src/shell/ClockFaces.cpp',
+  'src/shell/ClockPanel.cpp',
   'src/shell/CurveEditor.cpp',
   'src/shell/DesktopEditor.cpp',
   'src/shell/EventEditor.cpp',
@@ -202,3 +206,5 @@ test('printers', executable('printers_test', 'tests/printers_test.cpp', 'src/ser
   include_directories: include_directories('src')))
 test('lyrics', executable('lyrics_test', 'tests/lyrics_test.cpp', 'src/services/LyricsParse.cpp',
   include_directories: include_directories('src'), dependencies: [json]))
+test('alarms', executable('alarms_test', 'tests/alarms_test.cpp', 'src/services/AlarmsParse.cpp',
+  include_directories: include_directories('src')))

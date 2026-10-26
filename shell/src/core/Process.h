@@ -10,8 +10,9 @@ namespace m3 {
 bool spawn(const std::string& command);
 
 // Runs argv asynchronously, collecting stdout; `done` gets the exit code
-// (-1 if it could not start) and the output, on the event loop.
-void run(const std::vector<std::string>& argv, std::function<void(int code, const std::string& out)> done,
+// (-1 if it could not start) and the output, on the event loop. Returns the
+// child's pid (to stop it early), -1 if it could not start.
+int run(const std::vector<std::string>& argv, std::function<void(int code, const std::string& out)> done,
          const std::string& input = {});
 
 // Called on SIGCHLD: reaps the exited children spawn() and run() started

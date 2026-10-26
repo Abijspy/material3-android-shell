@@ -22,6 +22,7 @@ Hyprland binds, scripts and other programs all use the same commands. The defaul
 | `screenshot` | The screenshot tool |
 | `wallpaper pick` | The wallpaper picker |
 | `popup lockeditor` | The lock screen editor |
+| `popup clock [alarms\|timers]` | Alarms and timers |
 
 Running a panel command again closes the panel.
 
@@ -39,6 +40,13 @@ Running a panel command again closes the panel.
 | `notifications [list\|clear\|dnd on\|dnd off]` | History, clearing and Do Not Disturb |
 | `lock` | Locks the session (ext-session-lock) |
 | `idle inhibit\|allow` | Caffeine: keeps the screen awake |
+| `alarm [list]` | Your alarms, each with its id |
+| `alarm add <HH:MM> [days] [label]` | A new alarm. Days: `once` (the default), `daily`, `weekdays`, `weekends`, or a list such as `mon,wed,fri` |
+| `alarm on\|off\|remove <id>` | Turns an alarm on or off, or deletes it |
+| `alarm stop\|snooze [id]` | Stops or snoozes what's ringing (all of it, without an id) |
+| `timer [list]` | Your timers and the time each has left |
+| `timer start <length> [label]` | Starts one. Lengths: `5` (minutes), `1:30`, `1h20m`, `90s` |
+| `timer pause\|resume\|reset\|remove <id>` | Controls one timer |
 | `bar toggle\|show\|hide` | Status bar visibility |
 | `bar edit\|done` | Edit the bar's widgets in place, or finish |
 | `reload` | Re-reads `config.json` and the palette |
@@ -129,6 +137,8 @@ material3ui events wait screenshot_taken --since "$since" --timeout 10 | jq -r .
 | `focus_disabled` | Focus mode ends | – |
 | `bedtime_started` | On schedule or by hand | – |
 | `bedtime_ended` | Bedtime mode is over | – |
+| `alarm_ringing` | An alarm goes off (and again after a snooze) | `$M3_ALARM_TIME`, `$M3_ALARM_LABEL` |
+| `timer_finished` | A timer runs out | `$M3_TIMER_LABEL`, `$M3_TIMER_LENGTH` |
 
 ## From earlier versions
 

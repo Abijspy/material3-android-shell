@@ -119,6 +119,21 @@ private:
     ui::Tween m_sweep{0, ui::Spring::spatialSlow()};
 };
 
+// A timer's ring: the time left as an arc from the top, round a track, its
+// children (the countdown) inside; outlined while paused
+class TimerRing : public ui::Flex {
+public:
+    explicit TimerRing(float size);
+    void set(float fraction, bool running);
+
+protected:
+    void doPaint(Renderer& r) override;
+
+private:
+    float m_size, m_fraction = 1;
+    bool m_running = false;
+};
+
 // M3 Expressive loading indicators, for work of unknown length. Both animate
 // for as long as they are shown.
 // Circular: a wavy arc that spins while it grows and shrinks.

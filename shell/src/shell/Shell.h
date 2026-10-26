@@ -17,6 +17,7 @@ class Bar;
 class Popup;
 class Toasts;
 class Osd;
+class Ringer;
 class Desktop;
 class Dock;
 class Frame;
@@ -61,6 +62,7 @@ private:
     void holdDocks(bool held); // the dock stays out while its menu is open
     std::unique_ptr<Toasts> m_toasts;
     std::unique_ptr<Osd> m_osd;
+    std::unique_ptr<Ringer> m_ringer; // an alarm or a timer going off
     bool m_barsVisible = true;
     bool m_started = false; // past startup: screens added now were plugged in
     EventLoop::TimerId m_greeterSync = 0; // debounce for the login screen sync
