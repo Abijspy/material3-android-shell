@@ -286,15 +286,20 @@ SizeF Flex::doMeasure(SizeF available) {
     float main = 0, cross = 0;
     int count = 0;
     const float grown = row ? growRoom(inner) : 0;
+    float filling = row ? -1 : fillRoom(inner);
     for (auto& c : children()) {
         if (!c->shown() || c->floating) continue;
         // Down a column each child gets the height its earlier siblings left,
-        // so a scroll view under a header caps to the room really there;
-        // across a row, what grows gets the width the others leave (its text
-        // wraps to fit beside them, and the row is as tall as that)
+        // and one that fills (a scroll view) what all the others leave, those
+        // under it too, so they stay on the card; across a row, what grows
+        // gets the width the others leave (its text wraps to fit beside them,
+        // and the row is as tall as that)
         const float spent = main + (count > 0 ? m_spacing * static_cast<float>(count) : 0);
-        const auto s = c->measure(row ? SizeF{c->grow && grown > 0 ? grown : inner.w, inner.h}
-                                      : SizeF{inner.w, std::max(0.0f, inner.h - spent)});
+        const bool fills = filling >= 0 && c->fillsHeight();
+        const auto s = c->measure(row     ? SizeF{c->grow && grown > 0 ? grown : inner.w, inner.h}
+                                  : fills ? SizeF{inner.w, filling}
+                                          : SizeF{inner.w, std::max(0.0f, inner.h - spent)});
+        if (fills) filling = std::max(0.0f, filling - s.h); // what the next one that fills gets
         main += row ? s.w : s.h;
         cross = std::max(cross, row ? s.h : s.w);
         ++count;
@@ -303,6 +308,29 @@ SizeF Flex::doMeasure(SizeF available) {
     const float padMain = row ? m_padding.left + m_padding.right : m_padding.top + m_padding.bottom;
     const float padCross = row ? m_padding.top + m_padding.bottom : m_padding.left + m_padding.right;
     return row ? SizeF{main + padMain, cross + padCross} : SizeF{cross + padCross, main + padMain};
+}
+
+bool Flex::fillsHeight() const {
+    // Worked out once a layout pass: the tree doesn't change within one
+    if (m_fillsChecked == g_generation) return m_fills;
+    m_fillsChecked = g_generation;
+    m_fills = std::ranges::any_of(children(), [](const auto& c) { return c->shown() && !c->floating && c->fillsHeight(); });
+    return m_fills;
+}
+
+float Flex::fillRoom(SizeF inner) {
+    float fixed = 0;
+    int count = 0;
+    bool any = false;
+    for (auto& c : children()) {
+        if (!c->shown() || c->floating) continue;
+        ++count;
+        if (c->fillsHeight()) any = true;
+        else fixed += c->measure({inner.w, inner.h}).h;
+    }
+    if (!any) return -1;
+    if (count > 1) fixed += m_spacing * static_cast<float>(count - 1);
+    return std::max(0.0f, inner.h - fixed);
 }
 
 float Flex::growRoom(SizeF inner) {
@@ -332,12 +360,17 @@ void Flex::doArrange() {
     float used = 0;
     int visibleCount = 0, growCount = 0;
     const float grown = row ? growRoom({content.w, content.h}) : 0;
+    float filling = row ? -1 : fillRoom({content.w, content.h});
     for (auto& c : children()) {
-        // As in doMeasure: only the room left after the earlier siblings
+        // As in doMeasure: the room left after the earlier siblings, or for
+        // one that fills, after all the others
         const float spent = used + m_spacing * static_cast<float>(visibleCount);
-        const SizeF room = row ? SizeF{c->grow && grown > 0 ? grown : content.w, content.h}
-                               : SizeF{content.w, std::max(0.0f, content.h - spent)};
+        const bool fills = filling >= 0 && c->shown() && !c->floating && c->fillsHeight();
+        const SizeF room = row     ? SizeF{c->grow && grown > 0 ? grown : content.w, content.h}
+                           : fills ? SizeF{content.w, filling}
+                                   : SizeF{content.w, std::max(0.0f, content.h - spent)};
         sizes.push_back(c->shown() && !c->floating ? c->measure(room) : SizeF{});
+        if (fills) filling = std::max(0.0f, filling - sizes.back().h);
         if (!c->shown() || c->floating) continue;
         used += row ? sizes.back().w : sizes.back().h;
         ++visibleCount;

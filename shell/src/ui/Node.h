@@ -70,6 +70,10 @@ public:
     // Reached with Tab and the arrow keys where a surface allows it (the
     // Settings apps): buttons, switches, sliders, text fields
     virtual bool keyboardNavigable() const { return false; }
+    // Takes the height that's left (a scroll view, or something holding one):
+    // a column sizes its other children first, those under it too, and gives
+    // it the rest, so a footer under a long list stays on the card
+    virtual bool fillsHeight() const { return false; }
     // The node the keyboard is on, ringed while the keyboard moves it (one at
     // a time: the surface that has the keyboard sets it)
     static inline Node* focusRing = nullptr;
@@ -225,6 +229,7 @@ public:
     const Radii& radius() const { return m_radius; }
     Flex* setBorder(float width, const ColorRef& c);
     float cornerRadius() const override;
+    bool fillsHeight() const override; // holds something that does
 
 protected:
     SizeF doMeasure(SizeF available) override;
@@ -237,6 +242,11 @@ protected:
     // Across a row: the width each growing child has once the others are
     // in (0: nothing grows, or the others fill it)
     float growRoom(SizeF inner);
+    // Down a column: the height left for the children that fill it, once the
+    // others are in (< 0: none fills it)
+    float fillRoom(SizeF inner);
+    mutable uint64_t m_fillsChecked = 0; // the layout pass fillsHeight() was worked out in
+    mutable bool m_fills = false;
 
     Direction m_dir;
     float m_spacing = 0;

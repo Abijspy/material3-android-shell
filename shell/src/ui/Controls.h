@@ -109,6 +109,7 @@ public:
 
     // Interactive for the scrollbar; presses elsewhere do nothing
     bool interactive() const override { return overflows(); }
+    bool fillsHeight() const override { return true; }
     void onHover(bool hovered) override;
     void onPress(uint32_t button, float x, float y) override;
     void onDrag(float x, float y) override;
