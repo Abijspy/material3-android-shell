@@ -17,14 +17,22 @@ public:
     // at bedtime); "" ends it
     void setTemporaryFilter(const std::string& filter);
 
+    // The cursor theme in use: the one chosen (Hyprland Settings → Cursor),
+    // or Bibata when none is (if it's installed); "" for the system's own,
+    // chosen or not
+    static std::string cursorTheme();
+    static constexpr const char* kDefaultCursor = "Bibata-Modern-Classic";
+    static bool cursorInstalled(const std::string& theme);
+
 private:
     std::string m_temporaryFilter;
     Effects();
     void apply();
 
     std::string m_applied; // legacy configs: what the keywords last set
-    int m_cursor = 0;
-    std::string m_cursorTheme; // what setcursor last applied      // the cursor size last applied
+    int m_cursor = 0;          // the cursor size last applied
+    std::string m_cursorTheme; // what setcursor last applied
+    void applyCursor();
     void applyInput();     // Settings → Mouse & touchpad, as input_custom.lua
     void applyAccessibility(); // the magnifier and colour correction
     void applySharing();       // Settings → Tools → Screen sharing, as xdph.conf

@@ -7,6 +7,7 @@
 #include "core/Config.h"
 #include "core/EventLoop.h"
 #include "core/Signal.h"
+#include "services/Effects.h"
 #include "services/HyprOptions.h"
 #include "services/Hyprland.h"
 #include "services/Packages.h"
@@ -1549,7 +1550,8 @@ void cursorThemeSection(Flex* page) {
     live->sync = [live] {
         live->clearChildren();
         auto* g = group(live, "Cursor theme", "Applies at once: point at things to see it");
-        const std::string now = Config::get().value<std::string>("/accessibility/cursorTheme", "");
+        // In use: the chosen one, else Bibata (the default, when installed)
+        const std::string now = Effects::cursorTheme();
         auto theme = row(g, "arrow_selector_tool", "Theme");
         const auto themes = cursorThemes();
         std::string shown = now.empty() ? "System default" : now;
@@ -1560,12 +1562,25 @@ void cursorThemeSection(Flex* page) {
         dropdown(theme.row, g, shown, items, [](const std::string& id) {
             Config::get().set("/accessibility/cursorTheme", id.empty() ? nlohmann::json(nullptr) : nlohmann::json(id));
         });
+        // Bibata, the default, from the AUR: offered while it's missing
+        if (!Effects::cursorInstalled(Effects::kDefaultCursor)) {
+            auto& p = Packages::get();
+            auto b = row(g, "download", "Bibata isn't installed",
+                         p.busy() ? p.status() : "The default cursor: rounded, crisp and in Material's spirit (from the AUR)");
+            if (!p.busy() && !p.aurHelper().empty())
+                pillButton(b.row, "Install", true, [] {
+                    Packages::get().install({"bibata-cursor-theme-bin", "", "Bibata cursors", "aur", Packages::Source::Aur});
+                }, "download");
+            else if (!p.busy())
+                caption(b.row, "Needs yay or paru");
+        }
         auto size = row(g, "open_in_full", "Size", "Also in Accessibility");
         connectedGroup<int>(size.row, Config::get().value<int>("/accessibility/cursorSize", 24),
                             {{24, "Default"}, {32, "Large"}, {48, "Larger"}, {64, "Largest"}},
                             [](int v) { Config::get().set("/accessibility/cursorSize", v); });
     };
     live->conns.push_back(Config::get().changed.connect([live] { live->syncSoon(); }));
+    live->watch(Packages::get().changed); // Bibata installing
     live->sync();
 }
 

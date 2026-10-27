@@ -5,6 +5,7 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "services/Hyprland.h"
+#include "services/Packages.h"
 #include "ui/Theme.h"
 #include "wayland/Display.h"
 
@@ -53,6 +54,25 @@ Effects::Effects() {
     }
     apply();
     Config::get().changed.connectForever([this] { apply(); });
+    // Bibata installed (from Hyprland Settings → Cursor): in use at once
+    Packages::get().changed.connectForever([this] {
+        if (!Packages::get().busy()) applyCursor();
+    });
+}
+
+bool Effects::cursorInstalled(const std::string& theme) {
+    std::error_code ec;
+    const std::string home = paths::home();
+    for (const std::string& dir : {home + "/.local/share/icons/", home + "/.icons/", std::string("/usr/share/icons/")})
+        if (fs::is_directory(dir + theme + "/cursors", ec) || fs::exists(dir + theme + "/manifest.hl", ec)) return true;
+    return false;
+}
+
+std::string Effects::cursorTheme() {
+    // Never chosen: Bibata. Chosen: that, or null for "System default"
+    const auto j = Config::get().value<nlohmann::json>("/accessibility/cursorTheme", nlohmann::json::object());
+    if (j.is_object()) return cursorInstalled(kDefaultCursor) ? kDefaultCursor : "";
+    return j.is_string() ? j.get<std::string>() : "";
 }
 
 // Settings → Mouse & touchpad: Hyprland's input options, in a Lua table
@@ -208,18 +228,13 @@ void Effects::applySharing() {
     run({"systemctl", "--user", "try-restart", "xdg-desktop-portal-hyprland.service"}, nullptr);
 }
 
-void Effects::apply() {
-    auto& h = Hyprland::get();
-    if (!h.available()) return;
-    auto& t = Theme::get();
+void Effects::applyCursor() {
+    if (!Hyprland::get().available()) return;
+    // The cursor: its theme (Hyprland Settings → Cursor, Bibata unless
+    // another is chosen) and size (Accessibility). Hyprland's own, GTK's,
+    // and the variables apps started from now on read
     const auto& c = Config::get();
-    applyInput();
-    applyAccessibility();
-    applySharing();
-    // The cursor: its theme (Hyprland Settings → Cursor) and size
-    // (Accessibility). Hyprland's own, GTK's, and the variables apps
-    // started from now on read
-    const std::string theme = c.value<std::string>("/accessibility/cursorTheme", "");
+    const std::string theme = cursorTheme();
     // Back from a chosen theme to the system's: "default" again, not
     // whatever GTK was last told
     const bool cleared = theme.empty() && !m_cursorTheme.empty();
@@ -237,6 +252,17 @@ void Effects::apply() {
                               px);
         run({"sh", "-c", script}, nullptr);
     }
+}
+
+void Effects::apply() {
+    auto& h = Hyprland::get();
+    if (!h.available()) return;
+    auto& t = Theme::get();
+    const auto& c = Config::get();
+    applyInput();
+    applyAccessibility();
+    applySharing();
+    applyCursor();
     // How the blur looks (size, passes, noise…) is Hyprland Settings' alone:
     // only what the shell's own layers get is written here
     const bool barBlur = c.value<bool>("/statusBar/blur", true), dockBlur = c.value<bool>("/dock/blur", true);

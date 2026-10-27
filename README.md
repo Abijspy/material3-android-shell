@@ -172,7 +172,7 @@ Most settings live in the built-in **Settings** app (<kbd>Super</kbd><kbd>I</kbd
 - **Keybinds:** press a shortcut to set it; binds for any action or command, and mouse drags.
 - **Rules:** window, layer and workspace rules, picked from the windows and layers on screen.
 - **Startup apps and environment variables.**
-- **Cursor themes, plugins** (hyprpm, with a catalogue to download and install) **and profiles** (whole setups saved by name; `material3ui msg hypr profile next` switches from a keybind).
+- **Cursor themes** (Bibata by default, offered to install when missing), **plugins** (hyprpm, with a catalogue to download and install) **and profiles** (whole setups saved by name; `material3ui msg hypr profile next` switches from a keybind).
 
 Its changes live in `hyprland_custom.lua`, applied after the rest of your config. → [Hyprland Settings](docs/HYPRLAND.md#hyprland-settings)
 

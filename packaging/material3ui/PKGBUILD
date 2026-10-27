@@ -19,7 +19,8 @@ optdepends=('wf-recorder: screen recording'
             'noto-fonts: text in Indic and other scripts'
             'pacman-contrib: checking for updates (checkupdates)'
             'fwupd: firmware updates in Settings → Firmware'
-            'flatpak: Flatpak apps, their updates and remotes')
+            'flatpak: Flatpak apps, their updates and remotes'
+            'bibata-cursor-theme-bin: the default cursor (AUR)')
 backup=(etc/pam.d/material3ui)
 options=(!debug)
 

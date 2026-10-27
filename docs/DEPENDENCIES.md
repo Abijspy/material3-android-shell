@@ -11,6 +11,7 @@ The installer reads `data/dependencies.json`, checks what is missing with `pacma
 | **Shell libraries** | `wayland` `wayland-protocols` `wlr-protocols` `mesa` `pango` `cairo` `librsvg` `gdk-pixbuf2` `libxkbcommon` `nlohmann-json` `libpulse` `polkit` `pam` | Wayland and layer shell, OpenGL ES, text, icons and wallpapers, keyboard, JSON, audio, the polkit agent and the lock screen. |
 | **Theme** | `matugen` | Material 3 theme generation from wallpapers. |
 | **GTK Theme** | `adw-gtk-theme` | Libadwaita-like theme for GTK3 applications. |
+| **Cursor** | `bibata-cursor-theme-bin` | Bibata Modern Classic, the default cursor (AUR). Another can be picked in Hyprland Settings → Cursor. |
 | **Scripting** | `python3` | Used by terminal color scripts and utilities. |
 | **JSON** | `jq` | Command-line JSON processor for configs and state. |
 

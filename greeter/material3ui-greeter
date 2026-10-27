@@ -281,6 +281,22 @@ with open(os.path.join(data, "hyprland-local.lua.tmp"), "w") as f:
     f.write("-- Synced from %s by material3ui-greeter\n%s\n" % (user, "\n".join(lua)))
 os.replace(os.path.join(data, "hyprland-local.lua.tmp"), os.path.join(data, "hyprland-local.lua"))
 
+# The desktop's cursor (Hyprland Settings → Cursor: Bibata unless another is
+# chosen, null for the system's), for greet-run.sh to set. Only a theme in
+# /usr/share/icons: the greeter can't read your home
+unset = object()
+theme = get(cfg, "accessibility", "cursorTheme", default=unset)
+if theme is unset: theme = "Bibata-Modern-Classic"
+size = get(cfg, "accessibility", "cursorSize", default=24) or 24
+cursor_file = os.path.join(data, "cursor")
+if isinstance(theme, str) and re.fullmatch(r"[\w.+ -]+", theme) and os.path.isdir(os.path.join("/usr/share/icons", theme, "cursors")):
+    with open(cursor_file + ".tmp", "w") as f: f.write("%s\n%d\n" % (theme, int(size)))
+    os.chmod(cursor_file + ".tmp", 0o644)
+    os.replace(cursor_file + ".tmp", cursor_file)
+    synced.append("cursor")
+elif os.path.exists(cursor_file):
+    os.remove(cursor_file)
+
 with open(os.path.join(data, "greeter.json.tmp"), "w") as f: json.dump(out, f, indent=2)
 os.replace(os.path.join(data, "greeter.json.tmp"), os.path.join(data, "greeter.json"))
 print(", ".join(synced + ["clock", "keyboard"]))

@@ -275,6 +275,11 @@
       "name": "breeze-icons",
       "command": "kwin_wayland",
       "description": "KDE icon set"
+    },
+    {
+      "name": "bibata-cursor-theme-bin",
+      "command": "hyprctl",
+      "description": "Bibata cursors, the default cursor theme (AUR)"
     }
   ],
   "fonts": [
