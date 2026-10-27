@@ -1,5 +1,24 @@
 # Changelog
 
+## v5.8.4 — 2026-10-27
+
+- **Firmware updates**, in the new **Settings → Firmware**, through fwupd and the LVFS, where vendors publish firmware for laptops' BIOS and UEFI, SSDs, docks, touchpads and webcams.
+  - **Updates:** each device with a newer release shows its version → the new one, the release notes, the size and how urgent it is. Install one with **Update**, or all of them with **Update all**. fwupd asks for the password itself.
+  - **What's in the way:** an unplugged charger, a low battery or a closed lid is shown on the update instead of failing it. System firmware goes in as the computer restarts, and a banner offers the restart once it's ready.
+  - **Your devices:** every device fwupd sees, with its version and whether it's up to date.
+  - **Sources:** the LVFS and its testing list each have a switch.
+  - **Without fwupd:** the page explains what it does and offers to install it.
+- **Repositories and mirrors**, in a new **Repositories** tab in Settings → Software & updates.
+  - **Repositories:** switch on multilib (for Steam and Wine) or the testing repositories, and add your own, optionally fetching and trusting its signing key.
+  - **Safe changes:** each change to pacman.conf is checked by pacman first and then saved with one password, and the file before it is kept for **Undo**. Your comments and order stay as they were.
+  - **Fastest mirrors:** **Find the fastest** times Arch's best mirrors in your country from your connection, and **Use these** saves the quickest ten.
+  - **Downloads and held-back packages:** how many packages download at once, and packages to leave out of updates.
+  - **Flatpak:** remotes listed with switches; add Flathub in one tap, or any other remote.
+- **Automatic update checks:** every 6 hours, daily (the default) or weekly, firmware included. A notification tells you about new updates, and its **Review** button opens the list. Switches choose whether AUR, Flatpak and firmware updates are included. Installing is always up to you.
+- **An Updates bar widget** shows how many updates are waiting. Click it to open Software & updates, or middle-click to start the update.
+- **Bibata, the default cursor.** Bibata Modern Classic is used unless you've picked another cursor in Hyprland Settings → Cursor. New installs get it, and that page offers to install it where it's missing. The login screen uses the same cursor as the desktop.
+- **For scripts:** `material3ui msg updates`, `firmware` and `repos`, and two hook events, `updates_available` and `updates_installed`.
+
 ## v5.8.3 — 2026-10-26
 
 - **Alarms and timers**, as in Android's Clock. Open them from the new bar widget or with `material3ui msg popup clock`.
