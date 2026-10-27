@@ -5,7 +5,7 @@
 #include "services/Hooks.h"
 
 #include "core/Config.h"
-#include "services/Hyprland.h"
+#include "services/Compositor.h"
 #include "services/Idle.h"
 #include "services/Mpris.h"
 #include "services/Network.h"
@@ -140,9 +140,9 @@ void Hooks::watch() {
     });
 
     // Workspaces, screenshots and recordings
-    auto workspace = std::make_shared<int>(Hyprland::get().activeWorkspace(""));
-    Hyprland::get().workspacesChanged.connectForever([workspace] {
-        const int now = Hyprland::get().activeWorkspace("");
+    auto workspace = std::make_shared<int>(Compositor::get().activeWorkspace());
+    Compositor::get().workspacesChanged.connectForever([workspace] {
+        const int now = Compositor::get().activeWorkspace();
         if (now <= 0 || now == *workspace) return;
         const int was = *workspace;
         *workspace = now;

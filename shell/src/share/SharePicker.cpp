@@ -5,7 +5,7 @@
 #include "core/Process.h"
 #include "render/Images.h"
 #include "render/Renderer.h"
-#include "services/Hyprland.h"
+#include "services/Compositor.h"
 #include "services/Search.h"
 #include "shell/SettingsKit.h"
 #include "ui/Controls.h"
@@ -103,7 +103,7 @@ void SharePicker::pickRegion() {
         int x = 0, y = 0, w = 0, h = 0;
         if (std::sscanf(out.c_str(), "%127s %d %d %d %d", output, &x, &y, &w, &h) != 5) return finish("");
         // Coordinates within that screen
-        for (const auto& m : Hyprland::get().monitorGeometry())
+        for (const auto& m : Compositor::get().outputs())
             if (m.name == output) {
                 x -= static_cast<int>(m.x);
                 y -= static_cast<int>(m.y);
@@ -116,8 +116,8 @@ bool SharePicker::start() {
     auto& d = wl::Display::get();
     if (!d.connect() || !Renderer::get().init(d.display())) return false;
     m_windows = windowsFromEnv();
-    // The screens: Hyprland's, with a small preview each
-    const auto monitors = Hyprland::get().monitorGeometry();
+    // The screens, with a small preview each
+    const auto monitors = Compositor::get().outputs();
     std::vector<std::pair<std::string, std::string>> shots; // name → preview file
     std::error_code ec;
     std::filesystem::create_directories(paths::runtimeDir(), ec);
@@ -130,9 +130,7 @@ bool SharePicker::start() {
 
     // On the focused screen
     wl::Output* where = nullptr;
-    std::string focused;
-    for (const auto& m : Hyprland::get().monitors())
-        if (m.focused) focused = m.name;
+    const std::string focused = Compositor::get().focusedOutput();
     for (auto& o : d.outputs())
         if (!where || o->name == focused) where = o.get();
     wl::LayerSurface::Options o;

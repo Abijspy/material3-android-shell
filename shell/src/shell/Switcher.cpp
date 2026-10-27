@@ -3,7 +3,7 @@
 #include "core/EventLoop.h"
 #include "render/Images.h"
 #include "render/Renderer.h"
-#include "services/Hyprland.h"
+#include "services/Compositor.h"
 #include "services/Search.h"
 #include "ui/Controls.h"
 #include "ui/Theme.h"
@@ -29,20 +29,14 @@ struct Win {
     std::string workspaceName;
 };
 
-// Open windows, most recently used first (Hyprland's focus history)
+// Open windows, most recently used first (the compositor's focus history)
 std::vector<Win> windows() {
     std::vector<std::pair<int, Win>> found;
-    if (auto j = Hyprland::get().requestJson("clients"); j && j->is_array())
-        for (const auto& c : *j) {
-            if (!c.value("mapped", true) || c.value("hidden", false)) continue;
-            const auto& ws = c.value("workspace", nlohmann::json::object());
-            const int id = ws.value("id", 0);
-            const std::string name = ws.value("name", "");
-            // Special workspaces (the scratchpad, minimised windows) aren't in the round
-            if (id < 0 && name != "special:minimized") continue;
-            found.push_back({c.value("focusHistoryID", 1 << 20),
-                             {c.value("address", ""), c.value("class", ""), c.value("title", ""), id, name}});
-        }
+    for (const auto& w : Compositor::get().windows(true)) {
+        // Special workspaces (the scratchpad) aren't in the round; minimised windows are
+        if (w.minimised && w.workspaceName != "special:minimized") continue;
+        found.push_back({w.focusOrder, {w.id, w.appId, w.title, w.minimised ? -1 : w.workspace, w.workspaceName}});
+    }
     std::ranges::sort(found, [](const auto& a, const auto& b) { return a.first < b.first; });
     std::vector<Win> out;
     for (auto& [_, w] : found) out.push_back(std::move(w));
@@ -63,9 +57,6 @@ State& state() {
     return s;
 }
 
-void submap(const char* name) {
-    Hyprland::get().request(std::string("dispatch hl.dsp.submap(\"") + name + "\")");
-}
 
 void finish(bool commit) {
     auto& s = state();
@@ -73,13 +64,13 @@ void finish(bool commit) {
     if (s.timeout) EventLoop::get().cancel(s.timeout);
     s.timeout = 0;
     wl::Display::get().onModifiers = nullptr;
-    submap("reset"); // Hyprland's binds back, always
+    Compositor::get().grabKeys(false); // the compositor's binds back, always
     const std::string address = commit && s.selected < s.wins.size() ? s.wins[s.selected].address : "";
     // Off the screen first, then the window comes forward (its workspace with it)
     EventLoop::get().defer([address] {
         state().surface.reset();
         state().wins.clear();
-        if (!address.empty()) Hyprland::get().focusWindow(address);
+        if (!address.empty()) Compositor::get().focusWindow(address);
     });
 }
 
@@ -178,8 +169,8 @@ void step(wl::Output* output, int by) {
     s.superSeen = false;
     s.gotModifiers = false;
 
-    // Every key to the switcher while it shows: Tab mustn't reach Hyprland's binds
-    submap("material3ui_capture");
+    // Every key to the switcher while it shows: Tab mustn't reach the compositor's binds
+    Compositor::get().grabKeys(true);
     wl::LayerSurface::Options o;
     o.ns = "material3ui-switcher";
     o.layer = wl::LayerSurface::Layer::Overlay;

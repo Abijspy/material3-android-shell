@@ -4,7 +4,7 @@
 #include "services/Search.h"
 #include "render/Images.h"
 #include "core/EventLoop.h"
-#include "services/Hyprland.h"
+#include "services/Compositor.h"
 #include "ui/Theme.h"
 
 #include <algorithm>
@@ -161,14 +161,16 @@ Workspaces::Workspaces(std::string monitor, bool vertical)
         setPadding({10, 0})->setSpacing(2);
         fixedHeight = 32;
     }
-    m_conn = Hyprland::get().workspacesChanged.connect([this] { sync(); });
+    m_conn = Compositor::get().workspacesChanged.connect([this] { sync(); });
     sync();
 }
 
 void Workspaces::sync() {
-    auto& hypr = Hyprland::get();
+    auto& comp = Compositor::get();
+    // This bar's: the desktop's numbers, or this monitor's own (niri)
+    const auto workspaces = comp.workspacesOn(m_monitor);
     int shown = Config::get().value<int>("/bar/workspaces/shown", 5);
-    for (const auto& ws : hypr.workspaces()) shown = std::max(shown, ws.id);
+    for (const auto& ws : workspaces) shown = std::max(shown, ws.number);
     shown = std::clamp(shown, 1, 20);
 
     // Grow or shrink the slot list; existing slots keep their animation state
@@ -184,20 +186,20 @@ void Workspaces::sync() {
         }
         slot->tooltip = std::format("Workspace {}", id);
         slot->onClicked = [id](uint32_t button) {
-            if (button == BTN_LEFT) Hyprland::get().focusWorkspace(id);
+            if (button == BTN_LEFT) Compositor::get().focusWorkspace(id);
         };
-        slot->onScrolled = [](int d) { Hyprland::get().focusWorkspaceRelative(d); };
+        slot->onScrolled = [](int d) { Compositor::get().focusWorkspaceRelative(d); };
         m_dots.push_back(slot->add<Dot>());
         m_dots.back()->vertical = m_vertical;
         m_slots.push_back(slot);
     }
     for (size_t i = 0; i < m_slots.size(); ++i) m_slots[i]->setVisible(static_cast<int>(i) < shown);
 
-    const int active = hypr.activeWorkspace(m_monitor);
+    const int active = comp.activeWorkspace(m_monitor);
     for (size_t i = 0; i < m_dots.size(); ++i) {
         const int id = static_cast<int>(i) + 1;
-        const auto it = std::ranges::find(hypr.workspaces(), id, &Hyprland::Workspace::id);
-        const bool occupied = it != hypr.workspaces().end() && it->windows > 0;
+        const auto it = std::ranges::find(workspaces, id, &Compositor::Workspace::number);
+        const bool occupied = it != workspaces.end() && it->windows > 0;
         auto* dot = m_dots[i];
         dot->width.set(id == active ? 24.0f : 8.0f);
         dot->color.set(id == active ? ColorRef("primary") : occupied ? ColorRef("on_surface_variant") : ColorRef("outline_variant"));
@@ -333,22 +335,22 @@ WindowTitle::WindowTitle(bool vertical) : Flex(vertical ? Direction::Column : Di
         style();
         m_style = Config::get().changed.connect(style);
     }
-    m_conn = Hyprland::get().activeWindowChanged.connect([this] { sync(); });
+    m_conn = Compositor::get().activeWindowChanged.connect([this] { sync(); });
     sync();
 }
 
 void WindowTitle::sync() {
-    auto& h = Hyprland::get();
-    if (m_title) m_title->setText(h.activeWindowTitle());
+    auto& c = Compositor::get();
+    if (m_title) m_title->setText(c.activeTitle());
     if (m_turned) {
-        m_turned->setText(h.activeWindowTitle());
-        tooltip = h.activeWindowTitle();
+        m_turned->setText(c.activeTitle());
+        tooltip = c.activeTitle();
     }
     // The app's icon from its desktop entry, by window class (as the dock finds it)
-    m_iconName = h.activeWindowClass().empty() ? "" : Apps::get().iconForClass(h.activeWindowClass());
+    m_iconName = c.activeAppId().empty() ? "" : Apps::get().iconForClass(c.activeAppId());
     m_icon->setVisible(!m_iconName.empty() && Images::get().icon(m_iconName, 18));
     m_icon->requestRedraw(); // its provider reads the new name
-    setVisible(!h.activeWindowTitle().empty());
+    setVisible(!c.activeTitle().empty());
 }
 
 } // namespace m3::shell

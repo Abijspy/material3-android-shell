@@ -35,7 +35,9 @@ void usage() {
               << "                           wait for one (since <ms>: one already over counts too)\n"
               << "  material3ui greeter      run as the greetd login screen\n"
               << "  material3ui share-picker choose what an app may share (xdg-desktop-portal-hyprland)\n"
-              << "  material3ui --version\n";
+              << "  material3ui --version\n\n"
+              << "  M3_INSTANCE=<name> material3ui   a second shell beside the first (on a nested compositor, for\n"
+              << "                                   testing), with its own socket; msg and events reach it with the same\n";
 }
 
 // SIGINT/SIGTERM through the event loop, so shutdown runs destructors

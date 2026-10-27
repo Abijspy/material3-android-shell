@@ -3,7 +3,7 @@
 #include "core/Config.h"
 #include "core/Process.h"
 #include "services/Hooks.h"
-#include "services/Hyprland.h"
+#include "services/Compositor.h"
 
 #include <unistd.h>
 
@@ -88,11 +88,7 @@ void Session::logout() {
 }
 
 void Session::endSession() {
-    auto& h = Hyprland::get();
-    if (h.available()) {
-        h.request(h.usingLua() ? "dispatch hl.dsp.exit()" : "dispatch exit");
-        return;
-    }
+    if (Compositor::get().quit()) return;
     if (!m_sessionPath.empty())
         dbus::Bus::system().call(kLogin, m_sessionPath, "org.freedesktop.login1.Session", "Terminate");
 }

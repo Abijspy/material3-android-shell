@@ -1,7 +1,7 @@
 #include "services/Idle.h"
 
 #include "core/Config.h"
-#include "services/Hyprland.h"
+#include "services/Compositor.h"
 #include "wayland/Display.h"
 
 #include "ext-idle-notify-v1-client-protocol.h"
@@ -18,7 +18,7 @@ const ext_idle_notification_v1_listener kListener = {
 };
 
 void screens(bool on) {
-    Hyprland::get().dispatch(on ? "hl.dsp.dpms(\"on\")" : "hl.dsp.dpms(\"off\")", on ? "dpms on" : "dpms off");
+    Compositor::get().setScreens(on);
 }
 
 } // namespace

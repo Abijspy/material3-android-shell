@@ -80,6 +80,7 @@ sources = files(
   'src/services/Calendar.cpp',
   'src/services/Auth.cpp',
   'src/services/Clipboard.cpp',
+  'src/services/Compositor.cpp',
   'src/services/Effects.cpp',
   'src/services/Hyprland.cpp',
   'src/services/HyprOptions.cpp',

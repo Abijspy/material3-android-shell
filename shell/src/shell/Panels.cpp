@@ -6,7 +6,7 @@
 #include "core/Signal.h"
 #include "render/Images.h"
 #include "services/Audio.h"
-#include "services/Hyprland.h"
+#include "services/Compositor.h"
 #include "services/Search.h"
 #include "shell/Dock.h"
 #include "services/Network.h"
@@ -406,8 +406,8 @@ void dockMenu(Flex* card, Popup& popup, const std::string& arg) {
     for (const auto& a : Apps::get().all())
         if (a.id == id || bare(a.id) == id) app = &a;
     std::vector<std::string> windows; // their addresses
-    for (const auto& c : Hyprland::get().clients(true))
-        if (!cls.empty() && lower(c.cls) == lower(cls)) windows.push_back(c.address);
+    for (const auto& c : Compositor::get().windows(true))
+        if (!cls.empty() && lower(c.appId) == lower(cls)) windows.push_back(c.id);
     auto ids = Dock::pinned();
     const bool pinned = std::ranges::find(ids, id) != ids.end();
 
@@ -452,8 +452,7 @@ void dockMenu(Flex* card, Popup& popup, const std::string& arg) {
     });
     if (!windows.empty())
         item("close", windows.size() == 1 ? "Close window" : std::format("Close all {} windows", windows.size()), true, [windows] {
-            for (const auto& a : windows)
-                Hyprland::get().dispatch("hl.dsp.window.close({ window = \"address:" + a + "\" })", "closewindow address:" + a);
+            for (const auto& a : windows) Compositor::get().closeWindow(a);
         });
 }
 

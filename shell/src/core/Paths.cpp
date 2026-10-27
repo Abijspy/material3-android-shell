@@ -1,6 +1,7 @@
 #include "core/Paths.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <sstream>
@@ -40,8 +41,17 @@ std::string colorsFile() {
     return env("XDG_STATE_HOME", home() + "/.local/state") + "/quickshell/user/generated/colors.json";
 }
 
+std::string instance() {
+    // A name for a folder: letters, digits, dashes
+    std::string name;
+    for (char c : env("M3_INSTANCE", ""))
+        if (std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_') name += c;
+    return name;
+}
+
 std::string runtimeDir() {
-    return env("XDG_RUNTIME_DIR", "/tmp/material3ui-" + std::to_string(getuid())) + "/material3ui";
+    const std::string name = instance();
+    return env("XDG_RUNTIME_DIR", "/tmp/material3ui-" + std::to_string(getuid())) + "/material3ui" + (name.empty() ? "" : "-" + name);
 }
 
 std::string ipcSocket() {

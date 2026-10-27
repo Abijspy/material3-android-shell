@@ -1,6 +1,6 @@
 #include "shell/KeyCapture.h"
 
-#include "services/Hyprland.h"
+#include "services/Compositor.h"
 #include "services/Keybinds.h"
 
 #include <linux/input-event-codes.h>
@@ -31,9 +31,6 @@ bool isModifier(uint32_t sym) {
     }
 }
 
-void submap(const char* name) {
-    Hyprland::get().request(std::string("dispatch hl.dsp.submap(\"") + name + "\")");
-}
 
 } // namespace
 
@@ -47,8 +44,8 @@ KeyCapture::KeyCapture(std::string combo) : Button(Direction::Row), m_combo(std:
 }
 
 KeyCapture::~KeyCapture() {
-    // Never leave Hyprland without its binds
-    if (m_listening) submap("reset");
+    // Never leave the compositor without its binds
+    if (m_listening) Compositor::get().grabKeys(false);
     if (m_timeout) EventLoop::get().cancel(m_timeout);
 }
 
@@ -64,7 +61,7 @@ void KeyCapture::listen(bool on) {
     m_listening = on;
     if (m_timeout) EventLoop::get().cancel(m_timeout);
     m_timeout = 0;
-    submap(on ? "material3ui_capture" : "reset");
+    Compositor::get().grabKeys(on);
     if (on) m_timeout = EventLoop::get().addTimer(10000, [this] {
             m_timeout = 0;
             listen(false);

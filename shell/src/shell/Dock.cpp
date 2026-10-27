@@ -2,7 +2,7 @@
 
 #include "core/Config.h"
 #include "render/Images.h"
-#include "services/Hyprland.h"
+#include "services/Compositor.h"
 #include "services/Search.h"
 #include "shell/Panels.h"
 #include "ui/Controls.h"
@@ -146,16 +146,13 @@ Dock::Dock(wl::Output* output) : m_output(output) {
     o.exclusiveZone = autoHide() ? 0 : panelHeight();
     m_surface = std::make_unique<LayerSurface>(output, o);
 
-    auto& h = Hyprland::get();
-    m_events = h.event.connect([this](const std::string& name, const std::string&) {
-        if (name == "openwindow" || name == "closewindow" || name == "activewindow" || name == "movewindow" ||
-            name == "workspace" || name == "focusedmon") {
-            if (m_refreshTimer) return;
-            m_refreshTimer = EventLoop::get().addTimer(120, [this] {
-                m_refreshTimer = 0;
-                refresh();
-            });
-        }
+    // Windows opened, closed, moved or focused: once a burst settles
+    m_events = Compositor::get().windowsChanged.connect([this] {
+        if (m_refreshTimer) return;
+        m_refreshTimer = EventLoop::get().addTimer(120, [this] {
+            m_refreshTimer = 0;
+            refresh();
+        });
     });
     // Pinned apps that were just installed (or removed)
     m_apps = Apps::get().changed.connect([this] { refresh(); });
@@ -268,13 +265,13 @@ void Dock::refresh() {
     const float size = static_cast<float>(Config::get().value<double>("/dock/iconSize", 44));
     const float most = magnification();
     const bool taskbar = taskbarStyle();
-    const auto clients = Hyprland::get().clients(true); // minimised ones too: a click brings them back
-    const std::string activeClass = lower(Hyprland::get().activeWindowClass());
+    const auto clients = Compositor::get().windows(true); // minimised ones too: a click brings them back
+    const std::string activeClass = lower(Compositor::get().activeAppId());
 
     struct Entry {
         std::string id, icon, cls;
         const Apps::App* app = nullptr;
-        std::vector<Hyprland::Client> windows;
+        std::vector<Compositor::Window> windows;
         bool pinned = false;
     };
     std::vector<Entry> entries;
@@ -286,22 +283,22 @@ void Dock::refresh() {
     }
     std::vector<Entry> running;
     for (const auto& c : clients) {
-        if (c.cls.empty()) continue;
+        if (c.appId.empty()) continue;
         auto it = std::ranges::find_if(entries, [&](const Entry& e) {
-            return (e.app && owns(*e.app, c.cls)) || lower(e.cls) == lower(c.cls) || lower(bareId(e.id)) == lower(c.cls);
+            return (e.app && owns(*e.app, c.appId)) || lower(e.cls) == lower(c.appId) || lower(bareId(e.id)) == lower(c.appId);
         });
         if (it != entries.end()) {
             it->windows.push_back(c);
             continue;
         }
         if (!Config::get().value<bool>("/dock/showRunning", true)) continue;
-        auto r = std::ranges::find_if(running, [&](const Entry& e) { return lower(e.cls) == lower(c.cls); });
+        auto r = std::ranges::find_if(running, [&](const Entry& e) { return lower(e.cls) == lower(c.appId); });
         if (r != running.end()) {
             r->windows.push_back(c);
             continue;
         }
-        const auto* app = appForClass(c.cls);
-        running.push_back({app ? bareId(app->id) : c.cls, app ? app->icon : Apps::get().iconForClass(c.cls), c.cls, app, {c}, false});
+        const auto* app = appForClass(c.appId);
+        running.push_back({app ? bareId(app->id) : c.appId, app ? app->icon : Apps::get().iconForClass(c.appId), c.appId, app, {c}, false});
     }
 
     // Launcher first, then pinned, a divider, then the rest
@@ -326,7 +323,7 @@ void Dock::refresh() {
 
     auto add = [&](const Entry& e) {
         bool focused = false;
-        for (const auto& w : e.windows) focused = focused || lower(w.cls) == activeClass;
+        for (const auto& w : e.windows) focused = focused || lower(w.appId) == activeClass;
         auto* icon = m_card->add<DockIcon>(e.icon, size, static_cast<int>(e.windows.size()), focused, most, !taskbar);
         m_magnified.push_back({icon, icon->image(), size});
         // Magnified, growing is the hover: no highlight under it, and the
@@ -343,7 +340,7 @@ void Dock::refresh() {
         icon->onClicked = [copy, focused, icon](uint32_t button) {
             // Right click: the menu (open, pin or unpin, close) above the icon
             if (button == BTN_RIGHT) {
-                const std::string cls = copy.windows.empty() ? copy.cls : copy.windows.front().cls;
+                const std::string cls = copy.windows.empty() ? copy.cls : copy.windows.front().appId;
                 if (panels::openAboveDock) panels::openAboveDock("dockmenu", copy.id + "|" + cls, icon->rect().x + icon->rect().w / 2);
                 return;
             }
@@ -356,11 +353,11 @@ void Dock::refresh() {
             size_t next = 0;
             if (focused && copy.windows.size() > 1) {
                 for (size_t i = 0; i < copy.windows.size(); ++i)
-                    if (lower(copy.windows[i].cls) == lower(Hyprland::get().activeWindowClass()) &&
-                        copy.windows[i].title == Hyprland::get().activeWindowTitle())
+                    if (lower(copy.windows[i].appId) == lower(Compositor::get().activeAppId()) &&
+                        copy.windows[i].title == Compositor::get().activeTitle())
                         next = (i + 1) % copy.windows.size();
             }
-            Hyprland::get().focusWindow(copy.windows[next].address);
+            Compositor::get().focusWindow(copy.windows[next].id);
         };
     };
     for (const auto& e : entries) add(e);
@@ -374,9 +371,9 @@ void Dock::refresh() {
 
     // Autohide stays out on an empty workspace
     bool empty = true;
-    const int ws = Hyprland::get().activeWorkspace(m_output->name);
-    for (const auto& w : Hyprland::get().workspaces())
-        if (w.id == ws) empty = w.windows == 0;
+    const int ws = Compositor::get().activeWorkspace(m_output->name);
+    for (const auto& w : Compositor::get().workspacesOn(m_output->name))
+        if (w.number == ws) empty = w.windows == 0;
     reveal(!autoHide() || m_hovered || m_held || empty);
 }
 

@@ -1,7 +1,7 @@
 #include "shell/Popup.h"
 
 #include "core/Config.h"
-#include "services/Hyprland.h"
+#include "services/Compositor.h"
 #include "shell/bar/Bar.h"
 #include "shell/bar/Frame.h"
 #include "shell/bar/Widgets.h"
@@ -246,11 +246,9 @@ void Popup::buildTitleBar(Flex* card) {
 
 void Popup::minimize() {
     if (!m_window) return;
-    // Hyprland has no minimised state: park the window on a hidden special
-    // workspace; opening the app or its dock icon brings it back
-    const std::string cls = "class:^(" + m_options.appId + ")$";
-    Hyprland::get().dispatch("hl.dsp.window.move({ workspace = \"special:minimized\", window = \"" + cls + "\", silent = true })",
-                             "movetoworkspacesilent special:minimized," + cls);
+    // Out of sight where the compositor can do that; opening the app or its
+    // dock icon brings it back
+    if (Compositor::get().can(Compositor::Feature::Minimise)) Compositor::get().minimise(m_options.appId);
 }
 
 void Popup::toggleMaximized() {

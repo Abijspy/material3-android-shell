@@ -13,6 +13,7 @@
 #include "services/Clipboard.h"
 #include "services/Hooks.h"
 #include "services/HyprOptions.h"
+#include "services/Compositor.h"
 #include "services/Hyprland.h"
 #include "services/Keybinds.h"
 #include "services/Network.h"
@@ -3782,8 +3783,9 @@ void aboutPage(Flex* page, Popup&) {
     if (os.size() >= 2 && os.front() == '"') os = os.substr(1, os.size() - 2);
     std::string cpu = readFirstLine("/proc/cpuinfo", "model name");
     if (auto c = cpu.find(':'); c != std::string::npos) cpu = cpu.substr(c + 2);
-    std::string hypr = "Not running";
-    if (auto v = Hyprland::get().requestJson("version")) hypr = v->value("tag", v->value("version", "Hyprland"));
+    // The compositor the shell runs on, and its version
+    auto& comp = Compositor::get();
+    const std::string compositor = comp.available() ? comp.name() + " " + comp.version() : comp.name() + " (not running)";
     auto& stats = SystemStats::get();
     auto lease = stats.lease(); // one sample for memory and uptime
     row(sys, "computer", host, "Device name");
@@ -3813,8 +3815,8 @@ void aboutPage(Flex* page, Popup&) {
     }
     row(sys, "memory", cpu.empty() ? "CPU" : cpu, std::format("{} logical cores", stats.cores()));
     row(sys, "memory_alt", formatBytes(stats.memTotal()), "Memory");
-    auto wm = row(sys, "grid_view", "Hyprland " + hypr, "Compositor");
-    if (const auto mark = paths::dataFile("icons/hyprland-logo.svg"); !mark.empty()) useLogo(wm, mark);
+    auto wm = row(sys, "grid_view", compositor, "Compositor");
+    if (const auto mark = paths::dataFile("icons/hyprland-logo.svg"); !mark.empty() && comp.name() == "Hyprland") useLogo(wm, mark);
 
     // The changelog: the latest few releases, the rest on request
     group(page, "Changelog", "What changed in each release");

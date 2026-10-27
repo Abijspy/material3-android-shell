@@ -204,7 +204,8 @@ void Hooks::record(const std::string& event, const Env& env, bool simulated) {
 }
 
 bool Hooks::enabled() const {
-    return Config::get().value<bool>("/hookSettings/enabled", true);
+    // A test instance (M3_INSTANCE) records its events, and runs nobody's hooks
+    return paths::instance().empty() && Config::get().value<bool>("/hookSettings/enabled", true);
 }
 
 std::vector<std::string> Hooks::commands(const std::string& event) const {

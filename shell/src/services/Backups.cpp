@@ -3,9 +3,10 @@
 #include "core/Config.h"
 #include "core/Paths.h"
 #include "core/Process.h"
-#include "services/Hyprland.h"
+#include "services/Compositor.h"
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <sstream>
 
@@ -120,7 +121,7 @@ void Backups::restoreChecked(const std::string& path, std::function<void(bool)> 
             m_busy = false;
             // The shell and Hyprland pick the restored settings up
             Config::get().reload();
-            Hyprland::get().request("reload");
+            Compositor::get().reload();
             changed.emit();
             if (done) done(code == 0);
         });

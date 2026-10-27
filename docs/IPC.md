@@ -9,6 +9,13 @@ material3ui msg help        # every command, from the running shell
 
 Hyprland binds, scripts and other programs all use the same commands. The defaults live in [`shell.lua`](../dotfiles/.config/hypr/material3ui/shell.lua).
 
+**A second shell, for testing.** With `M3_INSTANCE=<name>` set, a shell runs beside the one you use, for example on a nested compositor started inside your session. It gets its own socket (`$XDG_RUNTIME_DIR/material3ui-<name>/`), and leaves what a session has only one of to your shell: Quick Share, the polkit agent, update checks, the clipboard history's watchers and your hooks (its events are still recorded). `material3ui msg` and `material3ui events` reach it when the same variable is set:
+
+```bash
+WAYLAND_DISPLAY=wayland-2 M3_INSTANCE=test material3ui &
+M3_INSTANCE=test material3ui msg workspaces
+```
+
 ## Panels
 
 | Command | Opens or toggles |

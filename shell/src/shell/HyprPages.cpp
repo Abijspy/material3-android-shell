@@ -1378,9 +1378,9 @@ void matchEditor(Node* g, bool layer, nlohmann::json match, std::function<void(c
     // An open window: its app, exactly
     auto pick = row(g, "select_window", "From an open window");
     std::vector<std::pair<std::string, std::string>> wins;
-    for (const auto& c : Hyprland::get().clients(true))
-        if (!c.cls.empty() && std::ranges::none_of(wins, [&](const auto& p) { return p.first == c.cls; }))
-            wins.push_back({c.cls, c.cls + " — " + c.title.substr(0, 40)});
+    for (const auto& c : Hyprland::get().windows(true))
+        if (!c.appId.empty() && std::ranges::none_of(wins, [&](const auto& p) { return p.first == c.appId; }))
+            wins.push_back({c.appId, c.appId + " — " + c.title.substr(0, 40)});
     dropdown(pick.row, g, "Choose", wins, [set](const std::string& cls) {
         std::string escaped;
         for (char ch : cls) {

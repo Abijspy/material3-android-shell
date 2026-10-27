@@ -5,7 +5,7 @@
 #include "core/Paths.h"
 #include "core/Process.h"
 #include "services/Effects.h"
-#include "services/Hyprland.h"
+#include "services/Compositor.h"
 #include "services/Idle.h"
 #include "services/Notifications.h"
 #include "services/Search.h"
@@ -85,12 +85,12 @@ void Wellbeing::start() {
     m_since = std::time(nullptr);
     // Past the goal already (a restart): said earlier today
     m_goalSaid = goal() > 0 && m_today.total() >= goal() * 60;
-    auto& h = Hyprland::get();
-    m_current = h.activeWindowClass();
+    auto& c = Compositor::get();
+    m_current = c.activeAppId();
     // Counted up to each change of focus, then for the new window
-    h.activeWindowChanged.connectForever([this] {
+    c.activeWindowChanged.connectForever([this] {
         flush(m_current);
-        m_current = Hyprland::get().activeWindowClass();
+        m_current = Compositor::get().activeAppId();
         enforce();
     });
     Notifications::get().posted.connectForever([this](uint32_t id) {
@@ -217,20 +217,20 @@ void Wellbeing::enforce() {
     auto closes = [&](const std::string& cls) {
         return timeUp(cls) || (focusing && std::ranges::find(distracting, cls) != distracting.end());
     };
-    // Only ask Hyprland for its windows when something may be closed
+    // Only ask the compositor for its windows when something may be closed
     bool any = false;
     for (const auto& [cls, _] : m_today.seconds) any = any || timeUp(cls);
     if (!any && !(focusing && !distracting.empty())) return;
-    auto& h = Hyprland::get();
-    for (const auto& c : h.clients(true)) {
-        if (!closes(c.cls)) continue;
-        h.dispatch(std::format("hl.dsp.window.close({{ window = \"address:{}\" }})", c.address), "closewindow address:" + c.address);
+    auto& comp = Compositor::get();
+    for (const auto& c : comp.windows(true)) {
+        if (!closes(c.appId)) continue;
+        comp.closeWindow(c.id);
         // Said once per app per day (focus: once per opening, at most a minute apart)
         const std::time_t now = std::time(nullptr);
-        if (now - m_closedAt[c.cls] < 60) continue;
-        m_closedAt[c.cls] = now;
-        if (timeUp(c.cls)) notify(std::format("{} is paused", nameOf(c.cls)), "Its timer for today is up. It's back tomorrow.");
-        else notify(std::format("{} is paused", nameOf(c.cls)), "Focus mode is on");
+        if (now - m_closedAt[c.appId] < 60) continue;
+        m_closedAt[c.appId] = now;
+        if (timeUp(c.appId)) notify(std::format("{} is paused", nameOf(c.appId)), "Its timer for today is up. It's back tomorrow.");
+        else notify(std::format("{} is paused", nameOf(c.appId)), "Focus mode is on");
     }
 }
 

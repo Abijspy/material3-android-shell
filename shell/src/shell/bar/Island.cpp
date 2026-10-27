@@ -1,7 +1,7 @@
 #include "shell/bar/Island.h"
 
 #include "core/Config.h"
-#include "services/Hyprland.h"
+#include "services/Compositor.h"
 #include "services/Mpris.h"
 #include "shell/PanelKit.h"
 #include "services/Notifications.h"
@@ -61,13 +61,13 @@ Island::Island(OpenPopup open) : Button(Direction::Row), m_open(std::move(open))
         const auto* n = Notifications::get().find(id);
         if (n && !Notifications::get().doNotDisturb()) flash("notifications_active", n->summary, 3500);
     });
-    m_ws = Hyprland::get().workspacesChanged.connect([this] {
-        const int ws = Hyprland::get().activeWorkspace("");
+    m_ws = Compositor::get().workspacesChanged.connect([this] {
+        const int ws = Compositor::get().activeWorkspace();
         if (m_lastWorkspace && ws != m_lastWorkspace && ws > 0 && Config::get().value<bool>("/statusBar/islandWorkspace", true))
             flash("view_carousel", "Workspace " + std::to_string(ws), 1200);
         m_lastWorkspace = ws;
     });
-    m_lastWorkspace = Hyprland::get().activeWorkspace("");
+    m_lastWorkspace = Compositor::get().activeWorkspace();
     // A screen recording shows beside the clock, with its time; a click stops it
     m_recording = Screenshot::get().recordingChanged.connect([this] {
         if (m_mode == Mode::Clock) show(Mode::Clock);

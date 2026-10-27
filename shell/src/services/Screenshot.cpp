@@ -5,7 +5,7 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Process.h"
-#include "services/Hyprland.h"
+#include "services/Compositor.h"
 
 #include <algorithm>
 #include <ctime>
@@ -70,15 +70,18 @@ void Screenshot::capture(Mode mode, int delayMs, const std::string& output) {
             shoot(output.empty() ? std::vector<std::string>{} : std::vector<std::string>{"-o", output});
             return;
         case Mode::Window: {
-            auto w = Hyprland::get().requestJson("activewindow");
-            if (!w || !w->contains("at") || !w->contains("size")) {
+            // The focused window's box on the desktop
+            std::optional<Compositor::Window> active;
+            if (Compositor::get().can(Compositor::Feature::WindowGeometry))
+                for (const auto& w : Compositor::get().windows())
+                    if (w.focusOrder == 0) active = w;
+            if (!active) {
                 log::warn("screenshot: no active window");
                 m_busy = false;
                 return;
             }
-            const auto& at = (*w)["at"];
-            const auto& size = (*w)["size"];
-            shoot({"-g", std::format("{},{} {}x{}", at[0].get<int>(), at[1].get<int>(), size[0].get<int>(), size[1].get<int>())});
+            shoot({"-g", std::format("{},{} {}x{}", static_cast<int>(active->x), static_cast<int>(active->y), static_cast<int>(active->w),
+                                     static_cast<int>(active->h))});
             return;
         }
         case Mode::Region:
@@ -225,14 +228,9 @@ void Screenshot::startRecording(const RecordOptions& o, const std::string& outpu
     std::string boxes;
     if (o.mode == 1) {
         // A window: slurp offers the visible windows' rectangles to pick from
-        if (auto j = Hyprland::get().requestJson("clients"); j && j->is_array()) {
-            for (const auto& c : *j) {
-                if (!c.value("mapped", true) || c.value("hidden", false)) continue;
-                const auto& at = c.value("at", nlohmann::json::array()), &size = c.value("size", nlohmann::json::array());
-                if (at.size() == 2 && size.size() == 2)
-                    boxes += std::format("{},{} {}x{}\n", at[0].get<int>(), at[1].get<int>(), size[0].get<int>(), size[1].get<int>());
-            }
-        }
+        if (Compositor::get().can(Compositor::Feature::WindowGeometry))
+            for (const auto& w : Compositor::get().windows())
+                boxes += std::format("{},{} {}x{}\n", static_cast<int>(w.x), static_cast<int>(w.y), static_cast<int>(w.w), static_cast<int>(w.h));
     }
     std::vector<std::string> slurp = {"slurp", "-d"};
     if (o.mode == 1) slurp.push_back("-r");

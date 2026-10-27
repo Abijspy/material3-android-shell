@@ -14,7 +14,7 @@
 #include "render/Renderer.h"
 #include "render/Text.h"
 #include "services/HyprOptions.h"
-#include "services/Hyprland.h"
+#include "services/Compositor.h"
 #include "services/Alarms.h"
 #include "services/Audio.h"
 #include "services/Backups.h"
@@ -75,15 +75,22 @@ bool Shell::start() {
     if (!display.connect()) return false;
     if (!Renderer::get().init(display.display())) return false;
     if (!IpcServer::get().listen()) return false;
-    // Outside Hyprland the bars still run; workspaces just stay empty
-    Hyprland::get();
+    // Outside a compositor the shell knows the bars still run; workspaces
+    // just stay empty
+    Compositor::get();
     Effects::get();
-    Clipboard::get().ensureWatchers();
+    // A test instance (M3_INSTANCE, beside the shell) leaves what there's
+    // one of in a session to it: the clipboard's watchers, Quick Share, the
+    // polkit agent, update checks and the login screen's sync
+    const bool sole = paths::instance().empty();
+    if (sole) Clipboard::get().ensureWatchers();
+    else log::info("instance {}: beside the shell, on {}", paths::instance(), std::getenv("WAYLAND_DISPLAY") ? std::getenv("WAYLAND_DISPLAY") : "?");
     Calendar::get(); // events, subscriptions and their reminders
     // Quick Share: phones nearby may send files; each is asked here
-    quickshare::QuickShare::get().asking.connectForever([this](int id) {
-        EventLoop::get().defer([this, id] { togglePopup("quickshare", focusedOutput(), -1, std::to_string(id)); });
-    });
+    if (sole)
+        quickshare::QuickShare::get().asking.connectForever([this](int id) {
+            EventLoop::get().defer([this, id] { togglePopup("quickshare", focusedOutput(), -1, std::to_string(id)); });
+        });
     // New apps bring their icons; before anyone redraws with them
     Apps::get().changed.connectForever([] { Images::get().rescan(); });
 
@@ -116,7 +123,7 @@ bool Shell::start() {
     // Updates: checked in the background (Settings → Software & updates); a
     // notification's Review opens the page
     Packages::get().openSettings = [this](const std::string& page) { EventLoop::get().defer([this, page] { openSettings(page); }); };
-    Packages::get().startAutoCheck();
+    if (sole) Packages::get().startAutoCheck();
     // Alarms and timers: what goes off shows at the top, over everything
     Alarms::get();
     m_ringer = std::make_unique<Ringer>(focused);
@@ -136,7 +143,7 @@ bool Shell::start() {
     Polkit::get().finished.connectForever([this](int id) {
         if (m_popup && m_popup->name() == "polkit:" + std::to_string(id)) m_popup->close();
     });
-    if (Config::get().value<bool>("/polkit/enabled", true)) Polkit::get().start();
+    if (sole && Config::get().value<bool>("/polkit/enabled", true)) Polkit::get().start();
     // A device asks to pair (from its side) while no Bluetooth list is open
     Bluetooth::get().requested.connectForever([this] {
         if (!m_popup || m_popup->name() != "btpair") togglePopup("btpair", focusedOutput(), -1);
@@ -160,7 +167,7 @@ bool Shell::start() {
         if (m_greeterSync) EventLoop::get().cancel(m_greeterSync);
         m_greeterSync = EventLoop::get().addTimer(3000, [this] {
             m_greeterSync = 0;
-            if (Config::get().value<bool>("/lock/syncGreeter", true) && access("/var/lib/material3ui-greeter", W_OK) == 0)
+            if (paths::instance().empty() && Config::get().value<bool>("/lock/syncGreeter", true) && access("/var/lib/material3ui-greeter", W_OK) == 0)
                 m3::run({"material3ui-greeter", "sync", "--quiet"}, nullptr);
         });
     });
@@ -229,12 +236,11 @@ void Shell::removeOutput(wl::Output* output) {
 }
 
 wl::Output* Shell::focusedOutput() const {
-    // Hyprland knows which monitor has focus; otherwise the first output
-    auto& h = Hyprland::get();
-    for (const auto& m : h.monitors())
-        if (m.focused)
-            for (const auto& [o, _] : m_bars)
-                if (o->name == m.name) return o;
+    // The compositor knows which monitor has focus; otherwise the first output
+    const std::string focused = Compositor::get().focusedOutput();
+    if (!focused.empty())
+        for (const auto& [o, _] : m_bars)
+            if (o->name == focused) return o;
     return m_bars.empty() ? nullptr : m_bars.begin()->first;
 }
 
@@ -248,9 +254,9 @@ void Shell::openSettings(const std::string& page) {
     if (m_settings && !m_settings->closing()) {
         if (!page.empty()) panels::settingsPage(page);
         // Raised, and back from minimised if it was
-        auto& h = Hyprland::get();
-        for (const auto& c : h.clients(true))
-            if (c.cls == "material3ui-settings") h.focusWindow(c.address);
+        auto& c = Compositor::get();
+        for (const auto& w : c.windows(true))
+            if (w.appId == "material3ui-settings") c.focusWindow(w.id);
         return;
     }
     // Popups belong to the bar; the app replaces any that is open
@@ -271,9 +277,9 @@ void Shell::openSettings(const std::string& page) {
 void Shell::openHyprSettings(const std::string& page) {
     if (m_hyprSettings && !m_hyprSettings->closing()) {
         if (!page.empty()) panels::settingsPage(page);
-        auto& h = Hyprland::get();
-        for (const auto& c : h.clients(true))
-            if (c.cls == "material3ui-hyprland") h.focusWindow(c.address);
+        auto& c = Compositor::get();
+        for (const auto& w : c.windows(true))
+            if (w.appId == "material3ui-hyprland") c.focusWindow(w.id);
         return;
     }
     if (m_popup) m_popup->close();
@@ -292,9 +298,9 @@ void Shell::openHyprSettings(const std::string& page) {
 
 void Shell::openWelcome() {
     if (m_welcome && !m_welcome->closing()) {
-        auto& h = Hyprland::get();
-        for (const auto& c : h.clients(true))
-            if (c.cls == "material3ui-welcome") h.focusWindow(c.address);
+        auto& c = Compositor::get();
+        for (const auto& w : c.windows(true))
+            if (w.appId == "material3ui-welcome") c.focusWindow(w.id);
         return;
     }
     if (m_popup) m_popup->close();
@@ -713,10 +719,10 @@ void Shell::registerIpc() {
         if (!a.empty() && a[0] == "menu") {
             // At the pointer, as a right click on the desktop opens it
             float x = 100, y = 100;
-            if (auto c = Hyprland::get().requestJson("cursorpos"); c && c->is_object()) {
-                x = c->value("x", 100.0f);
-                y = c->value("y", 100.0f);
-                for (const auto& m : Hyprland::get().monitorGeometry())
+            if (auto c = Compositor::get().cursorPosition()) {
+                x = c->first;
+                y = c->second;
+                for (const auto& m : Compositor::get().outputs())
                     if (x >= m.x && x < m.x + m.w && y >= m.y && y < m.y + m.h) {
                         x -= m.x;
                         y -= m.y;
@@ -1195,13 +1201,13 @@ void Shell::registerIpc() {
         for (auto& [o, _] : m_bars) out += std::format("{}\t{}\tscale {}\n", o->name, o->description, o->scale);
         return out;
     });
-    ipc.add("workspaces", "List Hyprland workspaces as the shell sees them", [](const auto&) {
-        auto& h = Hyprland::get();
-        if (!h.available()) return std::string("error: not running under Hyprland");
+    ipc.add("workspaces", "List the compositor's workspaces as the shell sees them", [](const auto&) {
+        auto& c = Compositor::get();
+        if (!c.available()) return std::string("error: not running under a compositor the shell knows (Hyprland)");
         std::string out;
-        for (const auto& w : h.workspaces())
-            out += std::format("{}\t{}\t{} windows{}\n", w.id, w.monitor, w.windows,
-                               h.activeWorkspace(w.monitor) == w.id ? "\tactive" : "");
+        for (const auto& w : c.workspaces())
+            out += std::format("{}\t{}\t{} windows{}\n", w.number, w.output, w.windows,
+                               c.activeWorkspace(w.output) == w.number ? "\tactive" : "");
         return out;
     });
 }

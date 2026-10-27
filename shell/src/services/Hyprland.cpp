@@ -9,6 +9,7 @@
 #include <cstring>
 #include <filesystem>
 #include <format>
+#include <map>
 #include <set>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -45,6 +46,11 @@ const std::set<std::string> kWorkspaceEvents = {
 
 const std::set<std::string> kWindowEvents = {
     "activewindow", "activewindowv2", "windowtitle", "windowtitlev2", "closewindow", "workspace", "workspacev2",
+};
+
+// Events after which the windows (which, where, which has focus) may differ
+const std::set<std::string> kWindowsEvents = {
+    "openwindow", "closewindow", "activewindow", "movewindow", "workspace", "focusedmon",
 };
 
 } // namespace
@@ -99,52 +105,96 @@ void Hyprland::dispatch(const std::string& lua, const std::string& legacy) {
     request("dispatch " + (m_lua ? lua : legacy));
 }
 
-std::vector<Hyprland::Client> Hyprland::clients(bool minimised) const {
-    std::vector<Client> out;
+std::string Hyprland::version() const {
+    if (auto v = requestJson("version")) return v->value("tag", v->value("version", ""));
+    return {};
+}
+
+bool Hyprland::can(Feature) const {
+    // Minimise (a special workspace), key grabs (a submap with no binds),
+    // window geometry, the cursor's place and reloading: all of it
+    return available();
+}
+
+std::vector<Compositor::Window> Hyprland::windows(bool minimised) const {
+    std::vector<Window> out;
     auto j = requestJson("clients");
     if (!j || !j->is_array()) return out;
     for (const auto& c : *j) {
-        Client cl;
-        cl.address = c.value("address", "");
-        cl.cls = c.value("class", "");
-        cl.title = c.value("title", "");
-        cl.monitor = std::to_string(c.value("monitor", 0));
-        cl.floating = c.value("floating", false);
-        if (c.contains("workspace")) cl.workspace = c["workspace"].value("id", 0);
+        Window w;
+        w.id = c.value("address", "");
+        w.appId = c.value("class", "");
+        w.title = c.value("title", "");
+        if (const auto it = m_monitorNames.find(c.value("monitor", -1)); it != m_monitorNames.end()) w.output = it->second;
+        w.floating = c.value("floating", false);
+        w.focusOrder = c.value("focusHistoryID", 1 << 20);
+        int ws = 0;
+        if (c.contains("workspace")) {
+            ws = c["workspace"].value("id", 0);
+            w.workspaceName = c["workspace"].value("name", "");
+        }
+        // Special workspaces (the scratchpad, minimised windows) have ids < 0
+        w.minimised = ws < 0;
+        w.workspace = ws > 0 ? ws : 0;
         if (c.contains("at") && c["at"].size() == 2) {
-            cl.x = c["at"][0].get<float>();
-            cl.y = c["at"][1].get<float>();
+            w.x = c["at"][0].get<float>();
+            w.y = c["at"][1].get<float>();
         }
         if (c.contains("size") && c["size"].size() == 2) {
-            cl.w = c["size"][0].get<float>();
-            cl.h = c["size"][1].get<float>();
+            w.w = c["size"][0].get<float>();
+            w.h = c["size"][1].get<float>();
         }
-        if ((cl.workspace > 0 || (minimised && cl.workspace < 0)) && c.value("mapped", true) && !c.value("hidden", false))
-            out.push_back(cl);
+        if ((ws > 0 || (minimised && ws < 0)) && c.value("mapped", true) && !c.value("hidden", false)) out.push_back(std::move(w));
     }
     return out;
 }
 
-std::vector<Hyprland::MonitorGeometry> Hyprland::monitorGeometry() const {
-    std::vector<MonitorGeometry> out;
-    if (auto j = requestJson("monitors"); j && j->is_array())
-        for (const auto& m : *j) {
-            const float scale = m.value("scale", 1.0f);
-            out.push_back({m.value("name", ""), m.value("x", 0.0f), m.value("y", 0.0f),
-                           m.value("width", 0.0f) / scale, m.value("height", 0.0f) / scale, scale});
-        }
-    return out;
+std::optional<std::pair<float, float>> Hyprland::cursorPosition() const {
+    auto c = requestJson("cursorpos");
+    if (!c || !c->is_object()) return std::nullopt;
+    return std::pair{c->value("x", 0.0f), c->value("y", 0.0f)};
 }
 
 void Hyprland::focusWindow(const std::string& address) {
     // A minimised window (parked on special:minimized) comes back to the
     // active workspace first, instead of the special workspace opening
-    for (const auto& c : clients(true))
-        if (c.address == address && c.workspace < 0)
+    for (const auto& w : windows(true))
+        if (w.id == address && w.minimised)
             // "e+0": the workspace in front of the user now
             dispatch(std::format("hl.dsp.window.move({{ workspace = \"e+0\", window = \"address:{}\" }})", address),
                      std::format("movetoworkspace e+0,address:{}", address));
     dispatch("hl.dsp.focus({ window = \"address:" + address + "\" })", "focuswindow address:" + address);
+}
+
+void Hyprland::closeWindow(const std::string& address) {
+    dispatch("hl.dsp.window.close({ window = \"address:" + address + "\" })", "closewindow address:" + address);
+}
+
+void Hyprland::minimise(const std::string& appId) {
+    // Hyprland has no minimised state: the windows go to a hidden special
+    // workspace; opening the app or its dock icon brings them back
+    const std::string cls = "class:^(" + appId + ")$";
+    dispatch("hl.dsp.window.move({ workspace = \"special:minimized\", window = \"" + cls + "\", silent = true })",
+             "movetoworkspacesilent special:minimized," + cls);
+}
+
+void Hyprland::grabKeys(bool grab) {
+    // An empty submap (shell.lua's): Hyprland's binds pause until reset
+    request(std::string("dispatch hl.dsp.submap(\"") + (grab ? "material3ui_capture" : "reset") + "\")");
+}
+
+void Hyprland::setScreens(bool on) {
+    dispatch(on ? "hl.dsp.dpms(\"on\")" : "hl.dsp.dpms(\"off\")", on ? "dpms on" : "dpms off");
+}
+
+bool Hyprland::quit() {
+    if (!available()) return false;
+    request(m_lua ? "dispatch hl.dsp.exit()" : "dispatch exit");
+    return true;
+}
+
+void Hyprland::reload() {
+    request("reload");
 }
 
 void Hyprland::focusWorkspace(int id) {
@@ -155,12 +205,6 @@ void Hyprland::focusWorkspace(int id) {
 void Hyprland::focusWorkspaceRelative(int delta) {
     request(m_lua ? std::format("dispatch hl.dsp.focus({{ workspace = \"m{:+}\" }})", delta)
                   : std::format("dispatch workspace m{:+}", delta));
-}
-
-int Hyprland::activeWorkspace(const std::string& monitor) const {
-    for (const auto& m : m_monitors)
-        if (m.name == monitor || (monitor.empty() && m.focused)) return m.activeWorkspace;
-    return 0;
 }
 
 void Hyprland::connectEvents() {
@@ -208,6 +252,7 @@ void Hyprland::dispatch(short) {
 
 void Hyprland::handleEvent(const std::string& name, const std::string& data) {
     event.emit(name, data);
+    if (kWindowsEvents.contains(name)) windowsChanged.emit();
     // Events arrive in bursts (a workspace switch is several); refresh once
     if (kWorkspaceEvents.contains(name)) EventLoop::get().debounce(m_workspaceDebounce, 16, [this] { refreshWorkspaces(); });
     if (kWindowEvents.contains(name)) EventLoop::get().debounce(m_windowDebounce, 16, [this] { refreshActiveWindow(); });
@@ -218,27 +263,35 @@ void Hyprland::refreshWorkspaces() {
     if (auto j = requestJson("workspaces"); j && j->is_array()) {
         for (const auto& w : *j) {
             Workspace ws;
-            ws.id = w.value("id", 0);
+            ws.number = w.value("id", 0);
             ws.name = w.value("name", "");
-            ws.monitor = w.value("monitor", "");
+            ws.output = w.value("monitor", "");
             ws.windows = w.value("windows", 0);
-            if (ws.id > 0) workspaces.push_back(ws); // skip special workspaces
+            if (ws.number > 0) workspaces.push_back(ws); // skip special workspaces
         }
     }
-    std::ranges::sort(workspaces, {}, &Workspace::id);
+    std::ranges::sort(workspaces, {}, &Workspace::number);
 
-    std::vector<Monitor> monitors;
+    std::vector<Output> outputs;
+    m_monitorNames.clear();
     if (auto j = requestJson("monitors"); j && j->is_array()) {
         for (const auto& m : *j) {
-            Monitor mon;
-            mon.name = m.value("name", "");
-            mon.focused = m.value("focused", false);
-            if (m.contains("activeWorkspace")) mon.activeWorkspace = m["activeWorkspace"].value("id", 0);
-            monitors.push_back(mon);
+            Output o;
+            o.name = m.value("name", "");
+            m_monitorNames[m.value("id", -1)] = o.name; // the windows name theirs by id
+            o.focused = m.value("focused", false);
+            if (m.contains("activeWorkspace")) o.activeWorkspace = m["activeWorkspace"].value("id", 0);
+            // Logical: the mode divided by the scale
+            o.scale = m.value("scale", 1.0f);
+            o.x = m.value("x", 0.0f);
+            o.y = m.value("y", 0.0f);
+            o.w = m.value("width", 0.0f) / o.scale;
+            o.h = m.value("height", 0.0f) / o.scale;
+            outputs.push_back(o);
         }
     }
     m_workspaces = std::move(workspaces);
-    m_monitors = std::move(monitors);
+    m_outputs = std::move(outputs);
     workspacesChanged.emit();
 }
 

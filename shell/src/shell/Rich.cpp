@@ -1,7 +1,7 @@
 // Phase 6 panels: dashboard, system monitor, wallpaper picker, overview
 #include "render/Images.h"
 #include "services/Calendar.h"
-#include "services/Hyprland.h"
+#include "services/Compositor.h"
 #include "services/Mpris.h"
 #include "services/Search.h"
 #include "services/SystemStats.h"
@@ -464,22 +464,21 @@ void wallpapers(Flex* card0, Popup& popup) {
 
 void overview(Flex* card0, Popup& popup) {
     card0->setBackground(ColorRef("surface_container", 0.92f), false);
-    auto& h = Hyprland::get();
-    if (!h.available()) {
-        caption(card0, "The overview needs Hyprland");
+    auto& h = Compositor::get();
+    // Each window drawn where it is: the compositor has to say where
+    if (!h.can(Compositor::Feature::WindowGeometry)) {
+        caption(card0, h.available() ? "The overview isn't available on " + h.name() : std::string("The overview needs Hyprland"));
         return;
     }
-    const auto clients = h.clients();
-    const auto monitors = h.monitorGeometry();
-    const auto focused = std::ranges::find_if(h.monitors(), &Hyprland::Monitor::focused);
-    const std::string monitorName = focused != h.monitors().end() ? focused->name : "";
+    const auto clients = h.windows();
+    const std::string monitorName = h.focusedOutput();
     const int active = h.activeWorkspace(monitorName);
-    Hyprland::MonitorGeometry mon{"", 0, 0, 1920, 1080, 1};
-    for (const auto& m : monitors)
+    Compositor::Output mon{"", false, 0, 0, 0, 1920, 1080, 1};
+    for (const auto& m : h.outputs())
         if (m.name == monitorName) mon = m;
 
     int count = 5;
-    for (const auto& w : h.workspaces()) count = std::max(count, w.id);
+    for (const auto& w : h.workspacesOn(monitorName)) count = std::max(count, w.number);
     count = std::min(count, 20);
 
     header(card0, "grid_view", "Workspaces");
@@ -490,8 +489,8 @@ void overview(Flex* card0, Popup& popup) {
     // A workspace tile that lays its windows out like the real monitor
     class Tile : public Button {
     public:
-        Hyprland::MonitorGeometry mon;
-        std::vector<std::pair<Node*, Hyprland::Client>> windows;
+        Compositor::Output mon;
+        std::vector<std::pair<Node*, Compositor::Window>> windows;
         Tile() : Button(Direction::Row) {}
 
     protected:
@@ -526,7 +525,7 @@ void overview(Flex* card0, Popup& popup) {
         if (id == active) tile->setBorder(3, "primary");
         tile->onClicked = [id, &popup](uint32_t button) {
             if (button != BTN_LEFT) return;
-            Hyprland::get().focusWorkspace(id);
+            Compositor::get().focusWorkspace(id);
             popup.close();
         };
         for (const auto& c : clients) {
@@ -534,7 +533,7 @@ void overview(Flex* card0, Popup& popup) {
             auto* win = tile->add<Button>(Flex::Direction::Column);
             win->setRadius(Radii(12))->setBackground("surface_container_highest", false)->setBorder(1, "outline_variant");
             win->setJustify(Align::Center)->setSpacing(4);
-            const std::string icon = Apps::get().iconForClass(c.cls);
+            const std::string icon = Apps::get().iconForClass(c.appId);
             win->add<ImageView>(32, [icon](float scale, int& w, int& h) -> GLuint {
                 auto* t = Images::get().icon(icon, static_cast<int>(std::lround(32 * scale)));
                 if (!t) return 0;
@@ -542,12 +541,12 @@ void overview(Flex* card0, Popup& popup) {
                 h = t->height;
                 return t->id;
             });
-            win->add<Label>(c.title.empty() ? c.cls : c.title)->setSize(11)->setMaxWidth(c.w * tileW / mon.w - 16)
+            win->add<Label>(c.title.empty() ? c.appId : c.title)->setSize(11)->setMaxWidth(c.w * tileW / mon.w - 16)
                 ->setColor("on_surface_variant", false);
-            const std::string address = c.address;
+            const std::string address = c.id;
             win->onClicked = [address, &popup](uint32_t button) {
                 if (button != BTN_LEFT) return;
-                Hyprland::get().focusWindow(address);
+                Compositor::get().focusWindow(address);
                 popup.close();
             };
             tile->windows.emplace_back(win, c);
