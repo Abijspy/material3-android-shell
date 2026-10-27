@@ -4,9 +4,13 @@
 
 #include "build_config.h"
 
+#include "core/Config.h"
 #include "core/EventLoop.h"
+#include "core/Log.h"
 #include "core/Process.h"
 #include "services/Backups.h"
+#include "services/Firmware.h"
+#include "services/Hooks.h"
 #include "services/PacmanLog.h"
 
 #include <algorithm>
@@ -26,8 +30,10 @@ namespace m3 {
 namespace {
 
 // One shell script for everything, so a check is a single process; sections
-// are separated by markers
-const char* kCheck = R"(
+// are separated by markers. The AUR helper is found either way (installs use
+// it); its updates and Flatpak's only when they're taken in
+std::string checkScript(bool aur, bool flatpak) {
+    std::string s = R"(
 if command -v checkupdates >/dev/null 2>&1; then
     checkupdates --nocolor 2>/dev/null; [ $? -eq 1 ] && echo "#ERROR"
 else
@@ -36,13 +42,30 @@ fi
 echo "#AUR"
 for h in yay paru; do
     if command -v "$h" >/dev/null 2>&1 && "$h" --version >/dev/null 2>&1; then
-        echo "#HELPER $h"; "$h" -Qua --color never 2>/dev/null; break
+        echo "#HELPER $h"; )";
+    s += aur ? R"("$h" -Qua --color never 2>/dev/null; )" : "";
+    s += R"(break
     fi
 done
 echo "#FLATPAK"
-command -v flatpak >/dev/null 2>&1 && flatpak remote-ls --updates --app --columns=application,version 2>/dev/null
-exit 0
 )";
+    if (flatpak) s += "command -v flatpak >/dev/null 2>&1 && flatpak remote-ls --updates --app --columns=application,version 2>/dev/null\n";
+    return s + "exit 0\n";
+}
+
+std::string cacheFile() {
+    return paths::stateDir() + "/updates.json";
+}
+
+const char* sourceName(Packages::Source s) {
+    switch (s) {
+    case Packages::Source::Repo: return "repo";
+    case Packages::Source::Aur: return "aur";
+    case Packages::Source::Flatpak: return "flatpak";
+    case Packages::Source::Shell: break;
+    }
+    return "shell";
+}
 
 std::string urlEncode(const std::string& s) {
     std::string out;
@@ -70,8 +93,123 @@ Packages& Packages::get() {
 }
 
 Packages::Packages() {
+    // The AUR helper before any check runs (a cached one skips it): the
+    // check confirms it works
+    for (const char* h : {"yay", "paru"})
+        if (m_helper.empty() && (access((std::string("/usr/bin/") + h).c_str(), X_OK) == 0 || access((std::string("/usr/local/bin/") + h).c_str(), X_OK) == 0))
+            m_helper = h;
+    loadCache();
     refreshInstalled();
     checkRestart();
+}
+
+bool Packages::includes(Source s) {
+    if (s == Source::Aur) return Config::get().value<bool>("/updates/aur", true);
+    if (s == Source::Flatpak) return Config::get().value<bool>("/updates/flatpak", true);
+    return true;
+}
+
+bool Packages::includesFirmware() {
+    return Config::get().value<bool>("/updates/firmware", true);
+}
+
+int Packages::pending() const {
+    int n = static_cast<int>(m_updates.size());
+    if (includesFirmware() && Firmware::get().installed()) n += Firmware::get().updateCount();
+    return n;
+}
+
+// ── Automatic checks ──
+
+void Packages::loadCache() {
+    try {
+        std::ifstream in(cacheFile());
+        if (!in) return;
+        const auto j = nlohmann::json::parse(in);
+        m_lastChecked = j.value("checked", static_cast<std::time_t>(0));
+        for (const auto& u : j.value("updates", nlohmann::json::array())) {
+            const std::string src = u.value("source", "repo");
+            const Source s = src == "aur" ? Source::Aur : src == "flatpak" ? Source::Flatpak : src == "shell" ? Source::Shell : Source::Repo;
+            m_updates.push_back({u.value("name", ""), u.value("from", ""), u.value("to", ""), s});
+        }
+        for (const auto& k : j.value("seen", nlohmann::json::array()))
+            if (k.is_string()) m_seen.insert(k.get<std::string>());
+    } catch (const std::exception& e) {
+        log::warn("updates.json: {}", e.what());
+    }
+}
+
+void Packages::saveCache() const {
+    nlohmann::json updates = nlohmann::json::array();
+    for (const auto& u : m_updates) updates.push_back({{"name", u.name}, {"from", u.from}, {"to", u.to}, {"source", sourceName(u.source)}});
+    std::error_code ec;
+    std::filesystem::create_directories(paths::stateDir(), ec);
+    const std::string file = cacheFile();
+    std::ofstream(file + ".tmp") << nlohmann::json{{"checked", m_lastChecked}, {"updates", updates}, {"seen", m_seen}}.dump(2);
+    std::filesystem::rename(file + ".tmp", file, ec);
+}
+
+std::set<std::string> Packages::currentKeys() const {
+    std::set<std::string> keys;
+    for (const auto& u : m_updates) keys.insert(std::string(sourceName(u.source)) + ":" + u.name + " " + u.to);
+    for (const auto& d : Firmware::get().devices())
+        if (!d.releases.empty() && d.releases.front().upgrade) keys.insert("firmware:" + d.id + " " + d.releases.front().version);
+    return keys;
+}
+
+void Packages::startAutoCheck() {
+    // A while after login (the network up), then a look every 20 minutes at
+    // whether one's due
+    if (m_autoTimer) return;
+    EventLoop::get().addTimer(90 * 1000, [this] { autoCheck(); });
+    m_autoTimer = EventLoop::get().addTimer(20 * 60 * 1000, [this] { autoCheck(); }, true);
+}
+
+void Packages::autoCheck() {
+    const int hours = Config::get().value<int>("/updates/checkEvery", 24);
+    if (hours <= 0 || m_checking || m_busy) return;
+    if (m_lastChecked && std::time(nullptr) - m_lastChecked < static_cast<std::time_t>(hours) * 3600 - 60) return;
+    const auto before = std::make_shared<std::set<std::string>>(m_seen);
+    auto waiting = std::make_shared<int>(1);
+    auto finish = [this, before, waiting] {
+        if (--*waiting > 0) return;
+        const auto now = currentKeys();
+        std::vector<std::string> fresh;
+        bool onlyFirmware = true;
+        for (const auto& k : now) {
+            if (before->contains(k)) continue;
+            // "aur:name 1.2-1" → "name"
+            const size_t colon = k.find(':'), space = k.rfind(' ');
+            std::string name = k.substr(colon + 1, space - colon - 1);
+            if (k.starts_with("firmware:")) {
+                for (const auto& d : Firmware::get().devices())
+                    if (d.id == name) name = d.name;
+            } else {
+                onlyFirmware = false;
+            }
+            fresh.push_back(name);
+        }
+        m_seen = now;
+        saveCache();
+        if (fresh.empty()) return;
+        const int total = pending();
+        Hooks::get().fire("updates_available", {{"M3_UPDATES_COUNT", std::to_string(total)}, {"M3_UPDATES_NEW", std::to_string(fresh.size())}});
+        if (!Config::get().value<bool>("/updates/notify", true)) return;
+        std::string body;
+        for (size_t i = 0; i < fresh.size() && i < 4; ++i) body += (i ? ", " : "") + fresh[i];
+        if (fresh.size() > 4) body += std::format(" and {} more", fresh.size() - 4);
+        const std::string title = total == 1 ? std::string("1 update available") : std::format("{} updates available", total);
+        const std::string page = onlyFirmware ? "firmware" : "packages";
+        run({"notify-send", "-a", "Software & updates", "-i", "system-software-update", "-A", "review=Review", title, body},
+            [this, page](int, const std::string& out) {
+                if (out.starts_with("review") && openSettings) openSettings(page);
+            });
+    };
+    if (includesFirmware() && Firmware::get().installed()) {
+        ++*waiting;
+        Firmware::get().check(Firmware::get().refreshesQuietly(), finish);
+    }
+    check(finish);
 }
 
 std::string Packages::terminal() const {
@@ -83,11 +221,14 @@ int Packages::count(Source s) const {
     return static_cast<int>(std::ranges::count(m_updates, s, &Update::source));
 }
 
-void Packages::check() {
-    if (m_checking) return;
+void Packages::check(std::function<void()> done) {
+    if (m_checking) {
+        if (done) done();
+        return;
+    }
     m_checking = true;
     changed.emit();
-    run({"sh", "-c", kCheck}, [this](int, const std::string& out) {
+    run({"sh", "-c", checkScript(includes(Source::Aur), includes(Source::Flatpak))}, [this, done](int, const std::string& out) {
         std::vector<Update> list;
         Source section = Source::Repo;
         bool missing = false, failed = false;
@@ -114,7 +255,13 @@ void Packages::check() {
         m_lastChecked = std::time(nullptr);
         m_checking = false;
         changed.emit();
-        checkShell(); // appends to the list just set
+        // Appends to the list just set; then what's pending is known (and
+        // seen: an automatic check tells only of what's new since)
+        checkShell([this, done] {
+            m_seen = currentKeys();
+            saveCache();
+            if (done) done();
+        });
     });
 }
 
@@ -138,6 +285,8 @@ void Packages::runTask(const std::string& label, const std::string& script, cons
         m_status = code == 0 ? doneText
                  : code == 126 || code == 127 ? std::string("Cancelled: no password given")
                  : "Didn't finish: " + (last.empty() ? std::to_string(code) : last);
+        if (m_upgrading && code == 0) Hooks::get().fire("updates_installed", {{"M3_UPDATES_COUNT", std::to_string(m_updates.size())}});
+        m_upgrading = false;
         checkRestart();
         const std::string note = m_restart.system ? "Restart your computer to finish"
                                : m_restart.session ? "Log out and back in to finish"
@@ -259,15 +408,18 @@ void Packages::setChannel(const std::string& channel) {
     // update.sh reads it from here too
     std::ofstream(stateFile()) << state.dump(2) << "\n";
     changed.emit();
-    checkShell(); // what's pending depends on the channel
+    checkShell({}); // what's pending depends on the channel
 }
 
-void Packages::checkShell() {
+void Packages::checkShell(std::function<void()> done) {
     // Where install.sh put the checkout, and which channel it follows
     const auto state = readState();
     m_shellDir = state.value("install_dir", "");
     const std::string channel = state.value("channel", "stable");
-    if (m_shellDir.empty()) return;
+    if (m_shellDir.empty()) {
+        if (done) done();
+        return;
+    }
     const std::string script = "d='" + m_shellDir + "'; git -C \"$d\" fetch -q --tags origin 2>/dev/null || exit 1; " +
                                (channel == "stable"
                                     ? std::string("t=$(git -C \"$d\" describe --tags \"$(git -C \"$d\" rev-list --tags --max-count=1)\" "
@@ -275,8 +427,11 @@ void Packages::checkShell() {
                                     : std::string("echo \"commits $(git -C \"$d\" rev-list --count HEAD..origin/main)\""));
     // A channel switch takes back what the other channel found
     std::erase_if(m_updates, [](const Update& u) { return u.source == Source::Shell; });
-    run({"sh", "-c", script}, [this](int code, const std::string& out) {
-        if (code != 0) return;
+    run({"sh", "-c", script}, [this, done](int code, const std::string& out) {
+        if (code != 0) {
+            if (done) done();
+            return;
+        }
         std::erase_if(m_updates, [](const Update& u) { return u.source == Source::Shell; });
         std::stringstream ss(out);
         std::string kind, value;
@@ -286,20 +441,24 @@ void Packages::checkShell() {
         else if (kind == "commits" && std::atoi(value.c_str()) > 0)
             m_updates.insert(m_updates.begin(), {"Material3UI Shell", M3_VERSION, value + " new commits", Source::Shell});
         changed.emit();
+        if (done) done();
     });
 }
 
 void Packages::upgrade() {
+    if (m_busy) return; // one task at a time
     // Settings as they were, in case the update changes them
     Backups::get().create("before-update");
     const bool shell = count(Source::Shell) > 0 && !m_shellDir.empty();
+    const bool aur = !m_helper.empty() && includes(Source::Aur), flatpak = includes(Source::Flatpak);
+    m_upgrading = true;
     constexpr const char* helper = "/usr/lib/material3ui/material3ui-update-root";
     if (access(helper, X_OK) != 0) {
         // Before the helper is installed (the update that brings it): a
         // password for each step, as before
         std::string script = "pkexec pacman -Syu --noconfirm";
-        if (!m_helper.empty()) script += " && " + helperCommand("-Sua");
-        script += " && { command -v flatpak >/dev/null && flatpak update -y --noninteractive || true; }";
+        if (aur) script += " && " + helperCommand("-Sua");
+        if (flatpak) script += " && { command -v flatpak >/dev/null && flatpak update -y --noninteractive || true; }";
         if (shell) script += " && M3_SUDO=pkexec '" + m_shellDir + "/update.sh' all";
         runTask("Updating… this can take a while", script, "Updated");
         return;
@@ -316,11 +475,12 @@ void Packages::upgrade() {
         "R=\"/usr/lib/material3ui/material3ui-root $d\"; "
         "trap '$R exit >/dev/null 2>&1; wait $hp 2>/dev/null; rm -rf \"$d\"' EXIT; "
         "$R pacman -Syu --noconfirm";
-    if (!m_helper.empty())
+    if (aur)
         script += " && " + m_helper + " -Sua --noconfirm --sudo /usr/lib/material3ui/material3ui-root --sudoflags \"$d\"" +
                   (m_helper == "paru" ? " --skipreview" : " --answerclean None --answerdiff None --answeredit None");
-    script += " && { command -v flatpak >/dev/null && { $R flatpak update -y --noninteractive; flatpak update --user -y "
-              "--noninteractive; } || true; }";
+    if (flatpak)
+        script += " && { command -v flatpak >/dev/null && { $R flatpak update -y --noninteractive; flatpak update --user -y "
+                  "--noninteractive; } || true; }";
     if (shell) script += " && M3_ROOT=\"$R\" '" + m_shellDir + "/update.sh' all";
     runTask("Updating… this can take a while", script, "Updated");
 }

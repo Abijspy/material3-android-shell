@@ -17,7 +17,7 @@ Hyprland binds, scripts and other programs all use the same commands. The defaul
 | `popup quicksettings [wifi]` | Quick Settings, or straight to its Wi-Fi list |
 | `popup notifications` · `dashboard` · `overview` · `sysmon` · `power` | The notification centre, dashboard, workspace overview, system monitor and power menu |
 | `popup audio` · `network` · `bluetooth` · `run` | The small status panels and the run dialog |
-| `settings [page]` | Settings. Pages: `network`, `vpn`, `bluetooth`, `printers`, `defaults`, `notifications`, `tools`, `wellbeing`, `calendar`, `weather`, `battery`, `storage`, `monitor`, `sound`, `display`, `appearance`, `style`, `bar`, `dock`, `lockscreen`, `accessibility`, `lock`, `firewall`, `users`, `system`, `mouse`, `keybinds`, `hooks`, `packages`, `about` |
+| `settings [page]` | Settings. Pages: `network`, `vpn`, `bluetooth`, `printers`, `defaults`, `notifications`, `tools`, `wellbeing`, `calendar`, `weather`, `battery`, `storage`, `monitor`, `sound`, `display`, `appearance`, `style`, `bar`, `dock`, `lockscreen`, `accessibility`, `lock`, `firewall`, `users`, `system`, `mouse`, `keybinds`, `hooks`, `packages`, `firmware`, `about` |
 | `clipboard` | Clipboard history |
 | `screenshot` | The screenshot tool |
 | `wallpaper pick` | The wallpaper picker |
@@ -40,6 +40,9 @@ Running a panel command again closes the panel.
 | `notifications [list\|clear\|dnd on\|dnd off]` | History, clearing and Do Not Disturb |
 | `lock` | Locks the session (ext-session-lock) |
 | `idle inhibit\|allow` | Caffeine: keeps the screen awake |
+| `updates [list\|check\|upgrade]` | Pending updates (firmware's too), a check now, or the update itself (asks for the password) |
+| `firmware [list\|check\|update [id]]` | fwupd's devices and their updates; updates one device, or all of them |
+| `repos [list]` · `repos enable\|disable <repo>` | pacman's repositories, mirrors and held-back packages, and Flatpak's remotes; switches a repository |
 | `alarm [list]` | Your alarms, each with its id |
 | `alarm add <HH:MM> [days] [label]` | A new alarm. Days: `once` (the default), `daily`, `weekdays`, `weekends`, or a list such as `mon,wed,fri` |
 | `alarm on\|off\|remove <id>` | Turns an alarm on or off, or deletes it |
@@ -137,6 +140,8 @@ material3ui events wait screenshot_taken --since "$since" --timeout 10 | jq -r .
 | `focus_disabled` | Focus mode ends | – |
 | `bedtime_started` | On schedule or by hand | – |
 | `bedtime_ended` | Bedtime mode is over | – |
+| `updates_available` | An automatic check finds new updates (firmware's too) | `$M3_UPDATES_COUNT`, `$M3_UPDATES_NEW` |
+| `updates_installed` | Update now finishes | `$M3_UPDATES_COUNT` |
 | `alarm_ringing` | An alarm goes off (and again after a snooze) | `$M3_ALARM_TIME`, `$M3_ALARM_LABEL` |
 | `timer_finished` | A timer runs out | `$M3_TIMER_LABEL`, `$M3_TIMER_LENGTH` |
 

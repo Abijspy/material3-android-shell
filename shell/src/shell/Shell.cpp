@@ -18,6 +18,9 @@
 #include "services/Alarms.h"
 #include "services/Audio.h"
 #include "services/Backups.h"
+#include "services/Firmware.h"
+#include "services/Packages.h"
+#include "services/Repos.h"
 #include "services/Printers.h"
 #include "services/ThemedIcons.h"
 #include "services/Wellbeing.h"
@@ -110,6 +113,10 @@ bool Shell::start() {
     Session::get().lockRequested.connectForever([] { LockScreen::get().lock(); });
     Idle::get().lockRequested.connectForever([] { LockScreen::get().lock(); });
     Idle::get().start();
+    // Updates: checked in the background (Settings → Software & updates); a
+    // notification's Review opens the page
+    Packages::get().openSettings = [this](const std::string& page) { EventLoop::get().defer([this, page] { openSettings(page); }); };
+    Packages::get().startAutoCheck();
     // Alarms and timers: what goes off shows at the top, over everything
     Alarms::get();
     m_ringer = std::make_unique<Ringer>(focused);
@@ -693,7 +700,7 @@ void Shell::registerIpc() {
         return p ? std::format("{}: {} — {} [{}]", p->identity, p->title, p->artist, p->status) : std::string("no player");
     });
     ipc.add("settings", "settings [network|vpn|bluetooth|printers|defaults|notifications|tools|wellbeing|calendar|clock|weather|battery|storage|monitor|"
-                        "sound|display|appearance|style|bar|dock|lockscreen|accessibility|lock|firewall|users|system|mouse|keybinds|hooks|packages|about]",
+                        "sound|display|appearance|style|bar|dock|lockscreen|accessibility|lock|firewall|users|system|mouse|keybinds|hooks|packages|firmware|about]",
             [this](const IpcServer::Args& a) {
         openSettings(a.empty() ? "" : a[0]);
         return std::string(m_settings && !m_settings->closing() ? "open" : "closed");
@@ -1091,6 +1098,77 @@ void Shell::registerIpc() {
         else if (cmd == "remove") al.removeTimer(a[1]);
         else return std::string("error: timer pause|resume|reset|remove <id>");
         return cmd;
+    });
+    ipc.add("updates", "updates [list|check|upgrade]: what's waiting (firmware too), look again, or install (asks for the password)",
+            [](const IpcServer::Args& a) {
+        auto& p = Packages::get();
+        auto& fw = Firmware::get();
+        const std::string cmd = a.empty() ? "list" : a[0];
+        if (cmd == "check") {
+            p.check();
+            if (fw.installed() && Packages::includesFirmware()) fw.check(true);
+            return std::string("checking");
+        }
+        if (cmd == "upgrade") {
+            if (p.updates().empty()) return std::string("nothing to update");
+            if (p.busy()) return std::string("busy: ") + p.status();
+            p.upgrade();
+            return std::string("updating");
+        }
+        if (cmd != "list") return std::string("error: updates [list|check|upgrade]");
+        static const char* names[] = {"repo", "aur", "flatpak", "shell"};
+        std::string out;
+        for (const auto& u : p.updates())
+            out += std::format("{}\t{}\t{} -> {}\n", names[static_cast<int>(u.source)], u.name, u.from.empty() ? "-" : u.from, u.to);
+        for (const auto& d : fw.devices())
+            if (!d.releases.empty() && d.releases.front().upgrade)
+                out += std::format("firmware\t{}\t{} -> {}\n", d.name, d.version, d.releases.front().version);
+        if (p.checking() || fw.checking()) out += "checking…\n";
+        if (p.busy()) out += "busy: " + p.status() + "\n";
+        return out.empty() ? std::string(p.lastChecked() ? "up to date" : "not checked yet") : out;
+    });
+    ipc.add("firmware", "firmware [list|check|update [device id]]: fwupd's devices and their updates", [](const IpcServer::Args& a) {
+        auto& fw = Firmware::get();
+        if (!fw.installed()) return std::string("fwupd isn't installed (Settings → Firmware installs it)");
+        const std::string cmd = a.empty() ? "list" : a[0];
+        if (cmd == "check") {
+            fw.check(true);
+            return std::string("checking");
+        }
+        if (cmd == "update") {
+            if (fw.updating() || fw.checking()) return std::string("busy");
+            fw.update(a.size() > 1 ? a[1] : "");
+            return std::string("updating");
+        }
+        if (cmd != "list") return std::string("error: firmware [list|check|update [device id]]");
+        std::string out;
+        for (const auto& d : fw.devices()) {
+            out += std::format("{}\t{}\t{}\t{}", d.id, d.name, d.version.empty() ? "-" : d.version, d.updatable() ? "updatable" : "-");
+            if (!d.releases.empty()) out += " -> " + d.releases.front().version;
+            if (d.needsReboot()) out += "\tneeds a restart";
+            out += "\n";
+        }
+        if (fw.checking()) out += "checking…\n";
+        if (!fw.error().empty()) out += "error: " + fw.error() + "\n";
+        return out.empty() ? std::string(fw.lastChecked() ? "no devices" : "not checked yet (firmware check)") : out;
+    });
+    ipc.add("repos", "repos [list] | enable|disable <repo>: pacman's repositories, mirrors and held packages; Flatpak's remotes",
+            [](const IpcServer::Args& a) {
+        auto& r = Repos::get();
+        const std::string cmd = a.empty() ? "list" : a[0];
+        if ((cmd == "enable" || cmd == "disable") && a.size() > 1) {
+            r.setEnabled(a[1], cmd == "enable");
+            return r.error().empty() ? std::string("asking for the password") : "error: " + r.error();
+        }
+        if (cmd != "list") return std::string("error: repos [list] | enable|disable <repo>");
+        r.load();
+        std::string out;
+        for (const auto& repo : r.conf().repos) out += std::format("repo\t{}\t{}\n", repo.name, repo.enabled ? "on" : "off");
+        out += std::format("mirrors\t{}\n", r.mirrors().size());
+        out += std::format("parallel downloads\t{}\n", r.conf().parallelDownloads);
+        for (const auto& h : r.conf().ignored) out += "held\t" + h + "\n";
+        for (const auto& f : r.remotes()) out += std::format("flatpak\t{}\t{}\t{}\n", f.name, f.enabled ? "on" : "off", f.url);
+        return out;
     });
     ipc.add("tray", "List tray items", [](const auto&) {
         std::string out;

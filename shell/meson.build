@@ -93,11 +93,15 @@ sources = files(
   'src/services/Network.cpp',
   'src/services/Notifications.cpp',
   'src/services/Firewall.cpp',
+  'src/services/Firmware.cpp',
+  'src/services/FirmwareParse.cpp',
   'src/services/Packages.cpp',
+  'src/services/PacmanConf.cpp',
   'src/services/PacmanLog.cpp',
   'src/services/Printers.cpp',
   'src/services/PrintersParse.cpp',
   'src/services/Polkit.cpp',
+  'src/services/Repos.cpp',
   'src/services/Search.cpp',
   'src/services/ThemedIcons.cpp',
   'src/services/Screenshot.cpp',
@@ -139,6 +143,7 @@ sources = files(
   'src/shell/WellbeingPage.cpp',
   'src/shell/PrintersPage.cpp',
   'src/shell/SettingsKit.cpp',
+  'src/shell/SoftwarePages.cpp',
   'src/shell/Tools.cpp',
   'src/shell/Switcher.cpp',
   'src/shell/Welcome.cpp',
@@ -208,3 +213,7 @@ test('lyrics', executable('lyrics_test', 'tests/lyrics_test.cpp', 'src/services/
   include_directories: include_directories('src'), dependencies: [json]))
 test('alarms', executable('alarms_test', 'tests/alarms_test.cpp', 'src/services/AlarmsParse.cpp',
   include_directories: include_directories('src')))
+test('pacman-conf', executable('pacman_conf_test', 'tests/pacman_conf_test.cpp', 'src/services/PacmanConf.cpp',
+  include_directories: include_directories('src')))
+test('firmware', executable('firmware_test', 'tests/firmware_test.cpp', 'src/services/FirmwareParse.cpp',
+  include_directories: include_directories('src'), dependencies: [json]))

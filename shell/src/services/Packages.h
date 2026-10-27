@@ -1,8 +1,10 @@
 #pragma once
 
+#include "core/EventLoop.h"
 #include "core/Signal.h"
 
 #include <ctime>
+#include <functional>
 #include <set>
 #include <string>
 #include <vector>
@@ -30,8 +32,8 @@ public:
 
     static Packages& get();
 
-    // Updates
-    void check();
+    // Updates; `done` once the shell's own is looked up too
+    void check(std::function<void()> done = {});
     bool checking() const { return m_checking; }
     const std::vector<Update>& updates() const { return m_updates; }
     int count(Source s) const;
@@ -64,6 +66,20 @@ public:
     const Restart& restart() const { return m_restart; }
     void checkRestart();
 
+    // Automatic checks (Settings → Software & updates): every
+    // /updates/checkEvery hours (0: never), firmware's too, and a
+    // notification for what's new since the last one
+    void startAutoCheck();
+    // Which sources the checks and Update now take in: /updates/aur,
+    // /updates/flatpak, /updates/firmware
+    static bool includes(Source s);
+    static bool includesFirmware();
+    int pending() const; // updates waiting, firmware's included
+    // Set by the shell: open a Settings page (a notification's Review)
+    std::function<void(const std::string& page)> openSettings;
+    // A background task (pacman, pkexec…): its label while it runs, then
+    // doneText or why it didn't finish; one at a time
+    void runTask(const std::string& label, const std::string& script, const std::string& doneText);
     // Search and install
     void search(Source source, const std::string& query);
     bool searching() const { return m_searching; }
@@ -78,10 +94,13 @@ private:
     Packages();
     void refreshInstalled();
     // A newer release (stable channel) or new commits (latest) of the shell
-    void checkShell();
+    void checkShell(std::function<void()> done);
+    void autoCheck();
+    std::set<std::string> currentKeys() const; // what's pending, as "source:name version"
+    void loadCache();
+    void saveCache() const;
     std::string m_shellDir; // the git checkout update.sh runs from
     std::string terminal() const;
-    void runTask(const std::string& label, const std::string& script, const std::string& doneText);
     // yay or paru, told to ask for root through pkexec and not to stop for review
     std::string helperCommand(const std::string& args) const;
 
@@ -94,6 +113,9 @@ private:
     std::time_t m_lastChecked = 0;
     std::string m_error, m_helper;
     int m_token = 0;
+    std::set<std::string> m_seen; // updates already told about
+    bool m_upgrading = false;
+    EventLoop::TimerId m_autoTimer = 0;
 };
 
 } // namespace m3

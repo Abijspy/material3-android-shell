@@ -120,12 +120,14 @@ From the moment the machine boots:
 
 **7 · Something asks for your password.** The prompt comes from the shell's own polkit agent, so it looks like the rest of the desktop and not like a 2009 dialog box.
 
-**8 · Updates arrive.** A status bar icon shows how many are pending.
-- **Left-click** opens Packages & Updates, with official repo, AUR and Flatpak updates in one list.
-- **Middle-click** runs the upgrade in your terminal.
-- The **Repo**, **AUR** and **Flatpak** tabs search each source and install with one click.
+**8 · Updates arrive.** The shell checks in the background (daily, unless you change it) and tells you when there's something new. The **Updates** bar widget shows how many are waiting.
+- **Left-click** opens Software & updates, with official repo, AUR, Flatpak and Material3UI updates in one list, installed with one password.
+- **Middle-click** starts the update straight away.
+- The **Repositories** tab switches on multilib or testing, adds your own repositories, holds packages back, finds the fastest mirrors near you and manages Flatpak's remotes.
+- The **Official**, **AUR** and **Flatpak** tabs search each source and install with one click.
+- **Settings → Firmware** updates your devices' firmware (the BIOS, SSDs, docks…) from the LVFS through fwupd.
 
-→ [Packages & Updates](docs/PACKAGES.md)
+→ [Software, updates and firmware](docs/PACKAGES.md)
 
 **9 · Something feels slow.** <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd> opens the system monitor: CPU, memory, disks and processes, read straight from `/proc`.
 
@@ -160,8 +162,8 @@ Most settings live in the built-in **Settings** app (<kbd>Super</kbd><kbd>I</kbd
 - **Tools:** clipboard and screenshots.
 - **Session:** notifications, and lock & idle.
 - **Calendar and clock:** your events, subscribed calendars and public holidays; alarms, timers, their sound and snooze.
-- **Hooks:** your own commands when things happen (the screen locks, the wallpaper changes, the battery runs low, a notification arrives, a screenshot is saved, an alarm goes off: 43 events in all), each with a test run and its last result.
-- **Packages & Updates, and About.**
+- **Hooks:** your own commands when things happen (the screen locks, the wallpaper changes, the battery runs low, a notification arrives, a screenshot is saved, an alarm goes off, updates arrive: 45 events in all), each with a test run and its last result.
+- **Software & updates, Firmware, and About:** updates with automatic checks, repositories and mirrors, and your devices' firmware.
 
 **Hyprland Settings** is its companion app for the compositor itself: a window of its own (Hyprland Settings in the launcher, `material3ui msg hyprsettings`, or the button at the foot of either app's sidebar). Every change applies live, is saved at once, undoes with <kbd>Ctrl</kbd><kbd>Z</kbd> and resets per option to what your config files had. It has:
 - **Every Hyprland option** (all of them, read from the running Hyprland, so new ones appear on their own): windows and borders, decoration, layouts, input devices, gestures, cursor, groups, behaviour, rendering and debug, with Hyprland's config errors on top.
@@ -272,7 +274,7 @@ Copy the files from `~/.config/material3ui/backups/<timestamp>/` back into place
 <details>
 <summary><b>Do I need an AUR helper?</b></summary>
 
-For installing, yes: the installer uses yay, and installs it if it's missing. AUR *search* in Packages & Updates uses the AUR's web API, so it works without a helper. Installing AUR packages from there still needs one.
+For installing, yes: the installer uses yay, and installs it if it's missing. AUR *search* in Software & updates uses the AUR's web API, so it works without a helper. Installing AUR packages from there still needs one.
 </details>
 
 <details>

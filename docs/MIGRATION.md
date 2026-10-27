@@ -120,7 +120,7 @@ If you are coming from GNOME:
 
 When an update for Material3UI drops, run `update.sh` from your checkout (`update.sh all`, or `update.sh shell` for the shell alone). It pulls, rebuilds and reinstalls the shell (asking for sudo), refreshes the configs and restarts the shell. Your personal Hyprland keybinds, terminal settings and custom scripts are never overwritten.
 
-System packages are updated from **Settings → Packages & Updates**.
+System packages are updated from **Settings → Software & updates**.
 
 ## Troubleshooting Migration Issues
 

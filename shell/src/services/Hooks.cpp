@@ -108,6 +108,10 @@ const std::vector<Hooks::Event>& Hooks::events() {
         {"bedtime_started", "bedtime", "Bedtime starts", "On schedule or by hand", "Digital Wellbeing", {}},
         {"bedtime_ended", "wb_twilight", "Bedtime ends", "Bedtime mode is over", "Digital Wellbeing", {}},
 
+        {"updates_available", "system_update_alt", "Updates available", "An automatic check finds new ones (firmware's too)", "Software",
+         {{"M3_UPDATES_COUNT", "12"}, {"M3_UPDATES_NEW", "3"}}},
+        {"updates_installed", "deployed_code_update", "Updates installed", "Update now finishes", "Software", {{"M3_UPDATES_COUNT", "12"}}},
+
         {"alarm_ringing", "alarm", "Alarm ringing", "An alarm goes off (and again after a snooze)", "Clock",
          {{"M3_ALARM_TIME", "07:00"}, {"M3_ALARM_LABEL", "Wake up"}}},
         {"timer_finished", "timer", "Timer finished", "A timer runs out", "Clock", {{"M3_TIMER_LABEL", "Tea"}, {"M3_TIMER_LENGTH", "5:00"}}},

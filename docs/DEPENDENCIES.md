@@ -48,13 +48,14 @@ The installer reads `data/dependencies.json`, checks what is missing with `pacma
 | **Lock** | `hyprlock` | The lock screen provider. |
 | **Night Light** | `hyprsunset` | Blue light filter functionality. |
 | **Search** | `fd` | Fast file search functionality in Spotlight. |
-| **Updates** | `pacman-contrib` | Safe update checks (`checkupdates`) for Packages & Updates. |
+| **Updates** | `pacman-contrib` | Safe update checks (`checkupdates`) for Software & updates. |
 | **Calculator** | `libqalculate` | Math calculator functionality in Spotlight (`qalc`). |
 | **Dialogs** | `zenity` | File and directory selection dialogs. |
 | **QR Scan** | `zbar` | QR code scanning functionality (`zbarimg`). |
 | **OCR (Opt.)** | `tesseract` | OCR functionality in region tools. |
 | **Biometric (Opt.)** | `fprintd` | Fingerprint sensor support on lockscreen. |
-| **Flatpak (Opt.)** | `flatpak` | Flatpak updates, search and installs in Packages & Updates. |
+| **Flatpak (Opt.)** | `flatpak` | Flatpak updates, search and installs in Software & updates. |
+| **Firmware (Opt.)** | `fwupd` | Firmware updates from the LVFS in Settings → Firmware (offered there when missing). |
 | **Login (Opt.)** | `greetd` | Hosts the Material3UI login screen. |
 
 ### Fonts

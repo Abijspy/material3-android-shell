@@ -5,8 +5,10 @@
 #include "render/Images.h"
 #include "services/Alarms.h"
 #include "services/Firewall.h"
+#include "services/Firmware.h"
 #include "services/Network.h"
 #include "services/Notifications.h"
+#include "services/Packages.h"
 #include "services/Printers.h"
 #include "services/SystemStats.h"
 #include "services/Vpn.h"
@@ -398,6 +400,31 @@ private:
     Connection m_conn;
 };
 
+// Updates waiting (the repos, the AUR, Flatpak, the shell, firmware): their
+// number, from the last check (automatic ones keep it current); a download
+// arrow while an update runs
+class UpdatesChip : public Chip {
+public:
+    explicit UpdatesChip(std::function<void()> click) : Chip("system_update_alt", std::move(click)) {
+        m_conns.push_back(Packages::get().changed.connect([this] { sync(); }));
+        m_conns.push_back(Firmware::get().changed.connect([this] { sync(); }));
+        sync();
+    }
+
+private:
+    void sync() {
+        auto& p = Packages::get();
+        const int n = p.pending();
+        const bool updating = p.busy() || Firmware::get().updating();
+        set(updating ? "downloading" : n ? "system_update_alt" : "verified", n && !updating ? std::to_string(n) : "");
+        m_icon->setColor(n || updating ? "on_surface" : "on_surface_variant");
+        tooltip = updating ? (p.busy() ? p.status() : Firmware::get().status())
+                : n ? std::format("{} update{} (click to review, middle-click to update)", n, n == 1 ? "" : "s")
+                : p.lastChecked() ? std::string("Up to date (click for Software & updates)") : std::string("Software & updates");
+    }
+    std::vector<Connection> m_conns;
+};
+
 // The firewall: a shield, struck through while it's off
 class FirewallChip : public Chip {
 public:
@@ -466,6 +493,7 @@ const std::vector<Bar::Module>& Bar::modules() {
         {"quickshare", quickShare.c_str(), "Quick Share", "Transfers' progress; opens Send files"},
         {"firewall", "shield_lock", "Firewall", "On or off; opens Firewall settings"},
         {"printers", "print", "Printers", "Jobs waiting; opens Printers"},
+        {"updates", "system_update_alt", "Updates", "How many are waiting; opens Software & updates"},
         {"quicksettings", "tune", "Quick Settings", "Opens Quick Settings"},
         {"status", "wifi", "Status icons", "Network, Bluetooth, volume; opens Quick Settings"},
         {"battery", "battery_full", "Battery", "Charge level (hidden on desktops)"},
@@ -656,7 +684,7 @@ void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
         if (vertical) c->setPadding({0, 2});
         c->add<Media>(vertical);
     } else if (id == "screentime" || id == "vpn" || id == "quickshare" || id == "firewall" || id == "focus" || id == "bedtime" ||
-               id == "printers" || id == "alarms") {
+               id == "printers" || id == "alarms" || id == "updates") {
         auto* c = capsule(zone, filled);
         c->setPadding(vertical ? Insets{0, 4} : Insets{4, 0});
         auto open = [this](const std::string& name, Node* from) { m_openPopup(name, alongBar(from)); };
@@ -682,6 +710,13 @@ void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
             chip = c->add<PrintersChip>(std::function<void()>{});
             chip->onClicked = [open, chip](uint32_t b) {
                 if (b == BTN_LEFT) open("settings printers", chip);
+            };
+        } else if (id == "updates") {
+            chip = c->add<UpdatesChip>(std::function<void()>{});
+            chip->onClicked = [open, chip](uint32_t b) {
+                if (b == BTN_LEFT || b == BTN_RIGHT) open("settings packages", chip);
+                // Middle: update straight away (the password asked as ever)
+                else if (b == BTN_MIDDLE && !Packages::get().updates().empty()) Packages::get().upgrade();
             };
         } else if (id == "alarms") {
             auto* alarms = c->add<AlarmChip>(std::function<void()>{});

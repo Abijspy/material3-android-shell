@@ -18,6 +18,7 @@
 #include "services/Network.h"
 #include "services/Notifications.h"
 #include "services/Packages.h"
+#include "services/Repos.h"
 #include "services/Search.h"
 #include "services/Session.h"
 #include "services/SystemStats.h"
@@ -28,6 +29,7 @@
 #include "shell/HyprPages.h"
 #include "shell/PrintersPage.h"
 #include "shell/SecurityPages.h"
+#include "shell/SoftwarePages.h"
 #include "shell/WellbeingPage.h"
 #include "shell/KeyCapture.h"
 #include "shell/LockLayout.h"
@@ -2137,12 +2139,14 @@ void systemPage(Flex* page, Popup&) {
     // The Keyboard page here (re-showing Hyprland Settings' page did
     // nothing unless that app was already open)
     pillButton(kb.row, "Open", false, [] { EventLoop::get().defer([] { settingsPage("keybinds"); }); });
-    auto up = row(more, "system_update", "Software & updates", "Updates from the repos, the AUR and Flathub");
+    auto up = row(more, "system_update", "Software & updates", "Updates, repositories and mirrors, the AUR and Flathub");
     pillButton(up.row, "Open", false, [] {
         EventLoop::get().defer([] {
             reshowPage("packages");
         });
     });
+    auto fwRow = row(more, "developer_board", "Firmware", "Updates for your devices' firmware, from the LVFS");
+    pillButton(fwRow.row, "Open", false, [] { EventLoop::get().defer([] { reshowPage("firmware"); }); });
 
     backupRows(page);
 
@@ -3560,17 +3564,17 @@ void keybindsPage(Flex* page, Popup&) {
 
 void packagesPage(Flex* page, Popup&) {
     auto* live = page->add<Live>();
-    auto tab = std::make_shared<int>(0); // 0 updates, 1 official, 2 AUR, 3 Flatpak
+    auto tab = std::make_shared<int>(0); // 0 updates, 1 repositories, 2 official, 3 AUR, 4 Flatpak
     auto* tabs = live->add<Flex>(Flex::Direction::Row);
     tabs->setSpacing(6);
     auto* body = live->add<Flex>(Flex::Direction::Column);
     body->setAlignItems(Align::Stretch)->setSpacing(12);
     auto query = std::make_shared<std::string>();
-    const char* names[] = {"Updates", "Official", "AUR", "Flatpak"};
+    const char* names[] = {"Updates", "Repositories", "Official", "AUR", "Flatpak"};
 
     std::function<void()> rebuild = [=] {
         tabs->clearChildren();
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < 5; ++i) {
             auto* b = tabs->add<Button>();
             pill(b)->setPadding({16, 8});
             b->setBackground(i == *tab ? "primary" : "surface_container_high", false);
@@ -3578,7 +3582,8 @@ void packagesPage(Flex* page, Popup&) {
             b->onClicked = [=](uint32_t) {
                 *tab = i;
                 query->clear();
-                if (i > 0) Packages::get().search(static_cast<Packages::Source>(i - 1), "");
+                if (i == 1) Repos::get().load(); // as the files are now
+                if (i > 1) Packages::get().search(static_cast<Packages::Source>(i - 2), "");
                 live->syncSoon();
             };
         }
@@ -3692,6 +3697,8 @@ void packagesPage(Flex* page, Popup&) {
                     }
                 }
             }
+            // Firmware, and when to check
+            updateSettings(body);
             // How the shell itself updates
             auto* shellGroup = group(body, "Material3UI updates");
             auto ch = row(shellGroup, "conversion_path", "Update channel",
@@ -3707,10 +3714,11 @@ void packagesPage(Flex* page, Popup&) {
             releaseNotes(body, 1, 600);
             return;
         }
+        if (*tab == 1) return repositoriesTab(body);
         auto* field = body->add<TextField>();
-        field->setPlaceholder(*tab == 1 ? "Search the official repositories" : *tab == 2 ? "Search the AUR" : "Search Flathub");
+        field->setPlaceholder(*tab == 2 ? "Search the official repositories" : *tab == 3 ? "Search the AUR" : "Search Flathub");
         field->setText(*query);
-        const auto source = static_cast<Packages::Source>(*tab - 1);
+        const auto source = static_cast<Packages::Source>(*tab - 2);
         field->onChanged = [query, source](const std::string& t) {
             *query = t;
             Packages::get().search(source, t);
@@ -3738,7 +3746,8 @@ void packagesPage(Flex* page, Popup&) {
     live->sync = rebuild;
     live->watch(Packages::get().changed);
     rebuild();
-    if (Packages::get().lastChecked() == 0) Packages::get().check();
+    // A check from more than an hour ago (or none): look again
+    if (std::time(nullptr) - Packages::get().lastChecked() > 3600) Packages::get().check();
 }
 
 void aboutPage(Flex* page, Popup&) {
@@ -3863,7 +3872,7 @@ HueChip categoryColours(const std::string& id) {
         {{"notifications", "sound", "hypr-animations"}, &pink},
         {{"display", "appearance", "style", "bar", "dock", "hypr-decoration", "hypr-monitors"}, &orange},
         {{"storage", "monitor", "calendar", "clock", "hypr-render"}, &yellow},
-        {{"battery", "packages", "wellbeing", "hypr-startup"}, &green},
+        {{"battery", "packages", "firmware", "wellbeing", "hypr-startup"}, &green},
         {{"lock", "firewall", "lockscreen", "users", "hypr-window-rules", "hypr-layer-rules", "hypr-workspace-rules", "hypr-profiles"}, &teal},
         {{"hypr-debug"}, &red},
         {{"accessibility", "tools", "hooks", "hypr-plugins"}, &purple},
@@ -3976,7 +3985,8 @@ const PageDef kPages[] = {
     {"mouse", "touchpad_mouse", "Mouse & touchpad", "Touchpad, pointer and gestures, in Hyprland Settings", mousePage},
     {"keybinds", "keyboard", "Keyboard", "Layouts, typing and shortcuts", keyboardPage},
     {"hooks", "webhook", "Hooks", "Your own commands when things happen: locking, a new wallpaper, a low battery…", hooksPage},
-    {"packages", "system_update", "Software & updates", "Updates from the repos, the AUR and Flathub", packagesPage},
+    {"packages", "system_update", "Software & updates", "Updates, repositories and mirrors, the AUR and Flathub", packagesPage},
+    {"firmware", "developer_board", "Firmware", "Updates for your devices' firmware, from the LVFS", firmwarePage},
     {"about", "info", "About", "This device and the shell", aboutPage},
 };
 
