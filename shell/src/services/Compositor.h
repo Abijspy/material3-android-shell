@@ -2,6 +2,7 @@
 
 #include "core/Signal.h"
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -12,9 +13,10 @@ namespace m3 {
 // The compositor the shell runs on, as one model whichever it is: its
 // outputs, workspaces and windows, kept current from its events, and what
 // the shell asks of it (switch workspace, focus or close a window, screens
-// off, log out). Hyprland is the backend so far (services/Hyprland, which
-// also keeps what only Hyprland has: its options, binds and layer rules).
-// What not every compositor can do is asked of can() first.
+// off, log out). Hyprland's backend (services/Hyprland, which also keeps
+// what only Hyprland has: its options, binds and layer rules) or niri's
+// (services/Niri), as the session says. What not every compositor can do is
+// asked of can() first.
 class Compositor {
 public:
     enum class Feature {
@@ -23,6 +25,9 @@ public:
         WindowGeometry, // each window's place on the desktop (the overview, picking a window to capture)
         CursorPosition, // where the pointer is on the desktop
         Reload,         // its config read again on request
+        NativeOverview, // its own overview of the workspaces, in place of the shell's
+        DynamicWorkspaces, // as many as are used, and one empty: none to show beyond them
+        WindowCapture,  // it screenshots a window itself (without WindowGeometry for grim)
     };
     struct Output {
         std::string name;
@@ -72,7 +77,8 @@ public:
     virtual std::optional<std::pair<float, float>> cursorPosition() const = 0;
 
     // Asked of it
-    virtual void focusWorkspace(int number) = 0;
+    // On `output` where each has its own numbers (niri); else the focused one
+    virtual void focusWorkspace(int number, const std::string& output = {}) = 0;
     virtual void focusWorkspaceRelative(int delta) = 0; // on the focused output, wrapping round
     virtual void focusWindow(const std::string& id) = 0; // a minimised one comes back
     virtual void closeWindow(const std::string& id) = 0;
@@ -82,6 +88,9 @@ public:
     // Ends the session; false when it can't (logind is asked instead)
     virtual bool quit() = 0;
     virtual void reload() = 0; // with Reload
+    virtual void toggleOverview() {} // with NativeOverview
+    // With WindowCapture: the focused window to `path`; `done` with success
+    virtual void captureWindow(const std::string& /*path*/, std::function<void(bool)> done) { done(false); }
 
     Signal<> workspacesChanged;   // which exist, which is active, the outputs
     Signal<> activeWindowChanged; // its title or app

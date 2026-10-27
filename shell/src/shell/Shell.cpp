@@ -330,6 +330,11 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
     if (name == "welcome") return openWelcome();
     if (name == "hyprsettings") return openHyprSettings(arg);
     if (name == "desktopedit") return desktopeditor::open(output ? output : focusedOutput());
+    // The compositor's own overview where it has one (niri's)
+    if (name == "overview" && Compositor::get().can(Compositor::Feature::NativeOverview)) {
+        m_popup.reset();
+        return Compositor::get().toggleOverview();
+    }
     // The system monitor lives in Settings now (Ctrl+Alt+Delete, the bar's widget)
     if (name == "sysmon") return openSettings("monitor");
     // The same popup again closes it; the same kind for something else
@@ -540,6 +545,7 @@ void Shell::registerIpc() {
         // Status panels open under the right end of the bar; the dashboard
         // under the island
         togglePopup(a[0], focusedOutput(), a[0] == "dashboard" ? -1 : 100000, a.size() > 1 ? a[1] : "");
+        if (a[0] == "overview" && Compositor::get().can(Compositor::Feature::NativeOverview)) return std::string("toggled");
         return std::string(m_popup && !m_popup->closing() ? "open" : "closed");
     });
     ipc.add("launcher", "launcher [text]: toggle Spotlight, optionally pre-filled (\"#\" clipboard, \":\" emoji…)",
@@ -1201,9 +1207,25 @@ void Shell::registerIpc() {
         for (auto& [o, _] : m_bars) out += std::format("{}\t{}\tscale {}\n", o->name, o->description, o->scale);
         return out;
     });
+    ipc.add("workspace", "workspace <n>|next|prev: go to a workspace (the focused monitor's)", [](const IpcServer::Args& a) {
+        auto& c = Compositor::get();
+        if (!c.available() || a.empty()) return std::string("error: workspace <n>|next|prev");
+        if (a[0] == "next" || a[0] == "prev") {
+            c.focusWorkspaceRelative(a[0] == "next" ? 1 : -1);
+            return a[0];
+        }
+        try {
+            const int n = std::stoi(a[0]);
+            if (n < 1) throw std::out_of_range("n");
+            c.focusWorkspace(n, c.focusedOutput());
+            return std::to_string(n);
+        } catch (...) {
+            return std::string("error: workspace <n>|next|prev");
+        }
+    });
     ipc.add("workspaces", "List the compositor's workspaces as the shell sees them", [](const auto&) {
         auto& c = Compositor::get();
-        if (!c.available()) return std::string("error: not running under a compositor the shell knows (Hyprland)");
+        if (!c.available()) return std::string("error: not running under a compositor the shell knows (Hyprland or niri)");
         std::string out;
         for (const auto& w : c.workspaces())
             out += std::format("{}\t{}\t{} windows{}\n", w.number, w.output, w.windows,

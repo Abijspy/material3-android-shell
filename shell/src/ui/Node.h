@@ -111,6 +111,7 @@ public:
     // Drawn scaled about its centre (springy pops); layout and hit tests
     // ignore it
     void setScale(float s, bool animate = true);
+    float translateX() const { return m_translateX.value(); }
     float translateY() const { return m_translateY.value(); }
     float opacity() const { return m_opacity.target(); } // where it's heading
     // Moved or scaled at rest (not just animating): drawn away from its

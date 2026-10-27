@@ -91,6 +91,8 @@ sources = files(
   'src/services/Lyrics.cpp',
   'src/services/LyricsParse.cpp',
   'src/services/Mpris.cpp',
+  'src/services/Niri.cpp',
+  'src/services/NiriModel.cpp',
   'src/services/Network.cpp',
   'src/services/Notifications.cpp',
   'src/services/Firewall.cpp',
@@ -217,4 +219,6 @@ test('alarms', executable('alarms_test', 'tests/alarms_test.cpp', 'src/services/
 test('pacman-conf', executable('pacman_conf_test', 'tests/pacman_conf_test.cpp', 'src/services/PacmanConf.cpp',
   include_directories: include_directories('src')))
 test('firmware', executable('firmware_test', 'tests/firmware_test.cpp', 'src/services/FirmwareParse.cpp',
+  include_directories: include_directories('src'), dependencies: [json]))
+test('niri', executable('niri_test', 'tests/niri_test.cpp', 'src/services/NiriModel.cpp',
   include_directories: include_directories('src'), dependencies: [json]))

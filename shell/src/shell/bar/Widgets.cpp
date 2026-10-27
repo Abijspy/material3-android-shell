@@ -169,7 +169,9 @@ void Workspaces::sync() {
     auto& comp = Compositor::get();
     // This bar's: the desktop's numbers, or this monitor's own (niri)
     const auto workspaces = comp.workspacesOn(m_monitor);
-    int shown = Config::get().value<int>("/bar/workspaces/shown", 5);
+    // At least as many as Settings says; where they come and go (niri),
+    // exactly the ones there are
+    int shown = comp.can(Compositor::Feature::DynamicWorkspaces) ? 1 : Config::get().value<int>("/bar/workspaces/shown", 5);
     for (const auto& ws : workspaces) shown = std::max(shown, ws.number);
     shown = std::clamp(shown, 1, 20);
 
@@ -185,8 +187,9 @@ void Workspaces::sync() {
             slot->fixedHeight = 24;
         }
         slot->tooltip = std::format("Workspace {}", id);
-        slot->onClicked = [id](uint32_t button) {
-            if (button == BTN_LEFT) Compositor::get().focusWorkspace(id);
+        // This bar's monitor's: its own numbers where it has them (niri)
+        slot->onClicked = [id, monitor = m_monitor](uint32_t button) {
+            if (button == BTN_LEFT) Compositor::get().focusWorkspace(id, monitor);
         };
         slot->onScrolled = [](int d) { Compositor::get().focusWorkspaceRelative(d); };
         m_dots.push_back(slot->add<Dot>());

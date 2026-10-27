@@ -56,6 +56,8 @@ public:
 private:
     Screenshot() = default;
     void shoot(const std::vector<std::string>& target);
+    std::string newFile() const; // Screenshot_<date>.png in the folder
+    void saved(const std::string& file); // copied, edited or announced, as Settings says
     bool m_busy = false, m_recording = false;
     std::time_t m_since = 0;
 };

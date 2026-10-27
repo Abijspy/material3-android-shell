@@ -46,6 +46,7 @@ Running a panel command again closes the panel.
 | `wallpaper next\|prev\|set <path>` | Changes the wallpaper and recolours the desktop through Matugen |
 | `notifications [list\|clear\|dnd on\|dnd off]` | History, clearing and Do Not Disturb |
 | `lock` | Locks the session (ext-session-lock) |
+| `workspace <n>\|next\|prev` | Goes to a workspace (on niri, the focused monitor's own numbers) |
 | `idle inhibit\|allow` | Caffeine: keeps the screen awake |
 | `updates [list\|check\|upgrade]` | Pending updates (firmware's too), a check now, or the update itself (asks for the password) |
 | `firmware [list\|check\|update [id]]` | fwupd's devices and their updates; updates one device, or all of them |
@@ -68,7 +69,7 @@ Running a panel command again closes the panel.
 | :--- | :--- |
 | `ping` · `version` | `pong`, and the shell version |
 | `status` | A summary of every service (audio, network, Bluetooth, battery, media…) |
-| `outputs` · `workspaces` · `tray` | What the shell sees |
+| `outputs` · `workspaces` · `tray` | What the shell sees (`workspaces`: Hyprland's or niri's, each with its monitor) |
 | `debug` | Every surface's node tree with positions (used by the UI tests) |
 | `layout check` | Anything drawn outside its box (the card or pill around it) or off its surface, on every open surface: `ok: …` when there's none. A test can open each panel and check it, at any text size |
 

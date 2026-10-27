@@ -70,6 +70,17 @@ void Screenshot::capture(Mode mode, int delayMs, const std::string& output) {
             shoot(output.empty() ? std::vector<std::string>{} : std::vector<std::string>{"-o", output});
             return;
         case Mode::Window: {
+            // The compositor's own capture where windows have no fixed place (niri)
+            auto& comp = Compositor::get();
+            if (!comp.can(Compositor::Feature::WindowGeometry) && comp.can(Compositor::Feature::WindowCapture)) {
+                const std::string file = newFile();
+                comp.captureWindow(file, [this, file](bool ok) {
+                    m_busy = false;
+                    if (ok) saved(file);
+                    else log::warn("screenshot: the compositor didn't capture the window");
+                });
+                return;
+            }
             // The focused window's box on the desktop
             std::optional<Compositor::Window> active;
             if (Compositor::get().can(Compositor::Feature::WindowGeometry))
@@ -233,19 +244,24 @@ void Screenshot::startRecording(const RecordOptions& o, const std::string& outpu
                 boxes += std::format("{},{} {}x{}\n", static_cast<int>(w.x), static_cast<int>(w.y), static_cast<int>(w.w), static_cast<int>(w.h));
     }
     std::vector<std::string> slurp = {"slurp", "-d"};
-    if (o.mode == 1) slurp.push_back("-r");
+    // Windows to pick from where the compositor says where they are; a
+    // region otherwise
+    if (o.mode == 1 && !boxes.empty()) slurp.push_back("-r");
     run(slurp, [begin, after](int code, const std::string& out) {
         const std::string geometry = trimmed(out);
         if (code == 0 && !geometry.empty()) after([begin, geometry] { begin({"-g", geometry}); });
     }, boxes);
 }
 
-void Screenshot::shoot(const std::vector<std::string>& target) {
+std::string Screenshot::newFile() const {
     const std::string dir = directory();
     std::error_code ec;
     fs::create_directories(dir, ec);
-    const std::string file = dir + "/Screenshot_" + stamp() + ".png";
+    return dir + "/Screenshot_" + stamp() + ".png";
+}
 
+void Screenshot::shoot(const std::vector<std::string>& target) {
+    const std::string file = newFile();
     std::vector<std::string> argv = {"grim"};
     argv.insert(argv.end(), target.begin(), target.end());
     argv.push_back(file);
@@ -255,17 +271,21 @@ void Screenshot::shoot(const std::vector<std::string>& target) {
             log::warn("screenshot: grim failed ({})", code);
             return;
         }
-        const auto& c = Config::get();
-        if (c.value<bool>("/screenshot/copy", true))
-            run({"sh", "-c", "wl-copy --type image/png < \"$1\"", "sh", file}, nullptr);
-        if (c.value<bool>("/screenshot/edit", false))
-            spawn(std::format("command -v satty >/dev/null && satty --filename '{0}' --output-filename '{0}' || swappy -f '{0}'", file));
-        else if (c.value<bool>("/screenshot/notify", true))
-            run({"notify-send", "-a", "Screenshot", "-i", file, "Screenshot saved",
-                 fs::path(file).filename().string() + (c.value<bool>("/screenshot/copy", true) ? " · copied to the clipboard" : "")},
-                nullptr);
-        taken.emit(file);
+        saved(file);
     });
+}
+
+void Screenshot::saved(const std::string& file) {
+    // Copied, opened in the editor or announced, as Settings → Tools says
+    const auto& c = Config::get();
+    if (c.value<bool>("/screenshot/copy", true)) run({"sh", "-c", "wl-copy --type image/png < \"$1\"", "sh", file}, nullptr);
+    if (c.value<bool>("/screenshot/edit", false))
+        spawn(std::format("command -v satty >/dev/null && satty --filename '{0}' --output-filename '{0}' || swappy -f '{0}'", file));
+    else if (c.value<bool>("/screenshot/notify", true))
+        run({"notify-send", "-a", "Screenshot", "-i", file, "Screenshot saved",
+             fs::path(file).filename().string() + (c.value<bool>("/screenshot/copy", true) ? " · copied to the clipboard" : "")},
+            nullptr);
+    taken.emit(file);
 }
 
 } // namespace m3

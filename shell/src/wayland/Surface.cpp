@@ -404,13 +404,20 @@ void addRounded(std::vector<RectF>& out, const RectF& r, float radius) {
     out.push_back({r.x, r.y + radius, r.w, r.h - radius * 2});
 }
 
-void collectBlur(const ui::Node* n, std::vector<RectF>& out) {
-    if (!n->shown()) return;
+// Where it's drawn: moved with its ancestors (a dock sliding away takes its
+// blur with it), and none for what's fading out
+void collectBlur(const ui::Node* n, std::vector<RectF>& out, float dx = 0, float dy = 0) {
+    if (!n->shown() || n->opacity() <= 0.01f) return;
+    dx += n->translateX();
+    dy += n->translateY();
     if (n->blurBehind && n->rect().w > 0 && n->rect().h > 0) {
-        addRounded(out, n->rect(), n->cornerRadius());
+        RectF r = n->rect();
+        r.x += dx;
+        r.y += dy;
+        addRounded(out, r, n->cornerRadius());
         return; // children sit on top of it
     }
-    for (const auto& c : n->children()) collectBlur(c.get(), out);
+    for (const auto& c : n->children()) collectBlur(c.get(), out, dx, dy);
 }
 
 } // namespace

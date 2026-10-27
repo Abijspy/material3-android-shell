@@ -36,7 +36,7 @@ public:
     // special:minimized (the Settings app's minimise)
     std::vector<Window> windows(bool minimised = false) const override;
     std::optional<std::pair<float, float>> cursorPosition() const override;
-    void focusWorkspace(int number) override;
+    void focusWorkspace(int number, const std::string& output = {}) override; // the desktop's numbers: no output
     void focusWorkspaceRelative(int delta) override; // on the focused monitor, wrapping over existing ones
     void focusWindow(const std::string& address) override;
     void closeWindow(const std::string& address) override;

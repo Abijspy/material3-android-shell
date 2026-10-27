@@ -63,6 +63,9 @@ Hyprland& Hyprland::get() {
 Hyprland::Hyprland() {
     const char* sig = std::getenv("HYPRLAND_INSTANCE_SIGNATURE");
     if (!sig || !*sig) return;
+    // niri started from a Hyprland session passes its variable on: niri's
+    // session, then, and nothing of it to touch
+    if (const char* niri = std::getenv("NIRI_SOCKET"); niri && *niri) return;
     const char* runtime = std::getenv("XDG_RUNTIME_DIR");
     m_dir = std::format("{}/hypr/{}", runtime ? runtime : "/tmp", sig);
 
@@ -110,10 +113,11 @@ std::string Hyprland::version() const {
     return {};
 }
 
-bool Hyprland::can(Feature) const {
+bool Hyprland::can(Feature feature) const {
     // Minimise (a special workspace), key grabs (a submap with no binds),
-    // window geometry, the cursor's place and reloading: all of it
-    return available();
+    // window geometry, the cursor's place and reloading; the overview and
+    // window screenshots are the shell's (with grim)
+    return available() && feature != Feature::NativeOverview && feature != Feature::WindowCapture && feature != Feature::DynamicWorkspaces;
 }
 
 std::vector<Compositor::Window> Hyprland::windows(bool minimised) const {
@@ -197,7 +201,7 @@ void Hyprland::reload() {
     request("reload");
 }
 
-void Hyprland::focusWorkspace(int id) {
+void Hyprland::focusWorkspace(int id, const std::string&) {
     request(m_lua ? std::format("dispatch hl.dsp.focus({{ workspace = \"{}\" }})", id)
                   : std::format("dispatch workspace {}", id));
 }
