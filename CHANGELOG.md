@@ -1,5 +1,19 @@
 # Changelog
 
+## v6.0-beta-3.1 — 2026-10-28
+
+- **Niri Settings.** On niri, the window that is Hyprland Settings on Hyprland is Niri Settings: in the launcher, from the card at the top of Settings' sidebar, or with `material3ui msg nirisettings`. Changes apply as you make them. → [Material3UI on niri](docs/NIRI.md#niri-settings)
+  - **Windows & layout:** gaps, centring the focused column (never, when it won't fit, always), centring a lone column, how wide new windows open, and space kept free at each edge.
+  - **Borders & shadows:** the focus ring and the border (on or off, their widths), shadows (softness, spread, drop) and window corners.
+  - **Animations:** on or off, and their speed.
+  - **Behaviour:** focus following the mouse, the pointer following the focus, workspace back and forth, asking apps not to draw their own title bars, the hot corner, the overview's size, and niri's list of keys at login.
+- **Your niri config stays in charge.** Each option in Niri Settings starts from what your `config.kdl` (and what it includes) says, or niri's default. Only what you change is written, so the rest of your config still applies. Back to config.kdl, at the foot of each page, forgets that page's changes. A few options niri can only switch one way; while your config has them, the page says so instead of offering a switch that couldn't work.
+- **The border in the wallpaper's colours.** Wallpaper colours now paint niri's border as well as its focus ring, and recolour both with the wallpaper.
+- **Each compositor's settings app in its own session.** The launcher lists Hyprland Settings only on Hyprland, and Niri Settings only on niri.
+- **Updates see point releases.** The update check read a beta's number only up to its first dot, so it took 6.0-beta-3.1 for 6.0-beta-3. It reads the whole number now. 6.0-beta-3 itself still has the old check: to get this release from it, run `./update.sh` once, or the installer.
+- **The login screen downloads its package on betas.** It looked for a beta's package under the wrong name and built it itself every time; it takes the release's own now.
+- **Still on Hyprland only:** window rules, each animation's curve, blur, arranging monitors side by side, minimising, picking a window to record, and the screen-sharing picker.
+
 ## v6.0-beta-3 — 2026-10-28
 
 - **The installer sets niri up.** It asks which compositor the shell runs on: `--compositor hyprland`, `niri` or `both`, defaulting to what's installed already. It installs only that compositor's packages. On niri it writes `~/.config/niri/material3ui.kdl` and adds `include "material3ui.kdl"` to the end of your `config.kdl`; if you have none, it starts one from niri's own default, without the waybar it would launch. Then it checks the result with `niri validate`. Everything it replaces is backed up, and `./install.sh --restore` undoes it. `--niri skip` leaves niri's config alone. → [Material3UI on niri](docs/NIRI.md)
