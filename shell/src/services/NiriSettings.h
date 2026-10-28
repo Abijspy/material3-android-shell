@@ -27,6 +27,27 @@ struct Settings {
     int repeatDelay = 0, repeatRate = 0; // 0: niri's
 
     std::string ringActive, ringInactive; // "#rrggbb"; "": niri's
+    std::string borderActive, borderInactive;
+
+    // Niri Settings: how windows look and behave. Only what's set is
+    // written, the rest staying as your config.kdl has it: niri merges
+    // these sections field by field
+    struct Look {
+        std::optional<int> gaps;
+        std::optional<std::string> centerColumn; // never, always, on-overflow
+        std::optional<bool> centerSingle;        // always centre a lone column
+        std::optional<double> columnWidth;       // a new column's share of the screen
+        std::optional<int> strutLeft, strutRight, strutTop, strutBottom;
+        std::optional<bool> ringOn, borderOn, shadowOn;
+        std::optional<int> ringWidth, borderWidth, shadowSoftness, shadowSpread, shadowOffset;
+        std::optional<int> cornerRadius; // every window's, clipped to it
+        std::optional<bool> animations;
+        std::optional<double> slowdown;
+        std::optional<bool> preferNoCsd, backAndForth, skipHotkeys;
+        // These niri can only switch on (they take no "false"): written when true
+        bool focusFollowsMouse = false, warpMouse = false, hotCornersOff = false;
+        std::optional<double> overviewZoom;
+    } look;
 
     struct Output {
         std::string name;

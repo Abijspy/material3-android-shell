@@ -256,4 +256,155 @@ void niriMonitors(Flex* page) {
     live->sync();
 }
 
+// ── Niri Settings ────────────────────────────────────────────────────────────
+
+namespace {
+
+const std::string kLook = "/niri/look/";
+
+std::string px(double v) {
+    return std::format("{:.0f} px", v);
+}
+
+// The option a rule for every window sets (one without a match), last
+// such rule winning
+std::optional<double> everyWindow(const std::vector<kdl::Node>& doc, std::string_view option) {
+    std::optional<double> out;
+    for (const auto& n : doc) {
+        if (n.name != "window-rule") continue;
+        const bool matches = std::ranges::any_of(n.children, [](const kdl::Node& c) { return c.name == "match" || c.name == "exclude"; });
+        if (matches) continue;
+        for (const auto& c : n.children)
+            if (c.name == option && !c.args.empty() && c.args[0].type == kdl::Value::Type::Number) out = c.args[0].number;
+    }
+    return out;
+}
+
+// A flag niri can only switch on: while your config has it, a note in
+// place of the switch (here it couldn't turn it off)
+void oneWay(Node* g, const std::string& icon, const std::string& title, const std::string& sub, bool yours, const std::string& key,
+            bool fallback, const std::string& lockedNote) {
+    if (yours) row(g, icon, title, lockedNote);
+    else switchRow(g, icon, title, sub, kLook + key, fallback);
+}
+
+// The page's options back to config.kdl's, and the page again
+void resetGroup(Flex* page, const std::string& id, std::vector<std::string> keys) {
+    auto* g = group(page, "Your config");
+    auto r = row(g, "restart_alt", "Back to config.kdl", "Forget what's set on this page: niri takes these from your config.kdl again");
+    pillButton(r.row, "Reset", false, [id, keys] {
+        NiriConfig::resetLook(keys);
+        EventLoop::get().defer([id] { settingsPage(id); });
+    });
+}
+
+} // namespace
+
+void niriLayoutPage(Flex* page, Popup&) {
+    niriNotice(page);
+    const auto doc = NiriConfig::get().yours();
+    auto* cols = group(page, "Columns", "What's set here wins over niri's config.kdl");
+    sliderRow(cols, "space_bar", "Gaps", kLook + "gaps", kdl::number(doc, {"layout", "gaps"}).value_or(16), 0, 64, 1, px);
+    choiceRow<std::string>(cols, "center_focus_strong", "Centre the focused column", "Scroll so the column you're in sits in the middle",
+                           kLook + "centerColumn", kdl::string(doc, {"layout", "center-focused-column"}).value_or("never"),
+                           {{"never", "Never"}, {"on-overflow", "If it won't fit"}, {"always", "Always"}});
+    switchRow(cols, "align_horizontal_center", "Centre a lone column", "A workspace's only column in the middle of the screen",
+              kLook + "centerSingle", kdl::flag(doc, {"layout", "always-center-single-column"}).value_or(false));
+    // The nearest of the choices to your config's width
+    const double width = kdl::number(doc, {"layout", "default-column-width", "proportion"}).value_or(0.5);
+    const std::vector<std::pair<double, std::string>> widths = {{1.0 / 3, "A third"}, {0.5, "Half"}, {2.0 / 3, "Two thirds"}, {1.0, "Full"}};
+    const double nearest = std::ranges::min(widths, {}, [width](const auto& w) { return std::abs(w.first - width); }).first;
+    choiceRow<double>(cols, "view_column", "New windows", "How wide a new window's column opens", kLook + "columnWidth", nearest, widths);
+
+    auto* edges = group(page, "Space at the edges", "Kept free around the windows, besides the bar's own");
+    const std::pair<const char*, const char*> sides[] = {{"top", "Top"}, {"bottom", "Bottom"}, {"left", "Left"}, {"right", "Right"}};
+    for (const auto& [side, name] : sides) {
+        const std::string key = std::string("strut") + static_cast<char>(std::toupper(static_cast<unsigned char>(side[0]))) + (side + 1);
+        sliderRow(edges, std::string("border_") + side, name, kLook + key, kdl::number(doc, {"layout", "struts", side}).value_or(0), 0, 200, 4, px);
+    }
+    resetGroup(page, "niri-layout",
+               {"gaps", "centerColumn", "centerSingle", "columnWidth", "strutTop", "strutBottom", "strutLeft", "strutRight"});
+}
+
+void niriDecorationPage(Flex* page, Popup&) {
+    niriNotice(page);
+    const auto doc = NiriConfig::get().yours();
+    auto* ring = group(page, "Focus ring", "Around the focused window, outside it");
+    switchRow(ring, "filter_center_focus", "Focus ring", "Show which window has the focus", kLook + "ringOn",
+              kdl::onOff(doc, {"layout", "focus-ring"}).value_or(true));
+    sliderRow(ring, "line_weight", "Width", kLook + "ringWidth", kdl::number(doc, {"layout", "focus-ring", "width"}).value_or(4), 1, 16, 1, px);
+
+    auto* border = group(page, "Border", "Around every window, taking room from it");
+    switchRow(border, "border_outer", "Border", "A line around each window, brighter on the focused one", kLook + "borderOn",
+              kdl::onOff(doc, {"layout", "border"}).value_or(false));
+    sliderRow(border, "line_weight", "Width", kLook + "borderWidth", kdl::number(doc, {"layout", "border", "width"}).value_or(4), 1, 16, 1, px);
+    switchRow(border, "palette", "Wallpaper colours", "The ring and border in the palette's colours, else your config's", "/niri/focusRingColors", true);
+
+    auto* shadow = group(page, "Shadow", "Behind each window");
+    switchRow(shadow, "ev_shadow", "Shadow", "Soft shadows lift windows off the wallpaper", kLook + "shadowOn",
+              kdl::onOff(doc, {"layout", "shadow"}).value_or(false));
+    sliderRow(shadow, "blur_on", "Softness", kLook + "shadowSoftness", kdl::number(doc, {"layout", "shadow", "softness"}).value_or(30), 0, 100, 1, px);
+    sliderRow(shadow, "open_with", "Spread", kLook + "shadowSpread", kdl::number(doc, {"layout", "shadow", "spread"}).value_or(5), 0, 40, 1, px);
+    double offset = 5;
+    if (const auto* o = kdl::last(doc, {"layout", "shadow", "offset"}); o && o->prop("y")) offset = o->prop("y")->number;
+    sliderRow(shadow, "vertical_align_bottom", "Drop", kLook + "shadowOffset", offset, 0, 40, 1, px);
+
+    auto* corners = group(page, "Corners");
+    sliderRow(corners, "rounded_corner", "Window corners", kLook + "cornerRadius", everyWindow(doc, "geometry-corner-radius").value_or(0), 0, 32, 1,
+              [](double v) { return v < 0.5 ? std::string("Square") : px(v); });
+    resetGroup(page, "niri-decoration",
+               {"ringOn", "ringWidth", "borderOn", "borderWidth", "shadowOn", "shadowSoftness", "shadowSpread", "shadowOffset", "cornerRadius"});
+}
+
+void niriAnimationsPage(Flex* page, Popup&) {
+    niriNotice(page);
+    const auto doc = NiriConfig::get().yours();
+    auto* g = group(page, "Animations", "Each animation's own curve stays as your config.kdl has it");
+    switchRow(g, "animation", "Animations", "Windows, workspaces and the overview move into place", kLook + "animations",
+              kdl::onOff(doc, {"animations"}).value_or(true));
+    sliderRow(g, "slow_motion_video", "Speed", kLook + "slowdown", kdl::number(doc, {"animations", "slowdown"}).value_or(1.0), 0.25, 4.0, 0.05,
+              [](double v) {
+                  if (std::abs(v - 1) < 0.01) return std::string("Normal");
+                  return v > 1 ? std::format("{:.2f}× slower", v) : std::format("{:.2f}× faster", 1 / v);
+              });
+    resetGroup(page, "niri-animations", {"animations", "slowdown"});
+}
+
+void niriBehaviourPage(Flex* page, Popup&) {
+    niriNotice(page);
+    const auto doc = NiriConfig::get().yours();
+    auto* focus = group(page, "Focus");
+    oneWay(focus, "mouse", "Focus follows the mouse", "The window under the pointer takes the focus",
+           kdl::last(doc, {"input", "focus-follows-mouse"}) != nullptr, "focusFollowsMouse", false,
+           "On in your config.kdl (niri can't switch it off from here)");
+    oneWay(focus, "near_me", "Pointer follows the focus", "The pointer jumps to a window focused from the keyboard",
+           kdl::last(doc, {"input", "warp-mouse-to-focus"}) != nullptr, "warpMouse", false,
+           "On in your config.kdl (niri can't switch it off from here)");
+    switchRow(focus, "swap_horiz", "Back and forth", "Going to the workspace you're on goes back to the one before", kLook + "backAndForth",
+              kdl::flag(doc, {"input", "workspace-auto-back-and-forth"}).value_or(false));
+
+    auto* windows = group(page, "Windows");
+    switchRow(windows, "web_asset", "niri's borders for every app", "Ask apps not to draw their own title bars and shadows", kLook + "preferNoCsd",
+              kdl::flag(doc, {"prefer-no-csd"}).value_or(false));
+
+    auto* overview = group(page, "Overview");
+    // hot-corners takes only "off"
+    bool cornerOff = false;
+    for (const auto& n : doc)
+        if (n.name == "gestures")
+            for (const auto& c : n.children)
+                if (c.name == "hot-corners")
+                    for (const auto& f : c.children) cornerOff = cornerOff || f.name == "off";
+    oneWay(overview, "north_west", "Hot corner", "Push the pointer into the top-left corner to open the overview", cornerOff, "hotCorner", true,
+           "Off in your config.kdl (niri can't switch it on from here)");
+    sliderRow(overview, "zoom_out", "Overview size", kLook + "overviewZoom", kdl::number(doc, {"overview", "zoom"}).value_or(0.5), 0.1, 0.75, 0.05,
+              [](double v) { return std::format("{:.0f}%", v * 100); });
+
+    auto* start = group(page, "Starting niri");
+    switchRow(start, "keyboard", "Important keys at login", "niri's list of keys when it starts", kLook + "hotkeyHelp",
+              !kdl::flag(doc, {"hotkey-overlay", "skip-at-startup"}).value_or(false));
+    resetGroup(page, "niri-behaviour",
+               {"focusFollowsMouse", "warpMouse", "backAndForth", "preferNoCsd", "hotCorner", "overviewZoom", "hotkeyHelp"});
+}
+
 } // namespace m3::shell::panels

@@ -75,14 +75,23 @@ namespace {
 // apart, large outer and small inner corners), choices are connected button
 // groups, and pressed controls spring into a tighter shape.
 
+// The compositor's own app: Hyprland Settings, or Niri Settings on niri
+bool onNiri() {
+    return !Hyprland::get().available() && Niri::get().available();
+}
+// A page of that app ("hypr-…", "niri-…") rather than Settings'
+bool compositorPage(std::string_view id) {
+    return id.starts_with("hypr-") || id.starts_with("niri-");
+}
+
 // Rebuilds a page by id (after a reset, so its controls show the defaults)
-// One for each app: [0] Settings, [1] Hyprland Settings
+// One for each app: [0] Settings, [1] Hyprland (or Niri) Settings
 std::function<void(const std::string&)> reshow[2];
 // Types into the open Settings' search (`msg settings search:<words>`)
 std::function<void(const std::string&)> searchFor[2];
 // Rebuilds a page in whichever app shows it
 void reshowPage(const std::string& id) {
-    const bool hypr = id.starts_with("hypr-");
+    const bool hypr = compositorPage(id);
     if (reshow[hypr]) reshow[hypr](id);
 }
 
@@ -3833,10 +3842,10 @@ HueChip categoryColours(const std::string& id) {
         orange{"#fad8bc", "#6a3a0a"}, yellow{"#fcde7a", "#5c4300"}, green{"#c0e4ba", "#0c4c23"}, grey{"#dedede", "#424242"},
         teal{"#a8eafa", "#00505f"}, red{"#fcd2d2", "#6a1e1e"}, purple{"#ecdcfc", "#4c258e"};
     static const std::vector<std::pair<std::vector<std::string>, const Pair*>> table = {
-        {{"network", "vpn", "bluetooth", "printers", "weather", "hypr-windows", "hypr-layouts", "hypr-groups"}, &blue},
-        {{"defaults", "hypr-input"}, &apps},
-        {{"notifications", "sound", "hypr-animations"}, &pink},
-        {{"display", "appearance", "style", "bar", "dock", "hypr-decoration", "hypr-monitors"}, &orange},
+        {{"network", "vpn", "bluetooth", "printers", "weather", "hypr-windows", "hypr-layouts", "hypr-groups", "niri-layout"}, &blue},
+        {{"defaults", "hypr-input", "niri-behaviour"}, &apps},
+        {{"notifications", "sound", "hypr-animations", "niri-animations"}, &pink},
+        {{"display", "appearance", "style", "bar", "dock", "hypr-decoration", "hypr-monitors", "niri-decoration"}, &orange},
         {{"storage", "monitor", "calendar", "clock", "hypr-render"}, &yellow},
         {{"battery", "packages", "firmware", "wellbeing", "hypr-startup"}, &green},
         {{"lock", "firewall", "lockscreen", "users", "hypr-window-rules", "hypr-layer-rules", "hypr-workspace-rules", "hypr-profiles"}, &teal},
@@ -3948,6 +3957,10 @@ const PageDef kPages[] = {
     {"hypr-profiles", "switch_account", "Profiles", "Save and switch whole setups by name", hyprProfilesPage},
     {"hypr-render", "memory", "Rendering", "Direct scanout, colour management and OpenGL", hyprRenderPage},
     {"hypr-debug", "bug_report", "Debug", "Logs, overlays and damage tracking", hyprDebugPage},
+    {"niri-layout", "view_week", "Windows & layout", "Gaps, centring, new windows' width and space at the edges", niriLayoutPage},
+    {"niri-decoration", "auto_awesome", "Borders & shadows", "The focus ring, borders, shadows and corners", niriDecorationPage},
+    {"niri-animations", "animation", "Animations", "On or off, and their speed", niriAnimationsPage},
+    {"niri-behaviour", "tune", "Behaviour", "Focus, title bars, the hot corner and the overview", niriBehaviourPage},
     {"mouse", "touchpad_mouse", "Mouse & touchpad", "Touchpad, pointer, scrolling and gestures", mousePage},
     {"keybinds", "keyboard", "Keyboard", "Layouts, typing and shortcuts", keyboardPage},
     {"hooks", "webhook", "Hooks", "Your own commands when things happen: locking, a new wallpaper, a low battery…", hooksPage},
@@ -3957,20 +3970,24 @@ const PageDef kPages[] = {
 };
 
 // Android's grouping of the settings list
-// The pages each app shows: Hyprland's own options in Hyprland Settings,
-// everything else in Settings
+// The pages each app shows: Hyprland's own options in Hyprland Settings
+// (niri's in Niri Settings, on niri), everything else in Settings
 const std::vector<PageDef>& pagesOf(bool hypr) {
-    static const auto pick = [](bool want) {
+    static const auto pick = [](const char* prefix) {
         std::vector<PageDef> out;
         for (const auto& p : kPages)
-            if (std::string_view(p.id).starts_with("hypr-") == want) out.push_back(p);
+            if (prefix ? std::string_view(p.id).starts_with(prefix) : !compositorPage(p.id)) out.push_back(p);
         return out;
     };
-    static const std::vector<PageDef> shell = pick(false), hyprland = pick(true);
-    return hypr ? hyprland : shell;
+    static const std::vector<PageDef> shell = pick(nullptr), hyprland = pick("hypr-"), niri = pick("niri-");
+    if (!hypr) return shell;
+    return onNiri() ? niri : hyprland;
 }
 
 int pageGroup(const std::string& id) {
+    // Niri Settings: how it looks, then how it behaves
+    if (id == "niri-behaviour") return 1;
+    if (id.starts_with("niri-")) return 0;
     // Hyprland Settings: how it looks, how windows behave, the internals
     if (id == "hypr-monitors" || id == "hypr-windows" || id == "hypr-decoration" || id == "hypr-animations") return 0;
     if (id == "hypr-layouts" || id == "hypr-input" || id == "hypr-gestures" || id == "hypr-cursor" || id == "hypr-groups")
@@ -3992,7 +4009,7 @@ void settingsPage(const std::string& id) {
         if (searchFor[0]) searchFor[0](id.substr(7));
         return;
     }
-    const bool hypr = id.starts_with("hypr-");
+    const bool hypr = compositorPage(id);
     if (reshow[hypr]) reshow[hypr](id);
 }
 
@@ -4025,14 +4042,15 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
     sideScroll->fixedWidth = 280;
     auto* side = sideScroll->add<Flex>(Flex::Direction::Column);
     side->setAlignItems(Align::Stretch)->setSpacing(10)->setPadding({4, 10, 4, 8});
-    auto* brand = side->add<Label>(Hypr ? "Hyprland" : "Settings");
+    const bool niri = onNiri();
+    auto* brand = side->add<Label>(Hypr ? (niri ? "niri" : "Hyprland") : "Settings");
     brand->setSize(34)->setWeight(400);
     brand->alignSelf = Align::Start;
     auto* searchBox = side->add<Flex>(Flex::Direction::Row);
     pill(searchBox->setBackground(ColorRef("on_surface", 0.1f), false))->setPadding({16, 4, 8, 4})->setSpacing(8);
     searchBox->add<Icon>("search", 20)->setColor("on_surface_variant", false);
     auto* search = searchBox->add<TextField>();
-    search->setPlaceholder(Hypr ? "Search Hyprland options" : "Search settings");
+    search->setPlaceholder(Hypr ? (niri ? "Search niri options" : "Search Hyprland options") : "Search settings");
     // Ctrl+F: to the search, from anywhere in the app
     popup.onKey = [undo = popup.onKey, search](const KeyEvent& e) {
         if (e.ctrl() && (e.sym == XKB_KEY_f || e.sym == XKB_KEY_F)) {
@@ -4044,8 +4062,8 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
     search->bare = true;
     search->grow = true;
     search->minWidth = 120;
-    // The other app, a window of its own, first under the search: Hyprland's
-    // options from Settings, the shell's settings from Hyprland Settings
+    // The other app, a window of its own, first under the search: the
+    // compositor's options from Settings, the shell's settings from there
     auto* other = side->add<Button>(Flex::Direction::Row);
     pill(other->setBackground("secondary_container", false))->setPadding({16, 12, 14, 12})->setSpacing(12);
     other->pressedRadius = 12;
@@ -4053,16 +4071,17 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
     auto* otherTexts = other->add<Flex>(Flex::Direction::Column);
     otherTexts->setAlignItems(Align::Start)->setSpacing(1);
     otherTexts->grow = true;
-    otherTexts->add<Label>(Hypr ? "Material3UI Settings" : "Hyprland Settings")
+    otherTexts->add<Label>(Hypr ? "Material3UI Settings" : niri ? "Niri Settings" : "Hyprland Settings")
         ->setSize(15)->setWeight(600)->setColor("on_secondary_container", false);
-    otherTexts->add<Label>(Hypr ? "The shell: bar, dock, network, sound…" : "Every compositor option, animations and more")
+    otherTexts->add<Label>(Hypr ? "The shell: bar, dock, network, sound…"
+                                : niri ? "How windows look and behave" : "Every compositor option, animations and more")
         ->setSize(12)->setColor("on_secondary_container", false)->setMaxWidth(170)->setMaxLines(2);
     other->add<Icon>("open_in_new", 18)->setColor("on_secondary_container", false);
     other->onClicked = [](uint32_t button) {
         if (button == BTN_LEFT && open) open(Hypr ? "settings" : "hyprsettings");
     };
-    // Hyprland Settings is only there on Hyprland
-    other->setVisible(Hypr || Hyprland::get().available());
+    // The compositor's app is there on Hyprland and niri
+    other->setVisible(Hypr || Hyprland::get().available() || niri);
 
     // The page: a fixed header with the close button, then what scrolls
     auto* right = columns->add<Flex>(Flex::Direction::Column);

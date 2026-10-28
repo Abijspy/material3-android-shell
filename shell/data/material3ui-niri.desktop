@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Niri Settings
+GenericName=Compositor Settings
+Comment=How niri's windows look and behave: gaps, borders, shadows, animations
+Exec=material3ui msg nirisettings
+Icon=material3ui-niri
+Categories=Settings;DesktopSettings;
+Keywords=niri;compositor;gaps;borders;shadows;corners;animations;layout;columns;focus;overview;
+OnlyShowIn=niri;
+StartupNotify=false
+StartupWMClass=material3ui-niri

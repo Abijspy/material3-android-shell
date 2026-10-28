@@ -7,5 +7,6 @@ Exec=material3ui msg hyprsettings
 Icon=material3ui-hyprland
 Categories=Settings;DesktopSettings;
 Keywords=hyprland;compositor;gaps;borders;blur;animations;bezier;layout;dwindle;master;input;gestures;cursor;
+OnlyShowIn=Hyprland;
 StartupNotify=false
 StartupWMClass=material3ui-hyprland

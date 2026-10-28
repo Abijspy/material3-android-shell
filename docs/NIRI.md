@@ -76,11 +76,22 @@ From 6.0-beta-2, these Settings pages work on niri. What you set is written to `
 
 If niri can't read the shell's settings (`material3ui.kdl` isn't included, or niri refused the file), those pages say so at the top.
 
+### Niri Settings
+
+On niri, the window that is Hyprland Settings on Hyprland is **Niri Settings**: in the launcher, from the card at the top of Settings' sidebar, or with `material3ui msg nirisettings`. Its changes apply as you make them:
+
+- **Windows & layout:** gaps, centring the focused column (never, when it won't fit, always), centring a lone column, how wide new windows open, and space kept free at each edge.
+- **Borders & shadows:** the focus ring and the border (on or off, their widths, in the wallpaper's colours), shadows (softness, spread, drop) and window corners.
+- **Animations:** on or off, and their speed.
+- **Behaviour:** focus following the mouse, the pointer following the focus, workspace back and forth, asking apps not to draw their own title bars, the hot corner, the overview's size, and niri's list of keys at login.
+
+Each option starts from what your `config.kdl` says, or niri's default. Only what you change here is written, to `material3ui-settings.kdl`, so the rest of your config stays in charge: niri merges these sections field by field. **Back to config.kdl**, at the foot of each page, forgets that page's changes. niri can't switch a few options off once your config switches them on (focus following the mouse, the pointer following the focus) or back on once it switches them off (the hot corner); for those, the page says so.
+
 ## Not on niri yet
 
 These are coming in the next betas. Until then, set them in niri's own `config.kdl`:
 
-- **How windows look:** gaps, borders, corners, shadows, animations, window rules and blur strength. They're in Hyprland Settings, which is for Hyprland only, and Settings doesn't show it on niri.
+- **Window rules, each animation's curve, and blur.** Hyprland Settings has them on Hyprland. niri has no blur.
 - **Arranging monitors** side by side (their positions): set `position` in niri's config.
 - **Minimising windows**: niri has no minimised state.
 - **Picking a single window to record:** you pick a region instead, since niri's windows scroll.

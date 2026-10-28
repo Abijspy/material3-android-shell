@@ -64,8 +64,44 @@ int main(int argc, char** argv) {
     expect(!niri::validKeys("") && !niri::validKeys("Mod+") && !niri::validKeys("Mod++K") && !niri::validKeys("Mod K"), "not keys");
     expect(niri::quote("a\"b\\c") == "\"a\\\"b\\\\c\"", "quoting");
 
-    // For a check by niri itself: niri_settings_test <file> writes the full one
+    // Niri Settings: only what's set, the layout in one section, the flags
+    // niri can't switch off only when on
+    niri::Settings n;
+    auto& l = n.look;
+    l.gaps = 8;
+    l.centerColumn = "on-overflow";
+    l.columnWidth = 0.5;
+    l.strutTop = 30;
+    l.borderOn = true;
+    l.borderWidth = 2;
+    l.shadowOn = false;
+    l.cornerRadius = 12;
+    l.animations = false;
+    l.slowdown = 1.5;
+    l.preferNoCsd = false;
+    l.focusFollowsMouse = true;
+    l.backAndForth = false;
+    l.hotCornersOff = true;
+    l.overviewZoom = 0.4;
+    n.borderActive = "#d0bcff";
+    const std::string look = niri::render(n);
+    expect(has(look, "\nlayout {\n    gaps 8\n    center-focused-column \"on-overflow\"\n    default-column-width {\n        proportion 0.50000\n"),
+           "the layout's values");
+    expect(has(look, "    struts {\n        top 30\n    }\n"), "only the strut that's set");
+    expect(has(look, "    border {\n        on\n        width 2\n        active-color \"#d0bcff\"\n    }\n"), "the border");
+    expect(has(look, "    shadow {\n        off\n    }\n") && !has(look, "focus-ring {"), "the shadow; no ring when nothing's set");
+    expect(look.find("\nlayout {") == look.rfind("\nlayout {"), "one layout section");
+    expect(has(look, "window-rule {\n    geometry-corner-radius 12\n    clip-to-geometry true\n}"), "corners");
+    expect(has(look, "animations {\n    off\n    slowdown 1.50\n}") && has(look, "\nprefer-no-csd false\n"), "animations, decorations");
+    expect(has(look, "    focus-follows-mouse\n") && !has(look, "warp-mouse-to-focus") && has(look, "workspace-auto-back-and-forth false"),
+           "input behaviour");
+    expect(has(look, "hot-corners {\n        off\n") && has(look, "overview {\n    zoom 0.40\n}") && !has(look, "hotkey-overlay"),
+           "gestures and the overview");
+
+    // For a check by niri itself: niri_settings_test <file> [<file>] writes
+    // the full one, and the one with Niri Settings' options
     if (argc > 1) std::ofstream(argv[1]) << full;
+    if (argc > 2) std::ofstream(argv[2]) << look;
 
     if (failures) std::fprintf(stderr, "%d failed\n", failures);
     return failures ? 1 : 0;

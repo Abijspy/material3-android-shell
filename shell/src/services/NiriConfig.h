@@ -1,9 +1,11 @@
 #pragma once
 
 #include "core/Signal.h"
+#include "services/Kdl.h"
 #include "services/NiriSettings.h"
 
 #include <string>
+#include <vector>
 
 namespace m3 {
 
@@ -12,7 +14,8 @@ namespace m3 {
 // they or the palette change; niri reads it again by itself. It comes from
 // config.json: the cursor (Effects), /input (touchpad and mouse), /keyboard
 // (layouts and repeat), /niri/outputs (monitors), /niri/binds (your keys),
-// and the palette for the focus ring.
+// /niri/look (Niri Settings: layout, borders, animations, behaviour), and
+// the palette for the focus ring and border.
 class NiriConfig {
 public:
     static NiriConfig& get();
@@ -30,6 +33,14 @@ public:
 
     // A monitor's settings, kept (and applied live by the caller)
     static void saveOutput(const niri::Settings::Output& output);
+
+    // Your niri config as niri reads it: config.kdl and what it includes,
+    // in order, without the shell's settings. What Niri Settings shows for
+    // an option it hasn't set
+    std::vector<kdl::Node> yours() const;
+    // Niri Settings' options back to your config's: these /niri/look keys
+    // (all of them when empty) forgotten
+    static void resetLook(const std::vector<std::string>& keys = {});
 
     Signal<> changed; // written, or niri's answer to it
 

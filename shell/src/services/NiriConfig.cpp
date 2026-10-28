@@ -9,9 +9,11 @@
 #include "ui/Theme.h"
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <functional>
 #include <regex>
 #include <sstream>
 
@@ -114,9 +116,53 @@ niri::Settings NiriConfig::collect() const {
     s.repeatRate = c.value<int>("/keyboard/repeatRate", 0);
     if (c.value<bool>("/niri/focusRingColors", true)) {
         const auto& t = Theme::get();
-        s.ringActive = hex(t.color("primary"));
-        s.ringInactive = hex(t.color("outline_variant"));
+        s.ringActive = s.borderActive = hex(t.color("primary"));
+        s.ringInactive = s.borderInactive = hex(t.color("outline_variant"));
     }
+    // Niri Settings: only the options set there
+    const auto look = c.value<nlohmann::json>("/niri/look", nlohmann::json::object());
+    auto num = [&](const char* k) -> std::optional<double> {
+        if (look.is_object() && look.contains(k) && look[k].is_number()) return look[k].get<double>();
+        return std::nullopt;
+    };
+    auto whole = [&](const char* k, int lo, int hi) -> std::optional<int> {
+        if (auto v = num(k)) return std::clamp(static_cast<int>(std::lround(*v)), lo, hi);
+        return std::nullopt;
+    };
+    auto yes = [&](const char* k) -> std::optional<bool> {
+        if (look.is_object() && look.contains(k) && look[k].is_boolean()) return look[k].get<bool>();
+        return std::nullopt;
+    };
+    auto& l = s.look;
+    l.gaps = whole("gaps", 0, 200);
+    if (look.is_object() && look.contains("centerColumn") && look["centerColumn"].is_string()) {
+        const std::string v = look["centerColumn"];
+        if (v == "never" || v == "always" || v == "on-overflow") l.centerColumn = v;
+    }
+    l.centerSingle = yes("centerSingle");
+    if (auto v = num("columnWidth")) l.columnWidth = std::clamp(*v, 0.1, 1.0);
+    l.strutLeft = whole("strutLeft", 0, 1000);
+    l.strutRight = whole("strutRight", 0, 1000);
+    l.strutTop = whole("strutTop", 0, 1000);
+    l.strutBottom = whole("strutBottom", 0, 1000);
+    l.ringOn = yes("ringOn");
+    l.ringWidth = whole("ringWidth", 1, 64);
+    l.borderOn = yes("borderOn");
+    l.borderWidth = whole("borderWidth", 1, 64);
+    l.shadowOn = yes("shadowOn");
+    l.shadowSoftness = whole("shadowSoftness", 0, 200);
+    l.shadowSpread = whole("shadowSpread", 0, 100);
+    l.shadowOffset = whole("shadowOffset", -100, 100);
+    l.cornerRadius = whole("cornerRadius", 0, 64);
+    l.animations = yes("animations");
+    if (auto v = num("slowdown")) l.slowdown = std::clamp(*v, 0.1, 10.0);
+    l.preferNoCsd = yes("preferNoCsd");
+    l.backAndForth = yes("backAndForth");
+    if (auto help = yes("hotkeyHelp")) l.skipHotkeys = !*help;
+    l.focusFollowsMouse = yes("focusFollowsMouse").value_or(false);
+    l.warpMouse = yes("warpMouse").value_or(false);
+    l.hotCornersOff = !yes("hotCorner").value_or(true);
+    if (auto v = num("overviewZoom")) l.overviewZoom = std::clamp(*v, 0.05, 0.75);
     // Kept here: items() of a temporary would outlive it
     const auto outputs = c.value<nlohmann::json>("/niri/outputs", nlohmann::json::object());
     for (const auto& [name, o] : outputs.items()) {
@@ -163,6 +209,38 @@ void NiriConfig::apply() {
     m_written = text;
     log::info("niri: settings written to {}", path);
     changed.emit();
+}
+
+std::vector<kdl::Node> NiriConfig::yours() const {
+    std::vector<kdl::Node> out;
+    // Includes are read where they stand, as niri does; ours is left out
+    std::error_code none;
+    const std::string skip = fs::weakly_canonical(file(), none).string();
+    std::function<void(const fs::path&, int)> read = [&](const fs::path& path, int depth) {
+        std::error_code ec;
+        if (depth > 8 || fs::weakly_canonical(path, ec).string() == skip) return;
+        for (auto& n : kdl::parse(readAll(path.string()))) {
+            if (n.name != "include") {
+                out.push_back(std::move(n));
+                continue;
+            }
+            if (n.args.empty() || n.args[0].type != kdl::Value::Type::String) continue;
+            std::string target = n.args[0].text;
+            if (target.starts_with("~/")) target = paths::home() + target.substr(1);
+            const fs::path p(target);
+            read(p.is_absolute() ? p : path.parent_path() / p, depth + 1);
+        }
+    };
+    read(fs::path(niriDir()) / "config.kdl", 0);
+    return out;
+}
+
+void NiriConfig::resetLook(const std::vector<std::string>& keys) {
+    auto look = Config::get().value<nlohmann::json>("/niri/look", nlohmann::json::object());
+    if (!look.is_object() || keys.empty()) look = nlohmann::json::object();
+    else
+        for (const auto& k : keys) look.erase(k);
+    Config::get().set("/niri/look", look);
 }
 
 void NiriConfig::saveOutput(const niri::Settings::Output& o) {

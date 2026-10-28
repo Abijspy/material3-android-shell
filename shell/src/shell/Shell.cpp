@@ -15,6 +15,7 @@
 #include "render/Text.h"
 #include "services/HyprOptions.h"
 #include "services/Hyprland.h"
+#include "services/Niri.h"
 #include "services/Compositor.h"
 #include "services/Alarms.h"
 #include "services/Audio.h"
@@ -259,8 +260,8 @@ void Shell::holdDocks(bool held) {
 }
 
 void Shell::openSettings(const std::string& page) {
-    // Hyprland's own pages live in Hyprland Settings
-    if (page.starts_with("hypr-")) return openHyprSettings(page);
+    // The compositor's own pages live in Hyprland (or Niri) Settings
+    if (page.starts_with("hypr-") || page.starts_with("niri-")) return openHyprSettings(page);
     if (m_settings && !m_settings->closing()) {
         if (!page.empty()) panels::settingsPage(page);
         // Raised, and back from minimised if it was
@@ -285,26 +286,30 @@ void Shell::openSettings(const std::string& page) {
 }
 
 void Shell::openHyprSettings(const std::string& page) {
-    // Hyprland's options: nothing to show on another compositor
-    if (!Hyprland::get().available()) {
-        log::info("Hyprland Settings: not on Hyprland");
+    // The compositor's own options: Hyprland's, or niri's in Niri Settings
+    const bool niri = !Hyprland::get().available() && Niri::get().available();
+    if (!Hyprland::get().available() && !niri) {
+        log::info("Hyprland Settings: not on Hyprland or niri");
         return;
     }
+    // Another compositor's page asked for (an old link): the app's first
+    const std::string want = page.starts_with(niri ? "hypr-" : "niri-") ? "" : page;
+    const std::string appId = niri ? "material3ui-niri" : "material3ui-hyprland";
     if (m_hyprSettings && !m_hyprSettings->closing()) {
-        if (!page.empty()) panels::settingsPage(page);
+        if (!want.empty()) panels::settingsPage(want);
         auto& c = Compositor::get();
         for (const auto& w : c.windows(true))
-            if (w.appId == "material3ui-hyprland") c.focusWindow(w.id);
+            if (w.appId == appId) c.focusWindow(w.id);
         return;
     }
     if (m_popup) m_popup->close();
     Popup::Options opts;
     opts.name = "hyprsettings";
     opts.window = true;
-    opts.appId = "material3ui-hyprland"; // its own .desktop file and dock icon
-    opts.title = "Hyprland Settings";
+    opts.appId = appId; // its own .desktop file and dock icon
+    opts.title = niri ? "Niri Settings" : "Hyprland Settings";
     opts.icon = "tune";
-    m_hyprSettings = std::make_unique<Popup>(nullptr, opts, [page](ui::Flex* card, Popup& p) { panels::hyprSettings(card, p, page); });
+    m_hyprSettings = std::make_unique<Popup>(nullptr, opts, [want](ui::Flex* card, Popup& p) { panels::hyprSettings(card, p, want); });
     m_hyprSettings->onClosed = [this] {
         panels::settingsClosed(true);
         EventLoop::get().defer([this] { m_hyprSettings.reset(); });
@@ -756,6 +761,11 @@ void Shell::registerIpc() {
     });
     ipc.add("hyprsettings", "hyprsettings [hypr-monitors|hypr-windows|hypr-decoration|hypr-animations|hypr-keybinds|hypr-startup|hypr-environment|hypr-layouts|hypr-input|hypr-gestures|"
                             "hypr-cursor|hypr-groups|hypr-misc|hypr-render|hypr-debug]: Hyprland Settings",
+            [this](const IpcServer::Args& a) {
+        openHyprSettings(a.empty() ? "" : a[0]);
+        return std::string(m_hyprSettings && !m_hyprSettings->closing() ? "open" : "closed");
+    });
+    ipc.add("nirisettings", "nirisettings [niri-layout|niri-decoration|niri-animations|niri-behaviour]: Niri Settings",
             [this](const IpcServer::Args& a) {
         openHyprSettings(a.empty() ? "" : a[0]);
         return std::string(m_hyprSettings && !m_hyprSettings->closing() ? "open" : "closed");
