@@ -1,5 +1,20 @@
 # Changelog
 
+## v6.0-beta-2 — 2026-10-28
+
+- **Settings now changes niri itself.** On niri, the pages that used to send you to Hyprland Settings have their own controls. What you set is written as niri's own config, `~/.config/niri/material3ui-settings.kdl`, and niri picks it up at once. → [Material3UI on niri](docs/NIRI.md)
+  - **Mouse & touchpad:** tap to click, natural scrolling (for the touchpad and for a mouse), ignore while typing, click with fingers or the pad's corners, tap and drag, drag lock, scrolling speed, pointer speed and acceleration.
+  - **Keyboard:** your layouts, with **Next layout** to switch between them, the key that switches, repeat delay and rate, and your own shortcuts: a key combination and the command it runs.
+  - **Display:** each monitor's resolution, scale, rotation, variable refresh rate, and on or off. They're applied at once and kept for the next login. If niri's own config sets the same monitor, niri's block wins, and the page says so.
+  - **The cursor:** its theme (Bibata by default) and size, for niri and every app it starts.
+  - **The focus ring:** drawn in the wallpaper's colours, and recoloured when the wallpaper changes.
+  - **If niri can't read the shell's settings** (its `material3ui.kdl` isn't included, or niri refused the file), those pages say so at the top.
+- **Night light works everywhere.** On niri the shell warms the screens itself, through the compositor's gamma control, so there's nothing else to install; on Hyprland it still uses hyprsunset. Settings and the Quick Settings tile now share one setting, so the tile turns it on at the temperature you chose rather than a fixed 4500 K.
+- **Only what works is shown on niri.** Hyprland Settings, its links on other pages, colour filters and the magnifier stay on Hyprland. Accessibility says so on niri ("On Hyprland only") instead of offering switches that would do nothing.
+- **Updating from 6.0-beta-1 on niri:** the shell adds the line that includes its settings to your `~/.config/niri/material3ui.kdl` by itself. New copies of [`material3ui.kdl`](dotfiles/.config/niri/material3ui.kdl) already have it.
+- **Still on Hyprland only:** how windows look (gaps, borders, corners, shadows, animations, window rules, blur strength), arranging monitors side by side, minimising, picking a window to record, the screen-sharing picker, and the login screen. Set these in niri's `config.kdl` for now.
+- **A second shell, for testing, keeps out of your way:** besides Quick Share, the polkit agent, update checks, alarms and screen time, it now leaves notifications and the tray to your main shell too.
+
 ## v6.0-beta-1 — 2026-10-28
 
 - **Material3UI runs on niri too (beta).** The shell now works on [niri](https://github.com/YaLTeR/niri) 26.04 or newer, the scrollable-tiling compositor, as well as on Hyprland. It finds out which one it's on by itself, so the same install works in either session. → [Material3UI on niri](docs/NIRI.md)
