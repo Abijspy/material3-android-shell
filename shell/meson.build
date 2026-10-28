@@ -68,6 +68,7 @@ sources = files(
   'src/core/FileWatcher.cpp',
   'src/core/Paths.cpp',
   'src/core/Process.cpp',
+  'src/core/Version.cpp',
   'src/dbus/Bus.cpp',
   'src/ipc/IpcServer.cpp',
   'src/render/Images.cpp',
@@ -222,3 +223,5 @@ test('firmware', executable('firmware_test', 'tests/firmware_test.cpp', 'src/ser
   include_directories: include_directories('src'), dependencies: [json]))
 test('niri', executable('niri_test', 'tests/niri_test.cpp', 'src/services/NiriModel.cpp',
   include_directories: include_directories('src'), dependencies: [json]))
+test('version', executable('version_test', 'tests/version_test.cpp', 'src/core/Version.cpp',
+  include_directories: include_directories('src')))

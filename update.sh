@@ -68,7 +68,9 @@ PKG_DIR="$(mktemp -d)"
 trap 'rm -rf "$PKG_DIR"' EXIT
 PKG=""
 if [[ "$CHANNEL" == stable && -n "${tag:-}" ]]; then
-    name="material3ui-${tag#v}-1-$(uname -m).pkg.tar.zst"
+    # The package's version: the tag's, a pre-release's hyphens dropped (build-pkg.sh)
+    ver="${tag#v}"
+    name="material3ui-${ver//-/}-1-$(uname -m).pkg.tar.zst"
     if curl -fsSL -o "$PKG_DIR/$name" "https://github.com/Abijspy/material3-android-shell/releases/download/$tag/$name"; then
         PKG="$PKG_DIR/$name"
         echo "Downloaded $name"

@@ -2,6 +2,7 @@
 #include "build_config.h"
 #include "core/Config.h"
 #include "core/Paths.h"
+#include "core/Version.h"
 #include "core/Process.h"
 #include "render/Images.h"
 #include "services/Wallpaper.h"
@@ -25,19 +26,9 @@ using namespace m3::ui;
 
 namespace {
 
-// a > b, as dotted version numbers
+// The changelog's order: pre-releases before their release
 bool newer(const std::string& a, const std::string& b) {
-    std::stringstream sa(a), sb(b);
-    for (int i = 0; i < 4; ++i) {
-        int x = 0, y = 0;
-        char dot = 0;
-        sa >> x;
-        sb >> y;
-        if (x != y) return x > y;
-        sa >> dot;
-        sb >> dot;
-    }
-    return false;
+    return newerVersion(a, b);
 }
 
 struct Release {

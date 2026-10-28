@@ -8,6 +8,7 @@
 #include "core/EventLoop.h"
 #include "core/Log.h"
 #include "core/Process.h"
+#include "core/Version.h"
 #include "services/Backups.h"
 #include "services/Firmware.h"
 #include "services/Hooks.h"
@@ -356,25 +357,6 @@ void Packages::runAsRoot(const std::string& label, const std::string& script, co
     for (char c : script) quoted += c == '\'' ? std::string("'\\''") : std::string(1, c);
     runTask(label, "pkexec /usr/bin/sh -c " + quoted + "'", doneText);
 }
-
-namespace {
-
-// "4.10.0" > "4.9.2"
-bool newerVersion(const std::string& a, const std::string& b) {
-    std::stringstream sa(a), sb(b);
-    for (int i = 0; i < 4; ++i) {
-        int x = 0, y = 0;
-        char dot = 0;
-        sa >> x;
-        sb >> y;
-        if (x != y) return x > y;
-        sa >> dot;
-        sb >> dot;
-    }
-    return false;
-}
-
-} // namespace
 
 namespace {
 

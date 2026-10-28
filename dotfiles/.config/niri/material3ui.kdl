@@ -1,0 +1,37 @@
+// Material3UI on niri: the shell at startup, its keys, and its wallpaper
+// behind the overview. Included at the end of ~/.config/niri/config.kdl:
+//     include "material3ui.kdl"
+
+spawn-at-startup "material3ui"
+
+// The shell draws the wallpaper; in the overview it stays behind the workspaces
+layer-rule {
+    match namespace="^material3ui-wallpaper$"
+    place-within-backdrop true
+}
+
+binds {
+    Mod+Space hotkey-overlay-title="Spotlight" { spawn "material3ui" "msg" "launcher"; }
+    Mod+A hotkey-overlay-title="Notifications" { spawn "material3ui" "msg" "popup" "notifications"; }
+    Mod+N hotkey-overlay-title="Quick Settings" { spawn "material3ui" "msg" "popup" "quicksettings"; }
+    Mod+D hotkey-overlay-title="Dashboard" { spawn "material3ui" "msg" "popup" "dashboard"; }
+    Mod+I hotkey-overlay-title="Settings" { spawn "material3ui" "msg" "settings"; }
+    Mod+G hotkey-overlay-title="Screenshot tool" { spawn "material3ui" "msg" "screenshot"; }
+    Mod+V hotkey-overlay-title="Clipboard history" { spawn "material3ui" "msg" "clipboard"; }
+    Mod+Period hotkey-overlay-title="Emoji" { spawn "material3ui" "msg" "launcher" ":"; }
+    Mod+Tab hotkey-overlay-title="Switch windows" { spawn "material3ui" "msg" "switcher" "next"; }
+    Mod+Shift+Tab { spawn "material3ui" "msg" "switcher" "prev"; }
+    Mod+Grave hotkey-overlay-title="Overview" { spawn "material3ui" "msg" "popup" "overview"; }
+    Mod+Escape hotkey-overlay-title="Power menu" { spawn "material3ui" "msg" "popup" "power"; }
+    Mod+L hotkey-overlay-title="Lock" allow-when-locked=true { spawn "material3ui" "msg" "lock"; }
+    Ctrl+Mod+T hotkey-overlay-title="Wallpapers" { spawn "material3ui" "msg" "wallpaper" "pick"; }
+    Ctrl+Alt+Delete hotkey-overlay-title="System monitor" { spawn "material3ui" "msg" "settings" "monitor"; }
+    Mod+Shift+S hotkey-overlay-title="Screenshot a region" { spawn "material3ui" "msg" "screenshot" "region"; }
+    Mod+Shift+X hotkey-overlay-title="Copy text from the screen" { spawn "material3ui" "msg" "screenshot" "ocr"; }
+    Mod+Shift+R hotkey-overlay-title="Record a region" { spawn "material3ui" "msg" "record" "region"; }
+    XF86MonBrightnessUp allow-when-locked=true { spawn "material3ui" "msg" "brightness" "up"; }
+    XF86MonBrightnessDown allow-when-locked=true { spawn "material3ui" "msg" "brightness" "down"; }
+    XF86AudioRaiseVolume allow-when-locked=true { spawn "material3ui" "msg" "volume" "up"; }
+    XF86AudioLowerVolume allow-when-locked=true { spawn "material3ui" "msg" "volume" "down"; }
+    XF86AudioMute allow-when-locked=true { spawn "material3ui" "msg" "volume" "mute"; }
+}

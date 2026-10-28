@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>One design language, from the login screen to the package manager.</b><br/>
-  A Material 3 desktop shell for Hyprland, written in C++ for Wayland.
+  A Material 3 desktop shell for Hyprland (and niri, in beta), written in C++ for Wayland.
 </p>
 
 <p align="center">
@@ -22,6 +22,7 @@
 <p align="center">
   <img alt="Release" src="https://img.shields.io/github/v/release/Abijspy/material3-android-shell?label=release&color=6750A4"/>
   <img alt="Hyprland" src="https://img.shields.io/badge/Hyprland-0.55%2B-58E1FF"/>
+  <img alt="niri" src="https://img.shields.io/badge/niri-26.04%2B%20(beta)-F4B183"/>
   <img alt="Arch" src="https://img.shields.io/badge/Arch-based-1793D1"/>
   <img alt="License" src="https://img.shields.io/badge/license-MIT-7D5260"/>
 </p>
@@ -257,6 +258,12 @@ Animations draw at your screen's refresh rate only while they run. Endless ones,
 <summary><b>Will it wreck my existing Hyprland config?</b></summary>
 
 No. Pick `--hypr inject` and the installer adds three `require` lines to your existing `hyprland.lua` (backed up first). Pick `skip` and it doesn't touch Hyprland at all. With `full`, your old config is backed up before anything is replaced.
+</details>
+
+<details>
+<summary><b>Does it work on niri?</b></summary>
+
+Yes, in beta, from 6.0: the bar, the dock, the panels, the lock screen and the rest run on niri 26.04 or newer, with niri's own overview. The settings that change the compositor (input, displays, the cursor, keybinds) are still Hyprland's for now. Setting it up takes a few steps by hand → [Material3UI on niri](docs/NIRI.md)
 </details>
 
 <details>

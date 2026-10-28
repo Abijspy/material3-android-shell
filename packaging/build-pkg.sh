@@ -9,16 +9,18 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 
-# A release tag as is; between releases tag.rN.gHASH, which sorts after it
+# A release tag as is (a pre-release's hyphens dropped: v6.0-beta-1 is
+# 6.0beta1, which pacman sorts before 6.0 and after 5.8); between releases
+# tag.rN.gHASH, which sorts after it
 version() {
     local desc
     desc="$(git -C "$ROOT" describe --tags --long --match 'v*' 2>/dev/null || true)"
     if [[ "$desc" =~ ^v(.+)-([0-9]+)-g([0-9a-f]+)$ ]]; then
-        local v="${BASH_REMATCH[1]//-/_}"
+        local v="${BASH_REMATCH[1]//-/}"
         [[ "${BASH_REMATCH[2]}" == 0 ]] || v+=".r${BASH_REMATCH[2]}.g${BASH_REMATCH[3]}"
         echo "$v"
     else
-        tr -d '[:space:]' <"$ROOT/VERSION"
+        tr -d '[:space:]-' <"$ROOT/VERSION"
     fi
 }
 

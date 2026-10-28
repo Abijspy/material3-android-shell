@@ -81,7 +81,8 @@ bool Shell::start() {
     Effects::get();
     // A test instance (M3_INSTANCE, beside the shell) leaves what there's
     // one of in a session to it: the clipboard's watchers, Quick Share, the
-    // polkit agent, update checks and the login screen's sync
+    // polkit agent, update checks, alarms, screen time and the login
+    // screen's sync
     const bool sole = paths::instance().empty();
     if (sole) Clipboard::get().ensureWatchers();
     else log::info("instance {}: beside the shell, on {}", paths::instance(), std::getenv("WAYLAND_DISPLAY") ? std::getenv("WAYLAND_DISPLAY") : "?");
@@ -125,8 +126,10 @@ bool Shell::start() {
     Packages::get().openSettings = [this](const std::string& page) { EventLoop::get().defer([this, page] { openSettings(page); }); };
     if (sole) Packages::get().startAutoCheck();
     // Alarms and timers: what goes off shows at the top, over everything
-    Alarms::get();
-    m_ringer = std::make_unique<Ringer>(focused);
+    if (sole) {
+        Alarms::get();
+        m_ringer = std::make_unique<Ringer>(focused);
+    }
     LockScreen::get().lockedChanged.connectForever([this] {
         Hooks::get().fire(LockScreen::get().locked() ? "session_locked" : "session_unlocked");
         if (LockScreen::get().locked()) m_popup.reset();
@@ -134,7 +137,7 @@ bool Shell::start() {
     });
     // Digital Wellbeing: screen time while unlocked
     Wellbeing::get().locked = [] { return LockScreen::get().locked(); };
-    Wellbeing::get().start();
+    if (sole) Wellbeing::get().start(); // a test instance's windows aren't your screen time
 
     // Polkit: a dialog per request, closed when polkitd is done with it
     Polkit::get().requested.connectForever([this](int id) {
