@@ -1,0 +1,29 @@
+// ─────────────────────────────────────────────────────────────────────────────
+//  Material3UI greeter: minimal niri session for greetd
+//  Runs the greeter; when it quits (after login or in an error) niri quits
+//  too and greetd starts the chosen desktop.
+// ─────────────────────────────────────────────────────────────────────────────
+
+input {
+    keyboard {
+        numlock
+    }
+}
+
+layout {
+    background-color "#0f0d13"
+}
+
+// Only the greeter: no hotkey help, no config notices, no window decorations
+hotkey-overlay {
+    skip-at-startup
+}
+config-notification {
+    disable-failed
+}
+prefer-no-csd
+
+// Synced keyboard layout, cursor and monitors (written by `material3ui-greeter sync`)
+include optional=true "/var/lib/material3ui-greeter/niri-local.kdl"
+
+spawn-sh-at-startup "/usr/share/material3ui-greeter/greet-run.sh; niri msg action quit --skip-confirmation"

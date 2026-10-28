@@ -55,10 +55,13 @@ std::vector<shell::LockView::Choice> sessions() {
             if (!hidden && !exec.empty()) out.push_back({exec, name.empty() ? e.path().stem().string() : name});
         }
     }
-    // Hyprland first: it is what this shell is made for
-    std::ranges::stable_sort(out, [](const auto& a, const auto& b) {
-        return (a.label.find("Hyprland") != std::string::npos) > (b.label.find("Hyprland") != std::string::npos);
-    });
+    // Hyprland, then niri, first: the compositors this shell runs on
+    auto rank = [](const shell::LockView::Choice& c) {
+        if (c.label.find("Hyprland") != std::string::npos) return 0;
+        if (c.label.find("Niri") != std::string::npos || c.label.find("niri") != std::string::npos) return 1;
+        return 2;
+    };
+    std::ranges::stable_sort(out, [&](const auto& a, const auto& b) { return rank(a) < rank(b); });
     return out;
 }
 

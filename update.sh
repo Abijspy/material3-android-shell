@@ -32,6 +32,9 @@ HYPR_MODE="$(state hypr_mode)"
 if [[ -z "$HYPR_MODE" ]]; then
     grep -q '"inject": true' "$STATE_FILE" && HYPR_MODE=inject || HYPR_MODE=full
 fi
+# Installs from before 6.0 set up Hyprland only
+NIRI_MODE="$(state niri_mode)"; NIRI_MODE="${NIRI_MODE:-skip}"
+NIRI="$CONFIG_HOME/niri"
 
 case "$MODE" in all|shell) ;; *) echo "Usage: $0 [all|shell] [stable|canary] [--force]" >&2; exit 2 ;; esac
 
@@ -131,6 +134,17 @@ if [[ "$MODE" == all ]]; then
         done
         [[ "$HYPR_MODE" == full ]] && cp "$DOT/hypr/hyprland.lua" "$HYPR/hyprland.lua"
     fi
+
+    # niri's material3ui.kdl, with the apps picked at install (config.kdl
+    # and material3ui-user.kdl are yours: left alone)
+    if [[ "$NIRI_MODE" == include ]]; then
+        echo "Updating niri's material3ui.kdl..."
+        term="$(state terminal)" files="$(state file_manager)" web="$(state browser)"
+        mkdir -p "$NIRI"
+        sed -e "s/\"alacritty\"/\"${term:-alacritty}\"/g" -e "s/\"nemo\"/\"${files:-nemo}\"/g" -e "s/\"librewolf\"/\"${web:-librewolf}\"/g" \
+            "$DOT/niri/material3ui.kdl" >"$NIRI/material3ui.kdl.tmp"
+        mv "$NIRI/material3ui.kdl.tmp" "$NIRI/material3ui.kdl"
+    fi
 fi
 
 rm -f "$HOME/.local/bin/material3uictl" "$HOME/.local/bin/material3ui-sysmon" # v3 helpers
@@ -161,6 +175,12 @@ if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
     pkill -x material3ui || true
     sleep 0.3
     # Detached, so it outlives this script (and Lua configs need no dispatch syntax)
+    setsid -f material3ui >/dev/null 2>&1 </dev/null
+    echo "Shell restarted."
+elif [[ -n "${NIRI_SOCKET:-}" ]]; then
+    # niri reads material3ui.kdl again by itself
+    pkill -x material3ui || true
+    sleep 0.3
     setsid -f material3ui >/dev/null 2>&1 </dev/null
     echo "Shell restarted."
 fi

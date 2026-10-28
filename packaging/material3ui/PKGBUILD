@@ -5,17 +5,23 @@
 pkgname=material3ui
 pkgver=${M3_PKGVER:-0}
 pkgrel=1
-pkgdesc="A Material 3 desktop shell for Hyprland"
+pkgdesc="A Material 3 desktop shell for Hyprland and niri"
 arch=(x86_64 aarch64)
 url="https://github.com/Abijspy/material3-android-shell"
 license=(MIT)
-depends=(hyprland wayland libglvnd pango cairo libxkbcommon systemd-libs libpulse librsvg gdk-pixbuf2 polkit pam)
+depends=(wayland libglvnd pango cairo libxkbcommon systemd-libs libpulse librsvg gdk-pixbuf2 polkit pam)
 makedepends=(meson ninja wayland-protocols wlr-protocols nlohmann-json)
-optdepends=('wf-recorder: screen recording'
+# The compositor is yours to pick: Hyprland, niri, or both
+optdepends=('hyprland: a compositor to run on (0.55 or newer)'
+            'niri: a compositor to run on (26.04 or newer; beta)'
+            'hyprsunset: night light on Hyprland'
+            'xwayland-satellite: X11 apps on niri'
+            'xdg-desktop-portal-gnome: screen sharing on niri'
+            'wf-recorder: screen recording'
             'ffmpeg: GIF recordings'
             'slurp: picking a region or a window to capture or share'
             'grim: screenshots, and screen previews when sharing'
-            'xdg-desktop-portal-hyprland: screen sharing, with the shell'"'"'s picker'
+            'xdg-desktop-portal-hyprland: screen sharing on Hyprland, with the shell'"'"'s picker'
             'noto-fonts: text in Indic and other scripts'
             'pacman-contrib: checking for updates (checkupdates)'
             'fwupd: firmware updates in Settings → Firmware'

@@ -2,16 +2,24 @@
 
 The installer reads `data/dependencies.json`, checks what is missing with `pacman -T`, and installs the rest with yay. This is the same list in readable form.
 
+### Compositor
+
+The installer asks which compositor the shell runs on (`--compositor hyprland`, `niri` or `both`) and installs only that one's packages:
+
+| Compositor | Packages | Description |
+| :--- | :--- | :--- |
+| **Hyprland** | `hyprland` `xdg-desktop-portal-hyprland` `hypridle` `hyprlock` `hyprsunset` `hyprpicker` | Hyprland 0.55 or newer; screen sharing with the shell's picker, the idle daemon and fallback lock screen its config starts, night light and a colour picker. |
+| **niri** (beta) | `niri` `xwayland-satellite` `xdg-desktop-portal-gnome` | niri 26.04 or newer, X11 apps, and screen sharing. Night light needs nothing more: the shell warms the screens itself. |
+
 ### Core Components
 
 | Component | Package | Description |
 | :--- | :--- | :--- |
-| **Compositor** | `hyprland` | The tiling Wayland compositor hosting the shell. |
 | **Shell** | built from `shell/` | The native C++ shell (`material3ui`), built with `meson` and `ninja` (`base-devel`) by the installer. |
 | **Shell libraries** | `wayland` `wayland-protocols` `wlr-protocols` `mesa` `pango` `cairo` `librsvg` `gdk-pixbuf2` `libxkbcommon` `nlohmann-json` `libpulse` `polkit` `pam` | Wayland and layer shell, OpenGL ES, text, icons and wallpapers, keyboard, JSON, audio, the polkit agent and the lock screen. |
 | **Theme** | `matugen` | Material 3 theme generation from wallpapers. |
 | **GTK Theme** | `adw-gtk-theme` | Libadwaita-like theme for GTK3 applications. |
-| **Cursor** | `bibata-cursor-theme-bin` | Bibata Modern Classic, the default cursor (AUR). Another can be picked in Hyprland Settings → Cursor. |
+| **Cursor** | `bibata-cursor-theme-bin` | Bibata Modern Classic, the default cursor (AUR). Another can be picked in Hyprland Settings → Cursor, or Settings → Mouse & touchpad on niri. |
 | **Scripting** | `python3` | Used by terminal color scripts and utilities. |
 | **JSON** | `jq` | Command-line JSON processor for configs and state. |
 
@@ -25,8 +33,7 @@ The installer reads `data/dependencies.json`, checks what is missing with `pacma
 | **Notify** | `libnotify` | System notifications via `notify-send`. |
 | **Auth** | `polkit` | The shell is the polkit agent. |
 | **Session** | `systemd` | Power management and session locking. |
-| **Portal (H)** | `xdg-desktop-portal-hyprland` | Screen sharing and desktop integration. |
-| **Portal (G)** | `xdg-desktop-portal-gtk` | File picker and standard desktop integration. |
+| **Portal (G)** | `xdg-desktop-portal-gtk` | File picker and standard desktop integration (screen sharing comes with the compositor, above). |
 
 ### CLI Utilities (Functional)
 
@@ -45,9 +52,6 @@ The installer reads `data/dependencies.json`, checks what is missing with `pacma
 | **Recognition** | `songrec` | Shazam-like music recognition feature. |
 | **Visualizer** | `cava` | Audio visualization in the shell. |
 | **Wallpaper Eng.** | `linux-wallpaperengine-git` | Steam Wallpaper Engine support (Optional). |
-| **Picker** | `hyprpicker` | System-wide color picker tool. |
-| **Lock** | `hyprlock` | The lock screen provider. |
-| **Night Light** | `hyprsunset` | Blue light filter functionality. |
 | **Search** | `fd` | Fast file search functionality in Spotlight. |
 | **Updates** | `pacman-contrib` | Safe update checks (`checkupdates`) for Software & updates. |
 | **Calculator** | `libqalculate` | Math calculator functionality in Spotlight (`qalc`). |

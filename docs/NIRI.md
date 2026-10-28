@@ -2,37 +2,52 @@
 
 From 6.0, the shell also runs on [niri](https://github.com/YaLTeR/niri) 26.04 or newer, the scrollable-tiling compositor, as well as on Hyprland. It finds out which one it's on by itself: in a niri session it talks to niri, and in a Hyprland session to Hyprland.
 
-niri support is in **beta**. The desktop works (the bar, the dock, the panels, notifications, the lock screen, the launcher and the rest), and so do the settings that change niri itself, from 6.0-beta-2: the touchpad and mouse, keyboard layouts, monitors, the cursor and night light (see [What works](#what-works)). The installer doesn't set niri up yet, so it's done by hand, below.
+niri support is in **beta**. The desktop works (the bar, the dock, the panels, notifications, the lock screen, the launcher and the rest), and so do the settings that change niri itself: the touchpad and mouse, keyboard layouts, monitors, the cursor and night light (see [What works](#what-works)). From 6.0-beta-3 the installer sets niri up, and the login screen runs on it when Hyprland isn't installed.
 
 ## Setting it up
 
-1. Install niri and its companions, if you haven't already. xwayland-satellite runs X11 apps, and the GNOME portal handles screen sharing:
+Run the installer and pick **niri** (or **both**, to choose at each login) when it asks for the compositor:
+
+```bash
+./install.sh --compositor niri      # or: --compositor both
+```
+
+It installs niri and its companions (xwayland-satellite runs X11 apps, and the GNOME portal handles screen sharing), then sets up `~/.config/niri`:
+
+- **`material3ui.kdl`**, the shell's part: it starts the shell, puts its wallpaper behind niri's overview, and binds its keys (see [Keys](#keys)). Your terminal and browser go in it too, as `$TERMINAL` and `$BROWSER`. Updates replace this file.
+- **`config.kdl`**, yours: kept as it is, with `include "material3ui.kdl"` added at its end. Without one, it starts as niri's own default config, minus the waybar it would start. The installer warns you if your config starts something the shell replaces: a bar (waybar), a notification daemon (mako, dunst), a polkit agent, a wallpaper or idle tool. Take those lines out.
+- **`material3ui-user.kdl`**, yours: included last, so what you put in it wins over the shell's keys. Updates never touch it.
+- **`material3ui-settings.kdl`**, the shell's: what you set in its Settings (touchpad, keyboard, monitors, cursor), written as you change it.
+
+The old files are backed up, and `./install.sh --restore` puts them back. Pick `--niri skip` to leave niri's config alone and include the file yourself (below). Then log out, and choose **niri** at the login screen.
+
+### By hand
+
+With Material3UI already installed (on Hyprland, say), you can add niri without the installer:
+
+1. Install niri and its companions:
 
    ```bash
    sudo pacman -S niri xwayland-satellite xdg-desktop-portal-gnome
    ```
 
-   Install Material3UI as usual (see the [README](../README.md#install-in-one-line)); its Hyprland setup can stay, for when you log into Hyprland.
-
-2. Copy the shell's niri settings next to your niri config:
+2. Copy [`material3ui.kdl`](../dotfiles/.config/niri/material3ui.kdl) next to your niri config, and put your terminal and browser in its `environment` block and app keys:
 
    ```bash
    cp dotfiles/.config/niri/material3ui.kdl ~/.config/niri/
    ```
 
-   [`material3ui.kdl`](../dotfiles/.config/niri/material3ui.kdl) starts the shell with niri, puts its wallpaper behind niri's overview, and binds its keys: <kbd>Super</kbd><kbd>Space</kbd> for Spotlight, <kbd>Super</kbd><kbd>N</kbd> for Quick Settings, <kbd>Super</kbd><kbd>A</kbd> for notifications, <kbd>Super</kbd><kbd>D</kbd> for the dashboard, <kbd>Super</kbd><kbd>Tab</kbd> to switch windows, <kbd>Super</kbd><kbd>L</kbd> to lock, and the rest as on Hyprland. Last, it includes `material3ui-settings.kdl`, the file the shell writes for what you set in its Settings. (A `material3ui.kdl` copied from 6.0-beta-1 doesn't have that line; the shell adds it.)
-
-3. Include it at the **end** of `~/.config/niri/config.kdl`:
+3. Include it at the **end** of `~/.config/niri/config.kdl`, last so its keys win (niri lets a later bind replace an earlier one):
 
    ```kdl
    include "material3ui.kdl"
    ```
 
-   Last, so its keys win: niri lets a later bind replace an earlier one. That takes over a few of niri's own default keys (<kbd>Super</kbd><kbd>D</kbd>, <kbd>Super</kbd><kbd>L</kbd>, <kbd>Super</kbd><kbd>I</kbd>, <kbd>Super</kbd><kbd>V</kbd>…); move the ones you want to other keys in your config.
+4. Take out of `config.kdl` what the shell now does itself: the bar, notification daemon, polkit agent and wallpaper tool.
 
-4. Take out of your niri config what the shell now does itself: a bar (`spawn-at-startup "waybar"`), a notification daemon (mako, dunst), a polkit agent and a wallpaper tool.
+## Keys
 
-5. Log out, and choose **niri** at the login screen.
+`material3ui.kdl` binds <kbd>Super</kbd><kbd>Space</kbd> for Spotlight (niri can't bind <kbd>Super</kbd> on its own), <kbd>Super</kbd><kbd>N</kbd> for Quick Settings, <kbd>Super</kbd><kbd>A</kbd> for notifications, <kbd>Super</kbd><kbd>D</kbd> for the dashboard, <kbd>Super</kbd><kbd>I</kbd> for Settings, <kbd>Super</kbd><kbd>Tab</kbd> to switch windows, <kbd>Super</kbd><kbd>L</kbd> to lock, <kbd>Super</kbd><kbd>Return</kbd> (or <kbd>Super</kbd><kbd>T</kbd>) for your terminal, <kbd>Super</kbd><kbd>E</kbd> for files and <kbd>Super</kbd><kbd>B</kbd> for the browser, and the rest as on Hyprland. That takes over a few of niri's own default keys (<kbd>Super</kbd><kbd>D</kbd>, <kbd>Super</kbd><kbd>T</kbd>, <kbd>Super</kbd><kbd>V</kbd>…). To keep one, bind it again in `material3ui-user.kdl`, or add your own shortcuts in Settings → Keyboard.
 
 ## What works
 
@@ -46,6 +61,7 @@ niri support is in **beta**. The desktop works (the bar, the dock, the panels, n
 - **The lock screen and idle:** locking, the screens going off when you're away, and lock before sleep.
 - **Logging out**, restarting and shutting down from the power menu.
 - **Digital Wellbeing:** screen time per app, app timers and Focus mode.
+- **The login screen**, from 6.0-beta-3: without Hyprland installed, it runs in a minimal niri session, with your keyboard layout, cursor and monitors synced from your niri config. With both installed it stays on Hyprland. → [Login screen](GREETER.md)
 
 ### Settings that change niri
 
@@ -70,7 +86,6 @@ These are coming in the next betas. Until then, set them in niri's own `config.k
 - **Picking a single window to record:** you pick a region instead, since niri's windows scroll.
 - **The screen-sharing picker:** apps sharing the screen get niri's own picker, through the GNOME portal.
 - **The magnifier and colour filters** (Accessibility).
-- **The login screen** runs on Hyprland, so it still needs Hyprland installed.
 
 ## Trying it without logging out
 

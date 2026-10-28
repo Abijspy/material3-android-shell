@@ -119,6 +119,8 @@ cmd_setup() {
     [[ "${1:-}" == --enable ]] && enable=1
     [[ -f "$SHARE/greet-run.sh" ]] || die "The greeter package is not installed; run: material3ui-greeter install"
     getent passwd greeter >/dev/null || die "The 'greeter' user is missing; reinstall greetd."
+    command -v Hyprland >/dev/null 2>&1 || command -v niri >/dev/null 2>&1 ||
+        die "The login screen runs in Hyprland or niri: install one of them first."
 
     local user; user="$(target_user)"
     # Data dir: owned by greeter (it writes state.json); the desktop user gets
@@ -151,7 +153,7 @@ cmd_setup() {
         "vt = 1" \
         "" \
         "[default_session]" \
-        "command = \"$SHARE/greet-hyprland.sh\"" \
+        "command = \"$SHARE/greet.sh\"" \
         "user = \"greeter\"" | as_root tee "$GREETD_CONF" >/dev/null
     ok "greetd configured"
 
@@ -172,7 +174,7 @@ cmd_sync() {
     [[ -w "$DATA" ]] || die "No write access to $DATA; re-run 'material3ui-greeter install' or use sudo." 3
 
     python3 -I - "$DATA" "$(target_user)" "$(target_home)" <<'PY'
-import json, os, re, shutil, sys, time
+import json, os, re, shutil, subprocess, sys, time
 data, user, home = sys.argv[1:4]
 cfg_home = os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config")
 state_home = os.environ.get("XDG_STATE_HOME") or os.path.join(home, ".local/state")
@@ -264,9 +266,12 @@ out["clock"] = {
 # Keyboard layout and monitor rules for the greeter's Hyprland session
 lua = []
 hypr = os.path.join(cfg_home, "hypr/material3ui")
+hypr_layout = ""
 try:
     m = re.search(r'kb_layout\s*=\s*"([^"]*)"', open(os.path.join(hypr, "input.lua")).read())
-    if m: lua.append('hl.config({ input = { kb_layout = "%s" } })' % m.group(1))
+    if m:
+        hypr_layout = m.group(1)
+        lua.append('hl.config({ input = { kb_layout = "%s" } })' % hypr_layout)
 except OSError: pass
 try:
     lua += [l.rstrip() for l in open(os.path.join(hypr, "user_persistence.lua")) if l.lstrip().startswith("hl.monitor(")]
@@ -294,8 +299,79 @@ if isinstance(theme, str) and re.fullmatch(r"[\w.+ -]+", theme) and os.path.isdi
     os.chmod(cursor_file + ".tmp", 0o644)
     os.replace(cursor_file + ".tmp", cursor_file)
     synced.append("cursor")
-elif os.path.exists(cursor_file):
-    os.remove(cursor_file)
+    cursor = (theme, int(size))
+else:
+    cursor = None
+    if os.path.exists(cursor_file): os.remove(cursor_file)
+
+# The same for the greeter's niri session: the keyboard layout (Settings →
+# Keyboard on niri, else Hyprland's), the cursor, and the monitors as your
+# niri config sets them
+def kdl_quote(s): return '"%s"' % s.replace("\\", "\\\\").replace('"', '\\"')
+
+def kdl_blocks(text, name):
+    # Top-level `name` nodes with their blocks, as written; comments skipped
+    found, i, n, depth, start = [], 0, len(text), 0, None
+    while i < n:
+        c = text[i]
+        if c == '"':
+            i += 1
+            while i < n and text[i] != '"': i += 2 if text[i] == "\\" else 1
+        elif text.startswith("//", i):
+            i = text.find("\n", i)
+            if i < 0: break
+            continue
+        elif text.startswith("/*", i):
+            j = text.find("*/", i + 2)
+            i = n if j < 0 else j + 1
+        elif c == "{": depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0 and start is not None: found.append(text[start:i + 1]); start = None
+        elif depth == 0 and c in "\n;": start = None # a node without a block
+        elif depth == 0 and start is None and text.startswith(name, i) and text[i + len(name):i + len(name) + 1] in (" ", "\t") \
+                and (i == 0 or text[i - 1] in "\n \t"):
+            start = i
+        i += 1
+    return found
+
+def niri_valid(text):
+    if not shutil.which("niri"): return True
+    path = os.path.join(data, "niri-check.kdl")
+    try:
+        with open(path, "w") as f: f.write(text)
+        return subprocess.run(["niri", "validate", "-c", path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError): return False
+    finally:
+        try: os.remove(path)
+        except OSError: pass
+
+niri_dir = os.path.join(cfg_home, "niri")
+layouts = get(cfg, "keyboard", "layouts", default="") or hypr_layout
+options = get(cfg, "keyboard", "options", default="")
+kdl = ["input {", "    keyboard {"]
+if isinstance(layouts, str) and layouts:
+    kdl += ["        xkb {", "            layout %s" % kdl_quote(layouts)]
+    if isinstance(options, str) and options: kdl.append("            options %s" % kdl_quote(options))
+    kdl.append("        }")
+kdl += ["        numlock", "    }", "}"]
+if cursor: kdl += ["cursor {", "    xcursor-theme %s" % kdl_quote(cursor[0]), "    xcursor-size %d" % cursor[1], "}"]
+# Your config.kdl's blocks first, then the shell's: for one monitor, the first wins
+monitors, seen = [], set()
+for name in ("config.kdl", "material3ui-settings.kdl"):
+    try: text = open(os.path.join(niri_dir, name)).read()
+    except OSError: continue
+    for block in kdl_blocks(text, "output"):
+        m = re.match(r'output\s+"((?:[^"\\]|\\.)*)"', block)
+        if m and m.group(1) not in seen:
+            seen.add(m.group(1)); monitors.append(block)
+head = "// Synced from %s by material3ui-greeter\n" % user
+local = head + "\n".join(kdl + monitors) + "\n"
+if monitors and not niri_valid(local): local = head + "\n".join(kdl) + "\n"
+if not niri_valid(local): local = head
+with open(os.path.join(data, "niri-local.kdl.tmp"), "w") as f: f.write(local)
+os.chmod(os.path.join(data, "niri-local.kdl.tmp"), 0o644)
+os.replace(os.path.join(data, "niri-local.kdl.tmp"), os.path.join(data, "niri-local.kdl"))
 
 with open(os.path.join(data, "greeter.json.tmp"), "w") as f: json.dump(out, f, indent=2)
 os.replace(os.path.join(data, "greeter.json.tmp"), os.path.join(data, "greeter.json"))
@@ -333,7 +409,7 @@ cmd_outdated() {
     in_checkout || exit 1
     pacman -Qq material3ui-greeter >/dev/null 2>&1 || exit 0 # copied by hand: move to the package
     local f
-    for f in hyprland.lua greet-hyprland.sh greet-run.sh; do
+    for f in hyprland.lua niri.kdl greet.sh greet-hyprland.sh greet-niri.sh greet-run.sh; do
         cmp -s "$SRC/$f" "$SHARE/$f" || exit 0
     done
     cmp -s "$SRC/material3ui-greeter" "$BIN" || exit 0

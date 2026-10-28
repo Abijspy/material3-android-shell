@@ -1,5 +1,7 @@
 #!/bin/sh
-# greetd entry point: a minimal Hyprland session that hosts the Material3UI greeter.
+# A minimal Hyprland session that hosts the Material3UI greeter.
+# greetd configs from before 6.0 start here: niri, when Hyprland is gone
+command -v Hyprland >/dev/null 2>&1 || exec /usr/share/material3ui-greeter/greet-niri.sh
 export XDG_SESSION_TYPE=wayland
 export XDG_CURRENT_DESKTOP=Hyprland
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-#  Material3UI installer · Arch Linux + Hyprland 0.55+
+#  Material3UI installer · Arch Linux + Hyprland 0.55+ or niri 26.04+
 #
 #  Asks everything first, shows one plan, then runs without further prompts:
 #  packages, the native shell (built from shell/ and installed to /usr), the
@@ -20,6 +20,7 @@ set -Eeuo pipefail
 
 readonly REPO_URL="https://github.com/Abijspy/material3-android-shell.git"
 readonly MIN_HYPRLAND="0.55"
+readonly MIN_NIRI="26.04"
 TS="$(date +%Y%m%d-%H%M%S)"
 readonly TS
 readonly CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
@@ -32,10 +33,13 @@ readonly LOG="$LOG_DIR/install-$TS.log"
 readonly HYPR="$CONFIG_HOME/hypr"
 # Hyprland modules that are yours once created: never replaced
 readonly HYPR_KEEP=(user.lua user_persistence.lua colors.lua)
+readonly NIRI="$CONFIG_HOME/niri"
+# A fresh config.kdl starts as niri's own default
+readonly NIRI_DEFAULT=/usr/share/doc/niri/default-config.kdl
 
 # ── Options ──────────────────────────────────────────────────────────────────
 YES=0 DRY=0 SKIP_DEPS=0 MODE=install RESTORE_STAMP=""
-TERMINAL="" FILE_MANAGER="" BROWSER="" HYPR_MODE="" CHANNEL="" GREETER="" INSTALL_DIR=""
+TERMINAL="" FILE_MANAGER="" BROWSER="" COMPOSITOR="" HYPR_MODE="" NIRI_MODE="" CHANNEL="" GREETER="" INSTALL_DIR=""
 ORIG_ARGS=("$@")
 
 usage() {
@@ -48,9 +52,13 @@ Usage: install.sh [options]
       --terminal NAME       alacritty | kitty | foot | ghostty
       --file-manager NAME   nemo | thunar | nautilus | dolphin
       --browser NAME        librewolf | firefox | chromium | zen-browser
+      --compositor NAME     hyprland | niri (beta) | both
       --hypr MODE           full: Material3UI owns hyprland.lua (yours is backed up)
                             inject: keep your hyprland.lua, add the shell to it
                             skip: leave Hyprland's config alone
+      --niri MODE           include: keep your config.kdl (or start from niri's
+                            default), include the shell's material3ui.kdl at its end
+                            skip: leave niri's config alone
       --channel NAME        latest (follow main) | release (tagged releases)
       --greeter             Also install the login screen (greetd)
       --dir PATH            Where to clone when run outside the repo
@@ -69,7 +77,9 @@ while [[ $# -gt 0 ]]; do
         --terminal) need "$1" "${2:-}"; TERMINAL="$2"; shift ;;
         --file-manager) need "$1" "${2:-}"; FILE_MANAGER="$2"; shift ;;
         --browser) need "$1" "${2:-}"; BROWSER="$2"; shift ;;
+        --compositor) need "$1" "${2:-}"; COMPOSITOR="$2"; shift ;;
         --hypr) need "$1" "${2:-}"; HYPR_MODE="$2"; shift ;;
+        --niri) need "$1" "${2:-}"; NIRI_MODE="$2"; shift ;;
         --channel) need "$1" "${2:-}"; CHANNEL="$2"; shift ;;
         --greeter) GREETER=1 ;;
         --dir) need "$1" "${2:-}"; INSTALL_DIR="$2"; shift ;;
@@ -217,12 +227,14 @@ desktop_for() {
 package_list() {
     local c
     for c in core services utilities theming; do jq -r ".${c}[].name" "$REPO/data/dependencies.json"; done
+    if [[ "$WANT_HYPR" == 1 ]]; then jq -r '.hyprland[].name' "$REPO/data/dependencies.json"; fi
+    if [[ "$WANT_NIRI" == 1 ]]; then jq -r '.niri[].name' "$REPO/data/dependencies.json"; fi
     if [[ "$OPT_FONTS" == 1 ]]; then jq -r '.fonts[].name' "$REPO/data/dependencies.json"; fi
     if [[ "$OPT_FISH" == 1 ]]; then printf '%s\n' fish starship; fi
     if [[ "$OPT_KDE" == 1 ]]; then echo python-pip; fi
     if [[ "$GREETER" == 1 ]]; then printf '%s\n' greetd acl; fi
     if [[ "$FILE_MANAGER" == nemo ]]; then echo nemo-fileroller; fi
-    printf '%s\n' hypridle gnome-keyring git "$(pkg_for "$TERMINAL")" "$(pkg_for "$FILE_MANAGER")" "$(pkg_for "$BROWSER")"
+    printf '%s\n' gnome-keyring git "$(pkg_for "$TERMINAL")" "$(pkg_for "$FILE_MANAGER")" "$(pkg_for "$BROWSER")"
 }
 # yay, made to work: libalpm moves on, and a stale binary won't start
 ensure_yay() {
@@ -294,7 +306,7 @@ restore_mode() {
     [[ -n "$others" ]] && note "Older installs: $others(pick one with --restore STAMP)"
     confirm "Restore them?" Y || exit 0
     do_ "$dir/restore.sh"
-    ok "Restored. Reload Hyprland (hyprctl reload) to apply."
+    ok "Restored. Reload Hyprland to apply (hyprctl reload); niri reloads by itself."
 }
 uninstall_mode() {
     local build
@@ -310,7 +322,7 @@ uninstall_mode() {
 }
 
 # ═════════════════════════════════════════════════════════════════════════════
-printf '\n%s%s  ●  Material3UI%s %s· a native Material 3 shell for Hyprland%s\n' "$P" "$B" "$R" "$D" "$R"
+printf '\n%s%s  ●  Material3UI%s %s· a native Material 3 shell for Hyprland and niri%s\n' "$P" "$B" "$R" "$D" "$R"
 [[ "$DRY" == 1 ]] && printf '  %sDry run: nothing will change.%s\n' "$Y" "$R"
 locate_repo
 mkdir -p "$LOG_DIR"
@@ -327,10 +339,17 @@ command -v pacman >/dev/null || fail "pacman not found: Material3UI supports Arc
 os="$(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-unknown}")"
 if (. /etc/os-release 2>/dev/null; [[ " ${ID:-} ${ID_LIKE:-} " == *" arch "* ]]); then ok "$os"
 else warn "$os isn't Arch-based; going on, since pacman is here"; fi
+# The compositors that are here (an installed one counts as there for the
+# packages, whatever its version: older ones need a system update)
 hv="$(pacman -Q hyprland 2>/dev/null | awk '{print $2}' || true)"
-if [[ -z "$hv" ]]; then note "Hyprland isn't installed yet; it comes with the packages."
-elif [[ "$(vercmp "${hv%%-*}" "$MIN_HYPRLAND")" -lt 0 ]]; then warn "Hyprland $hv is older than $MIN_HYPRLAND (needed for the Lua config); it gets upgraded"
+nv="$(pacman -Q niri 2>/dev/null | awk '{print $2}' || true)"
+if [[ -z "$hv" ]]; then :
+elif [[ "$(vercmp "${hv%%-*}" "$MIN_HYPRLAND")" -lt 0 ]]; then warn "Hyprland $hv is older than $MIN_HYPRLAND (needed for the Lua config): update the system first (sudo pacman -Syu)"
 else ok "Hyprland $hv"; fi
+if [[ -z "$nv" ]]; then :
+elif [[ "$(vercmp "${nv%%-*}" "$MIN_NIRI")" -lt 0 ]]; then warn "niri $nv is older than $MIN_NIRI, which the shell needs: update the system first (sudo pacman -Syu)"
+else ok "niri $nv"; fi
+[[ -n "$hv$nv" ]] || note "Neither Hyprland nor niri is installed yet; the one you pick comes with the packages."
 VERSION="$(cat "$REPO/VERSION" 2>/dev/null || echo "?")"
 ok "Material3UI $VERSION from $(tilde "$REPO")"
 [[ -f "$STATE_FILE" ]] && note "Installed before: your previous choices are the defaults."
@@ -338,15 +357,26 @@ ok "Material3UI $VERSION from $(tilde "$REPO")"
 # ── 2. Choices ───────────────────────────────────────────────────────────────
 section "Your setup"
 KEEP_PREVIOUS=1
-if [[ -f "$STATE_FILE" && "$YES" == 0 && -z "$TERMINAL$FILE_MANAGER$BROWSER$HYPR_MODE" ]]; then
-    info "Last time: $(previous terminal) · $(previous file_manager) · $(previous browser) · Hyprland $(previous hypr_mode)"
+if [[ -f "$STATE_FILE" && "$YES" == 0 && -z "$TERMINAL$FILE_MANAGER$BROWSER$COMPOSITOR$HYPR_MODE$NIRI_MODE" ]]; then
+    last="$(previous terminal) · $(previous file_manager) · $(previous browser)"
+    # Installs from before 6.0 recorded no compositor: Hyprland's
+    case "$(previous compositor)" in
+        niri) last+=" · niri $(previous niri_mode)" ;;
+        both) last+=" · Hyprland $(previous hypr_mode) and niri $(previous niri_mode)" ;;
+        *) last+=" · Hyprland $(previous hypr_mode)" ;;
+    esac
+    info "Last time: $last"
     confirm "Keep these?" Y || KEEP_PREVIOUS=0
 fi
 if [[ "$KEEP_PREVIOUS" == 1 ]]; then
     [[ -n "$TERMINAL" ]] || TERMINAL="$(previous terminal)"
     [[ -n "$FILE_MANAGER" ]] || FILE_MANAGER="$(previous file_manager)"
     [[ -n "$BROWSER" ]] || BROWSER="$(previous browser)"
-    [[ -n "$HYPR_MODE" ]] || HYPR_MODE="$(previous hypr_mode)"
+    [[ -n "$COMPOSITOR" ]] || COMPOSITOR="$(previous compositor)"
+    # A mode only from an install that set that compositor up (else "skip")
+    prev_comp="$(previous compositor)"
+    if [[ -z "$HYPR_MODE" && "$prev_comp" != niri ]]; then HYPR_MODE="$(previous hypr_mode)"; fi
+    if [[ -z "$NIRI_MODE" && ( "$prev_comp" == niri || "$prev_comp" == both ) ]]; then NIRI_MODE="$(previous niri_mode)"; fi
 fi
 if [[ -z "$CHANNEL" ]]; then
     case "$(previous channel)" in stable) CHANNEL=release ;; canary) CHANNEL=latest ;; esac
@@ -354,7 +384,28 @@ fi
 choose TERMINAL "Terminal" "alacritty:GPU terminal, recoloured with the wallpaper" "kitty:feature-rich" "foot:minimal and fast" "ghostty:modern GPU terminal"
 choose FILE_MANAGER "File manager" "nemo:Cinnamon's" "thunar:light, from Xfce" "nautilus:GNOME Files" "dolphin:KDE's"
 choose BROWSER "Browser" "librewolf:privacy-minded Firefox" "firefox:Mozilla Firefox" "chromium:open-source Chromium" "zen-browser:Zen (AUR)"
-choose HYPR_MODE "Hyprland config" "full:Material3UI's hyprland.lua (yours is backed up)" "inject:keep yours, add the shell to it" "skip:don't touch it"
+# The default is what's installed already (Hyprland when neither is)
+if [[ -n "$hv" && -n "$nv" ]]; then comp_default=both
+elif [[ -n "$nv" ]]; then comp_default=niri
+else comp_default=hyprland; fi
+comp_opts=()
+for o in "hyprland:Hyprland, dynamic tiling" "niri:niri, scrollable tiling (beta)" "both:both; pick one at each login"; do
+    if [[ "${o%%:*}" == "$comp_default" ]]; then comp_opts=("$o" "${comp_opts[@]}"); else comp_opts+=("$o"); fi
+done
+choose COMPOSITOR "Compositor" "${comp_opts[@]}"
+WANT_HYPR=0 WANT_NIRI=0
+[[ "$COMPOSITOR" == niri ]] || WANT_HYPR=1
+[[ "$COMPOSITOR" == hyprland ]] || WANT_NIRI=1
+if [[ "$WANT_HYPR" == 1 ]]; then
+    choose HYPR_MODE "Hyprland config" "full:Material3UI's hyprland.lua (yours is backed up)" "inject:keep yours, add the shell to it" "skip:don't touch it"
+else
+    HYPR_MODE=skip
+fi
+if [[ "$WANT_NIRI" == 1 ]]; then
+    choose NIRI_MODE "niri config" "include:keep your config.kdl, include the shell's at its end" "skip:don't touch it"
+else
+    NIRI_MODE=skip
+fi
 choose CHANNEL "Updates" "latest:follow main" "release:tagged releases only"
 # The v1 config can't take an injection: it is replaced instead
 if [[ "$HYPR_MODE" == inject ]] && grep -qs "^-- Material3UI Shell — Hyprland" "$HYPR/hyprland.lua"; then
@@ -415,6 +466,18 @@ case "$HYPR_MODE" in
         cfg "$HYPR/material3ui" "Hyprland modules"
         cfg "$HYPR/hyprland.lua" "+ require(\"material3ui.shell\")" ;;
 esac
+niri_included() { grep -qsE '^\s*include\s+(optional=#?true\s+)?"(\./)?material3ui\.kdl"' "$NIRI/config.kdl"; }
+NIRI_RIVALS=""
+if [[ "$NIRI_MODE" == include ]]; then
+    cfg "$NIRI/material3ui.kdl" "niri: the shell, its keys and your apps"
+    [[ -e "$NIRI/material3ui-user.kdl" ]] || cfg "$NIRI/material3ui-user.kdl" "yours, for niri changes updates keep"
+    if [[ ! -e "$NIRI/config.kdl" ]]; then cfg "$NIRI/config.kdl" "niri's default config + include \"material3ui.kdl\""
+    elif niri_included; then KEPT+=("your niri config.kdl (it includes material3ui.kdl already)")
+    else cfg "$NIRI/config.kdl" "+ include \"material3ui.kdl\""; fi
+    # What the shell does itself (a bar, notifications, polkit, wallpaper, idle)
+    NIRI_RIVALS="$(grep -oE '^\s*spawn-(sh-)?at-startup\s+"(waybar|mako|dunst|swaync|fnott|swaybg|swayidle|[^"]*polkit[^"]*)"' "$NIRI/config.kdl" 2>/dev/null |
+        grep -oE '"[^"]*"' | tr -d '"' | xargs -rn1 basename | sort -u | tr '\n' ' ' || true)"
+fi
 [[ -e "$CONFIG_HOME/quickshell/material3ui" ]] && cfg "$CONFIG_HOME/quickshell/material3ui" "v3 Quickshell shell: removed"
 
 extras=()
@@ -425,7 +488,11 @@ extras=()
 [[ "$GREETER" == 1 ]] && extras+=("login screen")
 row() { printf '  %s%-9s%s %s\n' "$D" "$1" "$R" "$2"; }
 row Apps "$TERMINAL · $FILE_MANAGER · $BROWSER"
-row Hyprland "$HYPR_MODE"
+desk=()
+[[ "$WANT_HYPR" == 1 ]] && desk+=("Hyprland (config: $HYPR_MODE)")
+[[ "$WANT_NIRI" == 1 ]] && desk+=("niri (config: $NIRI_MODE)")
+desk_text="$(printf '%s and ' "${desk[@]}")"
+row Desktop "${desk_text% and }"
 row Updates "$CHANNEL"
 joined="$(IFS=,; printf '%s' "${extras[*]:-none}")"
 row Extras "${joined//,/, }"
@@ -441,6 +508,11 @@ for e in "${CONFIGS[@]}"; do
     label=""
 done
 for k in "${KEPT[@]}"; do row "$label" "${D}= $k${R}"; label=""; done
+if [[ -n "$NIRI_RIVALS" ]]; then
+    set -- $NIRI_RIVALS
+    if [[ $# -eq 1 ]]; then warn "Your config.kdl also starts $1, which the shell replaces: take it out of config.kdl"
+    else warn "Your config.kdl also starts ${NIRI_RIVALS% }, which the shell replaces: take them out of config.kdl"; fi
+fi
 note "Backups and a restore.sh go to $(tilde "$BACKUP_DIR")"
 echo
 confirm "Go ahead?" Y || { info "Nothing changed."; exit 0; }
@@ -556,8 +628,58 @@ case "$HYPR_MODE" in
             done
         fi
         ok "Hyprland (the shell added to your config)" ;;
-    skip) note "Hyprland config left as it is." ;;
+    skip) [[ "$WANT_HYPR" == 0 ]] || note "Hyprland config left as it is." ;;
 esac
+
+# niri: material3ui.kdl (your apps in it), included at the end of config.kdl
+niri_kdl() {
+    sed -e "s/\"alacritty\"/\"$TERMINAL\"/g" -e "s/\"nemo\"/\"$FILE_MANAGER\"/g" -e "s/\"librewolf\"/\"$BROWSER\"/g" \
+        "$DOT/niri/material3ui.kdl"
+}
+if [[ "$NIRI_MODE" == include ]]; then
+    guard "$NIRI/material3ui.kdl"
+    if [[ "$DRY" == 1 ]]; then note "[dry-run] write $(tilde "$NIRI/material3ui.kdl") (with $TERMINAL, $FILE_MANAGER and $BROWSER)"
+    else mkdir -p "$NIRI"; niri_kdl >"$NIRI/material3ui.kdl"; fi
+    if planned "$NIRI/material3ui-user.kdl"; then
+        guard "$NIRI/material3ui-user.kdl"
+        if [[ "$DRY" == 1 ]]; then note "[dry-run] write $(tilde "$NIRI/material3ui-user.kdl")"; else
+            cat >"$NIRI/material3ui-user.kdl" <<'EOF'
+// Yours: niri settings that win over Material3UI's, included last by
+// material3ui.kdl. Updates replace that file, never this one. For example,
+// a key of your own in place of one of the shell's:
+//
+// binds {
+//     Mod+D { spawn "fuzzel"; }
+// }
+EOF
+        fi
+    fi
+    NIRI_OK=1
+    if planned "$NIRI/config.kdl"; then
+        if [[ ! -e "$NIRI/config.kdl" && ! -f "$NIRI_DEFAULT" && "$DRY" == 0 ]]; then
+            # Installed without its docs (NoExtract): niri writes its default at its first start
+            warn "niri's default config isn't here ($NIRI_DEFAULT): start niri once, then run ./install.sh again to include the shell"
+            NIRI_OK=0
+        else
+            guard "$NIRI/config.kdl"
+            if [[ "$DRY" == 1 ]]; then note "[dry-run] add include \"material3ui.kdl\" to $(tilde "$NIRI/config.kdl")"; else
+                # niri's default, minus the bar it starts: the shell is the bar
+                [[ -e "$NIRI/config.kdl" ]] || sed 's|^spawn-at-startup "waybar"|// & (Material3UI is the bar)|' "$NIRI_DEFAULT" >"$NIRI/config.kdl"
+                printf '\n// Material3UI: the shell, its keys and its Settings. Last, so its keys win\ninclude "material3ui.kdl"\n' >>"$NIRI/config.kdl"
+            fi
+        fi
+    fi
+    # niri reads its config again by itself: check what it will find
+    if [[ "$DRY" == 0 && "$NIRI_OK" == 1 ]] && command -v niri >/dev/null; then
+        if niri_check="$(niri validate -c "$NIRI/config.kdl" 2>&1)"; then ok "niri (material3ui.kdl included)"
+        else
+            warn "niri finds an error in its config; ./install.sh --restore puts the old one back:"
+            printf '%s\n' "$niri_check" | sed 's/\x1b\[[0-9;]*m//g' | grep -v -e DEBUG -e " INFO " | tail -n 8 | sed 's/^/    /'
+        fi
+    elif [[ "$NIRI_OK" == 1 ]]; then ok "niri (material3ui.kdl included)"; fi
+elif [[ "$WANT_NIRI" == 1 ]]; then
+    note "niri config left as it is: include \"material3ui.kdl\" yourself (docs/NIRI.md)"
+fi
 
 # Retired: the v3 Quickshell shell and its helpers, and v1's services
 if [[ -e "$CONFIG_HOME/quickshell/material3ui" ]]; then
@@ -627,7 +749,9 @@ if [[ "$DRY" == 0 ]]; then
   "version": "$VERSION",
   "installed": "$TS",
   "inject": $([[ "$HYPR_MODE" == inject ]] && echo true || echo false),
+  "compositor": "$COMPOSITOR",
   "hypr_mode": "$HYPR_MODE",
+  "niri_mode": "$NIRI_MODE",
   "install_dir": "$REPO",
   "channel": "$state_channel",
   "terminal": "$TERMINAL",
@@ -641,17 +765,38 @@ fi
 section "Done"
 if [[ "$DRY" == 1 ]]; then ok "Dry run finished: nothing was changed"; else ok "Material3UI $VERSION is installed"; fi
 if [[ "$CHANGED" -gt 0 && "$DRY" == 0 ]]; then note "$CHANGED config paths changed; ./install.sh --restore undoes them"; fi
-info "Keys    ${A}Super${R} Spotlight · ${A}Super+I${R} Settings · ${A}Super+N${R} Quick Settings · ${A}Super+Return${R} $TERMINAL"
-info "Yours   $(tilde "$HYPR/material3ui/user.lua") for Hyprland tweaks · ${A}material3ui msg help${R} for scripting"
+# niri can't bind Super on its own: Spotlight is Super+Space there
+case "$COMPOSITOR" in
+    niri) spotlight="${A}Super+Space${R}" ;;
+    both) spotlight="${A}Super${R} (${A}Super+Space${R} on niri)" ;;
+    *) spotlight="${A}Super${R}" ;;
+esac
+info "Keys    $spotlight Spotlight · ${A}Super+I${R} Settings · ${A}Super+N${R} Quick Settings · ${A}Super+Return${R} $TERMINAL"
+yours=()
+[[ "$HYPR_MODE" == skip ]] || yours+=("$(tilde "$HYPR/material3ui/user.lua") for Hyprland tweaks")
+[[ "$NIRI_MODE" != include ]] || yours+=("$(tilde "$NIRI/material3ui-user.kdl") for niri tweaks")
+yours+=("${A}material3ui msg help${R} for scripting")
+info "Yours   $(printf '%s · ' "${yours[@]}" | sed 's/ · $//')"
 if pacman -Qq quickshell-git >/dev/null 2>&1; then note "quickshell-git isn't used any more: yay -Rns quickshell-git"; fi
-if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" && "$WANT_HYPR" == 1 ]]; then
     if confirm "Reload Hyprland and start the shell now?" Y; then
         do_ pkill -x material3ui || true
         do_ hyprctl reload >/dev/null
         do_ hyprctl dispatch exec material3ui >/dev/null
         ok "Running"
     fi
+elif [[ -n "${NIRI_SOCKET:-}" && "$WANT_NIRI" == 1 ]]; then
+    # niri has read material3ui.kdl by itself already
+    if confirm "Start the shell now?" Y; then
+        do_ pkill -x material3ui || true
+        do_ niri msg action spawn -- material3ui >/dev/null
+        ok "Running"
+    fi
 else
-    info "Log into Hyprland to start it."
+    case "$COMPOSITOR" in
+        niri) info "Log into niri to start it." ;;
+        both) info "Log into Hyprland or niri to start it." ;;
+        *) info "Log into Hyprland to start it." ;;
+    esac
 fi
 note "Log: $(tilde "$LOG")"

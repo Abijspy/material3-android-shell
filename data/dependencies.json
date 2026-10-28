@@ -1,11 +1,6 @@
 {
   "core": [
     {
-      "name": "hyprland",
-      "command": "hyprctl",
-      "description": "Wayland compositor (Base)"
-    },
-    {
       "name": "python3",
       "command": "python3",
       "description": "Theme generation backend"
@@ -101,6 +96,55 @@
       "description": "Lock screen authentication"
     }
   ],
+  "hyprland": [
+    {
+      "name": "hyprland",
+      "command": "hyprctl",
+      "description": "Wayland compositor (Base)"
+    },
+    {
+      "name": "xdg-desktop-portal-hyprland",
+      "command": "/usr/lib/xdg-desktop-portal-hyprland",
+      "description": "Screen sharing support"
+    },
+    {
+      "name": "hyprpicker",
+      "command": "hyprpicker",
+      "description": "Color picker"
+    },
+    {
+      "name": "hyprlock",
+      "command": "hyprlock",
+      "description": "System locker"
+    },
+    {
+      "name": "hyprsunset",
+      "command": "hyprsunset",
+      "description": "Blue light filter"
+    },
+    {
+      "name": "hypridle",
+      "command": "hypridle",
+      "description": "Idle daemon the Hyprland config starts"
+    }
+  ],
+  "niri": [
+    {
+      "name": "niri",
+      "command": "niri",
+      "description": "Wayland compositor: scrollable tiling (beta)"
+    },
+    {
+      "name": "xwayland-satellite",
+      "command": "xwayland-satellite",
+      "description": "X11 apps on niri"
+    },
+    {
+      "name": "xdg-desktop-portal-gnome",
+      "command": "/usr/lib/xdg-desktop-portal-gnome",
+      "description": "Screen sharing on niri"
+    }
+  ],
   "services": [
     {
       "name": "pipewire",
@@ -145,11 +189,6 @@
   ],
   "utilities": [
     {
-      "name": "xdg-desktop-portal-hyprland",
-      "command": "/usr/lib/xdg-desktop-portal-hyprland",
-      "description": "Screen sharing support"
-    },
-    {
       "name": "xdg-desktop-portal-gtk",
       "command": "/usr/lib/xdg-desktop-portal-gtk",
       "description": "File picker support"
@@ -193,21 +232,6 @@
       "name": "cava",
       "command": "cava",
       "description": "Audio visualizer"
-    },
-    {
-      "name": "hyprpicker",
-      "command": "hyprpicker",
-      "description": "Color picker"
-    },
-    {
-      "name": "hyprlock",
-      "command": "hyprlock",
-      "description": "System locker"
-    },
-    {
-      "name": "hyprsunset",
-      "command": "hyprsunset",
-      "description": "Blue light filter"
     },
     {
       "name": "wl-clipboard",

@@ -1,3 +1,5 @@
 post_install() {
     echo ":: Make it the login screen with: material3ui-greeter setup --enable"
+    command -v Hyprland >/dev/null 2>&1 || command -v niri >/dev/null 2>&1 ||
+        echo ":: It runs in Hyprland or niri: install one of them too"
 }

@@ -8,13 +8,17 @@ pkgdesc="Material3UI's login screen for greetd"
 arch=(any)
 url="https://github.com/Abijspy/material3-android-shell"
 license=(MIT)
-depends=(greetd hyprland acl)
+depends=(greetd acl)
+# It runs in a minimal session of one of them (Hyprland when both are there)
+optdepends=('hyprland: the session the login screen runs in'
+            'niri: the session the login screen runs in, without Hyprland')
 install=material3ui-greeter.install
 
 package() {
     local src="${M3_SRC:?build with packaging/build-pkg.sh}"
-    install -Dm644 "$src/greeter/hyprland.lua" -t "$pkgdir/usr/share/material3ui-greeter/"
-    install -Dm755 "$src/greeter/greet-hyprland.sh" "$src/greeter/greet-run.sh" -t "$pkgdir/usr/share/material3ui-greeter/"
+    install -Dm644 "$src/greeter/hyprland.lua" "$src/greeter/niri.kdl" -t "$pkgdir/usr/share/material3ui-greeter/"
+    install -Dm755 "$src/greeter/greet.sh" "$src/greeter/greet-hyprland.sh" "$src/greeter/greet-niri.sh" "$src/greeter/greet-run.sh" \
+        -t "$pkgdir/usr/share/material3ui-greeter/"
     install -Dm755 "$src/greeter/material3ui-greeter" -t "$pkgdir/usr/bin/"
     # Its icon, for package tools; no .desktop file, so it stays out of app lists
     install -Dm644 "$src/greeter/material3ui-greeter.svg" -t "$pkgdir/usr/share/icons/hicolor/scalable/apps/"

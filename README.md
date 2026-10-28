@@ -72,7 +72,7 @@ Most Linux desktops are a patchwork. The bar comes from one project, the lock sc
 
 ## Install in one line
 
-You need an Arch-based system (Arch, CachyOS, EndeavourOS, ...) with Hyprland 0.55 or newer.
+You need an Arch-based system (Arch, CachyOS, EndeavourOS, ...). The shell runs on Hyprland 0.55 or newer, or on niri 26.04 or newer (in beta); the installer asks which, and installs it if it isn't there.
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Abijspy/material3-android-shell/main/install.sh)"
@@ -87,7 +87,9 @@ The installer asks a few questions, shows you one plan (packages, the shell buil
 | :--- | :--- |
 | `--dry-run` | Show every package and file it would touch, and change nothing (from a local checkout) |
 | `--yes` | Accept all defaults, for scripted or repeat installs |
+| `--compositor hyprland` · `niri` · `both` | What the shell runs on. The default is what's installed already (Hyprland when neither is). |
 | `--hypr full` · `inject` · `skip` | `full` installs the whole Hyprland config. `inject` adds the shell to your existing config. `skip` leaves Hyprland alone. |
+| `--niri include` · `skip` | `include` adds the shell to the end of your niri `config.kdl` (or niri's default config). `skip` leaves niri alone. |
 | `--terminal` · `--file-manager` · `--browser` | Your apps. The defaults are Alacritty, Nemo and LibreWolf. |
 | `--greeter` | Also install the greetd login screen (asks for sudo) |
 | `--channel latest` · `release` | Follow `main` (default), or the latest tagged release |
@@ -263,7 +265,7 @@ No. Pick `--hypr inject` and the installer adds three `require` lines to your ex
 <details>
 <summary><b>Does it work on niri?</b></summary>
 
-Yes, in beta, from 6.0: the bar, the dock, the panels, the lock screen and the rest run on niri 26.04 or newer, with niri's own overview. From 6.0-beta-2, Settings changes niri too: the touchpad and mouse, keyboard layouts and shortcuts, monitors, night light and the cursor. How windows look is still Hyprland Settings' only. Setting it up takes a few steps by hand → [Material3UI on niri](docs/NIRI.md)
+Yes, in beta, from 6.0: the bar, the dock, the panels, the lock screen and the rest run on niri 26.04 or newer, with niri's own overview. From 6.0-beta-2, Settings changes niri too: the touchpad and mouse, keyboard layouts and shortcuts, monitors, night light and the cursor. How windows look is still Hyprland Settings' only. From 6.0-beta-3 the installer sets niri up (`--compositor niri`, or `both` to pick at each login), and the login screen runs on niri when Hyprland isn't installed → [Material3UI on niri](docs/NIRI.md)
 </details>
 
 <details>

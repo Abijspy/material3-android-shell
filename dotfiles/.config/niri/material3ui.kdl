@@ -1,8 +1,16 @@
 // Material3UI on niri: the shell at startup, its keys, and its wallpaper
 // behind the overview. Included at the end of ~/.config/niri/config.kdl:
 //     include "material3ui.kdl"
+// install.sh and update.sh replace this file (with the apps you picked in
+// it); keep your own changes in material3ui-user.kdl, included last.
 
 spawn-at-startup "material3ui"
+
+// Your apps, for the keys below and for the shell's "Open a terminal"
+environment {
+    TERMINAL "alacritty"
+    BROWSER "librewolf"
+}
 
 // The shell draws the wallpaper; in the overview it stays behind the workspaces
 layer-rule {
@@ -11,6 +19,10 @@ layer-rule {
 }
 
 binds {
+    Mod+Return hotkey-overlay-title="Terminal" { spawn "alacritty"; }
+    Mod+T { spawn "alacritty"; }
+    Mod+E hotkey-overlay-title="Files" { spawn "nemo"; }
+    Mod+B hotkey-overlay-title="Browser" { spawn "librewolf"; }
     Mod+Space hotkey-overlay-title="Spotlight" { spawn "material3ui" "msg" "launcher"; }
     Mod+A hotkey-overlay-title="Notifications" { spawn "material3ui" "msg" "popup" "notifications"; }
     Mod+N hotkey-overlay-title="Quick Settings" { spawn "material3ui" "msg" "popup" "quicksettings"; }
@@ -24,6 +36,7 @@ binds {
     Mod+Grave hotkey-overlay-title="Overview" { spawn "material3ui" "msg" "popup" "overview"; }
     Mod+Escape hotkey-overlay-title="Power menu" { spawn "material3ui" "msg" "popup" "power"; }
     Mod+L hotkey-overlay-title="Lock" allow-when-locked=true { spawn "material3ui" "msg" "lock"; }
+    Super+Alt+L allow-when-locked=true { spawn "material3ui" "msg" "lock"; }
     Ctrl+Mod+T hotkey-overlay-title="Wallpapers" { spawn "material3ui" "msg" "wallpaper" "pick"; }
     Ctrl+Alt+Delete hotkey-overlay-title="System monitor" { spawn "material3ui" "msg" "settings" "monitor"; }
     Mod+Shift+S hotkey-overlay-title="Screenshot a region" { spawn "material3ui" "msg" "screenshot" "region"; }
@@ -39,3 +52,6 @@ binds {
 // The shell's Settings (cursor, touchpad, keyboard, monitors, your keys):
 // written by the shell, last so they win
 include optional=true "material3ui-settings.kdl"
+
+// Yours: keys and rules that win over the ones above, kept by updates
+include optional=true "material3ui-user.kdl"
