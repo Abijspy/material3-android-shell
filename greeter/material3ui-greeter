@@ -71,18 +71,20 @@ in_checkout() { [[ -f "$SRC/greet-run.sh" && -x "$REPO/packaging/build-pkg.sh" ]
 # ── install ──────────────────────────────────────────────────────────────────
 # Prints the path of a package for this checkout: the release's, else built
 fetch_or_build() {
-    local ver tmp name
+    local ver tmp name tag
     ver="$(as_user "$REPO/packaging/build-pkg.sh" --version)"
     tmp="$(as_user mktemp -d)"
-    # A release ships the package; between releases there is none to take
-    if [[ "$ver" != *.r* ]]; then
+    # A release ships the package; between releases there is none to take.
+    # The tag as written (v6.0-beta-3), not the package's spelling (6.0beta3)
+    tag="$(as_user git -C "$REPO" describe --tags --exact-match --match 'v*' 2>/dev/null || true)"
+    if [[ -n "$tag" ]]; then
         name="material3ui-greeter-$ver-1-any.pkg.tar.zst"
-        if as_user curl -fsSL -o "$tmp/$name" "$RELEASES/download/v$ver/$name"; then
-            say "Downloaded $name from the v$ver release" >&2
+        if as_user curl -fsSL -o "$tmp/$name" "$RELEASES/download/$tag/$name"; then
+            say "Downloaded $name from the $tag release" >&2
             echo "$tmp/$name"
             return
         fi
-        say "The v$ver release has no package; building it here" >&2
+        say "The $tag release has no package; building it here" >&2
     fi
     as_user "$REPO/packaging/build-pkg.sh" material3ui-greeter "$tmp"
 }

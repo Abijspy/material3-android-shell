@@ -27,6 +27,11 @@ int main() {
     expect(!newerVersion("6.0-beta-1", "6.0-beta-1"), "the same isn't newer");
     expect(!newerVersion("6.0beta1", "6.0-beta-1") && newerVersion("6.0beta2", "6.0-beta-1"), "pacman's spelling reads the same");
     expect(newerVersion("v6.0", "5.8.4"), "a tag's v");
+    expect(newerVersion("6.0-beta-3.1", "6.0-beta-3") && !newerVersion("6.0-beta-3", "6.0-beta-3.1"), "a point release of a beta");
+    expect(newerVersion("6.0-beta-4", "6.0-beta-3.1") && newerVersion("6.0-beta-3.2", "6.0-beta-3.1"), "and after it");
+    expect(!newerVersion("6.0-beta-3.0", "6.0-beta-3") && !newerVersion("6.0-beta-3", "6.0-beta-3.0"), "beta 3.0 is beta 3");
+    expect(newerVersion("6.0beta3.1", "6.0-beta-3") && !newerVersion("6.0beta3.r2.gabc123", "6.0-beta-3"),
+           "pacman's spelling, and a build between releases stops at .r");
 
     if (failures) std::fprintf(stderr, "%d failed\n", failures);
     return failures ? 1 : 0;
