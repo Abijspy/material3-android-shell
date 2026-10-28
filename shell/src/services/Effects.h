@@ -4,7 +4,8 @@
 
 namespace m3 {
 
-// Compositor-side effects for the shell's layers. Blur on Hyprland is a
+// Compositor-side effects for the shell's layers (on niri, what Settings
+// changes there goes to services/NiriConfig instead). Blur on Hyprland is a
 // layer rule, not something a client can ask for: this writes the rules (and
 // the blur strength) from config.json into effects_custom.lua, which
 // shell.lua reads, and reloads Hyprland when they change. Hyprland shapes

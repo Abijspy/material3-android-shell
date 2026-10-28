@@ -190,6 +190,12 @@ void Niri::handle(const nlohmann::json& event) {
         }
         return;
     }
+    if (const auto it = event.find("ConfigLoaded"); it != event.end()) {
+        configLoaded.emit(it->value("failed", false));
+        refreshOutputs(); // monitors may be set differently now
+        publish(niri::Model::Workspaces);
+        return;
+    }
     const unsigned changes = m_model.apply(event);
     // Outputs come and go with their workspaces; niri has no event of their own
     if (event.contains("WorkspacesChanged")) refreshOutputs();
@@ -206,6 +212,13 @@ void Niri::handle(const nlohmann::json& event) {
 
 void Niri::refreshOutputs() {
     if (auto outs = request("Outputs")) m_model.setOutputs(outs->value("Outputs", nlohmann::json::object()));
+    outputsChanged.emit();
+}
+
+void Niri::outputAction(const std::string& output, const nlohmann::json& a) {
+    request({{"Output", {{"output", output}, {"action", a}}}});
+    refreshOutputs();
+    publish(niri::Model::Workspaces);
 }
 
 void Niri::publish(unsigned changes) {

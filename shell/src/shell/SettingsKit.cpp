@@ -312,4 +312,43 @@ Button* dropdown(Node* tail, Node* g, const std::string& shown, const std::vecto
     return drop;
 }
 
+// ── Config-bound rows ──
+
+void switchRow(Node* g, const std::string& icon, const std::string& title, const std::string& sub,
+               const std::string& pointer, bool fallback, std::function<void(bool)> after) {
+    auto r = row(g, icon, title, sub);
+    auto* sw = r.row->add<Switch>();
+    sw->setChecked(Config::get().value<bool>(pointer, fallback), false);
+    sw->onToggled = [pointer, after](bool on) {
+        Config::get().set(pointer, on);
+        if (after) after(on);
+    };
+}
+
+void sliderRow(Node* g, const std::string& icon, const std::string& title, const std::string& pointer, double fallback,
+               double min, double max, double step, const std::function<std::string(double)>& format,
+               std::function<void(double)> after) {
+    auto r = row(g, icon, title, format(Config::get().value<double>(pointer, fallback)));
+    auto* sl = r.row->add<Slider>();
+    sl->fixedWidth = 240;
+    sl->setRange(static_cast<float>(min), static_cast<float>(max))->setStep(static_cast<float>(step / (max - min)));
+    sl->setValue(static_cast<float>(Config::get().value<double>(pointer, fallback)), false);
+    auto* sub = r.subtitle;
+    sub->setVisible(true);
+    sl->onChanged = [sub, format, step](float v) { sub->setText(format(std::round(v / step) * step)); };
+    sl->onCommitted = [pointer, step, after](float v) {
+        const double snapped = std::round(v / step) * step;
+        Config::get().set(pointer, snapped);
+        if (after) after(snapped);
+    };
+}
+
+void textRow(Node* g, const std::string& icon, const std::string& title, const std::string& pointer, const std::string& fallback) {
+    auto r = row(g, icon, title, "Enter to apply");
+    auto* f = r.row->add<TextField>();
+    f->fixedWidth = 280;
+    f->setText(Config::get().value<std::string>(pointer, fallback));
+    f->onSubmit = [pointer](const std::string& t) { Config::get().set(pointer, t); };
+}
+
 } // namespace m3::shell::panels

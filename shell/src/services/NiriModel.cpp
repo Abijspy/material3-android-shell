@@ -65,14 +65,25 @@ void Model::setOutputs(const nlohmann::json& reply) {
     for (const auto& [name, o] : reply.items()) {
         Out x;
         x.name = name;
-        // Off (no logical size): not on the desktop
+        x.make = str(o, "make");
+        x.model = str(o, "model");
+        for (const auto& m : o.value("modes", nlohmann::json::array()))
+            if (m.is_object())
+                x.modes.push_back({m.value("width", 0), m.value("height", 0), m.value("refresh_rate", 0), m.value("is_preferred", false)});
+        if (const auto c = o.find("current_mode"); c != o.end() && c->is_number_integer()) x.current = c->get<int>();
+        x.vrrSupported = o.value("vrr_supported", false);
+        x.vrr = o.value("vrr_enabled", false);
+        // Off: no logical place on the desktop
         const auto l = o.find("logical");
-        if (l == o.end() || !l->is_object()) continue;
-        x.x = l->value("x", 0.0f);
-        x.y = l->value("y", 0.0f);
-        x.w = l->value("width", 0.0f);
-        x.h = l->value("height", 0.0f);
-        x.scale = l->value("scale", 1.0f);
+        x.on = l != o.end() && l->is_object();
+        if (x.on) {
+            x.x = l->value("x", 0.0f);
+            x.y = l->value("y", 0.0f);
+            x.w = l->value("width", 0.0f);
+            x.h = l->value("height", 0.0f);
+            x.scale = l->value("scale", 1.0f);
+            x.transform = str(*l, "transform");
+        }
         outputs.push_back(x);
     }
     std::ranges::sort(outputs, {}, &Out::name);
@@ -208,6 +219,7 @@ std::vector<Compositor::Output> Model::shellOutputs() const {
         return out.back();
     };
     for (const auto& o : outputs) {
+        if (!o.on) continue; // not on the desktop
         auto& x = add(o.name);
         x.x = o.x;
         x.y = o.y;

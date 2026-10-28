@@ -5,6 +5,8 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "services/Hyprland.h"
+#include "services/Niri.h"
+#include "services/NiriConfig.h"
 #include "services/Packages.h"
 #include "ui/Theme.h"
 #include "wayland/Display.h"
@@ -56,7 +58,9 @@ Effects::Effects() {
     Config::get().changed.connectForever([this] { apply(); });
     // Bibata installed (from Hyprland Settings → Cursor): in use at once
     Packages::get().changed.connectForever([this] {
-        if (!Packages::get().busy()) applyCursor();
+        if (Packages::get().busy()) return;
+        if (Niri::get().available()) NiriConfig::get().apply();
+        else applyCursor();
     });
 }
 
@@ -255,6 +259,8 @@ void Effects::applyCursor() {
 }
 
 void Effects::apply() {
+    // niri: what Settings changes there, as its own config (NiriConfig)
+    if (Niri::get().available()) return NiriConfig::get().apply();
     auto& h = Hyprland::get();
     if (!h.available()) return;
     auto& t = Theme::get();

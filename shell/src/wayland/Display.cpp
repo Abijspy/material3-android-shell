@@ -8,6 +8,7 @@
 #include "ext-background-effect-v1-client-protocol.h"
 #include "ext-idle-notify-v1-client-protocol.h"
 #include "ext-session-lock-v1-client-protocol.h"
+#include "wlr-gamma-control-unstable-v1-client-protocol.h"
 #include "fractional-scale-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
@@ -167,6 +168,8 @@ void Display::addGlobal(wl_registry* r, uint32_t name, const char* iface, uint32
         m_lockManager = wl_registry_bind(r, name, &ext_session_lock_manager_v1_interface, 1);
     } else if (i == ext_idle_notifier_v1_interface.name) {
         m_idleNotifier = wl_registry_bind(r, name, &ext_idle_notifier_v1_interface, 1);
+    } else if (i == zwlr_gamma_control_manager_v1_interface.name) {
+        m_gammaManager = wl_registry_bind(r, name, &zwlr_gamma_control_manager_v1_interface, 1);
     } else if (i == ext_background_effect_manager_v1_interface.name) {
         m_backgroundEffect = static_cast<ext_background_effect_manager_v1*>(
             wl_registry_bind(r, name, &ext_background_effect_manager_v1_interface, 1));

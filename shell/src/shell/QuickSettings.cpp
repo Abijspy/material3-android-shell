@@ -2,6 +2,7 @@
 #include "services/Idle.h"
 #include "services/Mpris.h"
 #include "services/Network.h"
+#include "services/NightLight.h"
 #include "services/Notifications.h"
 #include "services/Printers.h"
 #include "services/Search.h"
@@ -34,7 +35,6 @@ using namespace m3::shell::kit;
 
 namespace {
 
-bool g_nightLight = false;
 
 std::string nowTime() {
     const std::time_t t = std::time(nullptr);
@@ -272,12 +272,9 @@ const std::vector<TileDef>& tileDefs() {
         {"caffeine", "coffee", "Caffeine", [] { return Idle::get().inhibited(); },
          [] { return std::string(Idle::get().inhibited() ? "Staying awake" : "Off"); }, {},
          [](Popup&) { Idle::get().setInhibited(!Idle::get().inhibited()); }},
-        {"nightlight", "nightlight", "Night light", [] { return g_nightLight; },
-         [] { return std::string(g_nightLight ? "4500 K" : "Off"); }, {},
-         [](Popup&) {
-             g_nightLight = !g_nightLight;
-             spawn(g_nightLight ? "pkill -x hyprsunset; hyprsunset -t 4500" : "pkill -x hyprsunset");
-         }},
+        {"nightlight", "nightlight", "Night light", [] { return NightLight::get().on(); },
+         [] { return NightLight::get().on() ? std::format("{} K", NightLight::get().temperature()) : std::string("Off"); }, {},
+         [](Popup&) { NightLight::get().set(!NightLight::get().on()); }},
         {"mic", "mic", "Microphone",
          [] {
              const auto* s = Audio::get().source();
@@ -833,6 +830,7 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
     live->watch(Bluetooth::get().changed);
     live->watch(Notifications::get().changed);
     live->watch(Idle::get().changed);
+    live->watch(NightLight::get().changed);
     live->watch(Vpn::get().changed);
     live->watch(Wellbeing::get().changed);
     live->watch(Printers::get().changed);
@@ -865,8 +863,6 @@ void quickSettings(Flex* card, Popup& popup, const std::string& view) {
         editView(body, *showMain);
     else
         mainView(body, popup, showWifi, showBluetooth, showEdit);
-    // Night light state from the running processes
-    m3::run({"pgrep", "-x", "hyprsunset"}, [](int code, const std::string&) { g_nightLight = code == 0; });
 }
 
 } // namespace m3::shell::panels

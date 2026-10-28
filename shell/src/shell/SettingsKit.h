@@ -2,6 +2,7 @@
 
 // Building blocks shared by the Settings pages (Settings.cpp and the
 // Hyprland pages): M3 Expressive segmented lists, rows and button groups.
+#include "core/Config.h"
 #include "shell/PanelKit.h"
 #include "ui/Controls.h"
 #include "ui/Node.h"
@@ -122,6 +123,24 @@ Flex* connectedGroup(Node* parent, T current, std::vector<std::pair<T, std::stri
     }
     paint(current, false);
     return chips;
+}
+
+
+// Rows bound to a config.json pointer: written as they change, then `after`
+void switchRow(Node* g, const std::string& icon, const std::string& title, const std::string& sub, const std::string& pointer,
+               bool fallback, std::function<void(bool)> after = {});
+void sliderRow(Node* g, const std::string& icon, const std::string& title, const std::string& pointer, double fallback, double min,
+               double max, double step, const std::function<std::string(double)>& format, std::function<void(double)> after = {});
+// A text field, applied on Enter
+void textRow(Node* g, const std::string& icon, const std::string& title, const std::string& pointer, const std::string& fallback);
+template <typename T>
+void choiceRow(Node* g, const std::string& icon, const std::string& title, const std::string& sub, const std::string& pointer,
+               T fallback, std::vector<std::pair<T, std::string>> options, std::function<void(T)> after = {}) {
+    auto r = row(g, icon, title, sub);
+    connectedGroup<T>(r.row, Config::get().value<T>(pointer, fallback), std::move(options), [pointer, after](T v) {
+        Config::get().set(pointer, v);
+        if (after) after(v);
+    });
 }
 
 } // namespace m3::shell::panels

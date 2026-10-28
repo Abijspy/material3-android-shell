@@ -28,14 +28,24 @@ struct Model {
         std::string name, output;
         bool active = false, focused = false, urgent = false;
     };
+    struct Mode {
+        int width = 0, height = 0;
+        int refresh = 0; // mHz
+        bool preferred = false;
+    };
     struct Out {
-        std::string name;
+        std::string name, make, model;
         float x = 0, y = 0, w = 0, h = 0, scale = 1; // logical
+        bool on = true;                               // off: no logical place on the desktop
+        std::string transform = "Normal";             // Normal, 90, 180, 270, Flipped…
+        std::vector<Mode> modes;
+        int current = -1; // in modes
+        bool vrrSupported = false, vrr = false;
     };
 
     std::map<uint64_t, Win> windows;
     std::map<uint64_t, Ws> workspaces;
-    std::vector<Out> outputs; // from the Outputs request (no event says)
+    std::vector<Out> outputs; // from the Outputs request (no event says); off ones too
     std::vector<std::string> layouts;
     int layout = 0; // the keyboard layout in use
     bool overview = false;

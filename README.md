@@ -263,7 +263,7 @@ No. Pick `--hypr inject` and the installer adds three `require` lines to your ex
 <details>
 <summary><b>Does it work on niri?</b></summary>
 
-Yes, in beta, from 6.0: the bar, the dock, the panels, the lock screen and the rest run on niri 26.04 or newer, with niri's own overview. The settings that change the compositor (input, displays, the cursor, keybinds) are still Hyprland's for now. Setting it up takes a few steps by hand → [Material3UI on niri](docs/NIRI.md)
+Yes, in beta, from 6.0: the bar, the dock, the panels, the lock screen and the rest run on niri 26.04 or newer, with niri's own overview. From 6.0-beta-2, Settings changes niri too: the touchpad and mouse, keyboard layouts and shortcuts, monitors, night light and the cursor. How windows look is still Hyprland Settings' only. Setting it up takes a few steps by hand → [Material3UI on niri](docs/NIRI.md)
 </details>
 
 <details>

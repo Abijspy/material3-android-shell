@@ -14,6 +14,7 @@
 #include "render/Renderer.h"
 #include "render/Text.h"
 #include "services/HyprOptions.h"
+#include "services/Hyprland.h"
 #include "services/Compositor.h"
 #include "services/Alarms.h"
 #include "services/Audio.h"
@@ -31,6 +32,7 @@
 #include "services/Effects.h"
 #include "services/Mpris.h"
 #include "services/Network.h"
+#include "services/NightLight.h"
 #include "services/Notifications.h"
 #include "services/Tray.h"
 #include "services/Idle.h"
@@ -95,7 +97,10 @@ bool Shell::start() {
     // New apps bring their icons; before anyone redraws with them
     Apps::get().changed.connectForever([] { Images::get().rescan(); });
 
-    display.onOutputReady = [this](wl::Output* o) { addOutput(o); };
+    display.onOutputReady = [this](wl::Output* o) {
+        addOutput(o);
+        NightLight::get().outputsChanged(); // its own warmth too
+    };
     display.onOutputRemoved = [this](wl::Output* o) { removeOutput(o); };
     for (auto& o : display.outputs())
         if (o->ready) addOutput(o.get());
@@ -121,6 +126,7 @@ bool Shell::start() {
     Session::get().lockRequested.connectForever([] { LockScreen::get().lock(); });
     Idle::get().lockRequested.connectForever([] { LockScreen::get().lock(); });
     Idle::get().start();
+    NightLight::get().start(); // as Settings left it, the screens up now
     // Updates: checked in the background (Settings → Software & updates); a
     // notification's Review opens the page
     Packages::get().openSettings = [this](const std::string& page) { EventLoop::get().defer([this, page] { openSettings(page); }); };
@@ -229,6 +235,7 @@ void Shell::syncDock(wl::Output* output) {
 }
 
 void Shell::removeOutput(wl::Output* output) {
+    NightLight::get().forget(output);
     Hooks::get().fire("monitor_removed", {{"M3_MONITOR", output->name}});
     LockScreen::get().removeOutput(output);
     m_desktops.erase(output);
@@ -278,6 +285,11 @@ void Shell::openSettings(const std::string& page) {
 }
 
 void Shell::openHyprSettings(const std::string& page) {
+    // Hyprland's options: nothing to show on another compositor
+    if (!Hyprland::get().available()) {
+        log::info("Hyprland Settings: not on Hyprland");
+        return;
+    }
     if (m_hyprSettings && !m_hyprSettings->closing()) {
         if (!page.empty()) panels::settingsPage(page);
         auto& c = Compositor::get();

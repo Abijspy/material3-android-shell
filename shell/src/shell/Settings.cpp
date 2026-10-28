@@ -15,6 +15,7 @@
 #include "services/HyprOptions.h"
 #include "services/Compositor.h"
 #include "services/Hyprland.h"
+#include "services/Niri.h"
 #include "services/Keybinds.h"
 #include "services/Network.h"
 #include "services/Notifications.h"
@@ -33,6 +34,7 @@
 #include "shell/SoftwarePages.h"
 #include "shell/WellbeingPage.h"
 #include "shell/KeyCapture.h"
+#include "shell/NiriPages.h"
 #include "shell/LockLayout.h"
 #include "shell/PanelKit.h"
 #include "shell/SettingsKit.h"
@@ -84,58 +86,12 @@ void reshowPage(const std::string& id) {
     if (reshow[hypr]) reshow[hypr](id);
 }
 
-// Config-bound controls
-
-void switchRow(Node* g, const std::string& icon, const std::string& title, const std::string& sub,
-               const std::string& pointer, bool fallback, std::function<void(bool)> after = {}) {
-    auto r = row(g, icon, title, sub);
-    auto* sw = r.row->add<Switch>();
-    sw->setChecked(Config::get().value<bool>(pointer, fallback), false);
-    sw->onToggled = [pointer, after](bool on) {
-        Config::get().set(pointer, on);
-        if (after) after(on);
-    };
-}
-
-template <typename T>
-void choiceRow(Node* g, const std::string& icon, const std::string& title, const std::string& sub, const std::string& pointer,
-               T fallback, std::vector<std::pair<T, std::string>> options, std::function<void(T)> after = {}) {
-    auto r = row(g, icon, title, sub);
-    connectedGroup<T>(r.row, Config::get().value<T>(pointer, fallback), std::move(options), [pointer, after](T v) {
-        Config::get().set(pointer, v);
-        if (after) after(v);
-    });
-}
-
-void sliderRow(Node* g, const std::string& icon, const std::string& title, const std::string& pointer, double fallback,
-               double min, double max, double step, const std::function<std::string(double)>& format,
-               std::function<void(double)> after = {}) {
-    auto r = row(g, icon, title, format(Config::get().value<double>(pointer, fallback)));
-    auto* sl = r.row->add<Slider>();
-    sl->fixedWidth = 240;
-    sl->setRange(static_cast<float>(min), static_cast<float>(max))->setStep(static_cast<float>(step / (max - min)));
-    sl->setValue(static_cast<float>(Config::get().value<double>(pointer, fallback)), false);
-    auto* sub = r.subtitle;
-    sub->setVisible(true);
-    sl->onChanged = [sub, format, step](float v) { sub->setText(format(std::round(v / step) * step)); };
-    sl->onCommitted = [pointer, step, after](float v) {
-        const double snapped = std::round(v / step) * step;
-        Config::get().set(pointer, snapped);
-        if (after) after(snapped);
-    };
-}
-
-void textRow(Node* g, const std::string& icon, const std::string& title, const std::string& pointer, const std::string& fallback) {
-    auto r = row(g, icon, title, "Enter to apply");
-    auto* f = r.row->add<TextField>();
-    f->fixedWidth = 280;
-    f->setText(Config::get().value<std::string>(pointer, fallback));
-    f->onSubmit = [pointer](const std::string& t) { Config::get().set(pointer, t); };
-}
+// Config-bound controls: switchRow, choiceRow, sliderRow, textRow (SettingsKit)
 
 // A setting Hyprland owns: kept in Hyprland Settings only (no copy here to
 // disagree with it), and this row takes you there
 void hyprLink(Node* g, const std::string& icon, const std::string& title, const std::string& sub, const std::string& hyprPage) {
+    if (!Hyprland::get().available()) return; // niri: no Hyprland Settings to go to
     auto r = row(g, icon, title, sub);
     pillButton(r.row, "Hyprland Settings", false, [hyprPage] {
         if (open) open("hyprsettings " + hyprPage);
@@ -505,17 +461,14 @@ void displayPage(Flex* page, Popup&) {
         row(g, "brightness_medium", "No adjustable backlight", "External monitors are controlled from their own menus");
     }
 
-    auto* night = group(page, "Night light", "Warmer colours in the evening, via hyprsunset");
-    auto applyNight = [] {
-        if (Config::get().value<bool>("/nightLight/enabled", false))
-            spawn(std::format("pkill -x hyprsunset; hyprsunset -t {}", Config::get().value<int>("/nightLight/temperature", 4500)));
-        else
-            spawn("pkill -x hyprsunset");
-    };
-    switchRow(night, "nightlight", "Night light", "", "/nightLight/enabled", false, [applyNight](bool) { applyNight(); });
+    // NightLight follows the config: hyprsunset on Hyprland, the screens'
+    // gamma itself elsewhere
+    auto* night = group(page, "Night light", "Warmer colours in the evening");
+    switchRow(night, "nightlight", "Night light", "", "/nightLight/enabled", false);
     sliderRow(night, "thermostat", "Colour temperature", "/nightLight/temperature", 4500, 2500, 6500, 100,
-              [](double v) { return std::format("{:.0f} K", v); }, [applyNight](double) { applyNight(); });
+              [](double v) { return std::format("{:.0f} K", v); });
 
+    if (Niri::get().available()) return niriMonitors(page);
     auto* mons = group(page, "Monitors", "Arrange them and set their resolution, scale, rotation, VRR and HDR in Hyprland Settings");
     if (auto j = Hyprland::get().requestJson("monitors"); j && j->is_array()) {
         for (const auto& m : *j)
@@ -1888,6 +1841,15 @@ void accessibilityPage(Flex* page, Popup&) {
         Config::get().set("/appearance/blur/enabled", on ? nlohmann::json(false) : nlohmann::json(nullptr));
     };
 
+    // Colour correction and the magnifier are Hyprland's (its shaders, its zoom)
+    if (!Hyprland::get().available()) {
+        auto* g = group(page, "Colour correction and magnifier");
+        row(g, "visibility", "On Hyprland only", "Screen filters and zoom need Hyprland; this compositor has neither yet");
+        auto* pointer = group(page, "Pointer");
+        choiceRow<int>(pointer, "mouse", "Cursor size", "", "/accessibility/cursorSize", 24,
+                       {{24, "Default"}, {32, "Large"}, {48, "Larger"}, {64, "Largest"}});
+        return;
+    }
     // Colour correction: one filter over the whole screen (Hyprland shaders)
     auto* colour = page->add<Live>();
     colour->setSpacing(6);
@@ -1941,6 +1903,7 @@ void accessibilityPage(Flex* page, Popup&) {
 // Touchpad and pointer options are Hyprland's: kept in Hyprland Settings
 // only, linked from here
 void mousePage(Flex* page, Popup&) {
+    if (Niri::get().available()) return niriMouse(page); // set here, as niri's own config
     auto* g = group(page, "Mouse & touchpad", "Tap to click, natural scrolling, pointer speed and gestures live in Hyprland Settings");
     hyprLink(g, "touch_app", "Touchpad", "Tap to click, natural scrolling, ignore while typing, click with fingers", "hypr-input");
     hyprLink(g, "speed", "Pointer", "Speed and acceleration, for the touchpad and mice", "hypr-input");
@@ -3841,6 +3804,7 @@ void aboutPage(Flex* page, Popup&) {
 
 // Settings' Keyboard entry: shortcuts are Hyprland's, in Hyprland Settings
 void keyboardPage(Flex* page, Popup&) {
+    if (Niri::get().available()) return niriKeyboard(page);
     auto* typing = group(page, "Layouts & typing", "Keyboard layouts, switching between them, repeat rate and delay");
     auto t = row(typing, "keyboard_alt", "Layouts & typing", "In Hyprland Settings → Input devices");
     pillButton(t.row, "Open", true, [] {
@@ -3984,7 +3948,7 @@ const PageDef kPages[] = {
     {"hypr-profiles", "switch_account", "Profiles", "Save and switch whole setups by name", hyprProfilesPage},
     {"hypr-render", "memory", "Rendering", "Direct scanout, colour management and OpenGL", hyprRenderPage},
     {"hypr-debug", "bug_report", "Debug", "Logs, overlays and damage tracking", hyprDebugPage},
-    {"mouse", "touchpad_mouse", "Mouse & touchpad", "Touchpad, pointer and gestures, in Hyprland Settings", mousePage},
+    {"mouse", "touchpad_mouse", "Mouse & touchpad", "Touchpad, pointer, scrolling and gestures", mousePage},
     {"keybinds", "keyboard", "Keyboard", "Layouts, typing and shortcuts", keyboardPage},
     {"hooks", "webhook", "Hooks", "Your own commands when things happen: locking, a new wallpaper, a low battery…", hooksPage},
     {"packages", "system_update", "Software & updates", "Updates, repositories and mirrors, the AUR and Flathub", packagesPage},
@@ -4097,6 +4061,8 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
     other->onClicked = [](uint32_t button) {
         if (button == BTN_LEFT && open) open(Hypr ? "settings" : "hyprsettings");
     };
+    // Hyprland Settings is only there on Hyprland
+    other->setVisible(Hypr || Hyprland::get().available());
 
     // The page: a fixed header with the close button, then what scrolls
     auto* right = columns->add<Flex>(Flex::Direction::Column);

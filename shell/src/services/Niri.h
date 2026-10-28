@@ -53,6 +53,11 @@ public:
     void action(const nlohmann::json& action);
     const niri::Model& model() const { return m_model; }
     Signal<> layoutsChanged; // the keyboard layouts, or the one in use
+    Signal<> outputsChanged; // modes, scale, rotation, on or off
+    Signal<bool> configLoaded; // niri read its config again: true when it failed
+    // A monitor's change, live ({"Scale": …}, "Off"…: niri-ipc's OutputAction)
+    void outputAction(const std::string& output, const nlohmann::json& action);
+    void refreshOutputs();
 
     // EventSource: the event stream
     int fd() const override { return m_eventFd; }
@@ -62,7 +67,6 @@ private:
     Niri();
     void connectEvents();
     void handle(const nlohmann::json& event);
-    void refreshOutputs();
     void publish(unsigned changes); // the model, as the shell's types, and the signals
 
     std::string m_path;

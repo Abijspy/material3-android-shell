@@ -2,7 +2,7 @@
 
 From 6.0, the shell also runs on [niri](https://github.com/YaLTeR/niri) 26.04 or newer, the scrollable-tiling compositor, as well as on Hyprland. It finds out which one it's on by itself: in a niri session it talks to niri, and in a Hyprland session to Hyprland.
 
-niri support is in **beta**. The desktop itself works (the bar, the dock, the panels, notifications, the lock screen, the launcher and the rest), but the settings that change the compositor are still Hyprland's (see [Not on niri yet](#not-on-niri-yet)). The installer doesn't set niri up yet, so it's done by hand, below.
+niri support is in **beta**. The desktop works (the bar, the dock, the panels, notifications, the lock screen, the launcher and the rest), and so do the settings that change niri itself, from 6.0-beta-2: the touchpad and mouse, keyboard layouts, monitors, the cursor and night light (see [What works](#what-works)). The installer doesn't set niri up yet, so it's done by hand, below.
 
 ## Setting it up
 
@@ -20,7 +20,7 @@ niri support is in **beta**. The desktop itself works (the bar, the dock, the pa
    cp dotfiles/.config/niri/material3ui.kdl ~/.config/niri/
    ```
 
-   [`material3ui.kdl`](../dotfiles/.config/niri/material3ui.kdl) starts the shell with niri, puts its wallpaper behind niri's overview, and binds its keys: <kbd>Super</kbd><kbd>Space</kbd> for Spotlight, <kbd>Super</kbd><kbd>N</kbd> for Quick Settings, <kbd>Super</kbd><kbd>A</kbd> for notifications, <kbd>Super</kbd><kbd>D</kbd> for the dashboard, <kbd>Super</kbd><kbd>Tab</kbd> to switch windows, <kbd>Super</kbd><kbd>L</kbd> to lock, and the rest as on Hyprland.
+   [`material3ui.kdl`](../dotfiles/.config/niri/material3ui.kdl) starts the shell with niri, puts its wallpaper behind niri's overview, and binds its keys: <kbd>Super</kbd><kbd>Space</kbd> for Spotlight, <kbd>Super</kbd><kbd>N</kbd> for Quick Settings, <kbd>Super</kbd><kbd>A</kbd> for notifications, <kbd>Super</kbd><kbd>D</kbd> for the dashboard, <kbd>Super</kbd><kbd>Tab</kbd> to switch windows, <kbd>Super</kbd><kbd>L</kbd> to lock, and the rest as on Hyprland. Last, it includes `material3ui-settings.kdl`, the file the shell writes for what you set in its Settings. (A `material3ui.kdl` copied from 6.0-beta-1 doesn't have that line; the shell adds it.)
 
 3. Include it at the **end** of `~/.config/niri/config.kdl`:
 
@@ -47,12 +47,25 @@ niri support is in **beta**. The desktop itself works (the bar, the dock, the pa
 - **Logging out**, restarting and shutting down from the power menu.
 - **Digital Wellbeing:** screen time per app, app timers and Focus mode.
 
+### Settings that change niri
+
+From 6.0-beta-2, these Settings pages work on niri. What you set is written to `~/.config/niri/material3ui-settings.kdl`, and niri picks it up at once:
+
+- **Mouse & touchpad:** tap to click, natural scrolling (the touchpad's and a mouse's), ignore while typing, click with fingers or the pad's corners, tap and drag, drag lock, scrolling speed, pointer speed and acceleration.
+- **Keyboard:** your layouts (with **Next layout** to switch), the key that switches them, repeat delay and rate, and your own shortcuts: a key combination and the command it runs.
+- **Display:** each monitor's resolution, scale, rotation, variable refresh rate, and on or off. They're applied at once and kept for the next login. If niri's own `config.kdl` sets a monitor, niri's block wins when it reloads; remove that block to keep the shell's.
+- **Night light:** the shell warms the screens itself, through the compositor's gamma, with nothing else to install.
+- **The cursor:** its theme (Bibata by default) and size, for niri and the apps it starts.
+- **The focus ring:** drawn in the wallpaper's colours.
+
+If niri can't read the shell's settings (`material3ui.kdl` isn't included, or niri refused the file), those pages say so at the top.
+
 ## Not on niri yet
 
 These are coming in the next betas. Until then, set them in niri's own `config.kdl`:
 
-- **Settings that change the compositor:** mouse and touchpad, keyboard layouts, the cursor theme and size, displays, keybinds, night light, and how windows look (gaps, borders, corners, blur strength). They still write Hyprland's files.
-- **Hyprland Settings** is for Hyprland only.
+- **How windows look:** gaps, borders, corners, shadows, animations, window rules and blur strength. They're in Hyprland Settings, which is for Hyprland only, and Settings doesn't show it on niri.
+- **Arranging monitors** side by side (their positions): set `position` in niri's config.
 - **Minimising windows**: niri has no minimised state.
 - **Picking a single window to record:** you pick a region instead, since niri's windows scroll.
 - **The screen-sharing picker:** apps sharing the screen get niri's own picker, through the GNOME portal.

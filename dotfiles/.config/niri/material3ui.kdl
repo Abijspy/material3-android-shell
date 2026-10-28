@@ -35,3 +35,7 @@ binds {
     XF86AudioLowerVolume allow-when-locked=true { spawn "material3ui" "msg" "volume" "down"; }
     XF86AudioMute allow-when-locked=true { spawn "material3ui" "msg" "volume" "mute"; }
 }
+
+// The shell's Settings (cursor, touchpad, keyboard, monitors, your keys):
+// written by the shell, last so they win
+include optional=true "material3ui-settings.kdl"

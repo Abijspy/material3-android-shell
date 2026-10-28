@@ -37,6 +37,7 @@ protocols = {
   'ext-idle-notify-v1': wl_dir / 'staging/ext-idle-notify/ext-idle-notify-v1.xml',
   'ext-background-effect-v1': wl_dir / 'staging/ext-background-effect/ext-background-effect-v1.xml',
   'wlr-layer-shell-unstable-v1': wlr_dir / 'unstable/wlr-layer-shell-unstable-v1.xml',
+  'wlr-gamma-control-unstable-v1': wlr_dir / 'unstable/wlr-gamma-control-unstable-v1.xml',
 }
 
 protocol_sources = []
@@ -93,8 +94,11 @@ sources = files(
   'src/services/LyricsParse.cpp',
   'src/services/Mpris.cpp',
   'src/services/Niri.cpp',
+  'src/services/NiriConfig.cpp',
   'src/services/NiriModel.cpp',
+  'src/services/NiriSettings.cpp',
   'src/services/Network.cpp',
+  'src/services/NightLight.cpp',
   'src/services/Notifications.cpp',
   'src/services/Firewall.cpp',
   'src/services/Firmware.cpp',
@@ -142,6 +146,7 @@ sources = files(
   'src/shell/HyprPages.cpp',
   'src/shell/KeyCapture.cpp',
   'src/shell/MonitorLayout.cpp',
+  'src/shell/NiriPages.cpp',
   'src/shell/Settings.cpp',
   'src/shell/SecurityPages.cpp',
   'src/shell/WellbeingPage.cpp',
@@ -224,4 +229,6 @@ test('firmware', executable('firmware_test', 'tests/firmware_test.cpp', 'src/ser
 test('niri', executable('niri_test', 'tests/niri_test.cpp', 'src/services/NiriModel.cpp',
   include_directories: include_directories('src'), dependencies: [json]))
 test('version', executable('version_test', 'tests/version_test.cpp', 'src/core/Version.cpp',
+  include_directories: include_directories('src')))
+test('niri-settings', executable('niri_settings_test', 'tests/niri_settings_test.cpp', 'src/services/NiriSettings.cpp',
   include_directories: include_directories('src')))

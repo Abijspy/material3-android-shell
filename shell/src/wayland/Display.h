@@ -58,6 +58,7 @@ public:
     zwlr_layer_shell_v1* layerShell() const { return m_layerShell; }
     void* sessionLockManager() const { return m_lockManager; } // ext_session_lock_manager_v1*
     void* idleNotifier() const { return m_idleNotifier; }      // ext_idle_notifier_v1*
+    void* gammaManager() const { return m_gammaManager; }      // zwlr_gamma_control_manager_v1* (night light)
     wl_seat* seat() const { return m_seat; }
     xdg_wm_base* wmBase() const { return m_wmBase; }  // app windows (xdg-shell)
     uint32_t buttonSerial() const { return m_buttonSerial; } // the last pointer press, for window moves
@@ -126,6 +127,7 @@ private:
     wl_keyboard* m_keyboard = nullptr;
     void* m_lockManager = nullptr;
     void* m_idleNotifier = nullptr;
+    void* m_gammaManager = nullptr;
 
     xkb_context* m_xkb = nullptr;
     xkb_keymap* m_keymap = nullptr;

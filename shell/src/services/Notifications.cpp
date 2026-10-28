@@ -56,6 +56,8 @@ Notifications::Notifications() {
     loadHistory();
     auto& bus = dbus::Bus::session();
     if (!bus.connected()) return;
+    // A test instance (M3_INSTANCE) leaves serving them to your shell
+    if (!paths::instance().empty()) return;
     sd_bus_add_object(bus.raw(), &m_object, kPath, onMessage, this);
     // Don't steal the name from a running daemon (the QML shell, mako…)
     sd_bus_request_name_async(bus.raw(), nullptr, kName, 0,

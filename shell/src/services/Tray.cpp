@@ -2,6 +2,7 @@
 
 #include "core/Guard.h"
 #include "core/Log.h"
+#include "core/Paths.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -69,6 +70,11 @@ Tray::Tray() {
                                        if (a.size() >= 3 && a[2].get<std::string>().empty())
                                            removeService(a[0].get<std::string>());
                                    }));
+    // A test instance (M3_INSTANCE) shows the tray of your shell's watcher
+    if (!paths::instance().empty()) {
+        becomeHost();
+        return;
+    }
     sd_bus_request_name_async(bus.raw(), nullptr, kWatcher, 0,
                               [](sd_bus_message* m, void* ud, sd_bus_error*) -> int {
                                   auto* self = static_cast<Tray*>(ud);
