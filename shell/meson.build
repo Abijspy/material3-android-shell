@@ -1,5 +1,5 @@
 project('material3ui', 'cpp', 'c',
-  version: '6.0-beta-2',
+  version: '6.0-beta-3',
   license: 'MIT',
   meson_version: '>= 1.1',
   default_options: ['cpp_std=c++20', 'warning_level=2', 'buildtype=debugoptimized'])

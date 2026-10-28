@@ -1,5 +1,17 @@
 # Changelog
 
+## v6.0-beta-3 — 2026-10-28
+
+- **The installer sets niri up.** It asks which compositor the shell runs on: `--compositor hyprland`, `niri` or `both`, defaulting to what's installed already. It installs only that compositor's packages. On niri it writes `~/.config/niri/material3ui.kdl` and adds `include "material3ui.kdl"` to the end of your `config.kdl`; if you have none, it starts one from niri's own default, without the waybar it would launch. Then it checks the result with `niri validate`. Everything it replaces is backed up, and `./install.sh --restore` undoes it. `--niri skip` leaves niri's config alone. → [Material3UI on niri](docs/NIRI.md)
+- **The installer warns about duplicates.** If your niri config still starts a bar, a notification daemon, a polkit agent, or a wallpaper or idle tool, the plan says so, since the shell does those jobs itself.
+- **Your apps on niri.** Super+Return (or Super+T) opens your terminal, Super+E your file manager and Super+B your browser, the ones you picked in the installer. They're also set as `$TERMINAL` and `$BROWSER`, so the shell's "Open a terminal" uses yours. Super+Alt+L locks with the shell instead of swaylock.
+- **A niri file of your own.** `~/.config/niri/material3ui-user.kdl` is included last, so keys and rules you put there win over the shell's, and updates never replace it.
+- **Updates on niri.** `update.sh` and Settings' updates refresh `material3ui.kdl` with your apps, and restart the shell in a niri session.
+- **The login screen runs on niri.** Without Hyprland installed, greetd starts it in a minimal niri session; with both installed, it stays on Hyprland. Your keyboard layout, cursor and the monitors set in your niri config are synced to it. The session list puts niri right after Hyprland.
+- **Hyprland is optional.** Neither package, `material3ui` or `material3ui-greeter`, depends on Hyprland any more; Hyprland and niri are both optional dependencies, and the installer brings the one you pick.
+- **Updating from 6.0-beta-2 with niri set up by hand:** run `./install.sh --compositor both` (or `niri`) once to get the app keys and your own file. A `config.kdl` that includes `material3ui.kdl` already is kept as it is.
+- **Still on Hyprland only:** how windows look (gaps, borders, corners, shadows, animations, window rules, blur strength), arranging monitors side by side, minimising, picking a window to record, and the screen-sharing picker.
+
 ## v6.0-beta-2 — 2026-10-28
 
 - **Settings now changes niri itself.** On niri, the pages that used to send you to Hyprland Settings have their own controls. What you set is written as niri's own config, `~/.config/niri/material3ui-settings.kdl`, and niri picks it up at once. → [Material3UI on niri](docs/NIRI.md)
