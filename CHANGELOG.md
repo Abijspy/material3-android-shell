@@ -1,5 +1,25 @@
 # Changelog
 
+## v6.0-beta-1 — 2026-10-28
+
+- **Material3UI runs on niri too (beta).** The shell now works on [niri](https://github.com/YaLTeR/niri) 26.04 or newer, the scrollable-tiling compositor, as well as on Hyprland. It finds out which one it's on by itself, so the same install works in either session. → [Material3UI on niri](docs/NIRI.md)
+  - **Workspaces:** each monitor's own, exactly as many as niri has (one more appears as you fill the last). A click goes to that monitor's workspace, and scrolling moves up and down.
+  - **The window title, dock and island:** they follow niri's focus and windows. The dock focuses and closes windows, and the island shows workspace switches.
+  - **The overview:** <kbd>Super</kbd><kbd>`</kbd> opens niri's own overview of the workspaces, with the shell's wallpaper behind it.
+  - **Switching windows:** <kbd>Super</kbd><kbd>Tab</kbd> lists every window, most recently used first.
+  - **Screenshots and recording:** a region or the screen as before. A window screenshot is taken by niri, then copied or opened in the editor as Settings says. Recording a window picks a region instead, since niri's windows scroll.
+  - **The session:** the lock screen, idle and screens off, logging out, Digital Wellbeing, and hooks such as `workspace_changed` all work on niri.
+  - **Setting it up:** copy `dotfiles/.config/niri/material3ui.kdl` into `~/.config/niri/` and include it at the end of your `config.kdl`. It starts the shell and binds its keys as on Hyprland (Spotlight, Quick Settings, the dashboard, the switcher, lock and more). The installer doesn't do this yet.
+- **Not on niri yet**, coming in the next betas. Until then, set these in niri's own config:
+  - **Settings that change the compositor:** mouse and touchpad, keyboard layouts, the cursor theme and size, displays, keybinds, night light, and window looks (gaps, borders, blur strength). They still write Hyprland's files.
+  - **Hyprland only:** Hyprland Settings, minimising windows, the screen-sharing picker (niri's portal shows its own), and the magnifier and colour filters.
+  - **The login screen** still runs on Hyprland, so it needs Hyprland installed.
+- **One model of the desktop.** Inside, the shell no longer talks to Hyprland directly. It asks one compositor interface for screens, workspaces and windows, and for what to do with them: switch, focus, close, screens off, log out. Hyprland and niri each answer it, and features only one of them has are checked first. Nothing changes on Hyprland: it was checked feature by feature.
+- **Fixed: a hidden dock left its blur behind.** On compositors that blur through the background-effect protocol (niri), the blur now moves and fades with what it's behind.
+- **Go to a workspace from a script.** `material3ui msg workspace <n>|next|prev` works on either compositor.
+- **A second shell, for testing.** `M3_INSTANCE=<name> material3ui` runs one beside yours, for example inside a nested niri, with its own socket. It leaves Quick Share, the polkit agent, update checks, alarms, screen time, clipboard history and your hooks to your main shell. `material3ui msg` reaches it with the same variable (see [IPC](docs/IPC.md)).
+- **Pre-release versions.** The update check and What's new now understand versions like 6.0-beta-1 and put them in order: beta-1, then beta-2, then rc-1, then 6.0. The package is `material3ui-6.0beta1`, which pacman sorts the same way. Updates from 5.8 download it as before.
+
 ## v5.8.4 — 2026-10-27
 
 - **Firmware updates**, in the new **Settings → Firmware**, through fwupd and the LVFS, where vendors publish firmware for laptops' BIOS and UEFI, SSDs, docks, touchpads and webcams.
