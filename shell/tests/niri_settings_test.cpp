@@ -42,8 +42,8 @@ int main(int argc, char** argv) {
     s.ringInactive = "#49454f";
     s.outputs.push_back({"eDP-1", false, "1920x1080@60.000", 1.5, "90", std::pair{0, 0}, true});
     s.outputs.push_back({"HDMI-A-1", true, "", 0, "", std::nullopt, false});
-    s.binds.push_back({"Mod+Shift+K", "notify-send \"hi\"", "Say hi"});
-    s.binds.push_back({"Mod+;rm", "nope", ""});
+    s.binds.push_back({"Mod+Shift+K", "notify-send \"hi\"", "Say hi", ""});
+    s.binds.push_back({"Mod+;rm", "nope", "", ""});
     const std::string full = niri::render(s);
     expect(!has(full, "        tap\n") && !has(full, "    touchpad {\n        natural-scroll"), "flags left out when off");
     expect(has(full, "        drag false\n") && has(full, "accel-profile \"flat\"") && has(full, "accel-speed -0.25"), "drag, profile, speed");
@@ -98,10 +98,47 @@ int main(int argc, char** argv) {
     expect(has(look, "hot-corners {\n        off\n") && has(look, "overview {\n    zoom 0.40\n}") && !has(look, "hotkey-overlay"),
            "gestures and the overview");
 
+    // Window rules, startup commands, variables and actions: in one
+    // environment section with the cursor's, nothing niri couldn't read
+    n.cursorTheme = "Bibata-Modern-Classic";
+    n.environment = {{"QT_QPA_PLATFORMTHEME", "qt6ct"}, {"1BAD", "x"}, {"EMPTY", ""}};
+    n.startup = {"nm-applet --indicator", ""};
+    niri::Settings::Rule firefox;
+    firefox.appId = niri::exactly("org.mozilla.firefox");
+    firefox.floating = true;
+    firefox.opacity = 0.9;
+    firefox.width = 0.5;
+    firefox.hide = true;
+    niri::Settings::Rule nothing, broken, titled;
+    nothing.appId = "^kitty$";
+    broken.appId = "(unclosed";
+    titled.title = "Picture-in-Picture";
+    titled.floating = true;
+    n.rules = {firefox, nothing, broken, titled};
+    n.binds = {{"Mod+Shift+M", "", "", "maximize-column"}, {"Mod+Shift+X", "", "", "rm -rf"}, {"Mod+Shift+T", "foot", "", ""}};
+    const std::string more = niri::render(n);
+    expect(has(more, "\nenvironment {\n    XCURSOR_THEME \"Bibata-Modern-Classic\"\n    XCURSOR_SIZE \"24\"\n    QT_QPA_PLATFORMTHEME \"qt6ct\"\n    EMPTY \"\"\n}\n"),
+           "one environment section, bad names left out");
+    expect(more.find("\nenvironment {") == more.rfind("\nenvironment {"), "only one");
+    expect(has(more, "\nspawn-sh-at-startup \"nm-applet --indicator\"\n") && !has(more, "spawn-sh-at-startup \"\""), "startup commands");
+    expect(has(more, "window-rule {\n    match app-id=\"^org\\\\.mozilla\\\\.firefox$\"\n    open-floating true\n    opacity 0.90\n"
+                     "    default-column-width {\n        proportion 0.50000\n    }\n    block-out-from \"screen-capture\"\n}"),
+           "a rule, its app id escaped");
+    expect(!has(more, "^kitty$") && !has(more, "(unclosed"), "rules that set nothing, or can't be read, left out");
+    expect(has(more, "window-rule {\n    match title=\"Picture-in-Picture\"\n    open-floating true\n}"), "a rule by title");
+    expect(has(more, "    Mod+Shift+M { maximize-column; }\n") && !has(more, "rm -rf") &&
+               has(more, "    Mod+Shift+T { spawn \"sh\" \"-c\" \"foot\"; }\n"),
+           "an action, a command, and no action that isn't one");
+    expect(niri::exactly("a.b+c") == "^a\\.b\\+c$", "exactly");
+    expect(niri::validRegex("^firefox$") && !niri::validRegex("(?=x)") && !niri::validRegex("(a)\\1") && !niri::validRegex("[a"),
+           "regexes niri can read");
+    expect(niri::validVariable("GDK_BACKEND") && !niri::validVariable("2X") && !niri::validVariable("A-B"), "variable names");
+    expect(niri::validAction("focus-column-left") && !niri::validAction("spawn foot") && !niri::validAction("-x"), "action names");
+
     // For a check by niri itself: niri_settings_test <file> [<file>] writes
     // the full one, and the one with Niri Settings' options
     if (argc > 1) std::ofstream(argv[1]) << full;
-    if (argc > 2) std::ofstream(argv[2]) << look;
+    if (argc > 2) std::ofstream(argv[2]) << more;
 
     if (failures) std::fprintf(stderr, "%d failed\n", failures);
     return failures ? 1 : 0;

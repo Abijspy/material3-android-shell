@@ -62,8 +62,23 @@ struct Settings {
 
     struct Bind {
         std::string keys, command, title; // "Mod+Shift+K", a shell command, the hotkey overlay's name
+        std::string action;               // a niri action ("maximize-column") in place of the command
     };
     std::vector<Bind> binds;
+
+    // Window rules, after yours (a later rule wins): the windows an app id
+    // and/or title regex matches, and what they open as. Unset (or false,
+    // 1, 0) leaves your config's
+    struct Rule {
+        std::string appId, title;
+        bool floating = false, maximized = false, fullscreen = false, hide = false; // hide: from screen sharing
+        double opacity = 1;                                                        // 1: as it is
+        double width = 0;                                                          // a new column's share; 0: as it is
+    };
+    std::vector<Rule> rules;
+
+    std::vector<std::string> startup;                              // commands, run by sh when niri starts
+    std::vector<std::pair<std::string, std::string>> environment; // yours, after the cursor's
 };
 
 // The file's text
@@ -73,5 +88,13 @@ std::string quote(const std::string& s);
 // A key combination niri can read ("Mod+Shift+K"): modifiers and a key,
 // joined by +, nothing else
 bool validKeys(const std::string& keys);
+// A niri action's name ("focus-column-left"): lowercase words and hyphens
+bool validAction(const std::string& action);
+// A variable's name: letters, digits and _, not starting with a digit
+bool validVariable(const std::string& name);
+// A regex niri can read (else the whole file would be refused)
+bool validRegex(const std::string& pattern);
+// The regex matching exactly this app id
+std::string exactly(const std::string& text);
 
 } // namespace m3::niri

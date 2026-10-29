@@ -3,18 +3,23 @@
 #include "core/Config.h"
 #include "core/EventLoop.h"
 #include "core/Process.h"
+#include "services/Compositor.h"
 #include "services/Niri.h"
 #include "services/NiriConfig.h"
+#include "services/Search.h"
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
 #include "shell/SettingsKit.h"
 #include "ui/Controls.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <format>
 #include <map>
 #include <memory>
+#include <regex>
+#include <set>
 
 namespace m3::shell::panels {
 
@@ -132,7 +137,8 @@ void niriKeyboard(Flex* page) {
         for (size_t i = 0; i < list.size(); ++i) {
             const auto& b = list[i];
             if (!b.is_object()) continue;
-            auto r = row(g, "keyboard_command_key", b.value("keys", ""), b.value("command", ""));
+            const std::string action = b.value("action", "");
+            auto r = row(g, "keyboard_command_key", b.value("keys", ""), action.empty() ? b.value("command", "") : niriActionLabel(action));
             confirmButton(r.row, "niribind:" + std::to_string(i), "delete", [i] {
                 auto l = Config::get().value<nlohmann::json>("/niri/binds", nlohmann::json::array());
                 if (i < l.size()) l.erase(l.begin() + static_cast<long>(i));
@@ -405,6 +411,380 @@ void niriBehaviourPage(Flex* page, Popup&) {
               !kdl::flag(doc, {"hotkey-overlay", "skip-at-startup"}).value_or(false));
     resetGroup(page, "niri-behaviour",
                {"focusFollowsMouse", "warpMouse", "backAndForth", "preferNoCsd", "hotCorner", "overviewZoom", "hotkeyHelp"});
+}
+
+namespace {
+
+// The config's list at `pointer`, with item `i` taken out
+void removeAt(const std::string& pointer, size_t i) {
+    auto l = Config::get().value<nlohmann::json>(pointer, nlohmann::json::array());
+    if (l.is_array() && i < l.size()) l.erase(l.begin() + static_cast<long>(i));
+    Config::get().set(pointer, l);
+}
+
+void append(const std::string& pointer, nlohmann::json item) {
+    auto l = Config::get().value<nlohmann::json>(pointer, nlohmann::json::array());
+    if (!l.is_array()) l = nlohmann::json::array();
+    l.push_back(std::move(item));
+    Config::get().set(pointer, l);
+}
+
+// A KDL node's arguments as one line ("alacritty -e btop")
+std::string argsText(const kdl::Node& n) {
+    std::string out;
+    for (const auto& a : n.args) {
+        if (!out.empty()) out += ' ';
+        out += a.type == kdl::Value::Type::Null ? "null" : a.text;
+    }
+    return out;
+}
+
+// An app's command for running it: the Exec line without %U and the like
+std::string runnable(const std::string& exec) {
+    return std::regex_replace(std::regex_replace(exec, std::regex(" ?%[a-zA-Z]"), ""), std::regex("\\s+$"), "");
+}
+
+} // namespace
+
+const std::vector<std::pair<std::string, std::string>>& niriActions() {
+    static const std::vector<std::pair<std::string, std::string>> actions = {
+        {"close-window", "Close the window"},
+        {"maximize-column", "Maximise the column"},
+        {"maximize-window-to-edges", "Maximise the window to the screen's edges"},
+        {"fullscreen-window", "Full screen"},
+        {"toggle-windowed-fullscreen", "Full screen, inside the window"},
+        {"toggle-window-floating", "Float or tile the window"},
+        {"switch-focus-between-floating-and-tiling", "Focus the floating or the tiled windows"},
+        {"center-column", "Centre the column"},
+        {"center-visible-columns", "Centre the visible columns"},
+        {"switch-preset-column-width", "Next column width"},
+        {"switch-preset-window-height", "Next window height"},
+        {"reset-window-height", "Reset the window's height"},
+        {"expand-column-to-available-width", "Widen the column into the free space"},
+        {"toggle-column-tabbed-display", "Tabs for the column's windows"},
+        {"consume-or-expel-window-left", "Window into or out of the column on the left"},
+        {"consume-or-expel-window-right", "Window into or out of the column on the right"},
+        {"focus-column-left", "Focus the column on the left"},
+        {"focus-column-right", "Focus the column on the right"},
+        {"focus-column-first", "Focus the first column"},
+        {"focus-column-last", "Focus the last column"},
+        {"focus-window-up", "Focus the window above"},
+        {"focus-window-down", "Focus the window below"},
+        {"move-column-left", "Move the column left"},
+        {"move-column-right", "Move the column right"},
+        {"move-window-up", "Move the window up"},
+        {"move-window-down", "Move the window down"},
+        {"focus-workspace-up", "The workspace above"},
+        {"focus-workspace-down", "The workspace below"},
+        {"focus-workspace-previous", "The workspace before this one"},
+        {"move-column-to-workspace-up", "Move the column to the workspace above"},
+        {"move-column-to-workspace-down", "Move the column to the workspace below"},
+        {"move-workspace-up", "Move the workspace up"},
+        {"move-workspace-down", "Move the workspace down"},
+        {"focus-monitor-left", "Focus the monitor on the left"},
+        {"focus-monitor-right", "Focus the monitor on the right"},
+        {"move-column-to-monitor-left", "Move the column to the monitor on the left"},
+        {"move-column-to-monitor-right", "Move the column to the monitor on the right"},
+        {"toggle-overview", "Open or close the overview"},
+        {"screenshot", "niri's screenshot tool"},
+        {"screenshot-screen", "Screenshot the screen (niri's)"},
+        {"screenshot-window", "Screenshot the window (niri's)"},
+        {"show-hotkey-overlay", "niri's list of keys"},
+        {"power-off-monitors", "Turn the screens off"},
+        {"toggle-keyboard-shortcuts-inhibit", "Let the app have every key"},
+        {"quit", "Quit niri"},
+    };
+    return actions;
+}
+
+std::string niriActionLabel(const std::string& action) {
+    for (const auto& [a, label] : niriActions())
+        if (a == action) return label;
+    return action;
+}
+
+void niriRulesPage(Flex* page, Popup&) {
+    niriNotice(page);
+    auto* live = page->add<Live>();
+    live->setSpacing(6);
+    auto problem = std::make_shared<std::string>();
+    // Rebuilt when a rule comes or goes; the controls write their own values
+    live->sync = [live, problem] {
+        live->clearChildren();
+        const auto rules = Config::get().value<nlohmann::json>("/niri/rules", nlohmann::json::array());
+        const std::vector<std::pair<double, std::string>> widths = {
+            {0, "As it is"}, {1.0 / 3, "A third"}, {0.5, "Half"}, {2.0 / 3, "Two thirds"}, {1.0, "Full"}};
+        for (size_t i = 0; i < rules.size(); ++i) {
+            const auto& r = rules[i];
+            if (!r.is_object()) continue;
+            const std::string base = "/niri/rules/" + std::to_string(i) + "/", app = r.value("appId", ""), title = r.value("title", "");
+            const std::string label = r.value("label", app.empty() ? title : app);
+            auto* g = group(live, label, app.empty() ? "Windows whose title matches " + title : "Windows whose app id matches " + app);
+            switchRow(g, "picture_in_picture", "Open floating", "Over the columns rather than in them", base + "floating", r.value("floating", false));
+            switchRow(g, "width_full", "Open maximised", "Its column as wide as the screen", base + "maximized", r.value("maximized", false));
+            switchRow(g, "fullscreen", "Open full screen", "", base + "fullscreen", r.value("fullscreen", false));
+            const double w = r.value("width", 0.0);
+            const double nearest = std::ranges::min(widths, {}, [w](const auto& o) { return std::abs(o.first - w); }).first;
+            choiceRow<double>(g, "view_column", "Width", "Its column's, when it opens", base + "width", nearest, widths);
+            sliderRow(g, "opacity", "Opacity", base + "opacity", r.value("opacity", 1.0), 0.2, 1.0, 0.05,
+                      [](double v) { return v > 0.995 ? std::string("Opaque") : std::format("{:.0f}%", v * 100); });
+            switchRow(g, "visibility_off", "Hide from screen sharing", "Blacked out when apps record or share the screen", base + "hide",
+                      r.value("hide", false));
+            auto rm = row(g, "delete", "Remove this rule");
+            confirmButton(rm.row, "nirirule:" + std::to_string(i) + ":" + label, "delete", [live, i] {
+                removeAt("/niri/rules", i);
+                live->syncSoon();
+            })->tooltip = "Remove";
+        }
+
+        auto* add = group(live, rules.empty() ? "Your rules" : "Another rule",
+                          "How an app's windows open; a rule here wins over config.kdl's for what it sets");
+        // The apps with a window open
+        std::vector<std::pair<std::string, std::string>> open;
+        std::set<std::string> seen;
+        for (const auto& w : Compositor::get().windows(true))
+            if (!w.appId.empty() && !w.appId.starts_with("material3ui") && seen.insert(w.appId).second) open.push_back({w.appId, w.appId});
+        std::ranges::sort(open);
+        auto byApp = row(add, "apps", "For an open app", open.empty() ? "No apps have a window open" : "");
+        if (!open.empty())
+            dropdown(byApp.row, add, "Choose", open, [live](const std::string& id) {
+                append("/niri/rules", {{"appId", niri::exactly(id)}, {"label", id}});
+                live->syncSoon();
+            });
+        auto byId = row(add, "regular_expression", "For app ids matching", problem->empty() ? "A regex, as niri matches it; Enter to add" : *problem);
+        if (!problem->empty()) byId.subtitle->setColor("error", false);
+        auto* f = byId.row->add<TextField>();
+        f->setPlaceholder("^org\\.gnome\\..*");
+        f->fixedWidth = 240;
+        f->onSubmit = [live, problem](const std::string& text) {
+            if (!niri::validRegex(text)) {
+                *problem = "niri couldn't read that regex";
+            } else {
+                problem->clear();
+                append("/niri/rules", {{"appId", text}, {"label", text}});
+            }
+            live->syncSoon();
+        };
+
+        // config.kdl's own, for reference
+        std::vector<std::pair<std::string, std::string>> theirs;
+        for (const auto& n : NiriConfig::get().yours(false)) {
+            if (n.name != "window-rule") continue;
+            std::string match, what;
+            for (const auto& c : n.children) {
+                if (c.name == "match" || c.name == "exclude") {
+                    for (const auto& [k, v] : c.props)
+                        match += std::string(match.empty() ? "" : ", ") + (c.name == "exclude" ? "not " : "") + k + " " + v.text;
+                } else {
+                    what += (what.empty() ? "" : ", ") + c.name;
+                }
+            }
+            theirs.push_back({match.empty() ? "Every window" : match, what});
+        }
+        if (!theirs.empty()) {
+            auto* g = group(live, "In your config.kdl", "Its rules come first: one here wins where both set something");
+            for (const auto& [match, what] : theirs) {
+                auto r = row(g, "", match, what);
+                r.title->setSize(13)->setMaxWidth(600);
+            }
+        }
+    };
+    live->sync();
+}
+
+void niriKeysPage(Flex* page, Popup&) {
+    niriNotice(page);
+    auto* live = page->add<Live>();
+    live->setSpacing(6);
+    live->conns.push_back(Config::get().changed.connect([live] { live->syncSoon(); }));
+    auto draft = std::make_shared<std::string>();
+    auto problem = std::make_shared<std::string>();
+    live->sync = [live, draft, problem] {
+        live->clearChildren();
+        auto* g = group(live, "Your keys", "They win over config.kdl's and the shell's own. Settings → Keyboard shows them too");
+        const auto list = Config::get().value<nlohmann::json>("/niri/binds", nlohmann::json::array());
+        for (size_t i = 0; i < list.size(); ++i) {
+            const auto& b = list[i];
+            if (!b.is_object()) continue;
+            const std::string action = b.value("action", "");
+            auto r = row(g, action.empty() ? "terminal" : "keyboard_command_key", b.value("keys", ""),
+                         action.empty() ? b.value("command", "") : niriActionLabel(action));
+            confirmButton(r.row, "niribind:" + std::to_string(i), "delete", [i] { removeAt("/niri/binds", i); })->tooltip = "Remove";
+        }
+        // A new key: its combination, then what it does
+        auto keys = row(g, "keyboard", "New key", problem->empty() ? "Mod is Super; then pick what it does" : *problem);
+        if (!problem->empty()) keys.subtitle->setColor("error", false);
+        auto* combo = keys.row->add<TextField>();
+        combo->setPlaceholder("Mod+Shift+K");
+        combo->setText(*draft);
+        combo->fixedWidth = 170;
+        combo->onChanged = [draft](const std::string& t) { *draft = t; };
+        auto add = [live, draft, problem](nlohmann::json b) {
+            if (!niri::validKeys(*draft)) {
+                *problem = "First the keys, like Mod+Shift+K";
+                live->syncSoon();
+                return;
+            }
+            // One meaning per combination: a new one replaces the old
+            auto l = Config::get().value<nlohmann::json>("/niri/binds", nlohmann::json::array());
+            if (!l.is_array()) l = nlohmann::json::array();
+            const std::string keys = *draft;
+            l.erase(std::remove_if(l.begin(), l.end(), [&](const nlohmann::json& x) { return x.is_object() && x.value("keys", "") == keys; }), l.end());
+            b["keys"] = keys;
+            l.push_back(b);
+            problem->clear();
+            draft->clear();
+            Config::get().set("/niri/binds", l);
+        };
+        auto act = row(g, "bolt", "Does a niri action");
+        dropdown(act.row, g, "Choose", niriActions(), [add](const std::string& a) { add({{"action", a}}); });
+        auto cmd = row(g, "terminal", "Or runs a command", "Enter to add");
+        auto* f = cmd.row->add<TextField>();
+        f->setPlaceholder("firefox, or material3ui msg …");
+        f->fixedWidth = 260;
+        f->onSubmit = [add](const std::string& text) {
+            if (!text.empty()) add({{"command", text}});
+        };
+
+        // config.kdl's, for reference
+        std::vector<std::pair<std::string, std::string>> theirs;
+        for (const auto& n : NiriConfig::get().yours(false)) {
+            if (n.name != "binds") continue;
+            for (const auto& k : n.children) {
+                if (k.children.empty()) continue;
+                const auto& a = k.children[0];
+                std::string what = niriActionLabel(a.name);
+                if (a.name == "spawn" || a.name == "spawn-sh") what = "Runs " + argsText(a);
+                else if (!a.args.empty()) what += " " + argsText(a);
+                theirs.push_back({k.name, what});
+            }
+        }
+        if (!theirs.empty()) {
+            auto* yg = group(live, "In your config.kdl", std::format("{} keys. The shell's (material3ui.kdl) and yours above win over these", theirs.size()));
+            for (const auto& [k, what] : theirs) {
+                auto r = row(yg, "", k, what);
+                r.title->setSize(13);
+            }
+        }
+    };
+    live->sync();
+}
+
+void niriStartupPage(Flex* page, Popup&) {
+    niriNotice(page);
+    auto* live = page->add<Live>();
+    live->setSpacing(6);
+    live->sync = [live] {
+        live->clearChildren();
+        const auto list = Config::get().value<nlohmann::json>("/niri/startup", nlohmann::json::array());
+        auto* mine = group(live, "Your startup apps", "Run when niri starts, at your next login. ▶ runs one now");
+        if (list.empty()) row(mine, "info", "None yet", "Add an app or a command below");
+        for (size_t i = 0; i < list.size(); ++i) {
+            const auto& st = list[i];
+            if (!st.is_object()) continue;
+            const std::string command = st.value("command", ""), label = st.value("label", "");
+            auto r = row(mine, "rocket_launch", label.empty() ? command : label, label.empty() ? "" : command);
+            iconButton(r.row, "play_arrow", [command] { spawn(command); });
+            confirmButton(r.row, "nirist:" + std::to_string(i) + ":" + command, "delete", [live, i] {
+                removeAt("/niri/startup", i);
+                live->syncSoon();
+            });
+            auto* sw = r.row->add<Switch>();
+            sw->setChecked(st.value("enabled", true), false);
+            sw->onToggled = [i](bool on) { Config::get().set("/niri/startup/" + std::to_string(i) + "/enabled", on); };
+        }
+        auto addApp = row(mine, "add", "Add an app");
+        std::vector<std::pair<std::string, std::string>> apps;
+        for (const auto& a : Apps::get().all())
+            if (!a.exec.empty()) apps.push_back({a.name + "\n" + runnable(a.exec), a.name});
+        std::ranges::sort(apps, [](const auto& a, const auto& b) { return a.second < b.second; });
+        dropdown(addApp.row, mine, "Choose", apps, [live](const std::string& v) {
+            const auto nl = v.find('\n');
+            append("/niri/startup", {{"command", v.substr(nl + 1)}, {"label", v.substr(0, nl)}, {"enabled", true}});
+            live->syncSoon();
+        });
+        auto addCmd = row(mine, "terminal", "Add a command", "Enter to add");
+        auto* f = addCmd.row->add<TextField>();
+        f->setPlaceholder("e.g. nm-applet --indicator");
+        f->fixedWidth = 280;
+        f->onSubmit = [live](const std::string& text) {
+            if (text.empty()) return;
+            append("/niri/startup", {{"command", text}, {"enabled", true}});
+            live->syncSoon();
+        };
+
+        // What your config (and the shell's material3ui.kdl) starts
+        std::vector<std::string> theirs;
+        for (const auto& n : NiriConfig::get().yours(true))
+            if (n.name == "spawn-at-startup" || n.name == "spawn-sh-at-startup") theirs.push_back(argsText(n));
+        if (!theirs.empty()) {
+            auto* g = group(live, "Started by your config", "config.kdl, and material3ui.kdl for the shell itself");
+            for (const auto& t : theirs) {
+                auto r = row(g, "", t);
+                r.title->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(600);
+            }
+        }
+    };
+    live->sync();
+}
+
+void niriEnvironmentPage(Flex* page, Popup&) {
+    niriNotice(page);
+    auto* live = page->add<Live>();
+    live->setSpacing(6);
+    live->sync = [live] {
+        live->clearChildren();
+        const auto vars = Config::get().value<nlohmann::json>("/niri/environment", nlohmann::json::array());
+        auto* mine = group(live, "Your variables", "For the apps niri starts from now on; log in again for the ones already running");
+        if (vars.empty()) row(mine, "info", "None yet");
+        for (size_t i = 0; i < vars.size(); ++i) {
+            const auto& v = vars[i];
+            if (!v.is_object()) continue;
+            const std::string name = v.value("name", "");
+            auto r = row(mine, "data_object", name);
+            auto* f = r.row->add<TextField>();
+            f->setText(v.value("value", ""));
+            f->fixedWidth = 260;
+            f->onSubmit = [i](const std::string& text) { Config::get().set("/niri/environment/" + std::to_string(i) + "/value", text); };
+            confirmButton(r.row, "nirienv:" + name, "delete", [live, i] {
+                removeAt("/niri/environment", i);
+                live->syncSoon();
+            });
+        }
+        auto add = row(mine, "add", "Add a variable");
+        auto* name = add.row->add<TextField>();
+        name->setPlaceholder("NAME");
+        name->fixedWidth = 150;
+        auto* value = add.row->add<TextField>();
+        value->setPlaceholder("value, then Enter");
+        value->fixedWidth = 190;
+        auto submit = [live, name, value](const std::string&) {
+            const std::string k = name->text();
+            if (!niri::validVariable(k)) return;
+            auto l = Config::get().value<nlohmann::json>("/niri/environment", nlohmann::json::array());
+            if (!l.is_array()) l = nlohmann::json::array();
+            l.erase(std::remove_if(l.begin(), l.end(), [&](const nlohmann::json& x) { return x.is_object() && x.value("name", "") == k; }), l.end());
+            l.push_back({{"name", k}, {"value", value->text()}});
+            Config::get().set("/niri/environment", l);
+            live->syncSoon();
+        };
+        name->onSubmit = submit;
+        value->onSubmit = submit;
+
+        std::vector<std::pair<std::string, std::string>> theirs;
+        for (const auto& n : NiriConfig::get().yours(true))
+            if (n.name == "environment")
+                for (const auto& c : n.children) theirs.push_back({c.name, c.args.empty() ? "" : argsText(c)});
+        if (!theirs.empty()) {
+            auto* g = group(live, "Set by your config", "config.kdl, and material3ui.kdl for your terminal and browser; yours above win");
+            for (const auto& [k, v] : theirs) {
+                auto r = row(g, "", k);
+                r.title->setSize(13)->setColor("on_surface_variant", false);
+                r.row->add<Label>(v)->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(320);
+            }
+        }
+    };
+    live->sync();
 }
 
 } // namespace m3::shell::panels

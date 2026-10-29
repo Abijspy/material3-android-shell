@@ -1,7 +1,10 @@
 #include "services/NiriSettings.h"
 
+#include <algorithm>
 #include <cctype>
 #include <format>
+#include <regex>
+#include <string_view>
 
 namespace m3::niri {
 
@@ -25,6 +28,41 @@ bool validKeys(const std::string& keys) {
     return true;
 }
 
+bool validAction(const std::string& action) {
+    if (action.empty() || action.front() == '-' || action.back() == '-') return false;
+    return std::ranges::all_of(action, [](char c) { return (c >= 'a' && c <= 'z') || c == '-'; });
+}
+
+bool validVariable(const std::string& name) {
+    if (name.empty() || std::isdigit(static_cast<unsigned char>(name[0]))) return false;
+    return std::ranges::all_of(name, [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; });
+}
+
+bool validRegex(const std::string& pattern) {
+    // niri's regexes have no look-around or back-references, which
+    // ECMAScript's (std::regex) would take
+    if (pattern.empty() || pattern.find("(?=") != std::string::npos || pattern.find("(?!") != std::string::npos ||
+        pattern.find("(?<") != std::string::npos)
+        return false;
+    for (size_t i = 0; i + 1 < pattern.size(); ++i)
+        if (pattern[i] == '\\' && std::isdigit(static_cast<unsigned char>(pattern[i + 1]))) return false;
+    try {
+        std::regex check(pattern);
+    } catch (const std::regex_error&) {
+        return false;
+    }
+    return true;
+}
+
+std::string exactly(const std::string& text) {
+    std::string out = "^";
+    for (char c : text) {
+        if (std::string_view("\\^$.|?*+()[]{}").find(c) != std::string_view::npos) out += '\\';
+        out += c;
+    }
+    return out + "$";
+}
+
 std::string render(const Settings& s) {
     std::string out =
         "// Written by Material3UI from its Settings: change these there (edits here\n"
@@ -34,10 +72,17 @@ std::string render(const Settings& s) {
     };
 
     // The cursor, niri's and the apps' it starts
-    if (!s.cursorTheme.empty()) {
+    if (!s.cursorTheme.empty())
         out += std::format("\ncursor {{\n    xcursor-theme {}\n    xcursor-size {}\n}}\n", quote(s.cursorTheme), s.cursorSize);
-        out += std::format("\nenvironment {{\n    XCURSOR_THEME {}\n    XCURSOR_SIZE \"{}\"\n}}\n", quote(s.cursorTheme), s.cursorSize);
-    }
+    // One environment section (niri refuses two in a file): the cursor's,
+    // then yours
+    std::string env;
+    if (!s.cursorTheme.empty()) env += std::format("    XCURSOR_THEME {}\n    XCURSOR_SIZE \"{}\"\n", quote(s.cursorTheme), s.cursorSize);
+    for (const auto& [name, value] : s.environment)
+        if (validVariable(name)) env += std::format("    {} {}\n", name, quote(value));
+    if (!env.empty()) out += "\nenvironment {\n" + env + "}\n";
+    for (const auto& cmd : s.startup)
+        if (!cmd.empty()) out += std::format("\nspawn-sh-at-startup {}\n", quote(cmd));
 
     out += "\ninput {\n    touchpad {\n";
     flag(out, "tap", s.tap);
@@ -107,6 +152,23 @@ std::string render(const Settings& s) {
     // Every window's corners, as a rule after yours (a later rule wins)
     if (l.cornerRadius)
         out += std::format("\nwindow-rule {{\n    geometry-corner-radius {}\n    clip-to-geometry {}\n}}\n", *l.cornerRadius, *l.cornerRadius > 0);
+    // Yours, per app: only what they set, and never one niri couldn't read
+    for (const auto& r : s.rules) {
+        const bool app = !r.appId.empty(), title = !r.title.empty();
+        if ((!app && !title) || (app && !validRegex(r.appId)) || (title && !validRegex(r.title))) continue;
+        std::string body = "    match";
+        if (app) body += " app-id=" + quote(r.appId);
+        if (title) body += " title=" + quote(r.title);
+        body += "\n";
+        const size_t bare = body.size();
+        if (r.floating) body += "    open-floating true\n";
+        if (r.maximized) body += "    open-maximized true\n";
+        if (r.fullscreen) body += "    open-fullscreen true\n";
+        if (r.opacity < 0.995) body += std::format("    opacity {:.2f}\n", std::clamp(r.opacity, 0.05, 1.0));
+        if (r.width > 0) body += std::format("    default-column-width {{\n        proportion {:.5f}\n    }}\n", std::clamp(r.width, 0.1, 1.0));
+        if (r.hide) body += "    block-out-from \"screen-capture\"\n";
+        if (body.size() > bare) out += "\nwindow-rule {\n" + body + "}\n";
+    }
 
     if (l.animations || l.slowdown) {
         out += "\nanimations {\n";
@@ -136,9 +198,13 @@ std::string render(const Settings& s) {
     if (!s.binds.empty()) {
         out += "\nbinds {\n";
         for (const auto& b : s.binds) {
-            if (!validKeys(b.keys) || b.command.empty()) continue;
-            out += std::format("    {}{} {{ spawn \"sh\" \"-c\" {}; }}\n", b.keys,
-                               b.title.empty() ? "" : " hotkey-overlay-title=" + quote(b.title), quote(b.command));
+            if (!validKeys(b.keys)) continue;
+            const std::string title = b.title.empty() ? "" : " hotkey-overlay-title=" + quote(b.title);
+            if (!b.action.empty()) {
+                if (validAction(b.action)) out += std::format("    {}{} {{ {}; }}\n", b.keys, title, b.action);
+            } else if (!b.command.empty()) {
+                out += std::format("    {}{} {{ spawn \"sh\" \"-c\" {}; }}\n", b.keys, title, quote(b.command));
+            }
         }
         out += "}\n";
     }

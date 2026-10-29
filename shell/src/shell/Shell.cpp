@@ -765,7 +765,7 @@ void Shell::registerIpc() {
         openHyprSettings(a.empty() ? "" : a[0]);
         return std::string(m_hyprSettings && !m_hyprSettings->closing() ? "open" : "closed");
     });
-    ipc.add("nirisettings", "nirisettings [niri-layout|niri-decoration|niri-animations|niri-behaviour]: Niri Settings",
+    ipc.add("nirisettings", "nirisettings [niri-layout|niri-decoration|niri-animations|niri-behaviour|niri-keys|niri-rules|niri-startup|niri-environment]: Niri Settings",
             [this](const IpcServer::Args& a) {
         openHyprSettings(a.empty() ? "" : a[0]);
         return std::string(m_hyprSettings && !m_hyprSettings->closing() ? "open" : "closed");

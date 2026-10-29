@@ -97,13 +97,17 @@ void reshowPage(const std::string& id) {
 
 // Config-bound controls: switchRow, choiceRow, sliderRow, textRow (SettingsKit)
 
-// A setting Hyprland owns: kept in Hyprland Settings only (no copy here to
-// disagree with it), and this row takes you there
-void hyprLink(Node* g, const std::string& icon, const std::string& title, const std::string& sub, const std::string& hyprPage) {
-    if (!Hyprland::get().available()) return; // niri: no Hyprland Settings to go to
-    auto r = row(g, icon, title, sub);
-    pillButton(r.row, "Hyprland Settings", false, [hyprPage] {
-        if (open) open("hyprsettings " + hyprPage);
+// A setting the compositor owns: kept in its own app only (no copy here to
+// disagree with it), and this row takes you there. On niri, to Niri
+// Settings' page for it, when it has one (`niriSub` its own words for it)
+void hyprLink(Node* g, const std::string& icon, const std::string& title, const std::string& sub, const std::string& hyprPage,
+              const std::string& niriPage = {}, const std::string& niriSub = {}) {
+    const bool niri = onNiri();
+    if (!Hyprland::get().available() && !(niri && !niriPage.empty())) return;
+    auto r = row(g, icon, title, niri ? niriSub : sub);
+    const std::string page = niri ? niriPage : hyprPage;
+    pillButton(r.row, niri ? "Niri Settings" : "Hyprland Settings", false, [page] {
+        if (open) open("hyprsettings " + page);
     }, "open_in_new");
 }
 
@@ -772,7 +776,8 @@ void stylePage(Flex* page, Popup&) {
     sliderRow(fx, "select_window", "Panel opacity", "/appearance/transparency/panels", 0.72, 0.3, 1, 0.05, percent);
     // The blur itself (shared with windows) and windows' own look are Hyprland's
     hyprLink(fx, "blur_medium", "Blur strength and look", "Size, passes, noise, contrast, brightness and vibrancy", "hypr-decoration");
-    hyprLink(fx, "select_window", "Window opacity, shadows and corners", "Active and inactive windows", "hypr-decoration");
+    hyprLink(fx, "select_window", "Window opacity, shadows and corners", "Active and inactive windows", "hypr-decoration", "niri-decoration",
+             "Borders, the focus ring, shadows and corners");
 
     // Text size: the shell's (Accessibility's), and each part's on top of it
     auto* text = group(page, "Text & widget size", "The shell's text size applies everywhere; the others adjust one part on top of it. Widget size grows widgets whole, on the desktop, lock and login screens (each desktop widget also has its own, in the desktop editor)");
@@ -795,7 +800,8 @@ void stylePage(Flex* page, Popup&) {
                       {{0.35, "Sharp"}, {0.7, "Soft"}, {1.0, "Round"}, {1.3, "Extra"}});
     choiceRow<double>(shape, "animation", "Animation speed", "The shell's panels and pages", "/appearance/animationSpeed", 1.0,
                       {{0.0, "Off"}, {0.6, "Fast"}, {1.0, "Normal"}, {1.5, "Relaxed"}});
-    hyprLink(shape, "animation", "Window animations", "Each animation's speed, curve and style", "hypr-animations");
+    hyprLink(shape, "animation", "Window animations", "Each animation's speed, curve and style", "hypr-animations", "niri-animations",
+             "On or off, and their speed");
     switchRow(shape, "palette", "Themed icons", "Settings' icons take on your wallpaper's colours, as Android's do", "/appearance/themedIcons", true);
 
     auto* reset = group(page, "Defaults");
@@ -3847,8 +3853,9 @@ HueChip categoryColours(const std::string& id) {
         {{"notifications", "sound", "hypr-animations", "niri-animations"}, &pink},
         {{"display", "appearance", "style", "bar", "dock", "hypr-decoration", "hypr-monitors", "niri-decoration"}, &orange},
         {{"storage", "monitor", "calendar", "clock", "hypr-render"}, &yellow},
-        {{"battery", "packages", "firmware", "wellbeing", "hypr-startup"}, &green},
-        {{"lock", "firewall", "lockscreen", "users", "hypr-window-rules", "hypr-layer-rules", "hypr-workspace-rules", "hypr-profiles"}, &teal},
+        {{"battery", "packages", "firmware", "wellbeing", "hypr-startup", "niri-startup"}, &green},
+        {{"lock", "firewall", "lockscreen", "users", "hypr-window-rules", "hypr-layer-rules", "hypr-workspace-rules", "hypr-profiles", "niri-rules"},
+         &teal},
         {{"hypr-debug"}, &red},
         {{"accessibility", "tools", "hooks", "hypr-plugins"}, &purple},
     };
@@ -3961,6 +3968,10 @@ const PageDef kPages[] = {
     {"niri-decoration", "auto_awesome", "Borders & shadows", "The focus ring, borders, shadows and corners", niriDecorationPage},
     {"niri-animations", "animation", "Animations", "On or off, and their speed", niriAnimationsPage},
     {"niri-behaviour", "tune", "Behaviour", "Focus, title bars, the hot corner and the overview", niriBehaviourPage},
+    {"niri-keys", "keyboard_command_key", "Keys", "Keys for niri's actions or any command, beside your config's", niriKeysPage},
+    {"niri-rules", "rule", "Window rules", "Float, maximise, size and hide apps' windows", niriRulesPage},
+    {"niri-startup", "rocket_launch", "Startup apps", "Apps and commands to run when niri starts", niriStartupPage},
+    {"niri-environment", "data_object", "Environment", "Variables for the apps niri starts", niriEnvironmentPage},
     {"mouse", "touchpad_mouse", "Mouse & touchpad", "Touchpad, pointer, scrolling and gestures", mousePage},
     {"keybinds", "keyboard", "Keyboard", "Layouts, typing and shortcuts", keyboardPage},
     {"hooks", "webhook", "Hooks", "Your own commands when things happen: locking, a new wallpaper, a low battery…", hooksPage},
@@ -3985,8 +3996,9 @@ const std::vector<PageDef>& pagesOf(bool hypr) {
 }
 
 int pageGroup(const std::string& id) {
-    // Niri Settings: how it looks, then how it behaves
+    // Niri Settings: how it looks, how it behaves, then your lists
     if (id == "niri-behaviour") return 1;
+    if (id == "niri-keys" || id == "niri-rules" || id == "niri-startup" || id == "niri-environment") return 3;
     if (id.starts_with("niri-")) return 0;
     // Hyprland Settings: how it looks, how windows behave, the internals
     if (id == "hypr-monitors" || id == "hypr-windows" || id == "hypr-decoration" || id == "hypr-animations") return 0;

@@ -265,7 +265,7 @@ No. Pick `--hypr inject` and the installer adds three `require` lines to your ex
 <details>
 <summary><b>Does it work on niri?</b></summary>
 
-Yes, in beta, from 6.0: the bar, the dock, the panels, the lock screen and the rest run on niri 26.04 or newer, with niri's own overview. From 6.0-beta-2, Settings changes niri too: the touchpad and mouse, keyboard layouts and shortcuts, monitors, night light and the cursor. **Niri Settings**, niri's counterpart to Hyprland Settings, sets gaps, borders, shadows, corners, animations and focus behaviour. From 6.0-beta-3 the installer sets niri up (`--compositor niri`, or `both` to pick at each login), and the login screen runs on niri when Hyprland isn't installed → [Material3UI on niri](docs/NIRI.md)
+Yes, in beta, from 6.0: the bar, the dock, the panels, the lock screen and the rest run on niri 26.04 or newer, with niri's own overview. From 6.0-beta-2, Settings changes niri too: the touchpad and mouse, keyboard layouts and shortcuts, monitors, night light and the cursor. **Niri Settings**, niri's counterpart to Hyprland Settings, sets gaps, borders, shadows, corners, animations and focus behaviour, and from 6.0-beta-4 keys for niri's actions, window rules, startup apps and environment variables. From 6.0-beta-3 the installer sets niri up (`--compositor niri`, or `both` to pick at each login), and the login screen runs on niri when Hyprland isn't installed → [Material3UI on niri](docs/NIRI.md)
 </details>
 
 <details>

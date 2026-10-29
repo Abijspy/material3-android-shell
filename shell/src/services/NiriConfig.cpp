@@ -179,7 +179,28 @@ niri::Settings NiriConfig::collect() const {
     }
     const auto binds = c.value<nlohmann::json>("/niri/binds", nlohmann::json::array());
     for (const auto& b : binds)
-        if (b.is_object()) s.binds.push_back({b.value("keys", ""), b.value("command", ""), b.value("title", "")});
+        if (b.is_object()) s.binds.push_back({b.value("keys", ""), b.value("command", ""), b.value("title", ""), b.value("action", "")});
+    // Niri Settings' window rules, startup apps and variables
+    const auto rules = c.value<nlohmann::json>("/niri/rules", nlohmann::json::array());
+    for (const auto& r : rules) {
+        if (!r.is_object()) continue;
+        niri::Settings::Rule rule;
+        rule.appId = r.value("appId", "");
+        rule.title = r.value("title", "");
+        rule.floating = r.value("floating", false);
+        rule.maximized = r.value("maximized", false);
+        rule.fullscreen = r.value("fullscreen", false);
+        rule.hide = r.value("hide", false);
+        rule.opacity = r.value("opacity", 1.0);
+        rule.width = r.value("width", 0.0);
+        s.rules.push_back(rule);
+    }
+    const auto startup = c.value<nlohmann::json>("/niri/startup", nlohmann::json::array());
+    for (const auto& st : startup)
+        if (st.is_object() && st.value("enabled", true)) s.startup.push_back(st.value("command", ""));
+    const auto env = c.value<nlohmann::json>("/niri/environment", nlohmann::json::array());
+    for (const auto& e : env)
+        if (e.is_object()) s.environment.push_back({e.value("name", ""), e.value("value", "")});
     return s;
 }
 
@@ -211,17 +232,20 @@ void NiriConfig::apply() {
     changed.emit();
 }
 
-std::vector<kdl::Node> NiriConfig::yours() const {
+std::vector<kdl::Node> NiriConfig::yours(bool withShell) const {
     std::vector<kdl::Node> out;
     // Includes are read where they stand, as niri does; ours is left out
     std::error_code none;
     const std::string skip = fs::weakly_canonical(file(), none).string();
+    const std::string shell = fs::weakly_canonical(includeFile(), none).string();
     std::function<void(const fs::path&, int)> read = [&](const fs::path& path, int depth) {
         std::error_code ec;
-        if (depth > 8 || fs::weakly_canonical(path, ec).string() == skip) return;
+        const std::string here = fs::weakly_canonical(path, ec).string();
+        if (depth > 8 || here == skip) return;
+        const bool keep = withShell || here != shell;
         for (auto& n : kdl::parse(readAll(path.string()))) {
             if (n.name != "include") {
-                out.push_back(std::move(n));
+                if (keep) out.push_back(std::move(n));
                 continue;
             }
             if (n.args.empty() || n.args[0].type != kdl::Value::Type::String) continue;

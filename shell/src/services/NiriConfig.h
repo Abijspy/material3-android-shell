@@ -36,8 +36,9 @@ public:
 
     // Your niri config as niri reads it: config.kdl and what it includes,
     // in order, without the shell's settings. What Niri Settings shows for
-    // an option it hasn't set
-    std::vector<kdl::Node> yours() const;
+    // an option it hasn't set. Without the shell's material3ui.kdl too (its
+    // keys, startup and variables), but still what it includes for you
+    std::vector<kdl::Node> yours(bool withShell = true) const;
     // Niri Settings' options back to your config's: these /niri/look keys
     // (all of them when empty) forgotten
     static void resetLook(const std::vector<std::string>& keys = {});
