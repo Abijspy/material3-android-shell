@@ -81,21 +81,31 @@ If niri can't read the shell's settings (`material3ui.kdl` isn't included, or ni
 On niri, the window that is Hyprland Settings on Hyprland is **Niri Settings**: in the launcher, from the card at the top of Settings' sidebar, or with `material3ui msg nirisettings`. Its changes apply as you make them:
 
 - **Windows & layout:** gaps, centring the focused column (never, when it won't fit, always), centring a lone column, how wide new windows open, and space kept free at each edge.
-- **Borders & shadows:** the focus ring and the border (on or off, their widths, in the wallpaper's colours), shadows (softness, spread, drop) and window corners.
+- **Borders & shadows:** the focus ring and the border (on or off, their widths, in the wallpaper's colours), shadows (softness, spread, drop), window corners, and niri's blur (from 6.0-rc-1): on or off, passes, smoothness, noise and saturation.
 - **Animations:** on or off, and their speed.
-- **Behaviour:** focus following the mouse, the pointer following the focus, workspace back and forth, asking apps not to draw their own title bars, the hot corner, the overview's size, and niri's list of keys at login.
+- **Behaviour:** focus following the mouse, the pointer following the focus, workspace back and forth, drawing tablets on or off, asking apps not to draw their own title bars, the hot corner, the overview's size and its blurred backdrop, and niri's list of keys at login.
 - **Keys** (from 6.0-beta-4): a key for any of niri's actions (close, maximise, float, centre, move and focus columns, workspaces and monitors, the overview…) or for a command. Settings → Keyboard lists the same keys. Below them, every key your `config.kdl` binds, in words.
-- **Window rules** (from 6.0-beta-4): for an open app, or app ids matching a regex: open floating, maximised or full screen, at a width, see-through, or hidden from screen sharing. Your `config.kdl`'s own rules are listed below; a rule here wins where both set something.
+- **Window rules** (from 6.0-beta-4): for an open app, or app ids matching a regex: open floating, maximised or full screen, at a width, see-through, hidden from screen sharing, or (from 6.0-rc-1) with its own border colour from the wallpaper's palette. Your `config.kdl`'s own rules are listed below; a rule here wins where both set something.
 - **Startup apps** (from 6.0-beta-4): apps and commands to run when niri starts, each with a switch, and ▶ to run it now. Below them, what your config starts.
 - **Environment** (from 6.0-beta-4): variables for the apps niri starts from now on, beside the ones your config sets.
 
 The pages for how windows look and behave start each option from what your `config.kdl` says, or niri's default. Only what you change there is written, to `material3ui-settings.kdl`, so the rest of your config stays in charge: niri merges these sections field by field. **Back to config.kdl**, at the foot of each of those pages, forgets that page's changes. niri can't switch a few options off once your config switches them on (focus following the mouse, the pointer following the focus) or back on once it switches them off (the hot corner); for those, the page says so. Keys, rules, startup apps and variables are added to your config's: remove one on its page.
 
+### Blur
+
+niri 26.04 blurs what's behind a surface that asks for it. From 6.0-rc-1 the shell sets it up as Hyprland's looks:
+
+- **The bar, panels, dock, notifications and OSD** ask niri for blur behind them, and the shell's rules make it niri's regular blur, showing the windows behind them softened, rather than its default *xray* blur, which shows only the wallpaper.
+- **The shell's windows** (Settings, Niri Settings, the welcome tour) are rounded and blurred by a rule of the shell's.
+- **The overview** has the wallpaper, blurred, behind the workspaces: the shell draws a blurred copy of it (`material3ui-backdrop`) and its rules put that copy in niri's backdrop, while each workspace keeps the sharp one. Turn it off in Niri Settings → Behaviour → Blurred backdrop.
+
+These follow Settings → Look & feel → Blur, and the rules are in the file the shell writes (`material3ui-settings.kdl`), so they need nothing in your config. For other apps, set blur with a window rule of your own (`background-effect { blur true }`), or in the app if it asks niri itself (foot, kitty).
+
 ## Not on niri yet
 
 These are coming in the next betas. Until then, set them in niri's own `config.kdl`:
 
-- **Each animation's own curve, and blur.** Hyprland Settings has them on Hyprland. niri has no blur.
+- **Each animation's own curve.** Hyprland Settings has them on Hyprland.
 - **Arranging monitors** side by side (their positions): set `position` in niri's config.
 - **Minimising windows**: niri has no minimised state.
 - **Picking a single window to record:** you pick a region instead, since niri's windows scroll.

@@ -774,8 +774,37 @@ void stylePage(Flex* page, Popup&) {
               [](double v) { return std::format("Radius {:.0f}", v); });
     sliderRow(fx, "toolbar", "Bar opacity", "/appearance/transparency/bar", 0.7, 0.3, 1, 0.05, percent);
     sliderRow(fx, "select_window", "Panel opacity", "/appearance/transparency/panels", 0.72, 0.3, 1, 0.05, percent);
+    // Hyprland 0.57's blur styles (glass, frost, acrylic…) and wobbly
+    // windows: for the shell's panels too, since the blur is shared
+    if (Hyprland::get().available()) {
+        auto& h = HyprOptions::get();
+        if (!h.loaded()) h.load();
+        if (const auto* variant = h.find("decoration:blur:variant"); variant && !variant->choices.empty()) {
+            auto r = row(fx, "blur_linear", "Blur style", "Behind the panels and windows; the animated ones use more power");
+            std::string shown = "Classic";
+            std::vector<std::pair<std::string, std::string>> items;
+            for (const auto& [v, l] : variant->choices) {
+                const std::string label = l == "Kawase" ? "Classic" : l;
+                items.push_back({v.dump(), label});
+                if (v == variant->value) shown = label;
+            }
+            dropdown(r.row, fx, shown, items, [](const std::string& v) {
+                try {
+                    HyprOptions::get().set("decoration:blur:variant", nlohmann::json::parse(v));
+                } catch (...) {
+                }
+            });
+        }
+        if (const auto* wobble = h.find("decoration:wobble:enabled")) {
+            auto r = row(fx, "waves", "Wobbly windows", "Windows wobble as you move and resize them");
+            auto* sw = r.row->add<Switch>();
+            sw->setChecked(wobble->value.is_boolean() && wobble->value.get<bool>(), false);
+            sw->onToggled = [](bool on) { HyprOptions::get().set("decoration:wobble:enabled", on); };
+        }
+    }
     // The blur itself (shared with windows) and windows' own look are Hyprland's
-    hyprLink(fx, "blur_medium", "Blur strength and look", "Size, passes, noise, contrast, brightness and vibrancy", "hypr-decoration");
+    hyprLink(fx, "blur_medium", "Blur strength and look", "Size, passes, noise, contrast, brightness and vibrancy", "hypr-decoration",
+             "niri-decoration", "Passes, smoothness, noise and saturation");
     hyprLink(fx, "select_window", "Window opacity, shadows and corners", "Active and inactive windows", "hypr-decoration", "niri-decoration",
              "Borders, the focus ring, shadows and corners");
 

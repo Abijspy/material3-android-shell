@@ -262,7 +262,11 @@ void HyprOptions::load() {
             o.kind = Kind::Choice;
             for (const auto& entry : d["map"])
                 for (auto& [k, v] : entry.items()) o.choices.push_back({v, label(k)});
-            std::ranges::sort(o.choices, [](const auto& a, const auto& b) { return a.first.dump() < b.first.dump(); });
+            // In value order: numbers as numbers (0, 1, 2 … 10)
+            std::ranges::sort(o.choices, [](const auto& a, const auto& b) {
+                if (a.first.is_number() && b.first.is_number()) return a.first.template get<double>() < b.first.template get<double>();
+                return a.first.dump() < b.first.dump();
+            });
         } else if (type == "bool") {
             o.kind = Kind::Bool;
         } else if (type == "int") {

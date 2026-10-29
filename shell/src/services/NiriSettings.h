@@ -45,9 +45,22 @@ struct Settings {
         std::optional<double> slowdown;
         std::optional<bool> preferNoCsd, backAndForth, skipHotkeys;
         // These niri can only switch on (they take no "false"): written when true
-        bool focusFollowsMouse = false, warpMouse = false, hotCornersOff = false;
+        bool focusFollowsMouse = false, warpMouse = false, hotCornersOff = false, tabletsOff = false;
         std::optional<double> overviewZoom;
+        // niri's blur (26.04), for everything blurred
+        std::optional<bool> blurOn;
+        std::optional<int> blurPasses;
+        std::optional<double> blurOffset, blurNoise, blurSaturation;
     } look;
+
+    // The shell's own surfaces, as Hyprland shows them: its windows rounded
+    // (and blurred, with `shellBlur`), its bar, panels and notifications
+    // blurring the windows behind them rather than only the wallpaper (niri's
+    // default "xray" blur), and with `blurredBackdrop` the overview's
+    // backdrop its blurred copy of the wallpaper (material3ui-backdrop)
+    bool shellBlur = false;
+    int shellRadius = 18;
+    bool blurredBackdrop = false;
 
     struct Output {
         std::string name;
@@ -74,6 +87,7 @@ struct Settings {
         bool floating = false, maximized = false, fullscreen = false, hide = false; // hide: from screen sharing
         double opacity = 1;                                                        // 1: as it is
         double width = 0;                                                          // a new column's share; 0: as it is
+        std::string color; // "#rrggbb": its border and focus ring (dimmer when unfocused); "": as they are
     };
     std::vector<Rule> rules;
 

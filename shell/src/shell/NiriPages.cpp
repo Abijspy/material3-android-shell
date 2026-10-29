@@ -355,11 +355,25 @@ void niriDecorationPage(Flex* page, Popup&) {
     if (const auto* o = kdl::last(doc, {"layout", "shadow", "offset"}); o && o->prop("y")) offset = o->prop("y")->number;
     sliderRow(shadow, "vertical_align_bottom", "Drop", kLook + "shadowOffset", offset, 0, 40, 1, px);
 
+    // niri's own blur (26.04): behind the shell's panels and windows, and any
+    // app that asks for it (foot, kitty…) or that a rule blurs
+    auto* blur = group(page, "Blur", "Behind the shell's bar, panels and windows, and apps that ask for it");
+    switchRow(blur, "blur_on", "Blur", "niri's blur, for everything blurred", kLook + "blurOn", !kdl::flag(doc, {"blur", "off"}).value_or(false));
+    sliderRow(blur, "layers", "Passes", kLook + "blurPasses", kdl::number(doc, {"blur", "passes"}).value_or(3), 1, 6, 1,
+              [](double v) { return std::format("{:.0f}", v); });
+    sliderRow(blur, "blur_medium", "Smoothness", kLook + "blurOffset", kdl::number(doc, {"blur", "offset"}).value_or(3), 1, 10, 0.5,
+              [](double v) { return std::format("{:.1f}", v); });
+    sliderRow(blur, "grain", "Noise", kLook + "blurNoise", kdl::number(doc, {"blur", "noise"}).value_or(0.02), 0, 0.1, 0.005,
+              [](double v) { return std::format("{:.3f}", v); });
+    sliderRow(blur, "palette", "Saturation", kLook + "blurSaturation", kdl::number(doc, {"blur", "saturation"}).value_or(1.5), 0, 3, 0.05,
+              [](double v) { return std::format("{:.0f}%", v * 100); });
+
     auto* corners = group(page, "Corners");
     sliderRow(corners, "rounded_corner", "Window corners", kLook + "cornerRadius", everyWindow(doc, "geometry-corner-radius").value_or(0), 0, 32, 1,
               [](double v) { return v < 0.5 ? std::string("Square") : px(v); });
     resetGroup(page, "niri-decoration",
-               {"ringOn", "ringWidth", "borderOn", "borderWidth", "shadowOn", "shadowSoftness", "shadowSpread", "shadowOffset", "cornerRadius"});
+               {"ringOn", "ringWidth", "borderOn", "borderWidth", "shadowOn", "shadowSoftness", "shadowSpread", "shadowOffset", "blurOn", "blurPasses",
+                "blurOffset", "blurNoise", "blurSaturation", "cornerRadius"});
 }
 
 void niriAnimationsPage(Flex* page, Popup&) {
@@ -388,6 +402,10 @@ void niriBehaviourPage(Flex* page, Popup&) {
            "On in your config.kdl (niri can't switch it off from here)");
     switchRow(focus, "swap_horiz", "Back and forth", "Going to the workspace you're on goes back to the one before", kLook + "backAndForth",
               kdl::flag(doc, {"input", "workspace-auto-back-and-forth"}).value_or(false));
+    // Takes only "off", like Hyprland 0.57's input:tablet:enabled
+    oneWay(focus, "stylus_note", "Drawing tablets", "Pens and tablets move the pointer and draw",
+           kdl::flag(doc, {"input", "tablet", "off"}).value_or(false), "tablets", true,
+           "Off in your config.kdl (niri can't switch them on from here)");
 
     auto* windows = group(page, "Windows");
     switchRow(windows, "web_asset", "niri's borders for every app", "Ask apps not to draw their own title bars and shadows", kLook + "preferNoCsd",
@@ -405,12 +423,15 @@ void niriBehaviourPage(Flex* page, Popup&) {
            "Off in your config.kdl (niri can't switch it on from here)");
     sliderRow(overview, "zoom_out", "Overview size", kLook + "overviewZoom", kdl::number(doc, {"overview", "zoom"}).value_or(0.5), 0.1, 0.75, 0.05,
               [](double v) { return std::format("{:.0f}%", v * 100); });
+    switchRow(overview, "blur_on", "Blurred backdrop", "The wallpaper, blurred, behind the workspaces in the overview", kLook + "blurredOverview",
+              true);
 
     auto* start = group(page, "Starting niri");
     switchRow(start, "keyboard", "Important keys at login", "niri's list of keys when it starts", kLook + "hotkeyHelp",
               !kdl::flag(doc, {"hotkey-overlay", "skip-at-startup"}).value_or(false));
     resetGroup(page, "niri-behaviour",
-               {"focusFollowsMouse", "warpMouse", "backAndForth", "preferNoCsd", "hotCorner", "overviewZoom", "hotkeyHelp"});
+               {"focusFollowsMouse", "warpMouse", "backAndForth", "tablets", "preferNoCsd", "hotCorner", "overviewZoom", "blurredOverview",
+                "hotkeyHelp"});
 }
 
 namespace {
@@ -530,6 +551,10 @@ void niriRulesPage(Flex* page, Popup&) {
                       [](double v) { return v > 0.995 ? std::string("Opaque") : std::format("{:.0f}%", v * 100); });
             switchRow(g, "visibility_off", "Hide from screen sharing", "Blacked out when apps record or share the screen", base + "hide",
                       r.value("hide", false));
+            // From the wallpaper's palette, so it changes with it
+            choiceRow<std::string>(g, "border_color", "Border colour", "Its border and focus ring, dimmer when it isn't focused", base + "color",
+                                   r.value("color", ""),
+                                   {{"", "As it is"}, {"primary", "Primary"}, {"secondary", "Secondary"}, {"tertiary", "Tertiary"}, {"error", "Red"}});
             auto rm = row(g, "delete", "Remove this rule");
             confirmButton(rm.row, "nirirule:" + std::to_string(i) + ":" + label, "delete", [live, i] {
                 removeAt("/niri/rules", i);

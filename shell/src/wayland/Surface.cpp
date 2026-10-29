@@ -339,7 +339,7 @@ void Surface::render() {
 
     auto& r = Renderer::get();
     r.begin(m_eglSurface, bufferWidth(), bufferHeight(), m_scale);
-    r.inlineBlur = inlineBlur && Theme::get().widgetBlur() > 0 ? Theme::get().widgetBlur() : 0;
+    r.inlineBlur = !inlineBlur ? 0 : inlineBlurRadius > 0 ? inlineBlurRadius : Theme::get().widgetBlur() > 0 ? Theme::get().widgetBlur() : 0;
     m_ambient = false;
     m_painting = true;
     if (m_root) m_root->paint(r);

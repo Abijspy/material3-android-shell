@@ -7,6 +7,8 @@
 #include "shell/bar/Widgets.h"
 #include "core/EventLoop.h"
 #include "render/Images.h"
+#include "services/Niri.h"
+#include "services/NiriConfig.h"
 #include "services/Wallpaper.h"
 #include "ui/Theme.h"
 
@@ -112,7 +114,7 @@ public:
 
 } // namespace
 
-Desktop::Desktop(wl::Output* output) {
+Desktop::Desktop(wl::Output* output) : m_output(output) {
     wl::LayerSurface::Options o;
     o.ns = "material3ui-wallpaper";
     o.layer = wl::LayerSurface::Layer::Background;
@@ -133,11 +135,36 @@ Desktop::Desktop(wl::Output* output) {
     // While the editor shows them as cards, these step aside
     m_editing = desktopeditor::changed().connect([this] { m_board->setVisible(!desktopeditor::isOpen()); });
     fill();
+    syncBackdrop();
     // Edited in the desktop editor (or Settings): rebuilt when they change
     m_config = Config::get().changed.connect([this] {
         const auto now = Config::get().value<nlohmann::json>("/desktop/items", nlohmann::json()).dump();
         if (now != m_items) fill();
+        syncBackdrop();
     });
+}
+
+void Desktop::syncBackdrop() {
+    // Only while niri reads the shell's rules: else it would be a second
+    // wallpaper over the first, hiding the widgets
+    const bool want = Niri::get().available() && NiriConfig::blurredOverview() && NiriConfig::get().included();
+    if (want == (m_backdrop != nullptr)) return;
+    if (!want) {
+        m_backdrop.reset();
+        return;
+    }
+    wl::LayerSurface::Options o;
+    o.ns = "material3ui-backdrop";
+    o.layer = wl::LayerSurface::Layer::Background;
+    o.anchor = wl::LayerSurface::Top | wl::LayerSurface::Bottom | wl::LayerSurface::Left | wl::LayerSurface::Right;
+    o.exclusiveZone = -1;
+    m_backdrop = std::make_unique<wl::LayerSurface>(m_output, o);
+    m_backdrop->inlineBlur = true;
+    m_backdrop->inlineBlurRadius = 56; // soft, like a frosted pane
+    auto root = std::make_unique<Node>();
+    root->add<WallpaperNode>();
+    root->add<Node>()->blurBehind = true; // all of it
+    m_backdrop->setRoot(std::move(root));
 }
 
 void Desktop::refresh() {

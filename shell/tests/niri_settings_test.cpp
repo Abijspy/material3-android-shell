@@ -114,9 +114,35 @@ int main(int argc, char** argv) {
     broken.appId = "(unclosed";
     titled.title = "Picture-in-Picture";
     titled.floating = true;
-    n.rules = {firefox, nothing, broken, titled};
+    niri::Settings::Rule tinted, badColour;
+    tinted.appId = "^ghostty$";
+    tinted.color = "#d0bcff";
+    badColour.appId = "^foot$";
+    badColour.color = "#zz\"0000";
+    n.rules = {firefox, nothing, broken, titled, tinted, badColour};
+    n.look.tabletsOff = true;
     n.binds = {{"Mod+Shift+M", "", "", "maximize-column"}, {"Mod+Shift+X", "", "", "rm -rf"}, {"Mod+Shift+T", "foot", "", ""}};
+    n.shellBlur = true;
+    n.blurredBackdrop = true;
+    n.look.blurOn = true;
+    n.look.blurPasses = 4;
+    n.look.blurOffset = 5;
     const std::string more = niri::render(n);
+    // The shell's own: its windows rounded (blurred when blur is on), its
+    // layers blurring what's behind them, the backdrop swapped for the blurred one
+    expect(has(plain, "window-rule {\n    match app-id=\"^material3ui-\"\n    geometry-corner-radius 18\n    clip-to-geometry true\n}\n") &&
+               !has(plain, "background-effect") && !has(plain, "material3ui-backdrop"),
+           "the shell's windows rounded, nothing blurred while blur is off");
+    expect(has(more, "match app-id=\"^material3ui-\"\n    geometry-corner-radius 18\n    clip-to-geometry true\n    background-effect {\n"
+                     "        blur true\n        xray false\n    }\n}"),
+           "and blurred");
+    expect(has(more, "match namespace=\"^material3ui-(bar|frame|popup|toasts|osd|dock|switcher)$\"\n    background-effect {\n        xray false\n"),
+           "its layers blur the windows behind");
+    expect(has(more, "match namespace=\"^material3ui-backdrop$\"\n    place-within-backdrop true\n") &&
+               has(more, "match namespace=\"^material3ui-wallpaper$\"\n    place-within-backdrop false\n"),
+           "the blurred backdrop in the overview");
+    expect(has(more, "\nblur {\n    on\n    passes 4\n    offset 5.00\n}\n"), "niri's blur");
+    expect(look.find("app-id=\"^material3ui-\"") < look.find("geometry-corner-radius 12"), "a corner radius of yours after the shell's, so it wins");
     expect(has(more, "\nenvironment {\n    XCURSOR_THEME \"Bibata-Modern-Classic\"\n    XCURSOR_SIZE \"24\"\n    QT_QPA_PLATFORMTHEME \"qt6ct\"\n    EMPTY \"\"\n}\n"),
            "one environment section, bad names left out");
     expect(more.find("\nenvironment {") == more.rfind("\nenvironment {"), "only one");
@@ -129,6 +155,11 @@ int main(int argc, char** argv) {
     expect(has(more, "    Mod+Shift+M { maximize-column; }\n") && !has(more, "rm -rf") &&
                has(more, "    Mod+Shift+T { spawn \"sh\" \"-c\" \"foot\"; }\n"),
            "an action, a command, and no action that isn't one");
+    expect(has(more, "match app-id=\"^ghostty$\"\n    border {\n        active-color \"#d0bcff\"\n        inactive-color \"#d0bcff80\"\n    }\n"
+                     "    focus-ring {\n        active-color \"#d0bcff\""),
+           "a rule's own colour, dimmer when unfocused");
+    expect(!has(more, "^foot$") && !has(more, "#zz"), "a colour that isn't one sets nothing");
+    expect(has(more, "    tablet {\n        off\n    }\n"), "tablets off");
     expect(niri::exactly("a.b+c") == "^a\\.b\\+c$", "exactly");
     expect(niri::validRegex("^firefox$") && !niri::validRegex("(?=x)") && !niri::validRegex("(a)\\1") && !niri::validRegex("[a"),
            "regexes niri can read");

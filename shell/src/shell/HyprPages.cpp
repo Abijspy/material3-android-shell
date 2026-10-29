@@ -46,6 +46,9 @@ struct Section {
     const char* title;
     std::vector<std::string> prefixes;
     std::vector<std::string> names = {}; // exact names, placed before prefixes
+    // Shown only while decoration:blur:variant is one of these (0.57's blur
+    // variants each have their own settings); empty: always
+    std::vector<std::string> variants = {};
 };
 struct Page {
     const char* id;
@@ -66,9 +69,21 @@ const std::vector<Page>& catalogue() {
           {"Behaviour", {"general:"}}}},
         {"hypr-decoration",
          {{"Corners, opacity and dimming", {"decoration:"}},
-          {"Blur", {"decoration:blur:"}},
+          {"Blur", {"decoration:blur:"}, {"decoration:blur:enabled", "decoration:blur:variant", "decoration:blur:size", "decoration:blur:passes"}},
+          // 0.57's blur variants: the one in use's own settings (glass is
+          // what frost, prism, drops, heat shimmer and aurora build on)
+          {"Glass", {"decoration:blur:glass:"}, {}, {"frost", "prism", "drops", "heat_shimmer", "aurora"}},
+          {"Acrylic", {"decoration:blur:acrylic:"}, {}, {"acrylic"}},
+          {"Aurora", {"decoration:blur:aurora:"}, {}, {"aurora"}},
+          {"Drops", {"decoration:blur:drops:"}, {}, {"drops"}},
+          {"Fluid jar", {"decoration:blur:fluid_jar:"}, {}, {"fluid_jar"}},
+          {"Haze", {"decoration:blur:haze:"}, {}, {"haze"}},
+          {"Heat shimmer", {"decoration:blur:heat_shimmer:"}, {}, {"heat_shimmer"}},
+          {"Ripple", {"decoration:blur:ripple:"}, {}, {"ripple"}},
+          {"Water", {"decoration:blur:water:"}, {}, {"water"}},
           {"Shadow", {"decoration:shadow:"}},
           {"Glow", {"decoration:glow:"}},
+          {"Wobble", {"decoration:wobble:"}, {"decoration:wobble:enabled"}},
           {"Motion blur", {"decoration:motion_blur:"}}}},
         {"hypr-input",
          {{"Keyboard",
@@ -90,6 +105,7 @@ const std::vector<Page>& catalogue() {
         {"hypr-groups", {{"Groups", {"group:"}}, {"Group bar", {"group:groupbar:"}}}},
         {"hypr-misc",
          {{"Behaviour", {"misc:"}},
+          {"Layers", {"layers:"}}, // bars, launchers and notifications (0.57)
           {"Keybinds", {"binds:"}},
           {"XWayland", {"xwayland:"}},
           {"Ecosystem", {"ecosystem:"}},
@@ -125,6 +141,15 @@ const std::map<std::string, std::string> kNames = {
     {"decoration:blur:enabled", "Blur"},
     {"decoration:blur:size", "Blur size"},
     {"decoration:blur:passes", "Blur passes"},
+    {"decoration:blur:variant", "Blur style"},
+    {"decoration:blur:proportional", "Lighter blur behind see-through parts"},
+    {"decoration:wobble:enabled", "Wobbly windows"},
+    {"layers:layers_hog_keyboard_focus", "Bars and launchers keep the keyboard"},
+    {"layers:allow_new_top_layers_over_existing_fullscreen", "New bars and popups over full screen windows"},
+    {"cursor:warp_on_monitor_change", "Move the pointer to the focused window on another monitor"},
+    {"input:tablet:enabled", "Tablets"},
+    {"input:swallow_focus_click", "The click that focuses a window isn't passed on"},
+    {"binds:drag_center_window", "Centre a dragged window on the pointer"},
     {"decoration:shadow:enabled", "Shadows"},
     {"decoration:shadow:range", "Shadow size"},
     {"decoration:shadow:color", "Shadow colour"},
@@ -476,6 +501,15 @@ void buildPage(Flex* page, const std::string& id) {
         if (!page) return;
         std::vector<std::vector<const Option*>> bySection(page->sections.size());
         std::vector<const Option*> other;
+        // The blur variant in use ("heat_shimmer"), for its sections
+        std::string variant;
+        for (const auto& o : h.options())
+            if (o.name == "decoration:blur:variant")
+                for (const auto& [v, l] : o.choices)
+                    if (v == o.value) {
+                        variant = l;
+                        for (auto& c : variant) c = c == ' ' ? '_' : static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                    }
         for (const auto& o : h.options()) {
             auto [p, i] = placeOf(o.name);
             if (p == page) bySection[i].push_back(&o);
@@ -490,6 +524,7 @@ void buildPage(Flex* page, const std::string& id) {
                 return ia < ib;
             });
             if (list.empty()) continue;
+            if (const auto& only = page->sections[i].variants; !only.empty() && std::ranges::find(only, variant) == only.end()) continue;
             auto* g = group(live, page->sections[i].title);
             for (const auto* o : list) optionRow(g, *o);
         }
@@ -1163,10 +1198,12 @@ const std::vector<Field>& windowEffects() {
         {"rounding", "Corner radius", "Look", Field::Int},
         {"rounding_power", "Corner shape", "Look", Field::Float},
         {"border_size", "Border width", "Look", Field::Int},
-        {"border_color", "Border colour", "Look", Field::Text, "rgba(RRGGBBAA)"},
+        {"border_color", "Border colour", "Look", Field::Text, "active [inactive] (0.57), e.g. rgba(d0bcffee) rgba(49454faa)"},
         {"decorate", "Decorations (borders, shadow)", "Look", Field::Bool},
         {"no_blur", "No blur", "Look", Field::Bool},
         {"no_shadow", "No shadow", "Look", Field::Bool},
+        {"no_glow", "No glow (0.57)", "Look", Field::Bool},
+        {"no_wobble", "Never wobble (0.57)", "Look", Field::Bool},
         {"no_dim", "Never dim", "Look", Field::Bool},
         {"dim_around", "Dim everything around it", "Look", Field::Bool},
         {"opaque", "Opaque", "Look", Field::Bool},
@@ -1182,6 +1219,7 @@ const std::vector<Field>& windowEffects() {
         {"no_follow_mouse", "Ignore focus-follows-mouse", "Focus", Field::Bool},
         {"suppress_event", "Ignore its requests", "Focus", Field::Text, "fullscreen maximize activate activatefocus fullscreenoutput"},
         {"confine_pointer", "Keep the pointer inside", "Focus", Field::Bool},
+        {"no_xdg_drags", "No dragging things out of it (0.57)", "Focus", Field::Bool},
         {"allows_input", "Accept input (XWayland)", "Focus", Field::Bool},
         {"no_shortcuts_inhibit", "Don't let it take shortcuts", "Focus", Field::Bool},
         {"idle_inhibit", "Keep the screen on", "Behaviour", Field::Text, "none, always, focus, fullscreen"},

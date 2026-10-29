@@ -35,6 +35,8 @@ public:
     // It draws its own wallpaper (the desktop, the lock and login screens):
     // blurBehind cards are blurred in the frame, not by the compositor
     bool inlineBlur = false;
+    // That blur's radius, when not the widgets' (the overview's backdrop)
+    float inlineBlurRadius = 0;
     ~Surface() override;
 
     Surface(const Surface&) = delete;

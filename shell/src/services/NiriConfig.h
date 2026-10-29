@@ -42,6 +42,9 @@ public:
     // Niri Settings' options back to your config's: these /niri/look keys
     // (all of them when empty) forgotten
     static void resetLook(const std::vector<std::string>& keys = {});
+    // The overview's backdrop is the blurred wallpaper (Niri Settings →
+    // Behaviour; on by default): the desktop draws it, as material3ui-backdrop
+    static bool blurredOverview();
 
     Signal<> changed; // written, or niri's answer to it
 

@@ -24,7 +24,11 @@ public:
 
 private:
     void fill(); // the items, from config.json
-    std::unique_ptr<wl::LayerSurface> m_surface;
+    // niri's overview: the wallpaper blurred, as the backdrop behind the
+    // workspaces (material3ui-backdrop, put there by the shell's niri rules)
+    void syncBackdrop();
+    wl::Output* m_output = nullptr;
+    std::unique_ptr<wl::LayerSurface> m_surface, m_backdrop;
     desktop::Board* m_board = nullptr;
     std::string m_items; // as last filled, to tell a change
     Connection m_config, m_editing;

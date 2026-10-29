@@ -42,6 +42,7 @@ const std::set<std::string> kWorkspaceEvents = {
     "destroyworkspace", "destroyworkspacev2", "moveworkspace", "moveworkspacev2", "renameworkspace",
     "openwindow", "closewindow", "movewindow", "movewindowv2", "monitoradded", "monitoraddedv2",
     "monitorremoved", "monitorremovedv2", "configreloaded",
+    "changeworkspaceid", // 0.57: a workspace renumbered
 };
 
 const std::set<std::string> kWindowEvents = {
@@ -50,7 +51,7 @@ const std::set<std::string> kWindowEvents = {
 
 // Events after which the windows (which, where, which has focus) may differ
 const std::set<std::string> kWindowsEvents = {
-    "openwindow", "closewindow", "activewindow", "movewindow", "workspace", "focusedmon",
+    "openwindow", "closewindow", "activewindow", "movewindow", "workspace", "focusedmon", "changeworkspaceid",
 };
 
 } // namespace
@@ -133,13 +134,17 @@ std::vector<Compositor::Window> Hyprland::windows(bool minimised) const {
         w.floating = c.value("floating", false);
         w.focusOrder = c.value("focusHistoryID", 1 << 20);
         int ws = 0;
+        bool special = false;
         if (c.contains("workspace")) {
-            ws = c["workspace"].value("id", 0);
-            w.workspaceName = c["workspace"].value("name", "");
+            const auto& wj = c["workspace"];
+            ws = wj.value("id", 0);
+            w.workspaceName = wj.value("name", "");
+            // Special workspaces (the scratchpad, minimised windows): ids < 0
+            // before 0.57, no id at all since, and their type and name say so
+            special = ws < 0 || wj.value("type", "") == "special" || w.workspaceName.starts_with("special:");
         }
-        // Special workspaces (the scratchpad, minimised windows) have ids < 0
-        w.minimised = ws < 0;
-        w.workspace = ws > 0 ? ws : 0;
+        w.minimised = special;
+        w.workspace = ws > 0 && !special ? ws : 0;
         if (c.contains("at") && c["at"].size() == 2) {
             w.x = c["at"][0].get<float>();
             w.y = c["at"][1].get<float>();
@@ -148,7 +153,7 @@ std::vector<Compositor::Window> Hyprland::windows(bool minimised) const {
             w.w = c["size"][0].get<float>();
             w.h = c["size"][1].get<float>();
         }
-        if ((ws > 0 || (minimised && ws < 0)) && c.value("mapped", true) && !c.value("hidden", false)) out.push_back(std::move(w));
+        if ((w.workspace > 0 || (minimised && special)) && c.value("mapped", true) && !c.value("hidden", false)) out.push_back(std::move(w));
     }
     return out;
 }

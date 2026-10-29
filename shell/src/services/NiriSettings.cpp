@@ -115,6 +115,7 @@ std::string render(const Settings& s) {
     if (l.focusFollowsMouse) out += "    focus-follows-mouse\n";
     if (l.warpMouse) out += "    warp-mouse-to-focus\n";
     if (l.backAndForth) out += std::format("    workspace-auto-back-and-forth {}\n", *l.backAndForth);
+    if (l.tabletsOff) out += "    tablet {\n        off\n    }\n";
     out += "}\n";
 
     // The layout: what Niri Settings sets, and the focus ring and border
@@ -149,6 +150,28 @@ std::string render(const Settings& s) {
     if (!shadow.empty()) layout += "    shadow {\n" + shadow + "    }\n";
     if (!layout.empty()) out += "\nlayout {\n" + layout + "}\n";
 
+    // The shell's windows (Settings, Niri Settings…): rounded, and blurred,
+    // as on Hyprland; first, so a corner radius of yours below wins
+    out += std::format("\nwindow-rule {{\n    match app-id=\"^material3ui-\"\n    geometry-corner-radius {}\n    clip-to-geometry true\n",
+                       std::clamp(s.shellRadius, 0, 64));
+    if (s.shellBlur) out += "    background-effect {\n        blur true\n        xray false\n    }\n";
+    out += "}\n";
+    // Its layers ask for blur themselves; over windows it should show them
+    if (s.shellBlur)
+        out += "\nlayer-rule {\n    match namespace=\"^material3ui-(bar|frame|popup|toasts|osd|dock|switcher)$\"\n"
+               "    background-effect {\n        xray false\n    }\n}\n";
+    // The overview's backdrop: the blurred wallpaper in place of the sharp one
+    if (s.blurredBackdrop)
+        out += "\nlayer-rule {\n    match namespace=\"^material3ui-backdrop$\"\n    place-within-backdrop true\n}\n"
+               "\nlayer-rule {\n    match namespace=\"^material3ui-wallpaper$\"\n    place-within-backdrop false\n}\n";
+    std::string blur;
+    if (l.blurOn) blur += *l.blurOn ? "    on\n" : "    off\n";
+    if (l.blurPasses) blur += std::format("    passes {}\n", std::clamp(*l.blurPasses, 1, 8));
+    if (l.blurOffset) blur += std::format("    offset {:.2f}\n", std::clamp(*l.blurOffset, 0.5, 20.0));
+    if (l.blurNoise) blur += std::format("    noise {:.3f}\n", std::clamp(*l.blurNoise, 0.0, 1.0));
+    if (l.blurSaturation) blur += std::format("    saturation {:.2f}\n", std::clamp(*l.blurSaturation, 0.0, 4.0));
+    if (!blur.empty()) out += "\nblur {\n" + blur + "}\n";
+
     // Every window's corners, as a rule after yours (a later rule wins)
     if (l.cornerRadius)
         out += std::format("\nwindow-rule {{\n    geometry-corner-radius {}\n    clip-to-geometry {}\n}}\n", *l.cornerRadius, *l.cornerRadius > 0);
@@ -167,6 +190,11 @@ std::string render(const Settings& s) {
         if (r.opacity < 0.995) body += std::format("    opacity {:.2f}\n", std::clamp(r.opacity, 0.05, 1.0));
         if (r.width > 0) body += std::format("    default-column-width {{\n        proportion {:.5f}\n    }}\n", std::clamp(r.width, 0.1, 1.0));
         if (r.hide) body += "    block-out-from \"screen-capture\"\n";
+        // Its own colour, for whichever of the ring and border is on
+        if (r.color.size() == 7 && r.color[0] == '#' &&
+            std::all_of(r.color.begin() + 1, r.color.end(), [](char c) { return std::isxdigit(static_cast<unsigned char>(c)) != 0; }))
+            for (const char* part : {"border", "focus-ring"})
+                body += std::format("    {} {{\n        active-color {}\n        inactive-color {}\n    }}\n", part, quote(r.color), quote(r.color + "80"));
         if (body.size() > bare) out += "\nwindow-rule {\n" + body + "}\n";
     }
 

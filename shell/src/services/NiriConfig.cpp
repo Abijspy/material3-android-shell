@@ -162,6 +162,16 @@ niri::Settings NiriConfig::collect() const {
     l.focusFollowsMouse = yes("focusFollowsMouse").value_or(false);
     l.warpMouse = yes("warpMouse").value_or(false);
     l.hotCornersOff = !yes("hotCorner").value_or(true);
+    l.tabletsOff = !yes("tablets").value_or(true);
+    l.blurOn = yes("blurOn");
+    if (auto v = num("blurPasses")) l.blurPasses = static_cast<int>(std::lround(*v));
+    l.blurOffset = num("blurOffset");
+    l.blurNoise = num("blurNoise");
+    l.blurSaturation = num("blurSaturation");
+    // The shell's own surfaces: blurred as Settings → Look & feel says, and
+    // a blurred overview backdrop unless turned off in Niri Settings
+    s.shellBlur = c.value<bool>("/appearance/blur/enabled", true);
+    s.blurredBackdrop = blurredOverview();
     if (auto v = num("overviewZoom")) l.overviewZoom = std::clamp(*v, 0.05, 0.75);
     // Kept here: items() of a temporary would outlive it
     const auto outputs = c.value<nlohmann::json>("/niri/outputs", nlohmann::json::object());
@@ -193,6 +203,8 @@ niri::Settings NiriConfig::collect() const {
         rule.hide = r.value("hide", false);
         rule.opacity = r.value("opacity", 1.0);
         rule.width = r.value("width", 0.0);
+        // A palette role ("primary"), so it follows the wallpaper
+        if (const std::string role = r.value("color", ""); !role.empty()) rule.color = hex(Theme::get().color(role));
         s.rules.push_back(rule);
     }
     const auto startup = c.value<nlohmann::json>("/niri/startup", nlohmann::json::array());
@@ -257,6 +269,10 @@ std::vector<kdl::Node> NiriConfig::yours(bool withShell) const {
     };
     read(fs::path(niriDir()) / "config.kdl", 0);
     return out;
+}
+
+bool NiriConfig::blurredOverview() {
+    return Config::get().value<bool>("/niri/look/blurredOverview", true);
 }
 
 void NiriConfig::resetLook(const std::vector<std::string>& keys) {
