@@ -130,10 +130,10 @@ int main(int argc, char** argv) {
     const std::string more = niri::render(n);
     // The shell's own: its windows rounded (blurred when blur is on), its
     // layers blurring what's behind them, the backdrop swapped for the blurred one
-    expect(has(plain, "window-rule {\n    match app-id=\"^material3ui-\"\n    geometry-corner-radius 18\n    clip-to-geometry true\n}\n") &&
+    expect(has(plain, "window-rule {\n    match app-id=\"^material3ui-\"\n    geometry-corner-radius 18\n    clip-to-geometry true\n    draw-border-with-background false\n}\n") &&
                !has(plain, "background-effect") && !has(plain, "material3ui-backdrop"),
            "the shell's windows rounded, nothing blurred while blur is off");
-    expect(has(more, "match app-id=\"^material3ui-\"\n    geometry-corner-radius 18\n    clip-to-geometry true\n    background-effect {\n"
+    expect(has(more, "match app-id=\"^material3ui-\"\n    geometry-corner-radius 18\n    clip-to-geometry true\n    draw-border-with-background false\n    background-effect {\n"
                      "        blur true\n        xray false\n    }\n}"),
            "and blurred");
     expect(has(more, "match namespace=\"^material3ui-(bar|frame|popup|toasts|osd|dock|switcher)$\"\n    background-effect {\n        xray false\n"),

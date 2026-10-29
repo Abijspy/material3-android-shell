@@ -151,8 +151,12 @@ std::string render(const Settings& s) {
     if (!layout.empty()) out += "\nlayout {\n" + layout + "}\n";
 
     // The shell's windows (Settings, Niri Settings…): rounded, and blurred,
-    // as on Hyprland; first, so a corner radius of yours below wins
-    out += std::format("\nwindow-rule {{\n    match app-id=\"^material3ui-\"\n    geometry-corner-radius {}\n    clip-to-geometry true\n",
+    // as on Hyprland; first, so a corner radius of yours below wins. They
+    // don't speak xdg-decoration, so niri would draw their focus ring and
+    // border as a solid fill behind them, showing through their translucent
+    // background in place of the blur (all but full screen): a frame instead
+    out += std::format("\nwindow-rule {{\n    match app-id=\"^material3ui-\"\n    geometry-corner-radius {}\n    clip-to-geometry true\n"
+                       "    draw-border-with-background false\n",
                        std::clamp(s.shellRadius, 0, 64));
     if (s.shellBlur) out += "    background-effect {\n        blur true\n        xray false\n    }\n";
     out += "}\n";
