@@ -1,5 +1,15 @@
 # Changelog
 
+## v6.0-beta-4 — 2026-10-29
+
+- **Keys for niri's actions.** Niri Settings → Keys binds a key to one of niri's actions, named in words (close, maximise, float, centre, move and focus columns, workspaces and monitors, the overview and more), or to a command. Settings → Keyboard lists the same keys. A new meaning for a key combination replaces the old one. Below them, every key your `config.kdl` binds, in words. → [Niri Settings](docs/NIRI.md#niri-settings)
+- **Window rules on niri.** Niri Settings → Window rules, for an open app or for app ids matching a regex: open floating, maximised or full screen, at a width, see-through, or hidden from screen sharing. Your `config.kdl`'s rules are listed below, and one here wins where both set something. A rule niri couldn't read (a mistyped regex) is never written, so it can't stop niri reading its config.
+- **Startup apps on niri.** Apps and commands for niri to run when it starts, each with a switch, and a button to run one now. What your config starts already is listed below them.
+- **Environment variables on niri.** For the apps niri starts from now on, beside the ones your config sets.
+- **Appearance links to Niri Settings.** On niri, Settings → Appearance's rows for window shadows and corners, and for animations, open Niri Settings' pages, as they open Hyprland Settings on Hyprland.
+- **Coming from 6.0-beta-3:** Settings offers this update by itself. It didn't see 6.0-beta-3.1, whose Niri Settings and fixes are in this release too.
+- **Still on Hyprland only:** each animation's own curve, blur, arranging monitors side by side, minimising, picking a window to record, and the screen-sharing picker.
+
 ## v6.0-beta-3.1 — 2026-10-28
 
 - **Niri Settings.** On niri, the window that is Hyprland Settings on Hyprland is Niri Settings: in the launcher, from the card at the top of Settings' sidebar, or with `material3ui msg nirisettings`. Changes apply as you make them. → [Material3UI on niri](docs/NIRI.md#niri-settings)
