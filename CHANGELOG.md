@@ -1,5 +1,11 @@
 # Changelog
 
+## v6.0-rc-2 — 2026-10-29
+
+- **No more emergency mode during installs and updates.** Hyprland reads its config again the moment one of its files changes. The installer, updates and `restore.sh` replaced those files in place, so a reload at the wrong instant could find a module missing ("module 'material3ui.env' not found") and leave Hyprland in emergency mode, with no keys bound until the next reload. Every file is now written whole beside the old one and then swapped in, so Hyprland only ever sees the old file or the new one.
+- **The shell's own Hyprland files too.** Your keybinds (`keybinds_custom.lua`), blur and input settings, accessibility and screen sharing settings are written the same way. A half-written keybinds file was the worst case: it left no keys bound.
+- **Updating from 6.0-rc-1:** nothing to do. If you saw the emergency banner, it went away at the next reload or login.
+
 ## v6.0-rc-1 — 2026-10-29
 
 - **Ready for Hyprland 0.57.** Minimised windows stay in the dock and the window switcher: 0.57 stopped giving special workspaces a number, and the shell lost track of the windows parked there. Workspaces that change number are followed too.
