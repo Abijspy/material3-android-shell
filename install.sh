@@ -644,6 +644,15 @@ case "$HYPR_MODE" in
         ok "Hyprland (the shell added to your config)" ;;
     skip) [[ "$WANT_HYPR" == 0 ]] || note "Hyprland config left as it is." ;;
 esac
+# Hyprland checks what it will read (a newer one may refuse a value an
+# older took, as 0.57 did a shadow's render_power over 4)
+if [[ "$DRY" == 0 && "$HYPR_MODE" != skip ]] && command -v Hyprland >/dev/null; then
+    hypr_check="$(timeout 30 Hyprland --verify-config -c "$HYPR/hyprland.lua" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | sed -n '/Config parsing result/,$p' | sed '1d;/^\s*$/d' || true)"
+    if [[ -n "$hypr_check" && "$hypr_check" != "config ok" ]]; then
+        warn "Hyprland finds errors in its config; ./install.sh --restore puts the old one back:"
+        printf '%s\n' "$hypr_check" | head -n 8 | sed 's/^/    /'
+    fi
+fi
 
 # niri: material3ui.kdl (your apps in it), included at the end of config.kdl
 niri_kdl() {

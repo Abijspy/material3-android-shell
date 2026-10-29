@@ -55,7 +55,8 @@ hl.config({
 			enabled = true,
 			range = 50,
 			offset = "0 4",
-			render_power = 10,
+			-- How fast it fades (1–4: Hyprland 0.57 refuses more, as an error)
+			render_power = 4,
 			color = "rgba(00000027)",
 		},
 	},
