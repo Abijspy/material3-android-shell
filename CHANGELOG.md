@@ -1,5 +1,11 @@
 # Changelog
 
+## v6.0-rc-3 — 2026-10-29
+
+- **No config error at login on Hyprland 0.57.** 0.57 allows a shadow's fade (`render_power`) up to 4, and the shell's `appearance.lua` set 10, so "Your config has errors" came up at every login and the shadows lost their look. It's 4 now. Updating puts the new `appearance.lua` in place.
+- **The installer checks Hyprland's config.** After writing it, the installer asks Hyprland itself (`Hyprland --verify-config`), as it already asked niri, and shows anything Hyprland refuses, so a value a new Hyprland won't take shows up at once.
+- **Blurred Settings windows on niri, not only full screen.** The shell's windows don't take part in the decoration protocol, so niri drew their focus ring and border as a solid fill behind them, and through their see-through background that fill showed in place of the blur, everywhere but full screen. niri now draws them as a frame around the window, and the blur shows.
+
 ## v6.0-rc-2 — 2026-10-29
 
 - **No more emergency mode during installs and updates.** Hyprland reads its config again the moment one of its files changes. The installer, updates and `restore.sh` replaced those files in place, so a reload at the wrong instant could find a module missing ("module 'material3ui.env' not found") and leave Hyprland in emergency mode, with no keys bound until the next reload. Every file is now written whole beside the old one and then swapped in, so Hyprland only ever sees the old file or the new one.
