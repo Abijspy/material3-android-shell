@@ -1,5 +1,16 @@
 # Changelog
 
+## v6.0-rc-1 — 2026-10-29
+
+- **Ready for Hyprland 0.57.** Minimised windows stay in the dock and the window switcher: 0.57 stopped giving special workspaces a number, and the shell lost track of the windows parked there. Workspaces that change number are followed too.
+- **Hyprland 0.57's blur styles.** Settings → Look & feel has a Blur style (glass, frost, acrylic, aurora, water, haze and the rest), for the shell's panels and the windows alike, and a Wobbly windows switch. Hyprland Settings → Decoration shows the settings of the style in use, and wobble's in a section of its own.
+- **More of 0.57 in Hyprland Settings.** The new options get friendly names and their places: the layers options (bars and launchers keeping the keyboard, new popups over full screen windows) under Behaviour, moving the pointer on a monitor change, tablets on or off, the focusing click, centring a dragged window, lighter blur behind see-through parts. Window rules gain no glow, never wobble, no dragging things out, and a second border colour for when the window isn't focused. Choices list in order (0, 1, 2 … 10).
+- **Blur on niri, as on Hyprland.** The bar, panels, dock, notifications and OSD blur the windows behind them, rather than only the wallpaper (niri's default "xray" blur). The Settings windows are rounded and blurred too. All of it follows Look & feel → Blur, from the rules the shell writes for niri itself. → [Material3UI on niri](docs/NIRI.md#blur)
+- **A blurred overview on niri.** niri's overview shows the wallpaper blurred behind the workspaces, while each workspace keeps it sharp. It's on by default; Niri Settings → Behaviour → Blurred backdrop turns it off.
+- **niri's blur in Niri Settings.** Borders & shadows sets niri's blur: on or off, passes, smoothness, noise and saturation, each starting from your config's.
+- **More in Niri Settings.** Behaviour can turn drawing tablets off, and each window rule can give an app its own border colour from the wallpaper's palette, dimmer when it isn't focused.
+- **Still on Hyprland only:** each animation's own curve, arranging monitors side by side, minimising, picking a window to record, and the screen-sharing picker.
+
 ## v6.0-beta-4 — 2026-10-29
 
 - **Keys for niri's actions.** Niri Settings → Keys binds a key to one of niri's actions, named in words (close, maximise, float, centre, move and focus columns, workspaces and monitors, the overview and more), or to a command. Settings → Keyboard lists the same keys. A new meaning for a key combination replaces the old one. Below them, every key your `config.kdl` binds, in words. → [Niri Settings](docs/NIRI.md#niri-settings)
