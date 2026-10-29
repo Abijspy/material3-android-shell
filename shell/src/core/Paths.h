@@ -25,5 +25,9 @@ std::string dataFile(const std::string& name);
 // $XDG_DATA_DIRS in order, with Flatpak's exports in front when the session
 // was started without its profile script adding them
 std::vector<std::string> dataDirs();
+// `text` to `path`, written whole beside it and then renamed into place:
+// whoever reads it meanwhile (Hyprland reloads its config as soon as a file
+// changes) sees the old file or the new one, never a half-written one
+bool writeFile(const std::string& path, const std::string& text);
 
 } // namespace m3::paths

@@ -263,8 +263,7 @@ void Keybinds::commit() {
         lua += "\t\t{ keys = " + luaString(c.keys) + ", command = " + luaString(c.command) + ", label = " + luaString(c.label) +
                (c.action.empty() ? "" : ", action = " + luaString(c.action)) + (c.mouse ? ", mouse = true" : "") + " },\n";
     lua += "\t},\n}\n";
-    fs::create_directories(fs::path(luaFile()).parent_path(), ec);
-    std::ofstream(luaFile()) << lua;
+    paths::writeFile(luaFile(), lua);
 
     Hyprland::get().request("reload");
     changed.emit();

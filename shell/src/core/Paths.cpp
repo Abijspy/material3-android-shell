@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <sstream>
 #include <unistd.h>
 #include <vector>
@@ -92,6 +93,24 @@ std::vector<std::string> dataDirs() {
     for (auto it = std::rbegin(flatpaks); it != std::rend(flatpaks); ++it)
         if (std::ranges::find(dirs, *it) == dirs.end()) dirs.insert(dirs.begin(), *it);
     return dirs;
+}
+
+bool writeFile(const std::string& path, const std::string& text) {
+    namespace fs = std::filesystem;
+    const fs::path p(path);
+    std::error_code ec;
+    fs::create_directories(p.parent_path(), ec);
+    // Hidden, so nothing that lists the folder takes it for one of its own
+    const fs::path tmp = p.parent_path() / ("." + p.filename().string() + ".m3new");
+    {
+        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+        if (!(out << text) || !out.flush()) return false;
+    }
+    fs::rename(tmp, p, ec);
+    if (!ec) return true;
+    std::error_code ignored;
+    fs::remove(tmp, ignored);
+    return false;
 }
 
 } // namespace m3::paths

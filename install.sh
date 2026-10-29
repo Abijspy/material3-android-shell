@@ -279,17 +279,30 @@ guard() {
     if [[ -e "$dst" || -L "$dst" ]]; then
         do_ mkdir -p "$(dirname "$BACKUP_DIR/$rel")"
         do_ cp -a "$dst" "$BACKUP_DIR/$rel"
-        restore_line "rm -rf \"\$HOME/$rel\"; mkdir -p \"\$(dirname \"\$HOME/$rel\")\"; cp -a \"\$B/$rel\" \"\$HOME/$rel\""
+        # Copied in beside it, then swapped in: never missing meanwhile
+        restore_line "mkdir -p \"\$(dirname \"\$HOME/$rel\")\"; rm -rf \"\$HOME/$rel.m3restore\"; cp -a \"\$B/$rel\" \"\$HOME/$rel.m3restore\"; rm -rf \"\$HOME/$rel\"; mv -T \"\$HOME/$rel.m3restore\" \"\$HOME/$rel\""
     else
         restore_line "rm -rf \"\$HOME/$rel\""
     fi
+}
+# replace SRC DST: DST becomes a copy of SRC with no moment in between where
+# it's missing or half written. Hyprland and niri read their config again as
+# soon as a file of it changes, and a reload in that moment would find a
+# module missing (Hyprland's emergency mode)
+replace() {
+    local tmp
+    tmp="$(dirname "$2")/.$(basename "$2").m3new"
+    rm -rf "$tmp"
+    cp -a "$1" "$tmp"
+    # A folder can't be renamed over a full one
+    if [[ -d "$tmp" && -d "$2" && ! -L "$2" ]]; then rm -rf "$2"; fi
+    mv -fT "$tmp" "$2"
 }
 put() { # put SRC DST: replace a file or directory, guarded
     guard "$2"
     if [[ "$DRY" == 1 ]]; then note "[dry-run] write $(tilde "$2")"; return 0; fi
     do_ mkdir -p "$(dirname "$2")"
-    do_ rm -rf "$2"
-    do_ cp -a "$1" "$2"
+    do_ replace "$1" "$2"
 }
 # Configs carrying our marker are ours to replace; any other is yours
 ours() { [[ ! -e "$1" ]] || grep -qs -e "# Material3UI Configuration" -e "templates/GeneratedColors.qml" "$1"; }
@@ -602,12 +615,13 @@ hypr_modules() {
     for f in "$src"/*.lua; do
         name="$(basename "$f")"
         [[ " ${HYPR_KEEP[*]} " == *" $name "* && -e "$dst/$name" ]] && continue
-        cp "$f" "$dst/$name"
+        replace "$f" "$dst/$name"
     done
     # Your apps, written into apps.lua
     sed -e "s/terminal = \"[^\"]*\"/terminal = \"$TERMINAL\"/" \
         -e "s/browser = \"[^\"]*\"/browser = \"$BROWSER\"/" \
-        -e "s/file_manager = \"[^\"]*\"/file_manager = \"$FILE_MANAGER\"/" "$src/apps.lua" >"$dst/apps.lua"
+        -e "s/file_manager = \"[^\"]*\"/file_manager = \"$FILE_MANAGER\"/" "$src/apps.lua" >"$dst/.apps.lua.m3new"
+    mv -f "$dst/.apps.lua.m3new" "$dst/apps.lua"
 }
 case "$HYPR_MODE" in
     full)
@@ -639,7 +653,7 @@ niri_kdl() {
 if [[ "$NIRI_MODE" == include ]]; then
     guard "$NIRI/material3ui.kdl"
     if [[ "$DRY" == 1 ]]; then note "[dry-run] write $(tilde "$NIRI/material3ui.kdl") (with $TERMINAL, $FILE_MANAGER and $BROWSER)"
-    else mkdir -p "$NIRI"; niri_kdl >"$NIRI/material3ui.kdl"; fi
+    else mkdir -p "$NIRI"; niri_kdl >"$NIRI/.material3ui.kdl.m3new" && mv -f "$NIRI/.material3ui.kdl.m3new" "$NIRI/material3ui.kdl"; fi
     if planned "$NIRI/material3ui-user.kdl"; then
         guard "$NIRI/material3ui-user.kdl"
         if [[ "$DRY" == 1 ]]; then note "[dry-run] write $(tilde "$NIRI/material3ui-user.kdl")"; else

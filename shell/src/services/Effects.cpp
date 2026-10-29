@@ -114,7 +114,7 @@ void Effects::applyInput() {
         speed, accel, b(tap), b(natural), b(dwt), b(fingers), b(tapDrag), dragLock ? 1 : 0, scroll);
     const std::string file = (fs::path(luaFile()).parent_path() / "input_custom.lua").string();
     if (readAll(file) == lua) return;
-    std::ofstream(file) << lua;
+    paths::writeFile(file, lua);
     // Applied live: a reload would re-apply everything (the screen flickers);
     // the file keeps it for the next one
     std::string table = lua.substr(lua.find("return ") + 7);
@@ -200,7 +200,7 @@ void Effects::applyAccessibility() {
                                         "return {{\n\tzoom_factor = {:.2f},\n\tscreen_shader = \"{}\",\n}}\n",
                                         zoom, shader);
     const std::string file = (fs::path(luaFile()).parent_path() / "a11y_custom.lua").string();
-    if (readAll(file) != lua) std::ofstream(file) << lua;
+    if (readAll(file) != lua) paths::writeFile(file, lua);
 }
 
 void Effects::setTemporaryFilter(const std::string& filter) {
@@ -226,7 +226,7 @@ void Effects::applySharing() {
     conf += std::format("    allow_token_by_default = {}\n    max_fps = {}\n}}\n", c.value<bool>("/share/remember", false) ? "true" : "false",
                         std::clamp(c.value<int>("/share/maxFps", 60), 15, 240));
     if (conf == now) return;
-    std::ofstream(file) << conf;
+    paths::writeFile(file, conf);
     // The portal reads it when it starts
     log::info("screen sharing: xdph.conf written; restarting the portal");
     run({"systemctl", "--user", "try-restart", "xdg-desktop-portal-hyprland.service"}, nullptr);
@@ -297,9 +297,7 @@ void Effects::apply() {
                                         "return {{\n\tblur = {},\n\tignore_alpha = {:.2f},\n\tbar = {},\n\tdock = {},\n}}\n",
                                         t.blur() ? "true" : "false", ignore, barBlur ? "true" : "false", dockBlur ? "true" : "false");
     if (readAll(luaFile()) == lua) return; // unchanged: no reload
-    std::error_code ec;
-    fs::create_directories(fs::path(luaFile()).parent_path(), ec);
-    std::ofstream(luaFile()) << lua;
+    paths::writeFile(luaFile(), lua);
     // Layer rules change only with a reload
     log::info("effects: blur {}; reloading Hyprland", t.blur() ? "on" : "off");
     h.request("reload");

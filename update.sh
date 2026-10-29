@@ -63,6 +63,12 @@ else
 fi
 
 ours() { [[ ! -e "$1" ]] || grep -qs "# Material3UI Configuration" "$1"; }
+# replace SRC DST: a whole copy renamed into place, so Hyprland, which reads
+# its config again as soon as a file of it changes, never finds a module
+# missing or half written (its emergency mode)
+replace() {
+    cp "$1" "$(dirname "$2")/.$(basename "$2").m3new" && mv -f "$(dirname "$2")/.$(basename "$2").m3new" "$2"
+}
 
 # The shell installs as the material3ui pacman package: a release's own
 # package on the stable channel, else one made from a build of the checkout
@@ -130,9 +136,9 @@ if [[ "$MODE" == all ]]; then
         for f in "$DOT/hypr/material3ui/"*.lua; do
             name="$(basename "$f")"
             [[ " ${HYPR_PRESERVE[*]} " == *" $name "* && -e "$HYPR/material3ui/$name" ]] && continue
-            cp "$f" "$HYPR/material3ui/$name"
+            replace "$f" "$HYPR/material3ui/$name"
         done
-        [[ "$HYPR_MODE" == full ]] && cp "$DOT/hypr/hyprland.lua" "$HYPR/hyprland.lua"
+        [[ "$HYPR_MODE" == full ]] && replace "$DOT/hypr/hyprland.lua" "$HYPR/hyprland.lua"
     fi
 
     # niri's material3ui.kdl, with the apps picked at install (config.kdl
