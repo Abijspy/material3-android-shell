@@ -173,6 +173,26 @@ niri::Settings NiriConfig::collect() const {
     s.shellBlur = c.value<bool>("/appearance/blur/enabled", true);
     s.blurredBackdrop = blurredOverview();
     if (auto v = num("overviewZoom")) l.overviewZoom = std::clamp(*v, 0.05, 0.75);
+    // Each animation's own (Niri Settings → Animations): /niri/look/anim/<name>
+    if (look.is_object() && look.contains("anim") && look["anim"].is_object())
+        for (const auto& [name, a] : look["anim"].items()) {
+            if (!a.is_object()) continue;
+            niri::Settings::Look::Animation an;
+            an.name = name;
+            an.off = !a.value("on", true);
+            an.kind = a.value("kind", "");
+            // What isn't set here: niri's default for this animation
+            const auto& defs = niri::animationDefs();
+            const auto def = std::ranges::find_if(defs, [&](const niri::AnimationDef& d) { return name == d.name; });
+            const bool known = def != defs.end();
+            an.damping = a.value("damping", known ? def->damping : 1.0);
+            an.stiffness = a.value("stiffness", known ? def->stiffness : 800.0);
+            an.duration = a.value("duration", known ? def->duration : 200);
+            an.curve = a.value("curve", known ? std::string(def->curve) : std::string("ease-out-quad"));
+            if (a.contains("bezier") && a["bezier"].is_array() && a["bezier"].size() == 4)
+                for (size_t i = 0; i < 4; ++i) an.bezier[i] = a["bezier"][i].is_number() ? a["bezier"][i].get<double>() : an.bezier[i];
+            l.anims.push_back(an);
+        }
     // Kept here: items() of a temporary would outlive it
     const auto outputs = c.value<nlohmann::json>("/niri/outputs", nlohmann::json::object());
     for (const auto& [name, o] : outputs.items()) {

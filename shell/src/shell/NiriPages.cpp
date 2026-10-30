@@ -7,6 +7,8 @@
 #include "services/Niri.h"
 #include "services/NiriConfig.h"
 #include "services/Search.h"
+#include "shell/CurveEditor.h"
+#include "shell/MonitorLayout.h"
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
 #include "shell/SettingsKit.h"
@@ -189,6 +191,37 @@ void niriMonitors(Flex* page) {
     live->sync = [live] {
         live->clearChildren();
         const auto& outs = Niri::get().model().outputs;
+        // Side by side: drag them where they stand on your desk (niri's
+        // logical layout, snapping to each other's edges)
+        std::vector<MonitorLayout::Screen> screens;
+        for (const auto& o : outs)
+            if (o.on && o.w > 0 && o.h > 0)
+                screens.push_back({o.name, o.name, o.make.empty() ? o.model : o.make + " " + o.model, o.x, o.y, o.w, o.h, false});
+        if (screens.size() > 1) {
+            auto* arr = group(live, "Arrangement", "Drag a monitor to where it stands; the pointer crosses where their edges meet");
+            auto* box = arr->add<Flex>(Flex::Direction::Column);
+            box->setPadding({20, 12})->setAlignItems(Align::Stretch);
+            auto* layout = box->add<MonitorLayout>(screens);
+            layout->onMoved = [](const std::string& name, int x, int y) {
+                for (const auto& o : Niri::get().model().outputs) {
+                    if (o.name != name) continue;
+                    auto s = saved(o);
+                    s.position = std::pair{x, y};
+                    NiriConfig::saveOutput(s);
+                }
+                Niri::get().outputAction(name, {{"Position", {{"position", {{"Specific", {{"x", x}, {"y", y}}}}}}}});
+            };
+            auto r = row(arr, "auto_awesome_mosaic", "Arrange automatically", "niri places them left to right");
+            pillButton(r.row, "Automatic", false, [] {
+                for (const auto& o : Niri::get().model().outputs) {
+                    auto s = saved(o);
+                    if (!s.position) continue;
+                    s.position.reset();
+                    NiriConfig::saveOutput(s);
+                    Niri::get().outputAction(o.name, {{"Position", {{"position", "Automatic"}}}});
+                }
+            });
+        }
         auto* g = group(live, "Monitors", "Applied at once, and kept for the next login");
         if (outs.empty()) row(g, "monitor", "No monitors found");
         for (const auto& o : outs) {
@@ -379,7 +412,7 @@ void niriDecorationPage(Flex* page, Popup&) {
 void niriAnimationsPage(Flex* page, Popup&) {
     niriNotice(page);
     const auto doc = NiriConfig::get().yours();
-    auto* g = group(page, "Animations", "Each animation's own curve stays as your config.kdl has it");
+    auto* g = group(page, "Animations", "All of them at once; each one's own below");
     switchRow(g, "animation", "Animations", "Windows, workspaces and the overview move into place", kLook + "animations",
               kdl::onOff(doc, {"animations"}).value_or(true));
     sliderRow(g, "slow_motion_video", "Speed", kLook + "slowdown", kdl::number(doc, {"animations", "slowdown"}).value_or(1.0), 0.25, 4.0, 0.05,
@@ -387,7 +420,89 @@ void niriAnimationsPage(Flex* page, Popup&) {
                   if (std::abs(v - 1) < 0.01) return std::string("Normal");
                   return v > 1 ? std::format("{:.2f}× slower", v) : std::format("{:.2f}× faster", 1 / v);
               });
-    resetGroup(page, "niri-animations", {"animations", "slowdown"});
+
+    // Each animation: on or off, and its motion, a spring or a curve (a
+    // custom one drawn in the curve editor). Rebuilt when the motion or the
+    // curve changes, which decide its rows; the sliders write as they move
+    auto* each = page->add<Live>();
+    each->setSpacing(0);
+    each->sync = [each, doc] {
+        each->clearChildren();
+        for (const auto& d : niri::animationDefs()) {
+            const std::string base = kLook + "anim/" + d.name + "/";
+            const auto mine = Config::get().value<nlohmann::json>("/niri/look/anim/" + std::string(d.name), nlohmann::json::object());
+            // Yours, from config.kdl (its last section for this animation)
+            bool yoursOff = false;
+            std::string kind = d.spring ? "spring" : "easing", curve = d.curve;
+            double damping = d.damping, stiffness = d.stiffness, duration = d.duration;
+            Bezier bezier{0.05, 0.7, 0.1, 1};
+            if (const kdl::Node* n = kdl::last(doc, {"animations", d.name}))
+                for (const auto& c : n->children) {
+                    if (c.name == "off") yoursOff = true;
+                    if (c.name == "spring") {
+                        kind = "spring";
+                        if (const auto* v = c.prop("damping-ratio")) damping = v->number;
+                        if (const auto* v = c.prop("stiffness")) stiffness = v->number;
+                    }
+                    if (c.name == "duration-ms" && !c.args.empty()) {
+                        kind = "easing";
+                        duration = c.args[0].number;
+                    }
+                    if (c.name == "curve" && !c.args.empty()) {
+                        kind = "easing";
+                        curve = c.args[0].text;
+                        if (curve == "cubic-bezier" && c.args.size() == 5)
+                            for (size_t i = 0; i < 4; ++i) bezier[i] = c.args[i + 1].number;
+                    }
+                }
+            // Then what's set here
+            kind = mine.value("kind", kind);
+            curve = mine.value("curve", curve);
+            if (mine.contains("bezier") && mine["bezier"].is_array() && mine["bezier"].size() == 4)
+                for (size_t i = 0; i < 4; ++i) bezier[i] = mine["bezier"][i].get<double>();
+
+            auto* sec = group(each, d.title);
+            if (yoursOff) {
+                row(sec, "motion_photos_off", "Off in your config.kdl", "niri can't switch one animation back on from here");
+                continue;
+            }
+            switchRow(sec, "animation", "On", "", base + "on", true);
+            // A slider moved means this motion: kept with it
+            auto keep = [base, kind](double) { Config::get().set(base + "kind", kind); };
+            choiceRow<std::string>(sec, "tune", "Motion", "A curve over a set time, or a spring that settles", base + "kind", kind,
+                                   {{"easing", "Curve"}, {"spring", "Spring"}}, [each](const std::string&) { each->syncSoon(); });
+            if (kind == "spring") {
+                sliderRow(sec, "compress", "Bounce", base + "damping", mine.value("damping", damping), 0.1, 1.0, 0.05,
+                          [](double v) { return v > 0.99 ? std::string("None") : std::format("{:.0f}%", (1 - v) * 100); }, keep);
+                sliderRow(sec, "speed", "Stiffness", base + "stiffness", mine.value("stiffness", stiffness), 100, 2000, 50,
+                          [](double v) { return std::format("{:.0f}", v); }, keep);
+                continue;
+            }
+            sliderRow(sec, "timer", "Length", base + "duration", mine.value("duration", duration), 50, 1000, 10,
+                      [](double v) { return std::format("{:.0f} ms", v); }, keep);
+            choiceRow<std::string>(sec, "show_chart", "Curve", "How it eases into place", base + "curve", curve,
+                                   {{"linear", "Linear"}, {"ease-out-quad", "Gentle"}, {"ease-out-cubic", "Smooth"}, {"ease-out-expo", "Swift"},
+                                    {"cubic-bezier", "Custom"}},
+                                   [each, base](const std::string&) {
+                                       Config::get().set(base + "kind", "easing");
+                                       each->syncSoon();
+                                   });
+            if (curve != "cubic-bezier") continue;
+            // Your own curve: drag its two points
+            auto* box = sec->add<Flex>(Flex::Direction::Column);
+            box->setPadding({20, 12})->setSpacing(10)->setAlignItems(Align::Stretch);
+            auto shape = std::make_shared<Bezier>(bezier);
+            auto* editor = box->add<CurveEditor>(shape, 200);
+            const double seconds = mine.value("duration", duration) / 1000.0;
+            box->add<CurvePreview>(shape, [seconds] { return seconds; });
+            editor->onCommitted = [shape, base] {
+                Config::get().set(base + "bezier", nlohmann::json{(*shape)[0], (*shape)[1], (*shape)[2], (*shape)[3]});
+                Config::get().set(base + "kind", "easing");
+            };
+        }
+    };
+    each->sync();
+    resetGroup(page, "niri-animations", {"animations", "slowdown", "anim"});
 }
 
 void niriBehaviourPage(Flex* page, Popup&) {

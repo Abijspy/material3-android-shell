@@ -69,7 +69,7 @@ From 6.0-beta-2, these Settings pages work on niri. What you set is written to `
 
 - **Mouse & touchpad:** tap to click, natural scrolling (the touchpad's and a mouse's), ignore while typing, click with fingers or the pad's corners, tap and drag, drag lock, scrolling speed, pointer speed and acceleration.
 - **Keyboard:** your layouts (with **Next layout** to switch), the key that switches them, repeat delay and rate, and your own shortcuts: a key combination and the command it runs.
-- **Display:** each monitor's resolution, scale, rotation, variable refresh rate, and on or off. They're applied at once and kept for the next login. If niri's own `config.kdl` sets a monitor, niri's block wins when it reloads; remove that block to keep the shell's.
+- **Display:** the monitors' arrangement, dragged to where they stand on your desk (or left to niri), and each monitor's resolution, scale, rotation, variable refresh rate, and on or off. They're applied at once and kept for the next login. If niri's own `config.kdl` sets a monitor, niri's block wins when it reloads; remove that block to keep the shell's.
 - **Night light:** the shell warms the screens itself, through the compositor's gamma, with nothing else to install.
 - **The cursor:** its theme (Bibata by default) and size, for niri and the apps it starts.
 - **The focus ring:** drawn in the wallpaper's colours.
@@ -82,7 +82,7 @@ On niri, the window that is Hyprland Settings on Hyprland is **Niri Settings**: 
 
 - **Windows & layout:** gaps, centring the focused column (never, when it won't fit, always), centring a lone column, how wide new windows open, and space kept free at each edge.
 - **Borders & shadows:** the focus ring and the border (on or off, their widths, in the wallpaper's colours), shadows (softness, spread, drop), window corners, and niri's blur (from 6.0-rc-1): on or off, passes, smoothness, noise and saturation.
-- **Animations:** on or off, and their speed.
+- **Animations:** on or off, their speed, and each one's own (windows opening, closing, moving and resizing, scrolling the columns, switching workspaces, the overview, niri's screenshot tool): on or off, and a curve (linear, gentle, smooth, swift, or your own, drawn in the curve editor) over a length of time, or a spring with its bounce and stiffness.
 - **Behaviour:** focus following the mouse, the pointer following the focus, workspace back and forth, drawing tablets on or off, asking apps not to draw their own title bars, the hot corner, the overview's size and its blurred backdrop, and niri's list of keys at login.
 - **Keys** (from 6.0-beta-4): a key for any of niri's actions (close, maximise, float, centre, move and focus columns, workspaces and monitors, the overview…) or for a command. Settings → Keyboard lists the same keys. Below them, every key your `config.kdl` binds, in words.
 - **Window rules** (from 6.0-beta-4): for an open app, or app ids matching a regex: open floating, maximised or full screen, at a width, see-through, hidden from screen sharing, or (from 6.0-rc-1) with its own border colour from the wallpaper's palette. Your `config.kdl`'s own rules are listed below; a rule here wins where both set something.
@@ -101,16 +101,14 @@ niri 26.04 blurs what's behind a surface that asks for it. From 6.0-rc-1 the she
 
 These follow Settings → Look & feel → Blur, and the rules are in the file the shell writes (`material3ui-settings.kdl`), so they need nothing in your config. For other apps, set blur with a window rule of your own (`background-effect { blur true }`), or in the app if it asks niri itself (foot, kitty).
 
-## Not on niri yet
+## Where niri differs
 
-These are planned for later releases. Until then, set them in niri's own `config.kdl`:
+These come from niri itself, not from something the shell has yet to do:
 
-- **Each animation's own curve.** Hyprland Settings has them on Hyprland.
-- **Arranging monitors** side by side (their positions): set `position` in niri's config.
-- **Minimising windows**: niri has no minimised state.
-- **Picking a single window to record:** you pick a region instead, since niri's windows scroll.
-- **The screen-sharing picker:** apps sharing the screen get niri's own picker, through the GNOME portal.
-- **The magnifier and colour filters** (Accessibility).
+- **Minimising windows:** niri has no minimised state, so the dock and window menus offer no Minimise.
+- **Picking a single window to record:** you pick a region instead, since niri's windows scroll out from under a fixed area.
+- **The screen-sharing picker:** apps sharing the screen get niri's own picker, through the GNOME portal, which the shell can't replace.
+- **The magnifier and colour filters** (Accessibility): niri has no zoom or screen shaders for the shell to drive.
 
 ## Trying it without logging out
 

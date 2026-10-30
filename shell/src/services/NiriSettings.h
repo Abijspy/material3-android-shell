@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <optional>
 #include <string>
 #include <utility>
@@ -51,6 +52,19 @@ struct Settings {
         std::optional<bool> blurOn;
         std::optional<int> blurPasses;
         std::optional<double> blurOffset, blurNoise, blurSaturation;
+
+        // Each animation's own: off (niri takes no "on" there), or its
+        // motion, a spring or a curve; "" leaves your config's
+        struct Animation {
+            std::string name; // one of animationDefs()
+            bool off = false;
+            std::string kind; // "spring", "easing"
+            double damping = 1, stiffness = 800;
+            int duration = 200;                      // ms
+            std::string curve = "ease-out-quad";     // linear, ease-out-quad/-cubic/-expo, cubic-bezier
+            std::array<double, 4> bezier{0.05, 0.7, 0.1, 1};
+        };
+        std::vector<Animation> anims;
     } look;
 
     // The shell's own surfaces, as Hyprland shows them: its windows rounded
@@ -94,6 +108,19 @@ struct Settings {
     std::vector<std::string> startup;                              // commands, run by sh when niri starts
     std::vector<std::pair<std::string, std::string>> environment; // yours, after the cursor's
 };
+
+// niri's animations Niri Settings sets, with their defaults (26.04's)
+struct AnimationDef {
+    const char* name;  // workspace-switch…
+    const char* title; // "Switching workspaces"
+    bool spring;       // its default motion, else a curve
+    double damping, stiffness;
+    int duration;
+    const char* curve;
+};
+const std::vector<AnimationDef>& animationDefs();
+// The curves niri knows (cubic-bezier with its four numbers)
+bool validCurve(const std::string& curve);
 
 // The file's text
 std::string render(const Settings& s);

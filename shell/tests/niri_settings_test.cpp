@@ -127,7 +127,34 @@ int main(int argc, char** argv) {
     n.look.blurOn = true;
     n.look.blurPasses = 4;
     n.look.blurOffset = 5;
+    // Each animation's own: a custom curve, a spring, one off; never a name
+    // or a curve niri doesn't know
+    using Anim = niri::Settings::Look::Animation;
+    Anim open, sw, closed, unknown, badCurve;
+    open.name = "window-open";
+    open.kind = "easing";
+    open.duration = 180;
+    open.curve = "cubic-bezier";
+    open.bezier = {0.05, 0.7, 0.1, 1};
+    sw.name = "workspace-switch";
+    sw.kind = "spring";
+    sw.damping = 0.8;
+    sw.stiffness = 600;
+    closed.name = "window-close";
+    closed.off = true;
+    unknown.name = "rm-rf";
+    unknown.kind = "spring";
+    badCurve.name = "window-resize";
+    badCurve.kind = "easing";
+    badCurve.curve = "bouncy";
+    n.look.anims = {open, sw, closed, unknown, badCurve};
     const std::string more = niri::render(n);
+    expect(has(more, "\nanimations {\n    off\n    slowdown 1.50\n    window-open {\n        duration-ms 180\n"
+                     "        curve \"cubic-bezier\" 0.050 0.700 0.100 1.000\n    }\n"
+                     "    workspace-switch {\n        spring damping-ratio=0.80 stiffness=600 epsilon=0.0001\n    }\n"
+                     "    window-close {\n        off\n    }\n}\n"),
+           "each animation's own, in the one animations section");
+    expect(!has(more, "rm-rf") && !has(more, "bouncy") && !has(more, "window-resize"), "nothing niri couldn't read");
     // The shell's own: its windows rounded (blurred when blur is on), its
     // layers blurring what's behind them, the backdrop swapped for the blurred one
     expect(has(plain, "window-rule {\n    match app-id=\"^material3ui-\"\n    geometry-corner-radius 18\n    clip-to-geometry true\n    draw-border-with-background false\n}\n") &&

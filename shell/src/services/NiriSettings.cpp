@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <format>
 #include <regex>
 #include <string_view>
@@ -52,6 +53,24 @@ bool validRegex(const std::string& pattern) {
         return false;
     }
     return true;
+}
+
+const std::vector<AnimationDef>& animationDefs() {
+    static const std::vector<AnimationDef> defs = {
+        {"window-open", "Windows opening", false, 1, 800, 150, "ease-out-expo"},
+        {"window-close", "Windows closing", false, 1, 800, 150, "ease-out-quad"},
+        {"window-movement", "Windows moving", true, 1, 800, 200, "ease-out-quad"},
+        {"window-resize", "Windows resizing", true, 1, 800, 200, "ease-out-quad"},
+        {"horizontal-view-movement", "Scrolling the columns", true, 1, 800, 200, "ease-out-quad"},
+        {"workspace-switch", "Switching workspaces", true, 1, 1000, 200, "ease-out-quad"},
+        {"overview-open-close", "The overview", true, 1, 800, 200, "ease-out-quad"},
+        {"screenshot-ui-open", "niri's screenshot tool", false, 1, 800, 200, "ease-out-quad"},
+    };
+    return defs;
+}
+
+bool validCurve(const std::string& curve) {
+    return curve == "linear" || curve == "ease-out-quad" || curve == "ease-out-cubic" || curve == "ease-out-expo" || curve == "cubic-bezier";
 }
 
 std::string exactly(const std::string& text) {
@@ -202,12 +221,29 @@ std::string render(const Settings& s) {
         if (body.size() > bare) out += "\nwindow-rule {\n" + body + "}\n";
     }
 
-    if (l.animations || l.slowdown) {
-        out += "\nanimations {\n";
-        if (l.animations) out += *l.animations ? "    on\n" : "    off\n";
-        if (l.slowdown) out += std::format("    slowdown {:.2f}\n", *l.slowdown);
-        out += "}\n";
+    // One animations section (niri refuses two in a file): the switch, the
+    // speed, then each animation set here, merged into yours by niri
+    std::string anims;
+    if (l.animations) anims += *l.animations ? "    on\n" : "    off\n";
+    if (l.slowdown) anims += std::format("    slowdown {:.2f}\n", *l.slowdown);
+    for (const auto& a : l.anims) {
+        if (std::ranges::none_of(animationDefs(), [&](const AnimationDef& d) { return a.name == d.name; })) continue;
+        std::string body;
+        if (a.off) body += "        off\n";
+        if (a.kind == "spring") {
+            body += std::format("        spring damping-ratio={:.2f} stiffness={} epsilon=0.0001\n", std::clamp(a.damping, 0.05, 2.0),
+                                std::clamp(static_cast<int>(std::lround(a.stiffness)), 10, 5000));
+        } else if (a.kind == "easing" && validCurve(a.curve)) {
+            body += std::format("        duration-ms {}\n", std::clamp(a.duration, 10, 5000));
+            if (a.curve == "cubic-bezier")
+                body += std::format("        curve \"cubic-bezier\" {:.3f} {:.3f} {:.3f} {:.3f}\n", std::clamp(a.bezier[0], 0.0, 1.0), a.bezier[1],
+                                    std::clamp(a.bezier[2], 0.0, 1.0), a.bezier[3]);
+            else
+                body += std::format("        curve {}\n", quote(a.curve));
+        }
+        if (!body.empty()) anims += std::format("    {} {{\n", a.name) + body + "    }\n";
     }
+    if (!anims.empty()) out += "\nanimations {\n" + anims + "}\n";
     if (l.preferNoCsd) out += std::format("\nprefer-no-csd {}\n", *l.preferNoCsd);
     if (l.skipHotkeys) out += std::format("\nhotkey-overlay {{\n    skip-at-startup {}\n}}\n", *l.skipHotkeys);
     if (l.overviewZoom) out += std::format("\noverview {{\n    zoom {:.2f}\n}}\n", *l.overviewZoom);

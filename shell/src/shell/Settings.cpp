@@ -830,7 +830,7 @@ void stylePage(Flex* page, Popup&) {
     choiceRow<double>(shape, "animation", "Animation speed", "The shell's panels and pages", "/appearance/animationSpeed", 1.0,
                       {{0.0, "Off"}, {0.6, "Fast"}, {1.0, "Normal"}, {1.5, "Relaxed"}});
     hyprLink(shape, "animation", "Window animations", "Each animation's speed, curve and style", "hypr-animations", "niri-animations",
-             "On or off, and their speed");
+             "Their speed, and each one's curve or spring");
     switchRow(shape, "palette", "Themed icons", "Settings' icons take on your wallpaper's colours, as Android's do", "/appearance/themedIcons", true);
 
     auto* reset = group(page, "Defaults");
@@ -4094,7 +4094,7 @@ const PageDef kPages[] = {
     {"hypr-debug", "bug_report", "Debug", "Logs, overlays and damage tracking", hyprDebugPage},
     {"niri-layout", "view_week", "Windows & layout", "Gaps, centring, new windows' width and space at the edges", niriLayoutPage},
     {"niri-decoration", "auto_awesome", "Borders & shadows", "The focus ring, borders, shadows and corners", niriDecorationPage},
-    {"niri-animations", "animation", "Animations", "On or off, and their speed", niriAnimationsPage},
+    {"niri-animations", "animation", "Animations", "Their speed, and each one's curve or spring", niriAnimationsPage},
     {"niri-behaviour", "tune", "Behaviour", "Focus, title bars, the hot corner and the overview", niriBehaviourPage},
     {"niri-keys", "keyboard_command_key", "Keys", "Keys for niri's actions or any command, beside your config's", niriKeysPage},
     {"niri-rules", "rule", "Window rules", "Float, maximise, size and hide apps' windows", niriRulesPage},
