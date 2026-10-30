@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>One design language, from the login screen to the package manager.</b><br/>
-  A Material 3 desktop shell for Hyprland (and niri, in beta), written in C++ for Wayland.
+  A Material 3 desktop shell for Hyprland and niri, written in C++ for Wayland.
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@
 <p align="center">
   <img alt="Release" src="https://img.shields.io/github/v/release/Abijspy/material3-android-shell?label=release&color=6750A4"/>
   <img alt="Hyprland" src="https://img.shields.io/badge/Hyprland-0.55%2B-58E1FF"/>
-  <img alt="niri" src="https://img.shields.io/badge/niri-26.04%2B%20(beta)-F4B183"/>
+  <img alt="niri" src="https://img.shields.io/badge/niri-26.04%2B-F4B183"/>
   <img alt="Arch" src="https://img.shields.io/badge/Arch-based-1793D1"/>
   <img alt="License" src="https://img.shields.io/badge/license-MIT-7D5260"/>
 </p>
@@ -72,7 +72,7 @@ Most Linux desktops are a patchwork. The bar comes from one project, the lock sc
 
 ## Install in one line
 
-You need an Arch-based system (Arch, CachyOS, EndeavourOS, ...). The shell runs on Hyprland 0.55 or newer, or on niri 26.04 or newer (in beta); the installer asks which, and installs it if it isn't there.
+You need an Arch-based system (Arch, CachyOS, EndeavourOS, ...). The shell runs on Hyprland 0.55 or newer, or on niri 26.04 or newer; the installer asks which, and installs it if it isn't there.
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Abijspy/material3-android-shell/main/install.sh)"
@@ -265,7 +265,7 @@ No. Pick `--hypr inject` and the installer adds three `require` lines to your ex
 <details>
 <summary><b>Does it work on niri?</b></summary>
 
-Yes, in beta, from 6.0: the bar, the dock, the panels, the lock screen and the rest run on niri 26.04 or newer, with niri's own overview. From 6.0-beta-2, Settings changes niri too: the touchpad and mouse, keyboard layouts and shortcuts, monitors, night light and the cursor. **Niri Settings**, niri's counterpart to Hyprland Settings, sets gaps, borders, shadows, corners, animations and focus behaviour, and from 6.0-beta-4 keys for niri's actions, window rules, startup apps and environment variables. From 6.0-beta-3 the installer sets niri up (`--compositor niri`, or `both` to pick at each login), and the login screen runs on niri when Hyprland isn't installed → [Material3UI on niri](docs/NIRI.md)
+Yes, from 6.0: the bar, the dock, the panels, the lock screen and the rest run on niri 26.04 or newer, with niri's own overview and blur. Settings changes niri too: the touchpad and mouse, keyboard layouts and shortcuts, monitors, night light and the cursor. **Niri Settings**, niri's counterpart to Hyprland Settings, sets gaps, borders, shadows, corners, blur, animations and focus behaviour, keys for niri's actions, window rules, startup apps and environment variables. The installer sets niri up (`--compositor niri`, or `both` to pick at each login), and the login screen runs on niri when Hyprland isn't installed → [Material3UI on niri](docs/NIRI.md)
 </details>
 
 <details>

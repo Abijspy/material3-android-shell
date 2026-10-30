@@ -13,7 +13,7 @@ depends=(wayland libglvnd pango cairo libxkbcommon systemd-libs libpulse librsvg
 makedepends=(meson ninja wayland-protocols wlr-protocols nlohmann-json)
 # The compositor is yours to pick: Hyprland, niri, or both
 optdepends=('hyprland: a compositor to run on (0.55 or newer)'
-            'niri: a compositor to run on (26.04 or newer; beta)'
+            'niri: a compositor to run on (26.04 or newer)'
             'hyprsunset: night light on Hyprland'
             'xwayland-satellite: X11 apps on niri'
             'xdg-desktop-portal-gnome: screen sharing on niri'

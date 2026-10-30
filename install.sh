@@ -52,7 +52,7 @@ Usage: install.sh [options]
       --terminal NAME       alacritty | kitty | foot | ghostty
       --file-manager NAME   nemo | thunar | nautilus | dolphin
       --browser NAME        librewolf | firefox | chromium | zen-browser
-      --compositor NAME     hyprland | niri (beta) | both
+      --compositor NAME     hyprland | niri | both
       --hypr MODE           full: Material3UI owns hyprland.lua (yours is backed up)
                             inject: keep your hyprland.lua, add the shell to it
                             skip: leave Hyprland's config alone
@@ -402,7 +402,7 @@ if [[ -n "$hv" && -n "$nv" ]]; then comp_default=both
 elif [[ -n "$nv" ]]; then comp_default=niri
 else comp_default=hyprland; fi
 comp_opts=()
-for o in "hyprland:Hyprland, dynamic tiling" "niri:niri, scrollable tiling (beta)" "both:both; pick one at each login"; do
+for o in "hyprland:Hyprland, dynamic tiling" "niri:niri, scrollable tiling" "both:both; pick one at each login"; do
     if [[ "${o%%:*}" == "$comp_default" ]]; then comp_opts=("$o" "${comp_opts[@]}"); else comp_opts+=("$o"); fi
 done
 choose COMPOSITOR "Compositor" "${comp_opts[@]}"

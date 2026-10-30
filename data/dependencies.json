@@ -132,7 +132,7 @@
     {
       "name": "niri",
       "command": "niri",
-      "description": "Wayland compositor: scrollable tiling (beta)"
+      "description": "Wayland compositor: scrollable tiling"
     },
     {
       "name": "xwayland-satellite",

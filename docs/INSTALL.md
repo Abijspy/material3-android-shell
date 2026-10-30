@@ -4,7 +4,7 @@ Welcome! This guide will walk you through getting Material3UI Shell up and runni
 
 ## Understanding the Scope
 
-Before we dive in, let's clarify what Material3UI Shell actually is. It is a desktop shell for Hyprland and niri (in beta; see [Material3UI on niri](NIRI.md)) that replaces your standard panels, notifications, and system controls. However, it is not a complete dotfiles package that overrides your entire system.
+Before we dive in, let's clarify what Material3UI Shell actually is. It is a desktop shell for Hyprland and niri (see [Material3UI on niri](NIRI.md)) that replaces your standard panels, notifications, and system controls. However, it is not a complete dotfiles package that overrides your entire system.
 
 **What you get:**
 * A universal dynamic island, status bar, and notification center.
@@ -70,7 +70,7 @@ Every replaced file is copied to `~/.config/material3ui/backups/<timestamp>/`, a
 ./install.sh --yes                                   # accept every default
 ./install.sh --yes --terminal foot --file-manager thunar --browser firefox
 ./install.sh --yes --hypr inject --channel release --skip-deps
-./install.sh --yes --compositor niri                 # niri only (beta)
+./install.sh --yes --compositor niri                 # niri only
 ./install.sh --dry-run                               # show the plan and every step, change nothing
 ```
 

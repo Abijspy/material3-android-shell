@@ -1,8 +1,8 @@
-# Material3UI on niri (beta)
+# Material3UI on niri
 
 From 6.0, the shell also runs on [niri](https://github.com/YaLTeR/niri) 26.04 or newer, the scrollable-tiling compositor, as well as on Hyprland. It finds out which one it's on by itself: in a niri session it talks to niri, and in a Hyprland session to Hyprland.
 
-niri support is in **beta**. The desktop works (the bar, the dock, the panels, notifications, the lock screen, the launcher and the rest), and so do the settings that change niri itself: the touchpad and mouse, keyboard layouts, monitors, the cursor and night light (see [What works](#what-works)). From 6.0-beta-3 the installer sets niri up, and the login screen runs on it when Hyprland isn't installed.
+The whole desktop works on niri: the bar, the dock, the panels, notifications, the lock screen, the launcher and the rest, with niri's blur and overview. So do the settings that change niri itself: the touchpad and mouse, keyboard layouts, monitors, the cursor and night light in Settings, and in [Niri Settings](#niri-settings) how windows look and behave, your keys, window rules, startup apps and variables (see [What works](#what-works)). The installer sets niri up, and the login screen runs on it when Hyprland isn't installed.
 
 ## Setting it up
 
@@ -103,7 +103,7 @@ These follow Settings → Look & feel → Blur, and the rules are in the file th
 
 ## Not on niri yet
 
-These are coming in the next betas. Until then, set them in niri's own `config.kdl`:
+These are planned for later releases. Until then, set them in niri's own `config.kdl`:
 
 - **Each animation's own curve.** Hyprland Settings has them on Hyprland.
 - **Arranging monitors** side by side (their positions): set `position` in niri's config.
