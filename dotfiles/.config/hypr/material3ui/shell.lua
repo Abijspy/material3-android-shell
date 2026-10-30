@@ -69,6 +69,13 @@ for _, ns in ipairs({ "bar", "frame", "popup", "toasts", "osd", "dock", "switche
 end
 hl.layer_rule({ match = { namespace = "material3ui-wallpaper" }, blur = false, no_anim = true })
 
+-- Apps blurred behind (Settings → Look & feel → Blur behind apps): a little
+-- see-through, so Hyprland's blur shows through them
+local app_blur = type(fx.app_blur) == "table" and fx.app_blur or {}
+for i, class in ipairs(app_blur.classes or {}) do
+	hl.window_rule({ name = "material3ui-app-blur-" .. i, match = { class = class }, opacity = app_blur.opacity or "0.92 0.86" })
+end
+
 -- The Settings apps are windows: floating and centred, at a comfortable size
 hl.window_rule({
 	match = { class = "^(material3ui-settings|material3ui-hyprland)$" },

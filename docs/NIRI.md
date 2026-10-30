@@ -99,7 +99,9 @@ niri 26.04 blurs what's behind a surface that asks for it. From 6.0-rc-1 the she
 - **The shell's windows** (Settings, Niri Settings, the welcome tour) are rounded and blurred by a rule of the shell's.
 - **The overview** has the wallpaper, blurred, behind the workspaces: the shell draws a blurred copy of it (`material3ui-backdrop`) and its rules put that copy in niri's backdrop, while each workspace keeps the sharp one. Turn it off in Niri Settings → Behaviour → Blurred backdrop.
 
-These follow Settings → Look & feel → Blur, and the rules are in the file the shell writes (`material3ui-settings.kdl`), so they need nothing in your config. For other apps, set blur with a window rule of your own (`background-effect { blur true }`), or in the app if it asks niri itself (foot, kitty).
+These follow Settings → Look & feel → Blur, and the rules are in the file the shell writes (`material3ui-settings.kdl`), so they need nothing in your config.
+
+**Your apps** get it in Settings → Look & feel → Blur behind apps: a switch for each installed app that suits it (terminals, file managers, editors, music and chat apps), and any other installed app added from the list. Each is made a little see-through (how much, the slider says) by a rule with niri's blur behind it, drawn with its focus ring as a frame so the blur shows while it's focused too. Apps that ask niri for blur themselves (foot, kitty) can also do so in their own settings.
 
 ## Where niri differs
 

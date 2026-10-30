@@ -213,6 +213,9 @@ std::string render(const Settings& s) {
         if (r.opacity < 0.995) body += std::format("    opacity {:.2f}\n", std::clamp(r.opacity, 0.05, 1.0));
         if (r.width > 0) body += std::format("    default-column-width {{\n        proportion {:.5f}\n    }}\n", std::clamp(r.width, 0.1, 1.0));
         if (r.hide) body += "    block-out-from \"screen-capture\"\n";
+        // Apps drawing their own decorations would get the focus ring as a
+        // solid fill behind them, hiding the blur while focused: a frame
+        if (r.blur) body += "    draw-border-with-background false\n    background-effect {\n        blur true\n    }\n";
         // Its own colour, for whichever of the ring and border is on
         if (r.color.size() == 7 && r.color[0] == '#' &&
             std::all_of(r.color.begin() + 1, r.color.end(), [](char c) { return std::isxdigit(static_cast<unsigned char>(c)) != 0; }))

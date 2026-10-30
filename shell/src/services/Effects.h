@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace m3 {
 
@@ -24,6 +25,16 @@ public:
     static std::string cursorTheme();
     static constexpr const char* kDefaultCursor = "Bibata-Modern-Classic";
     static bool cursorInstalled(const std::string& theme);
+
+    // Settings → Look & feel → Blur behind apps (/appearance/appBlur): the
+    // apps made a little see-through for the compositor's blur to show, as a
+    // regex each for their class (Hyprland) or app id (niri), and how opaque
+    // (focused; unfocused a little less). Hyprland blurs see-through windows
+    // by itself; niri gets background-effect rules (services/NiriConfig)
+    static std::vector<std::string> blurredApps();
+    static double appOpacity();
+    // The regex matching exactly these classes or app ids
+    static std::string classRegex(const std::vector<std::string>& classes);
 
 private:
     std::string m_temporaryFilter;

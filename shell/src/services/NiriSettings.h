@@ -102,6 +102,7 @@ struct Settings {
         double opacity = 1;                                                        // 1: as it is
         double width = 0;                                                          // a new column's share; 0: as it is
         std::string color; // "#rrggbb": its border and focus ring (dimmer when unfocused); "": as they are
+        bool blur = false; // niri's blur behind it (where it's see-through)
     };
     std::vector<Rule> rules;
 

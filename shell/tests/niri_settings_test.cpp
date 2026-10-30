@@ -119,7 +119,11 @@ int main(int argc, char** argv) {
     tinted.color = "#d0bcff";
     badColour.appId = "^foot$";
     badColour.color = "#zz\"0000";
-    n.rules = {firefox, nothing, broken, titled, tinted, badColour};
+    niri::Settings::Rule blurred; // Look & feel → Blur behind apps
+    blurred.appId = "^(Alacritty|alacritty)$";
+    blurred.opacity = 0.92;
+    blurred.blur = true;
+    n.rules = {firefox, nothing, broken, titled, tinted, badColour, blurred};
     n.look.tabletsOff = true;
     n.binds = {{"Mod+Shift+M", "", "", "maximize-column"}, {"Mod+Shift+X", "", "", "rm -rf"}, {"Mod+Shift+T", "foot", "", ""}};
     n.shellBlur = true;
@@ -187,6 +191,9 @@ int main(int argc, char** argv) {
            "a rule's own colour, dimmer when unfocused");
     expect(!has(more, "^foot$") && !has(more, "#zz"), "a colour that isn't one sets nothing");
     expect(has(more, "    tablet {\n        off\n    }\n"), "tablets off");
+    expect(has(more, "window-rule {\n    match app-id=\"^(Alacritty|alacritty)$\"\n    opacity 0.92\n    draw-border-with-background false\n"
+                     "    background-effect {\n        blur true\n    }\n}"),
+           "an app blurred behind");
     expect(niri::exactly("a.b+c") == "^a\\.b\\+c$", "exactly");
     expect(niri::validRegex("^firefox$") && !niri::validRegex("(?=x)") && !niri::validRegex("(a)\\1") && !niri::validRegex("[a"),
            "regexes niri can read");

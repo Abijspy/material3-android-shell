@@ -16,6 +16,7 @@
 #include <format>
 #include <fstream>
 #include <sstream>
+#include <string_view>
 #include <unistd.h>
 
 namespace fs = std::filesystem;
@@ -258,6 +259,35 @@ void Effects::applyCursor() {
     }
 }
 
+std::vector<std::string> Effects::blurredApps() {
+    std::vector<std::string> out;
+    const auto apps = Config::get().value<nlohmann::json>("/appearance/appBlur/apps", nlohmann::json::array());
+    for (const auto& a : apps) {
+        if (!a.is_object() || !a.contains("classes") || !a["classes"].is_array()) continue;
+        std::vector<std::string> classes;
+        for (const auto& c : a["classes"])
+            if (c.is_string() && !c.get<std::string>().empty()) classes.push_back(c.get<std::string>());
+        if (!classes.empty()) out.push_back(classRegex(classes));
+    }
+    return out;
+}
+
+double Effects::appOpacity() {
+    return std::clamp(Config::get().value<double>("/appearance/appBlur/opacity", 0.92), 0.5, 1.0);
+}
+
+std::string Effects::classRegex(const std::vector<std::string>& classes) {
+    std::string out = "^(";
+    for (size_t i = 0; i < classes.size(); ++i) {
+        if (i) out += '|';
+        for (char ch : classes[i]) {
+            if (std::string_view("\\^$.|?*+()[]{}").find(ch) != std::string_view::npos) out += '\\';
+            out += ch;
+        }
+    }
+    return out + ")$";
+}
+
 void Effects::apply() {
     // niri: what Settings changes there, as its own config (NiriConfig)
     if (Niri::get().available()) return NiriConfig::get().apply();
@@ -292,10 +322,23 @@ void Effects::apply() {
         return;
     }
 
+    // The apps blurred behind: see-through by a window rule each (shell.lua)
+    std::string apps;
+    for (const auto& re : blurredApps()) {
+        std::string lit;
+        for (char ch : re) {
+            if (ch == '\\' || ch == '"') lit += '\\';
+            lit += ch;
+        }
+        apps += "\"" + lit + "\", ";
+    }
+    const double opacity = appOpacity();
     const std::string lua = std::format("-- Written by Material3UI (Settings → Appearance → Effects).\n"
                                         "-- Change these there; edits made here are overwritten.\n"
-                                        "return {{\n\tblur = {},\n\tignore_alpha = {:.2f},\n\tbar = {},\n\tdock = {},\n}}\n",
-                                        t.blur() ? "true" : "false", ignore, barBlur ? "true" : "false", dockBlur ? "true" : "false");
+                                        "return {{\n\tblur = {},\n\tignore_alpha = {:.2f},\n\tbar = {},\n\tdock = {},\n"
+                                        "\tapp_blur = {{ opacity = \"{:.2f} {:.2f}\", classes = {{ {}}} }},\n}}\n",
+                                        t.blur() ? "true" : "false", ignore, barBlur ? "true" : "false", dockBlur ? "true" : "false", opacity,
+                                        std::max(0.3, opacity - 0.06), apps);
     if (readAll(luaFile()) == lua) return; // unchanged: no reload
     paths::writeFile(luaFile(), lua);
     // Layer rules change only with a reload

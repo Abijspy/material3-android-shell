@@ -227,6 +227,18 @@ niri::Settings NiriConfig::collect() const {
         if (const std::string role = r.value("color", ""); !role.empty()) rule.color = hex(Theme::get().color(role));
         s.rules.push_back(rule);
     }
+    // Settings → Look & feel → Blur behind apps: see-through, niri's blur
+    // behind; before your own rules, so an opacity of yours wins
+    const double opacity = Effects::appOpacity();
+    std::vector<niri::Settings::Rule> blurred;
+    for (const auto& re : Effects::blurredApps()) {
+        niri::Settings::Rule rule;
+        rule.appId = re;
+        rule.opacity = opacity;
+        rule.blur = true;
+        blurred.push_back(rule);
+    }
+    s.rules.insert(s.rules.begin(), blurred.begin(), blurred.end());
     const auto startup = c.value<nlohmann::json>("/niri/startup", nlohmann::json::array());
     for (const auto& st : startup)
         if (st.is_object() && st.value("enabled", true)) s.startup.push_back(st.value("command", ""));

@@ -809,6 +809,99 @@ void stylePage(Flex* page, Popup&) {
              "Borders, the focus ring, shadows and corners");
 
     // Text size: the shell's (Accessibility's), and each part's on top of it
+    // Blur behind apps: the installed apps that look right see-through
+    // (terminals, file managers, editors, music and chat), and any other
+    // added; each a little see-through, with the compositor's blur behind
+    auto* appBlur = page->add<Live>();
+    appBlur->setSpacing(0);
+    appBlur->sync = [appBlur] {
+        appBlur->clearChildren();
+        auto* g = group(appBlur, "Blur behind apps",
+                        Niri::get().available() ? "A little see-through, with niri's blur behind them"
+                                                : "A little see-through, with Hyprland's blur behind them (Hyprland Settings → Decoration sets its look)");
+        // Hyprland's rule takes a second, unfocused opacity; niri's one
+        const bool dimmer = !Niri::get().available();
+        sliderRow(g, "opacity", "How see-through", "/appearance/appBlur/opacity", 0.92, 0.7, 0.98, 0.01, [dimmer](double v) {
+            return dimmer ? std::format("{:.0f}% opaque, a little less unfocused", v * 100) : std::format("{:.0f}% opaque", v * 100);
+        });
+        const auto list = Config::get().value<nlohmann::json>("/appearance/appBlur/apps", nlohmann::json::array());
+        auto bare = [](std::string id) { return id.ends_with(".desktop") ? id.substr(0, id.size() - 8) : id; };
+        auto lower = [](std::string t) {
+            for (auto& ch : t) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            return t;
+        };
+        auto find = [&](const std::string& id) -> const Apps::App* {
+            for (const auto& a : Apps::get().all())
+                if (lower(bare(a.id)) == lower(id)) return &a;
+            return nullptr;
+        };
+        static const char* kSuggested[] = {"Alacritty", "kitty", "foot", "com.mitchellh.ghostty", "org.wezfurlong.wezterm", "org.kde.konsole",
+                                           "org.gnome.Console", "org.gnome.Ptyxis", "nemo", "thunar", "org.gnome.Nautilus", "org.kde.dolphin",
+                                           "code", "codium", "dev.zed.Zed", "org.gnome.TextEditor", "org.kde.kate", "spotify", "vesktop", "discord",
+                                           "obsidian"};
+        // Suggested and installed, then the others added here
+        std::vector<std::string> ids;
+        for (const char* id : kSuggested)
+            if (const auto* a = find(id)) ids.push_back(bare(a->id));
+        for (const auto& e : list)
+            if (e.is_object() && std::ranges::find(ids, e.value("id", "")) == ids.end()) ids.push_back(e.value("id", ""));
+        for (const auto& id : ids) {
+            const auto* app = find(id);
+            const bool on = std::ranges::any_of(list, [&](const auto& e) { return e.is_object() && e.value("id", "") == id; });
+            auto r = row(g, "", app ? app->name : id, app ? app->comment : "Not installed");
+            const std::string icon = app ? app->icon : id; // (no glyph: the app's own icon first)
+            r.row->adopt(std::make_unique<ImageView>(28, [icon](float scale, int& w, int& h) -> GLuint {
+                             auto* t = Images::get().icon(icon, static_cast<int>(std::lround(28 * scale)));
+                             if (!t) return 0;
+                             w = t->width;
+                             h = t->height;
+                             return t->id;
+                         }),
+                         0);
+            // Its window's class (Hyprland) and app id (niri): the class it
+            // declares, its desktop id, and their lower-case spellings
+            std::vector<std::string> classes;
+            for (const auto& c : {app ? app->wmClass : std::string(), id, app ? lower(app->wmClass) : std::string(), lower(id)})
+                if (!c.empty() && std::ranges::find(classes, c) == classes.end()) classes.push_back(c);
+            auto* sw = r.row->add<Switch>();
+            sw->setChecked(on, false);
+            sw->onToggled = [appBlur, id, classes](bool v) {
+                auto l = Config::get().value<nlohmann::json>("/appearance/appBlur/apps", nlohmann::json::array());
+                if (!l.is_array()) l = nlohmann::json::array();
+                l.erase(std::remove_if(l.begin(), l.end(), [&](const nlohmann::json& e) { return e.is_object() && e.value("id", "") == id; }),
+                        l.end());
+                if (v) l.push_back({{"id", id}, {"classes", classes}});
+                Config::get().set("/appearance/appBlur/apps", l);
+                if (!v) appBlur->syncSoon(); // an app added here leaves the list
+            };
+        }
+        // Any other installed app
+        std::vector<std::pair<std::string, std::string>> others;
+        for (const auto& a : Apps::get().all())
+            if (!a.exec.empty() && std::ranges::find(ids, bare(a.id)) == ids.end()) others.push_back({bare(a.id), a.name});
+        std::ranges::sort(others, [](const auto& a, const auto& b) { return a.second < b.second; });
+        auto add = row(g, "add", "Another app", "Any installed app, made see-through the same way");
+        // (Picked later: nothing of this sync's locals is used)
+        dropdown(add.row, g, "Choose", others, [appBlur](const std::string& id) {
+            auto low = [](std::string t) {
+                for (auto& ch : t) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+                return t;
+            };
+            std::string wm;
+            for (const auto& a : Apps::get().all())
+                if (a.id == id || a.id == id + ".desktop") wm = a.wmClass;
+            std::vector<std::string> classes;
+            for (const auto& c : {wm, id, low(wm), low(id)})
+                if (!c.empty() && std::ranges::find(classes, c) == classes.end()) classes.push_back(c);
+            auto l = Config::get().value<nlohmann::json>("/appearance/appBlur/apps", nlohmann::json::array());
+            if (!l.is_array()) l = nlohmann::json::array();
+            l.push_back({{"id", id}, {"classes", classes}});
+            Config::get().set("/appearance/appBlur/apps", l);
+            appBlur->syncSoon();
+        });
+    };
+    appBlur->sync();
+
     auto* text = group(page, "Text & widget size", "The shell's text size applies everywhere; the others adjust one part on top of it. Widget size grows widgets whole, on the desktop, lock and login screens (each desktop widget also has its own, in the desktop editor)");
     auto scaleText = [](double v) { return std::format("{:.0f}%", v * 100); };
     sliderRow(text, "format_size", "Whole shell", "/accessibility/textScale", 1.0, 0.85, 1.5, 0.05, scaleText);
