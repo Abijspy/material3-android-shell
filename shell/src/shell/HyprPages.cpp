@@ -535,11 +535,12 @@ void buildPage(Flex* page, const std::string& id) {
     };
     live->conns.push_back(h.changed.connect([live] { live->syncSoon(); }));
     // A config reload may change what the files set
+    // (deferred: the page may be gone by then)
     live->conns.push_back(Hyprland::get().event.connect([live](const std::string& name, const std::string&) {
         if (name == "configreloaded")
-            EventLoop::get().defer([live] {
+            EventLoop::get().defer([live, alive = live->alive()] {
                 HyprOptions::get().load();
-                live->syncSoon();
+                if (*alive) live->syncSoon();
             });
     }));
     live->sync();
@@ -1011,7 +1012,9 @@ void monitorSections(Flex* page) {
     // Plugged in or out, or rearranged: read them again (after Hyprland settles)
     live->conns.push_back(Hyprland::get().event.connect([live](const std::string& name, const std::string&) {
         if (name.starts_with("monitor") || name == "configreloaded")
-            EventLoop::get().addTimer(300, [live] { live->syncSoon(); });
+            EventLoop::get().addTimer(300, [live, alive = live->alive()] {
+                if (*alive) live->syncSoon();
+            });
     }));
     live->sync();
 }
@@ -1726,9 +1729,9 @@ void pluginSections(Flex* page) {
         if (haveHyprpm) {
             auto refresh = row(get, "refresh", "Installed something?", "Read the plugins again");
             pillButton(refresh.row, "Refresh", false, [hyprpm, live] {
-                run({"hyprpm", "list"}, [hyprpm, live](int, const std::string& out) {
+                run({"hyprpm", "list"}, [hyprpm, live, alive = live->alive()](int, const std::string& out) {
                     *hyprpm = out;
-                    live->syncSoon();
+                    if (*alive) live->syncSoon();
                 });
             }, "refresh");
         }
@@ -1761,9 +1764,9 @@ void pluginSections(Flex* page) {
                     const std::string name = plugin;
                     sw->onToggled = [name, hyprpm, live](bool on) {
                         run({"sh", "-c", std::format("hyprpm {} '{}' && hyprpm reload -n", on ? "enable" : "disable", name)},
-                            [hyprpm, live](int, const std::string&) {
+                            [hyprpm, live, alive = live->alive()](int, const std::string&) {
                                 *hyprpm = "…";
-                                live->syncSoon();
+                                if (*alive) live->syncSoon();
                             });
                     };
                     plugin.clear();
@@ -1799,9 +1802,10 @@ void pluginSections(Flex* page) {
         };
     };
     if (access("/usr/bin/hyprpm", X_OK) == 0 || access("/usr/local/bin/hyprpm", X_OK) == 0)
-        run({"hyprpm", "list"}, [hyprpm, live](int, const std::string& out) {
+        // The page may be closed before hyprpm answers
+        run({"hyprpm", "list"}, [hyprpm, live, alive = live->alive()](int, const std::string& out) {
             *hyprpm = out;
-            live->syncSoon();
+            if (*alive) live->syncSoon();
         });
     live->sync();
 }

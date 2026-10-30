@@ -2045,7 +2045,9 @@ void backupRows(Flex* page) {
                 ask->path = action.empty() ? "" : path;
                 ask->action = action;
                 ask->result.clear();
-                EventLoop::get().defer([live] { live->syncSoon(); });
+                EventLoop::get().defer([live, alive = live->alive()] {
+                    if (*alive) live->syncSoon();
+                });
             };
             pillButton(r.row, "Restore", false, [setAsk] { setAsk("restore"); }, "settings_backup_restore");
             auto* del = r.row->add<Button>();
