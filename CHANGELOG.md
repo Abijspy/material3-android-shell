@@ -1,5 +1,12 @@
 # Changelog
 
+## v6.0.1 — 2026-10-30
+
+- **Blur behind your apps.** Settings → Look & feel → Blur behind apps turns blur on for each installed app that suits it (terminals, file managers, editors, music and chat apps), or for any other installed app you add. Each is made a little see-through, as much as the slider says, with the compositor's blur behind it: Hyprland's (a little more see-through when unfocused), or niri's, which also shows while the app is focused.
+- **Each animation's own curve on niri.** Niri Settings → Animations sets each of niri's animations (windows opening, closing, moving and resizing, scrolling the columns, switching workspaces, the overview): on or off, and a curve over a length of time (linear, gentle, smooth, swift, or your own, drawn in the curve editor) or a spring with its bounce and stiffness. Each starts from your config's.
+- **Arranging monitors on niri.** Settings → Display arranges two or more monitors: drag them to where they stand on your desk, or leave them to niri again. Applied at once and kept for the next login.
+- **What niri can't do is said so.** The niri guide's "Not on niri yet" is now "Where niri differs": minimising, recording one window, the sharing picker and the magnifier depend on niri itself.
+
 ## v6.0 — 2026-10-30
 
 - **niri, as well as Hyprland.** The shell runs on niri 26.04 or newer as fully as on Hyprland 0.55 or newer: the bar with each monitor's workspaces, the dock, every panel, notifications, the lock screen, Spotlight, the window switcher, screenshots and recording, Digital Wellbeing, and niri's own overview. It finds out which compositor it's on by itself. → [Material3UI on niri](docs/NIRI.md)
