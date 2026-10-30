@@ -1,5 +1,10 @@
 # Changelog
 
+## v6.0.2 — 2026-10-30
+
+- **Compositor logos on the login screen.** The session picker shows Hyprland's drop or niri's logo next to each session, on the chip and in its list, and niri's sessions are described instead of showing their command. niri's logo is cropped to stand as tall as Hyprland's (on the About page too).
+- **Frosted glass on the login and lock screens.** The session and power menus blur strongly what's behind them, so the password field and widgets show through only as colour, and the widget chips (forecast, battery, media, notifications), the session chip and the power button are lighter so their blur shows. With widget blur off in Settings → Look & feel, they keep their fuller colour.
+
 ## v6.0.1 — 2026-10-30
 
 - **Blur behind your apps.** Settings → Look & feel → Blur behind apps turns blur on for each installed app that suits it (terminals, file managers, editors, music and chat apps), or for any other installed app you add. Each is made a little see-through, as much as the slider says, with the compositor's blur behind it: Hyprland's (a little more see-through when unfocused), or niri's, which also shows while the app is focused.
