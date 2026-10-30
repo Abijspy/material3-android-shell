@@ -1,5 +1,18 @@
 # Changelog
 
+## v6.0 — 2026-10-30
+
+- **niri, as well as Hyprland.** The shell runs on niri 26.04 or newer as fully as on Hyprland 0.55 or newer: the bar with each monitor's workspaces, the dock, every panel, notifications, the lock screen, Spotlight, the window switcher, screenshots and recording, Digital Wellbeing, and niri's own overview. It finds out which compositor it's on by itself. → [Material3UI on niri](docs/NIRI.md)
+- **Niri Settings.** niri's counterpart to Hyprland Settings: gaps, centring and column widths, the focus ring, borders, shadows, corners and blur, animations, focus behaviour and the overview, keys for niri's actions, window rules, startup apps and variables. Each option starts from your `config.kdl`, and only what you change is written.
+- **Settings change niri too.** The touchpad and mouse, keyboard layouts and shortcuts, monitors, the cursor and night light work on niri, written to niri's own config as you change them.
+- **Blur on niri, as on Hyprland.** The bar, panels, dock and notifications blur the windows behind them, the Settings windows are rounded and blurred, and niri's overview shows the wallpaper blurred behind the workspaces.
+- **The installer and updates set niri up.** Pick Hyprland, niri or both: only that compositor's packages come, niri's config gets the shell's file included at its end, and the login screen runs on niri when Hyprland isn't installed. Neither package depends on Hyprland any more.
+- **Ready for Hyprland 0.57.** Its blur styles and wobbly windows in Look & feel, its new options and window rules in Hyprland Settings, and the changes it made to its config and IPC (minimised windows, the shadow's range) handled.
+- **The About page from fastfetch.** This device shows the model, CPU, GPU, memory, disk, displays, packages, uptime and battery, and the compositor with its logo, Hyprland's or niri's. fastfetch comes with the shell now.
+- **One Settings pin for both compositors.** The dock's pinned Hyprland Settings is Niri Settings in a niri session, and the welcome tour names the session's own app and keys.
+- **Steadier.** Settings pages no longer refresh after they're closed (two crashes on 6.0-rc-1), Hyprland's config files are replaced whole so it never reloads half of one, and the About page no longer breaks on niri.
+- **Coming from 5.8:** `./update.sh` or Settings → Software & updates brings 6.0, and your Hyprland setup carries over (your own files and settings are kept). To add niri, run `./install.sh --compositor both` once.
+
 ## v6.0-rc-3 — 2026-10-29
 
 - **No config error at login on Hyprland 0.57.** 0.57 allows a shadow's fade (`render_power`) up to 4, and the shell's `appearance.lua` set 10, so "Your config has errors" came up at every login and the shadows lost their look. It's 4 now. Updating puts the new `appearance.lua` in place.
