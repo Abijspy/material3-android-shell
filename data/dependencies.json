@@ -267,6 +267,11 @@
       "name": "tesseract-data-eng",
       "command": "",
       "description": "English OCR data"
+    },
+    {
+      "name": "fastfetch",
+      "command": "fastfetch",
+      "description": "The device's details in Settings \u2192 About"
     }
   ],
   "theming": [

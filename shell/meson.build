@@ -192,7 +192,7 @@ install_data('data/update/material3ui-update-root', 'data/update/material3ui-roo
   install_dir: get_option('prefix') / 'lib/material3ui', install_mode: 'rwxr-xr-x')
 install_data('data/update/io.github.abijspy.material3ui.update.policy',
   install_dir: get_option('datadir') / 'polkit-1/actions')
-install_data('data/icons/Material3UI.svg', 'data/icons/hyprland-logo.svg', install_dir: get_option('datadir') / 'material3ui/icons')
+install_data('data/icons/Material3UI.svg', 'data/icons/hyprland-logo.svg', 'data/icons/niri-logo.svg', install_dir: get_option('datadir') / 'material3ui/icons')
 # The package's icon (no .desktop file: the shell is not an app to launch)
 install_data('data/icons/Material3UI.svg', rename: 'material3ui.svg',
   install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps')

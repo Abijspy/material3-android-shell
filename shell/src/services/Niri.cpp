@@ -104,7 +104,13 @@ void Niri::action(const nlohmann::json& a) {
 }
 
 std::string Niri::version() const {
-    if (auto v = request("Version"); v && v->contains("Version")) return (*v)["Version"].value("compositor", "");
+    // {"Version": "26.04 (8ed0da4)"}: a string over IPC (`niri msg -j
+    // version` adds the CLI's beside it, as an object)
+    if (auto v = request("Version"); v && v->contains("Version")) {
+        const auto& ver = (*v)["Version"];
+        if (ver.is_string()) return ver.get<std::string>();
+        if (ver.is_object()) return ver.value("compositor", "");
+    }
     return {};
 }
 

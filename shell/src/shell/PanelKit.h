@@ -30,6 +30,9 @@ public:
     // rebuild the very button whose click caused the change
     void watch(Signal<>& s);
     void syncSoon();
+    // False once it's gone: for callbacks that may outlive the page (a
+    // process finishing, a reply) to check before touching it
+    std::shared_ptr<const bool> alive() const { return m_alive; }
 
 private:
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);

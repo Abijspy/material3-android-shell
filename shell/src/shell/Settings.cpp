@@ -1293,10 +1293,11 @@ void dockPage(Flex* page, Popup&) {
         if (ids.empty()) row(pins, "push_pin", "Nothing pinned", "Search below, or right-click an app in the dock");
         for (size_t i = 0; i < ids.size(); ++i) {
             const Apps::App* app = nullptr;
+            const std::string here = Dock::shown(ids[i]); // the compositor's settings app, as this session's
             for (const auto& a : Apps::get().all())
-                if (a.id == ids[i] || a.id == ids[i] + ".desktop") app = &a;
-            auto r = row(pins, "", app ? app->name : ids[i], app ? app->comment : "Not installed");
-            const std::string icon = app ? app->icon : ids[i];
+                if (a.id == here || a.id == here + ".desktop") app = &a;
+            auto r = row(pins, "", app ? app->name : here, app ? app->comment : "Not installed");
+            const std::string icon = app ? app->icon : here;
             r.row->adopt(std::make_unique<ImageView>(32, [icon](float scale, int& w, int& h) -> GLuint {
                 auto* t = Images::get().icon(icon, static_cast<int>(std::lround(32 * scale)));
                 if (!t) return 0;
@@ -3781,49 +3782,145 @@ void aboutPage(Flex* page, Popup&) {
         if (open) open("welcome");
     }, "waving_hand");
 
-    auto* sys = group(page, "This device");
-    char host[256] = {};
-    gethostname(host, sizeof host - 1);
-    utsname u{};
-    uname(&u);
-    std::string os = readFirstLine("/etc/os-release", "PRETTY_NAME=");
-    if (os.size() >= 2 && os.front() == '"') os = os.substr(1, os.size() - 2);
-    std::string cpu = readFirstLine("/proc/cpuinfo", "model name");
-    if (auto c = cpu.find(':'); c != std::string::npos) cpu = cpu.substr(c + 2);
-    // The compositor the shell runs on, and its version
-    auto& comp = Compositor::get();
-    const std::string compositor = comp.available() ? comp.name() + " " + comp.version() : comp.name() + " (not running)";
-    auto& stats = SystemStats::get();
-    auto lease = stats.lease(); // one sample for memory and uptime
-    row(sys, "computer", host, "Device name");
-    // The distribution's logo (LOGO= in os-release, in pixmaps or the icon
-    // theme) and Hyprland's, in place of the glyphs, where there is one
-    auto useLogo = [](const Row& r, const std::string& nameOrPath) {
-        r.row->remove(r.row->children()[0].get());
-        // The glyphs' size, so the text lines up with the other rows
-        r.row->adopt(std::make_unique<ImageView>(22, [nameOrPath](float scale, int& w, int& h) -> GLuint {
-                         auto* t = Images::get().icon(nameOrPath, static_cast<int>(std::lround(22 * scale)));
-                         if (!t) return 0;
-                         w = t->width;
-                         h = t->height;
-                         return t->id;
-                     }),
-                     0);
+    // This device: fastfetch's view of it (the model, CPU, GPU, memory, disk,
+    // displays, packages, uptime, battery), what the shell reads itself
+    // until it answers or when it isn't installed. Its last answer is kept,
+    // so About shows it at once the next time
+    static nlohmann::json fetched; // fastfetch's modules, by type
+    auto* details = page->add<Live>();
+    details->setSpacing(0);
+    details->sync = [details] {
+        details->clearChildren();
+        auto* sys = group(details, "This device");
+        auto mod = [](const char* type) -> const nlohmann::json& {
+            static const nlohmann::json none;
+            return fetched.is_object() && fetched.contains(type) ? fetched[type] : none;
+        };
+        auto str = [](const nlohmann::json& j, const char* key) {
+            return j.is_object() && j.contains(key) && j[key].is_string() ? j[key].get<std::string>() : std::string();
+        };
+        auto num = [](const nlohmann::json& j, const char* key) {
+            return j.is_object() && j.contains(key) && j[key].is_number() ? j[key].get<double>() : 0.0;
+        };
+        // The distribution's, Hyprland's and niri's logos, in place of the
+        // glyphs, where there is one
+        auto useLogo = [](const Row& r, const std::string& nameOrPath) {
+            r.row->remove(r.row->children()[0].get());
+            // The glyphs' size, so the text lines up with the other rows
+            r.row->adopt(std::make_unique<ImageView>(22, [nameOrPath](float scale, int& w, int& h) -> GLuint {
+                             auto* t = Images::get().icon(nameOrPath, static_cast<int>(std::lround(22 * scale)));
+                             if (!t) return 0;
+                             w = t->width;
+                             h = t->height;
+                             return t->id;
+                         }),
+                         0);
+        };
+
+        char host[256] = {};
+        gethostname(host, sizeof host - 1);
+        const std::string model = str(mod("Host"), "name");
+        row(sys, "computer", host, model.empty() ? "Device name" : model);
+
+        utsname u{};
+        uname(&u);
+        std::string os = str(mod("OS"), "prettyName");
+        if (os.empty()) {
+            os = readFirstLine("/etc/os-release", "PRETTY_NAME=");
+            if (os.size() >= 2 && os.front() == '"') os = os.substr(1, os.size() - 2);
+        }
+        auto osRow = row(sys, "deployed_code", os.empty() ? "Linux" : os, std::string("Kernel ") + u.release);
+        if (std::string mark = readFirstLine("/etc/os-release", "LOGO="); !mark.empty()) {
+            if (mark.size() >= 2 && mark.front() == '"') mark = mark.substr(1, mark.size() - 2);
+            for (const char* ext : {".svg", ".png"})
+                if (std::filesystem::exists("/usr/share/pixmaps/" + mark + ext)) {
+                    mark = "/usr/share/pixmaps/" + mark + ext;
+                    break;
+                }
+            if (Images::get().icon(mark, 22)) useLogo(osRow, mark);
+        }
+
+        // The compositor the shell runs on, and its version
+        auto& comp = Compositor::get();
+        const std::string compositor = comp.available() ? comp.name() + " " + comp.version() : comp.name() + " (not running)";
+        auto wm = row(sys, "grid_view", compositor, "Compositor");
+        const std::string mark = comp.name() == "Hyprland" ? "icons/hyprland-logo.svg" : comp.name() == "niri" ? "icons/niri-logo.svg" : "";
+        if (const auto path = mark.empty() ? std::string() : paths::dataFile(mark); !path.empty()) useLogo(wm, path);
+
+        auto& stats = SystemStats::get();
+        auto lease = stats.lease(); // one sample for memory
+        const auto& cpu = mod("CPU");
+        std::string cpuName = str(cpu, "cpu");
+        if (cpuName.empty()) {
+            cpuName = readFirstLine("/proc/cpuinfo", "model name");
+            if (auto c = cpuName.find(':'); c != std::string::npos) cpuName = cpuName.substr(c + 2);
+        }
+        std::string cpuSub = std::format("{} logical cores", stats.cores());
+        if (cpu.is_object() && cpu.contains("cores")) {
+            cpuSub = std::format("{} cores, {} threads", static_cast<int>(num(cpu["cores"], "physical")), static_cast<int>(num(cpu["cores"], "logical")));
+            if (cpu.contains("frequency") && num(cpu["frequency"], "max") > 0) cpuSub += std::format(", up to {:.1f} GHz", num(cpu["frequency"], "max") / 1000);
+        }
+        row(sys, "memory", cpuName.empty() ? "CPU" : cpuName, cpuSub);
+        for (const auto& g : mod("GPU").is_array() ? mod("GPU") : nlohmann::json::array()) {
+            const std::string name = str(g, "name"), vendor = str(g, "vendor"), driver = str(g, "driver");
+            if (name.empty()) continue;
+            row(sys, "developer_board", vendor.empty() || name.starts_with(vendor) ? name : vendor + " " + name,
+                driver.empty() ? "Graphics" : "Graphics · " + driver);
+        }
+        const auto& mem = mod("Memory");
+        const double total = num(mem, "total") > 0 ? num(mem, "total") : static_cast<double>(stats.memTotal());
+        row(sys, "memory_alt", formatBytes(static_cast<uint64_t>(total)),
+            num(mem, "used") > 0 ? std::format("Memory · {} in use", formatBytes(static_cast<uint64_t>(num(mem, "used")))) : "Memory");
+        for (const auto& d : mod("Disk").is_array() ? mod("Disk") : nlohmann::json::array()) {
+            if (str(d, "mountpoint") != "/" || !d.contains("bytes")) continue;
+            const std::string fs = str(d, "filesystem");
+            row(sys, "hard_drive", formatBytes(static_cast<uint64_t>(num(d["bytes"], "total"))),
+                std::format("Disk · {} free{}", formatBytes(static_cast<uint64_t>(num(d["bytes"], "free"))), fs.empty() ? "" : " · " + fs));
+        }
+        for (const auto& d : mod("Display").is_array() ? mod("Display") : nlohmann::json::array()) {
+            if (!d.contains("output")) continue;
+            const auto& o = d["output"];
+            const std::string name = str(d, "name");
+            row(sys, "desktop_windows", std::format("{}×{} at {:.0f} Hz", static_cast<int>(num(o, "width")), static_cast<int>(num(o, "height")), num(o, "refreshRate")),
+                name.empty() ? "Display" : "Display · " + name);
+        }
+        if (const auto& p = mod("Packages"); num(p, "all") > 0) {
+            std::string by;
+            for (const auto& [k, v] : p.items())
+                if (k != "all" && v.is_number() && v.get<double>() > 0) by += (by.empty() ? "" : ", ") + std::format("{} {}", k, v.get<long>());
+            row(sys, "package_2", std::format("{} packages", static_cast<long>(num(p, "all"))), by.empty() ? "Installed" : by);
+        }
+        if (const double up = num(mod("Uptime"), "uptime") / 1000; up > 0) {
+            const long h = static_cast<long>(up) / 3600, m = (static_cast<long>(up) % 3600) / 60;
+            row(sys, "schedule", h > 0 ? std::format("{} h {} min", h, m) : std::format("{} min", m), "Up since it started");
+        }
+        for (const auto& b : mod("Battery").is_array() ? mod("Battery") : nlohmann::json::array()) {
+            std::string status;
+            if (b.contains("status") && b["status"].is_array())
+                for (const auto& s : b["status"])
+                    if (s.is_string()) status += (status.empty() ? "" : ", ") + s.get<std::string>();
+            row(sys, "battery_full", std::format("{:.0f}%", num(b, "capacity")), status.empty() ? "Battery" : "Battery · " + status);
+        }
+        if (fetched.is_null() && access("/usr/bin/fastfetch", X_OK) != 0) {
+            auto r = row(sys, "info", "More details with fastfetch", "Install fastfetch for the GPU, disks, displays, packages and battery");
+            r.title->setColor("on_surface_variant", false);
+        }
     };
-    auto osRow = row(sys, "deployed_code", os.empty() ? "Linux" : os, std::string("Kernel ") + u.release);
-    if (std::string mark = readFirstLine("/etc/os-release", "LOGO="); !mark.empty()) {
-        if (mark.size() >= 2 && mark.front() == '"') mark = mark.substr(1, mark.size() - 2);
-        for (const char* ext : {".svg", ".png"})
-            if (std::filesystem::exists("/usr/share/pixmaps/" + mark + ext)) {
-                mark = "/usr/share/pixmaps/" + mark + ext;
-                break;
+    details->sync();
+    // Asked again each time About opens; the page may be gone by the answer
+    m3::run({"fastfetch", "--format", "json", "-s", "os:host:cpu:gpu:memory:disk:display:packages:uptime:battery"},
+        [details, alive = details->alive()](int code, const std::string& out) {
+            if (code != 0) return;
+            try {
+                nlohmann::json byType = nlohmann::json::object();
+                for (const auto& m : nlohmann::json::parse(out))
+                    if (m.is_object() && m.contains("type") && m.contains("result")) byType[m["type"].get<std::string>()] = m["result"];
+                fetched = std::move(byType);
+            } catch (...) {
+                return;
             }
-        if (Images::get().icon(mark, 22)) useLogo(osRow, mark);
-    }
-    row(sys, "memory", cpu.empty() ? "CPU" : cpu, std::format("{} logical cores", stats.cores()));
-    row(sys, "memory_alt", formatBytes(stats.memTotal()), "Memory");
-    auto wm = row(sys, "grid_view", compositor, "Compositor");
-    if (const auto mark = paths::dataFile("icons/hyprland-logo.svg"); !mark.empty() && comp.name() == "Hyprland") useLogo(wm, mark);
+            if (*alive) details->syncSoon();
+        });
 
     // The changelog: the latest few releases, the rest on request
     group(page, "Changelog", "What changed in each release");

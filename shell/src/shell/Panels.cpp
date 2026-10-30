@@ -403,8 +403,9 @@ void dockMenu(Flex* card, Popup& popup, const std::string& arg) {
     };
     auto bare = [](std::string t) { return t.ends_with(".desktop") ? t.substr(0, t.size() - 8) : t; };
     const Apps::App* app = nullptr;
+    const std::string here = Dock::shown(id); // the compositor's settings app, as this session's
     for (const auto& a : Apps::get().all())
-        if (a.id == id || bare(a.id) == id) app = &a;
+        if (a.id == here || bare(a.id) == here) app = &a;
     std::vector<std::string> windows; // their addresses
     for (const auto& c : Compositor::get().windows(true))
         if (!cls.empty() && lower(c.appId) == lower(cls)) windows.push_back(c.id);
@@ -444,8 +445,8 @@ void dockMenu(Flex* card, Popup& popup, const std::string& arg) {
     }
     item(pinned ? "keep_off" : "keep", pinned ? "Unpin from dock" : "Pin to dock", false, [id, pinned] {
         auto now = Dock::pinned();
-        if (pinned)
-            std::erase(now, id);
+        if (pinned) // every pin that's this app here (both settings apps' ids, say)
+            std::erase_if(now, [&](const std::string& p) { return Dock::shown(p) == Dock::shown(id); });
         else
             now.push_back(id);
         Dock::setPinned(now);

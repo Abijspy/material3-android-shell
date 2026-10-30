@@ -226,6 +226,11 @@ void Dock::setPinned(const std::vector<std::string>& ids) {
     Config::get().set("/dock/pinned", ids);
 }
 
+std::string Dock::shown(const std::string& pinnedId) {
+    if (pinnedId != "material3ui-hyprland" && pinnedId != "material3ui-niri") return pinnedId;
+    return Compositor::get().name() == "niri" ? "material3ui-niri" : "material3ui-hyprland";
+}
+
 void Dock::rebuild() {
     auto root = std::make_unique<DockRoot>();
     m_root = root.get();
@@ -275,10 +280,14 @@ void Dock::refresh() {
         bool pinned = false;
     };
     std::vector<Entry> entries;
+    std::vector<std::string> seen; // what each pin stands for here, once
     for (const auto& id : pinned()) {
-        Entry e{id, "", "", findApp(id), {}, true};
+        const std::string here = shown(id);
+        if (std::ranges::find(seen, here) != seen.end()) continue;
+        seen.push_back(here);
+        Entry e{id, "", "", findApp(here), {}, true};
         if (e.app) e.icon = e.app->icon;
-        else e.icon = id;
+        else e.icon = here;
         entries.push_back(e);
     }
     std::vector<Entry> running;
@@ -346,7 +355,7 @@ void Dock::refresh() {
             }
             if (button == BTN_MIDDLE || copy.windows.empty()) {
                 // Look it up again: the app list reloads when apps are (un)installed
-                if (const auto* app = copy.app ? findApp(copy.id) : nullptr) Apps::get().launch(*app);
+                if (const auto* app = copy.app ? findApp(shown(copy.id)) : nullptr) Apps::get().launch(*app);
                 return;
             }
             // Focus its window; when it already has focus, the next one

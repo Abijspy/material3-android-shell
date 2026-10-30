@@ -5,6 +5,7 @@
 #include "core/Version.h"
 #include "core/Process.h"
 #include "render/Images.h"
+#include "services/Compositor.h"
 #include "services/Wallpaper.h"
 #include "shell/Panels.h"
 #include "shell/Popup.h"
@@ -29,6 +30,11 @@ namespace {
 // The changelog's order: pre-releases before their release
 bool newer(const std::string& a, const std::string& b) {
     return newerVersion(a, b);
+}
+
+// A niri session: the tour names niri's app and keys
+bool onNiri() {
+    return Compositor::get().name() == "niri";
 }
 
 struct Release {
@@ -142,10 +148,15 @@ void tourLayout(Flex* page) {
 }
 
 void tourKeys(Flex* page) {
-    pageHead(page, "keyboard", "Keys worth knowing", "Super is the Windows key. Every shortcut can be changed in Hyprland Settings → Keybinds.");
+    const bool niri = onNiri();
+    pageHead(page, "keyboard", "Keys worth knowing",
+             niri ? "Super is the Windows key. Add your own keys, or change these, in Niri Settings → Keys."
+                  : "Super is the Windows key. Every shortcut can be changed in Hyprland Settings → Keybinds.");
     auto* g = group(page, "Shortcuts");
     const std::vector<std::tuple<std::string, std::string, std::string>> keys = {
-        {"search", "Super", "Search apps, files and settings (tap)"},
+        // niri can't bind Super on its own
+        niri ? std::tuple<std::string, std::string, std::string>{"search", "Super + Space", "Search apps, files and settings"}
+             : std::tuple<std::string, std::string, std::string>{"search", "Super", "Search apps, files and settings (tap)"},
         {"tab", "Super + Tab", "Switch windows; hold Super, tap Tab"},
         {"grid_view", "Super + `", "Overview of every workspace"},
         {"toggle_on", "Super + N", "Quick Settings"},
@@ -169,7 +180,9 @@ void tourDone(Flex* page) {
     pillButton(s.row, "Open", false, [] {
         if (open) open("settings");
     });
-    auto h = row(g, "tune", "Hyprland Settings", "Windows, animations, input, keybinds and more");
+    // The compositor's app (hyprsettings opens Niri Settings on niri)
+    auto h = onNiri() ? row(g, "tune", "Niri Settings", "Gaps, borders, blur, animations, keys and window rules")
+                      : row(g, "tune", "Hyprland Settings", "Windows, animations, input, keybinds and more");
     pillButton(h.row, "Open", false, [] {
         if (open) open("hyprsettings");
     });
@@ -259,8 +272,8 @@ void welcome(Flex* card, Popup& popup) {
             hero->setSpacing(14)->setPadding({24, 0})->setAlignItems(Align::Center);
             logo(hero, 132);
             hero->add<Label>("Welcome to Material3UI")->setSize(34)->setWeight(600);
-            para(hero, "A Material 3 Expressive desktop for Hyprland, version " M3_VERSION ". A few quick choices and you're ready; "
-                       "nothing here is final, and all of it is in Settings later.",
+            para(hero, std::string("A Material 3 Expressive desktop for ") + (onNiri() ? "niri" : "Hyprland") + ", version " M3_VERSION
+                           ". A few quick choices and you're ready; nothing here is final, and all of it is in Settings later.",
                  620, 16)->setCentered(true);
             break;
         }

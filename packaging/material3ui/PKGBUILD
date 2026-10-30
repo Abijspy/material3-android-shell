@@ -9,7 +9,7 @@ pkgdesc="A Material 3 desktop shell for Hyprland and niri"
 arch=(x86_64 aarch64)
 url="https://github.com/Abijspy/material3-android-shell"
 license=(MIT)
-depends=(wayland libglvnd pango cairo libxkbcommon systemd-libs libpulse librsvg gdk-pixbuf2 polkit pam)
+depends=(wayland libglvnd pango cairo libxkbcommon systemd-libs libpulse librsvg gdk-pixbuf2 polkit pam fastfetch)
 makedepends=(meson ninja wayland-protocols wlr-protocols nlohmann-json)
 # The compositor is yours to pick: Hyprland, niri, or both
 optdepends=('hyprland: a compositor to run on (0.55 or newer)'

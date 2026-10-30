@@ -51,6 +51,7 @@ The installer asks which compositor the shell runs on (`--compositor hyprland`, 
 | **Clip. Hist.** | `cliphist` | Clipboard history management in Spotlight. |
 | **Recognition** | `songrec` | Shazam-like music recognition feature. |
 | **Visualizer** | `cava` | Audio visualization in the shell. |
+| **System info** | `fastfetch` | The device's details in Settings → About: model, CPU, GPU, memory, disk, displays, packages, uptime and battery. |
 | **Wallpaper Eng.** | `linux-wallpaperengine-git` | Steam Wallpaper Engine support (Optional). |
 | **Search** | `fd` | Fast file search functionality in Spotlight. |
 | **Updates** | `pacman-contrib` | Safe update checks (`checkupdates`) for Software & updates. |
