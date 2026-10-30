@@ -845,10 +845,15 @@ void stylePage(Flex* page, Popup&) {
             if (const auto* a = find(id)) ids.push_back(bare(a->id));
         for (const auto& e : list)
             if (e.is_object() && std::ranges::find(ids, e.value("id", "")) == ids.end()) ids.push_back(e.value("id", ""));
+        // Two apps of one name (GNOME's and Nemo's "Files"): told apart by their ids
+        std::map<std::string, int> names;
+        for (const auto& id : ids)
+            if (const auto* a = find(id)) names[a->name]++;
         for (const auto& id : ids) {
             const auto* app = find(id);
             const bool on = std::ranges::any_of(list, [&](const auto& e) { return e.is_object() && e.value("id", "") == id; });
-            auto r = row(g, "", app ? app->name : id, app ? app->comment : "Not installed");
+            const std::string title = !app ? id : names[app->name] > 1 ? app->name + " (" + id + ")" : app->name;
+            auto r = row(g, "", title, app ? app->comment : "Not installed");
             const std::string icon = app ? app->icon : id; // (no glyph: the app's own icon first)
             r.row->adopt(std::make_unique<ImageView>(28, [icon](float scale, int& w, int& h) -> GLuint {
                              auto* t = Images::get().icon(icon, static_cast<int>(std::lround(28 * scale)));
@@ -877,8 +882,14 @@ void stylePage(Flex* page, Popup&) {
         }
         // Any other installed app
         std::vector<std::pair<std::string, std::string>> others;
+        std::map<std::string, int> otherNames;
         for (const auto& a : Apps::get().all())
-            if (!a.exec.empty() && std::ranges::find(ids, bare(a.id)) == ids.end()) others.push_back({bare(a.id), a.name});
+            if (!a.exec.empty() && std::ranges::find(ids, bare(a.id)) == ids.end()) {
+                others.push_back({bare(a.id), a.name});
+                otherNames[a.name]++;
+            }
+        for (auto& [id, name] : others)
+            if (otherNames[name] > 1) name += " (" + id + ")";
         std::ranges::sort(others, [](const auto& a, const auto& b) { return a.second < b.second; });
         auto add = row(g, "add", "Another app", "Any installed app, made see-through the same way");
         // (Picked later: nothing of this sync's locals is used)
