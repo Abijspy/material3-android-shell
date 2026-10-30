@@ -107,7 +107,7 @@ void Node::paint(Renderer& r) {
     const bool scaled = sc != 1;
     if (scaled) r.pushScale(m_rect.x + m_rect.w / 2, m_rect.y + m_rect.h / 2, std::max(0.0f, sc));
     // On the desktop and lock screen, the card's backdrop blurred in the frame
-    if (blurBehind && r.inlineBlur > 0) r.blurBackdrop(m_rect, r.inlineBlur, Radii(cornerRadius()));
+    if (blurBehind && r.inlineBlur > 0) r.blurBackdrop(m_rect, blurRadius > 0 ? blurRadius : r.inlineBlur, Radii(cornerRadius()));
     doPaint(r);
     if (clipsChildren()) r.pushClip(m_rect);
     for (auto& c : m_children) c->paint(r);

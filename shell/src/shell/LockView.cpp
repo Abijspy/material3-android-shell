@@ -27,6 +27,10 @@ using namespace m3::ui;
 
 namespace {
 
+// A card's tint: lighter while widgets blur what's behind them (frosted),
+// fuller when blur is off so the wallpaper never shows through sharp
+float tint(float frosted, float plain) { return Theme::get().widgetBlur() > 0 ? frosted : plain; }
+
 Button* arrow(Node* parent, const char* icon, std::function<void()> fn) {
     auto* b = parent->add<Button>();
     pill(b)->setPadding(Insets(6));
@@ -188,7 +192,7 @@ private:
     // A rounded, translucent chip so widgets read on any wallpaper
     Flex* chip() {
         auto* c = add<Flex>(Direction::Row);
-        pill(c->setBackground(ColorRef("surface_container_high", 0.75f), false))->setPadding({16, 8})->setSpacing(8);
+        pill(c->setBackground(ColorRef("surface_container_high", tint(0.6f, 0.75f)), false))->setPadding({16, 8})->setSpacing(8);
         c->blurBehind = true;
         return c;
     }
@@ -451,7 +455,7 @@ void LockView::buildBottomBar() {
     if (!m_options.sessions.empty()) {
         // Remembered session first (the greeter sorts it there)
         m_sessionChip = bar->add<Button>(Direction::Row);
-        pill(m_sessionChip->setBackground(ColorRef("surface_container_high", 0.8f), false))->setPadding({16, 10, 12, 10})->setSpacing(10);
+        pill(m_sessionChip->setBackground(ColorRef("surface_container_high", tint(0.6f, 0.8f)), false))->setPadding({16, 10, 12, 10})->setSpacing(10);
         m_sessionChip->blurBehind = true;
         m_sessionGlyph = m_sessionChip->add<Icon>("desktop_windows", 20);
         m_sessionGlyph->setColor("on_surface_variant", false);
@@ -470,7 +474,7 @@ void LockView::buildBottomBar() {
     }
     bar->add<Node>()->grow = true;
     m_powerButton = bar->add<Button>(Direction::Row);
-    pill(m_powerButton->setBackground(ColorRef("surface_container_high", 0.8f), false))->setJustify(Align::Center);
+    pill(m_powerButton->setBackground(ColorRef("surface_container_high", tint(0.6f, 0.8f)), false))->setJustify(Align::Center);
     m_powerButton->blurBehind = true;
     m_powerButton->fixedWidth = m_powerButton->fixedHeight = 48;
     m_powerButton->add<Icon>("power_settings_new", 22)->setColor("on_surface", false);
@@ -500,8 +504,11 @@ void LockView::openMenu(Menu menu) {
     m_open = menu;
     m_menu = add<Flex>(Direction::Column);
     m_menu->floating = true;
+    // Frosted: a strong blur under a lighter tint, so what's behind reads as
+    // colour, never as text
     m_menu->blurBehind = true;
-    m_menu->setBackground(ColorRef("surface_container", 0.92f), false)->setRadius(Radii(28))->setPadding(Insets(8))->setSpacing(2);
+    m_menu->blurRadius = 24;
+    m_menu->setBackground(ColorRef("surface_container", tint(0.8f, 0.92f)), false)->setRadius(Radii(28))->setPadding(Insets(8))->setSpacing(2);
     m_menu->setAlignItems(Align::Stretch);
     m_menu->minWidth = 300;
     auto* head = m_menu->add<Flex>(Direction::Row);

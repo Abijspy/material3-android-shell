@@ -152,6 +152,9 @@ public:
     // The compositor blurs what is behind this node's rect (translucent
     // cards); the surface collects these into its blur region after layout
     bool blurBehind = false;
+    // Its own blur radius where the shell blurs in the frame (a popup over
+    // text wants more than the widgets' setting); 0 takes the surface's
+    float blurRadius = 0;
     // The part of the shell this subtree is (Theme::TextArea), for its own
     // text size on top of the shell's; 0 inherits
     uint8_t textArea = 0;
