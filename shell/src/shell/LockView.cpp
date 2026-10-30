@@ -1,6 +1,7 @@
 #include "shell/LockView.h"
 
 #include "core/Config.h"
+#include "core/Paths.h"
 #include "render/Images.h"
 #include "services/Alarms.h"
 #include "services/Auth.h"
@@ -47,14 +48,38 @@ public:
 };
 
 // One choice in a greeter menu: icon, title, optional subtitle and a check
+// A session's compositor logo (Hyprland's, niri's, from the shell's data,
+// which the greeter user can read), by its command or name; else ""
+std::string sessionLogo(const std::string& exec, const std::string& label) {
+    std::string both = exec + " " + label;
+    for (auto& ch : both) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    if (both.find("hyprland") != std::string::npos) return paths::dataFile("icons/hyprland-logo.svg");
+    if (both.find("niri") != std::string::npos) return paths::dataFile("icons/niri-logo.svg");
+    return {};
+}
+
+// An image file drawn at `size`
+ImageView::Provider logoOf(const std::string& path, float size) {
+    return [path, size](float scale, int& w, int& h) -> GLuint {
+        if (path.empty()) return 0;
+        auto* t = Images::get().icon(path, static_cast<int>(std::lround(size * scale)));
+        if (!t) return 0;
+        w = t->width;
+        h = t->height;
+        return t->id;
+    };
+}
+
+// A row of a menu: the glyph, or `logo` (an image file) in its place
 Button* menuItem(Flex* menu, const char* icon, const std::string& title, const std::string& sub, bool selected,
-                 std::function<void()> fn) {
+                 std::function<void()> fn, const std::string& logo = {}) {
     auto* b = menu->add<Button>(Flex::Direction::Row);
     b->setPadding({16, 12})->setSpacing(16)->setRadius(Radii(20));
     b->alignSelf = Align::Stretch;
     b->pressedRadius = 12;
     if (selected) b->setBackground("secondary_container", false);
-    b->add<Icon>(icon, 22)->setColor(selected ? "on_secondary_container" : "on_surface_variant", false);
+    if (!logo.empty()) b->add<ImageView>(22, logoOf(logo, 22));
+    else b->add<Icon>(icon, 22)->setColor(selected ? "on_secondary_container" : "on_surface_variant", false);
     auto* texts = b->add<Flex>(Flex::Direction::Column);
     texts->setAlignItems(Align::Start)->setSpacing(1);
     texts->grow = true;
@@ -72,6 +97,7 @@ std::string sessionNote(const std::string& exec) {
     if (exec.find("uwsm") != std::string::npos) return "Started through uwsm (systemd units)";
     if (exec.find("start-hyprland") != std::string::npos || exec.find("Hyprland") != std::string::npos)
         return "Material3UI's home";
+    if (exec.find("niri") != std::string::npos) return "Scrollable tiling, with Material3UI";
     return exec;
 }
 
@@ -427,7 +453,9 @@ void LockView::buildBottomBar() {
         m_sessionChip = bar->add<Button>(Direction::Row);
         pill(m_sessionChip->setBackground(ColorRef("surface_container_high", 0.8f), false))->setPadding({16, 10, 12, 10})->setSpacing(10);
         m_sessionChip->blurBehind = true;
-        m_sessionChip->add<Icon>("desktop_windows", 20)->setColor("on_surface_variant", false);
+        m_sessionGlyph = m_sessionChip->add<Icon>("desktop_windows", 20);
+        m_sessionGlyph->setColor("on_surface_variant", false);
+        m_sessionLogo = m_sessionChip->add<ImageView>(20, logoOf({}, 20));
         m_session = m_sessionChip->add<Label>(m_options.sessions[m_sessionIndex].label);
         m_session->setSize(15)->setWeight(500)->setColor("on_surface", false);
         if (m_options.sessions.size() > 1) {
@@ -438,6 +466,7 @@ void LockView::buildBottomBar() {
             if (button != BTN_LEFT || m_options.sessions.size() < 2) return;
             m_open == Menu::Session ? closeMenu() : openMenu(Menu::Session);
         };
+        showSession();
     }
     bar->add<Node>()->grow = true;
     m_powerButton = bar->add<Button>(Direction::Row);
@@ -457,6 +486,15 @@ void LockView::buildBottomBar() {
     m_scrim = scrim;
 }
 
+void LockView::showSession() {
+    if (!m_sessionChip || m_sessionIndex >= m_options.sessions.size()) return;
+    const auto& s = m_options.sessions[m_sessionIndex];
+    const std::string logo = sessionLogo(s.id, s.label);
+    m_sessionLogo->setProvider(logoOf(logo, 20));
+    m_sessionLogo->setVisible(!logo.empty());
+    m_sessionGlyph->setVisible(logo.empty());
+}
+
 void LockView::openMenu(Menu menu) {
     if (m_menu) remove(m_menu);
     m_open = menu;
@@ -472,11 +510,15 @@ void LockView::openMenu(Menu menu) {
     if (menu == Menu::Session) {
         for (size_t i = 0; i < m_options.sessions.size(); ++i) {
             const auto& s = m_options.sessions[i];
-            menuItem(m_menu, "desktop_windows", s.label, sessionNote(s.id), i == m_sessionIndex, [this, i] {
-                m_sessionIndex = i;
-                if (m_session) m_session->setText(m_options.sessions[i].label);
-                closeMenu();
-            });
+            menuItem(
+                m_menu, "desktop_windows", s.label, sessionNote(s.id), i == m_sessionIndex,
+                [this, i] {
+                    m_sessionIndex = i;
+                    if (m_session) m_session->setText(m_options.sessions[i].label);
+                    showSession();
+                    closeMenu();
+                },
+                sessionLogo(s.id, s.label));
         }
     } else {
         for (auto [icon, label, sub, action] : {std::tuple{"bedtime", "Sleep", "Keeps everything in memory", "suspend"},

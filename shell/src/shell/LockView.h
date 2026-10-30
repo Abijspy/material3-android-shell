@@ -62,12 +62,16 @@ private:
     void buildBottomBar();
     void openMenu(Menu menu);
     void closeMenu();
+    // The chosen session on its chip: its compositor's logo (Hyprland's,
+    // niri's), else the glyph
+    void showSession();
 
     Options m_options;
     size_t m_userIndex = 0, m_sessionIndex = 0;
     ui::Label *m_name, *m_status, *m_session = nullptr;
     ui::Button *m_sessionChip = nullptr, *m_powerButton = nullptr;
-    ui::Icon* m_sessionExpand = nullptr;
+    ui::Icon *m_sessionExpand = nullptr, *m_sessionGlyph = nullptr;
+    ui::ImageView* m_sessionLogo = nullptr;
     ui::Node* m_scrim = nullptr; // catches clicks outside an open menu
     ui::Flex* m_menu = nullptr;
     Menu m_open = Menu::None;

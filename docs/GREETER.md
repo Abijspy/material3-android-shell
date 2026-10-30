@@ -1,6 +1,6 @@
 # Login Screen (greetd)
 
-The login screen is the shell itself: `material3ui greeter` talks to [greetd](https://sr.ht/~kennylevinsen/greetd/) and draws the lock screen's view, so it has the same clock, widgets, password field and motion. Style both in **Settings → Lock screen**. It adds a user picker, a session picker, and suspend / reboot / power-off. It remembers the last user and session.
+The login screen is the shell itself: `material3ui greeter` talks to [greetd](https://sr.ht/~kennylevinsen/greetd/) and draws the lock screen's view, so it has the same clock, widgets, password field and motion. Style both in **Settings → Lock screen**. It adds a user picker, a session picker, and suspend / reboot / power-off. The session picker shows each compositor's logo (Hyprland's drop, niri's) next to its sessions. It remembers the last user and session.
 
 ```bash
 greeter/material3ui-greeter install --enable   # or pick "login screen" in install.sh / pass --greeter
