@@ -65,16 +65,24 @@ Most Linux desktops are a patchwork. The bar comes from one project, the lock sc
     <td align="center"><b>Wallpapers:</b> ten ship with the shell, in its own file picker</td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/quick-share.jpg" alt="Quick Share sending two files, with a QR code for the phone's camera"/></td>
+    <td><img src="docs/screenshots/quick-share.jpg" alt="Quick Share sending two files, looking for phones nearby, with a QR code to offer"/></td>
     <td><img src="docs/screenshots/settings.jpg" alt="Settings app on the Wallpaper and style page, with Android 16 style icons"/></td>
   </tr>
   <tr>
     <td align="center"><b>Quick Share:</b> files to and from Android phones, by QR code too</td>
     <td align="center"><b>Settings:</b> one app for the whole desktop, themed from your wallpaper</td>
   </tr>
+  <tr>
+    <td><img src="docs/screenshots/time-zone.jpg" alt="The time zone map over Settings: Kolkata pinned, New York named under the pointer, night shaded over Asia"/></td>
+    <td><img src="docs/screenshots/niri-settings.jpg" alt="Niri Settings on the Borders and shadows page"/></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Time zone:</b> pick yours on a world map, with the night side shaded</td>
+    <td align="center"><b>Niri Settings:</b> borders, blur, animations, keys and rules for niri</td>
+  </tr>
 </table>
 
-These were taken on Hyprland. On niri the shell looks the same, over niri's scrolling columns of windows.
+These were taken on niri. On Hyprland the shell looks the same, over Hyprland's tiled windows.
 
 ## Install in one line
 
