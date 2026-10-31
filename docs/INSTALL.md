@@ -23,7 +23,7 @@ Before we dive in, let's clarify what Material3UI Shell actually is. It is a des
 
 Before running the installer, make sure your system meets these basic requirements:
 * You are running Arch Linux, CachyOS, or a similar Arch-based distribution.
-* Hyprland 0.55 or newer, or niri 26.04 or newer, if one is installed already. If neither is, the one you pick comes with the packages.
+* Nothing for the compositor: the installer installs Hyprland, niri or both, whichever you pick. One you have already needs to be Hyprland 0.55 or newer, or niri 26.04 or newer; if it's older, the installer offers to update the system first.
 * You have an AUR helper installed. If you do not have one, the installer will set up `yay` for you.
 * Standard build tools like `git`, `curl`, and `base-devel` are present on your system.
 
@@ -37,18 +37,24 @@ When run this way the repository is cloned to `~/.local/src/material3ui` (change
 
 The installer asks everything first, shows one plan, and after you confirm it runs to the end without further questions:
 
-1. **Checks:** an Arch-based system, not root, and the versions of Hyprland (0.55 or newer, for the Lua config) and niri (26.04 or newer) if they're installed.
+1. **Checks:** an Arch-based system, not root, and Hyprland and niri: installed (and new enough: Hyprland 0.55 for the Lua config, niri 26.04), and what your repositories have.
 2. **Your setup:**
-   - **Apps and modes:** your terminal (Alacritty by default), file manager (Nemo) and browser (LibreWolf); the compositor (`hyprland`, `niri` or `both`; the default is what's installed already); how to handle Hyprland's config (`full`, `inject` or `skip`) and niri's (`include` or `skip`); and the update channel.
+   - **The compositor first:** `hyprland`, `niri` or `both` (picked at each login). Each option says where it stands: installed with its version, "installs first" with the version it will get, or installed but too old. The default is what's installed already. Then how to handle Hyprland's config (`full`, `inject` or `skip`) and niri's (`include` or `skip`).
+   - **An old compositor:** if the one you picked is installed but older than the shell needs, the installer offers a full system update (`sudo pacman -Syu`) to bring the new one, since Arch doesn't do partial upgrades. If your repositories can't bring a new enough one, it says so.
+   - **Apps:** your terminal (Alacritty by default), file manager (Nemo) and browser (LibreWolf), and the update channel.
    - **Extras:** fonts, NetworkManager/Bluetooth, KDE colours, fish + starship, and the login screen.
    - **Re-runs:** when you install again, your previous choices are the defaults.
 3. **The plan:** everything in one place.
-   - **Packages:** what's missing (found with `pacman -T`).
+   - **Packages:** what's missing (found with `pacman -T`), by group in the order they install: the compositor, the shell's own dependencies, tools and theming, your apps, and the extras.
    - **Shell:** the build it will install.
    - **Configs:** every config it will write. `+` is new, and `~` replaces a file, which is backed up first.
    - **Left alone:** configs without the `# Material3UI Configuration` marker, such as your own Matugen or Alacritty setup.
-4. **Packages:** installed with `yay` (set up first when it's missing or broken), then Google Sans Flex and the extras. sudo is asked for once and kept alive until the end.
-5. **The shell:** built from `shell/` with meson and installed to `/usr`. The lock screen's PAM file goes to `/etc/pam.d`.
+4. **Packages,** before the shell, with `yay` (set up first when it's missing or broken). sudo is asked for once and kept alive until the end.
+   - The system update, when you said yes to one.
+   - The compositor on its own: Hyprland with its portal, hyprlock, hypridle, hyprsunset and hyprpicker, or niri with xwayland-satellite and the GNOME portal.
+   - Then the shell's dependencies, your apps and the extras, and Google Sans Flex.
+   - Then a check that each compositor you picked is installed and new enough.
+5. **The shell:** first a check that everything the build needs is installed (even with `--skip-deps`, so a missing one stops here with the command to install it, not with a compiler error). Then it's built from `shell/` with meson and installed to `/usr`. The lock screen's PAM file goes to `/etc/pam.d`.
 6. **Configs:** the Matugen templates and theme hooks, Alacritty, and Hyprland or niri. niri's config is checked with `niri validate` afterwards. The v3 Quickshell shell and older helpers are backed up and removed.
 7. **Session:** NetworkManager and Bluetooth, other polkit agents turned off (the shell is the agent), default apps, and the login screen.
 

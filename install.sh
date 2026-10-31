@@ -224,18 +224,37 @@ desktop_for() {
         zen-browser) echo zen.desktop ;; *) echo "$1.desktop" ;;
     esac
 }
-package_list() {
-    local c
-    for c in core services utilities theming; do jq -r ".${c}[].name" "$REPO/data/dependencies.json"; done
-    if [[ "$WANT_HYPR" == 1 ]]; then jq -r '.hyprland[].name' "$REPO/data/dependencies.json"; fi
-    if [[ "$WANT_NIRI" == 1 ]]; then jq -r '.niri[].name' "$REPO/data/dependencies.json"; fi
-    if [[ "$OPT_FONTS" == 1 ]]; then jq -r '.fonts[].name' "$REPO/data/dependencies.json"; fi
-    if [[ "$OPT_FISH" == 1 ]]; then printf '%s\n' fish starship; fi
-    if [[ "$OPT_KDE" == 1 ]]; then echo python-pip; fi
-    if [[ "$GREETER" == 1 ]]; then printf '%s\n' greetd acl; fi
-    if [[ "$FILE_MANAGER" == nemo ]]; then echo nemo-fileroller; fi
-    printf '%s\n' gnome-keyring git "$(pkg_for "$TERMINAL")" "$(pkg_for "$FILE_MANAGER")" "$(pkg_for "$BROWSER")"
+# The packages by what they're for, in the order they install: the
+# compositor first, then what the shell builds and runs with, then the rest
+readonly PKG_GROUPS=(compositor shell tools apps extras)
+group_label() {
+    case "$1" in
+        compositor) echo Compositor ;; shell) echo Shell ;; tools) echo "Tools & theming" ;; apps) echo Apps ;; extras) echo Extras ;;
+    esac
 }
+group_packages() { # group_packages GROUP → its packages, one a line
+    local deps="$REPO/data/dependencies.json"
+    case "$1" in
+        compositor)
+            if [[ "$WANT_HYPR" == 1 ]]; then jq -r '.hyprland[].name' "$deps"; fi
+            if [[ "$WANT_NIRI" == 1 ]]; then jq -r '.niri[].name' "$deps"; fi ;;
+        build) jq -r '.core[].name' "$deps" ;; # what meson needs: part of "shell"
+        shell) jq -r '.core[].name, .services[].name' "$deps" ;;
+        tools) jq -r '.utilities[].name, .theming[].name' "$deps" ;;
+        apps)
+            printf '%s\n' gnome-keyring git "$(pkg_for "$TERMINAL")" "$(pkg_for "$FILE_MANAGER")" "$(pkg_for "$BROWSER")"
+            if [[ "$FILE_MANAGER" == nemo ]]; then echo nemo-fileroller; fi ;;
+        extras)
+            if [[ "$OPT_FONTS" == 1 ]]; then jq -r '.fonts[].name' "$deps"; fi
+            if [[ "$OPT_FISH" == 1 ]]; then printf '%s\n' fish starship; fi
+            if [[ "$OPT_KDE" == 1 ]]; then echo python-pip; fi
+            if [[ "$GREETER" == 1 ]]; then printf '%s\n' greetd acl; fi ;;
+    esac
+}
+# A package's version: installed, or in the sync repositories ("" when none)
+installed_version() { pacman -Q "$1" 2>/dev/null | awk '{print $2}' || true; }
+repo_version() { LC_ALL=C pacman -Si "$1" 2>/dev/null | sed -n 's/^Version *: //p' | head -n 1 || true; }
+older() { [[ -n "$1" && "$(vercmp "${1%%-*}" "$2")" -lt 0 ]]; } # older VERSION MIN
 # yay, made to work: libalpm moves on, and a stale binary won't start
 ensure_yay() {
     yay --version >/dev/null 2>&1 && return 0
@@ -352,17 +371,16 @@ command -v pacman >/dev/null || fail "pacman not found: Material3UI supports Arc
 os="$(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-unknown}")"
 if (. /etc/os-release 2>/dev/null; [[ " ${ID:-} ${ID_LIKE:-} " == *" arch "* ]]); then ok "$os"
 else warn "$os isn't Arch-based; going on, since pacman is here"; fi
-# The compositors that are here (an installed one counts as there for the
-# packages, whatever its version: older ones need a system update)
-hv="$(pacman -Q hyprland 2>/dev/null | awk '{print $2}' || true)"
-nv="$(pacman -Q niri 2>/dev/null | awk '{print $2}' || true)"
+# The compositors: installed (and new enough?), and what the repositories have
+hv="$(installed_version hyprland)" nv="$(installed_version niri)"
+hr="$(repo_version hyprland)" nr="$(repo_version niri)"
 if [[ -z "$hv" ]]; then :
-elif [[ "$(vercmp "${hv%%-*}" "$MIN_HYPRLAND")" -lt 0 ]]; then warn "Hyprland $hv is older than $MIN_HYPRLAND (needed for the Lua config): update the system first (sudo pacman -Syu)"
-else ok "Hyprland $hv"; fi
+elif older "$hv" "$MIN_HYPRLAND"; then warn "Hyprland ${hv%-*} is older than $MIN_HYPRLAND (needed for the Lua config); pick it and the system update brings ${hr:+${hr%-*}}${hr:-a newer one}"
+else ok "Hyprland ${hv%-*}"; fi
 if [[ -z "$nv" ]]; then :
-elif [[ "$(vercmp "${nv%%-*}" "$MIN_NIRI")" -lt 0 ]]; then warn "niri $nv is older than $MIN_NIRI, which the shell needs: update the system first (sudo pacman -Syu)"
-else ok "niri $nv"; fi
-[[ -n "$hv$nv" ]] || note "Neither Hyprland nor niri is installed yet; the one you pick comes with the packages."
+elif older "$nv" "$MIN_NIRI"; then warn "niri ${nv%-*} is older than $MIN_NIRI, which the shell needs; pick it and the system update brings ${nr:+${nr%-*}}${nr:-a newer one}"
+else ok "niri ${nv%-*}"; fi
+[[ -n "$hv$nv" ]] || note "Neither Hyprland nor niri is installed yet: the one you pick installs first, before the shell."
 VERSION="$(cat "$REPO/VERSION" 2>/dev/null || echo "?")"
 ok "Material3UI $VERSION from $(tilde "$REPO")"
 [[ -f "$STATE_FILE" ]] && note "Installed before: your previous choices are the defaults."
@@ -394,21 +412,47 @@ fi
 if [[ -z "$CHANNEL" ]]; then
     case "$(previous channel)" in stable) CHANNEL=release ;; canary) CHANNEL=latest ;; esac
 fi
-choose TERMINAL "Terminal" "alacritty:GPU terminal, recoloured with the wallpaper" "kitty:feature-rich" "foot:minimal and fast" "ghostty:modern GPU terminal"
-choose FILE_MANAGER "File manager" "nemo:Cinnamon's" "thunar:light, from Xfce" "nautilus:GNOME Files" "dolphin:KDE's"
-choose BROWSER "Browser" "librewolf:privacy-minded Firefox" "firefox:Mozilla Firefox" "chromium:open-source Chromium" "zen-browser:Zen (AUR)"
-# The default is what's installed already (Hyprland when neither is)
+# The compositor first: the rest follows from it. The default is what's
+# installed already (Hyprland when neither is); each says where it stands
+comp_status() { # comp_status INSTALLED REPO MIN
+    if [[ -z "$1" ]]; then
+        if [[ -z "$2" ]]; then echo "not in your repositories"
+        elif older "$2" "$3"; then echo "your repositories have ${2%-*}, older than $3"
+        else echo "installs first (${2%-*})"; fi
+    elif older "$1" "$3"; then echo "${1%-*} installed, older than $3: the system is updated first"
+    else echo "installed, ${1%-*}"; fi
+}
 if [[ -n "$hv" && -n "$nv" ]]; then comp_default=both
 elif [[ -n "$nv" ]]; then comp_default=niri
 else comp_default=hyprland; fi
 comp_opts=()
-for o in "hyprland:Hyprland, dynamic tiling" "niri:niri, scrollable tiling" "both:both; pick one at each login"; do
+for o in "hyprland:Hyprland, dynamic tiling · $(comp_status "$hv" "$hr" "$MIN_HYPRLAND")" \
+         "niri:niri, scrollable tiling · $(comp_status "$nv" "$nr" "$MIN_NIRI")" \
+         "both:both, picked at each login"; do
     if [[ "${o%%:*}" == "$comp_default" ]]; then comp_opts=("$o" "${comp_opts[@]}"); else comp_opts+=("$o"); fi
 done
 choose COMPOSITOR "Compositor" "${comp_opts[@]}"
 WANT_HYPR=0 WANT_NIRI=0
 [[ "$COMPOSITOR" == niri ]] || WANT_HYPR=1
 [[ "$COMPOSITOR" == hyprland ]] || WANT_NIRI=1
+# One the repositories can't bring new enough: the shell won't run on it
+if [[ "$WANT_HYPR" == 1 && -z "$hv" ]] && { [[ -z "$hr" ]] || older "$hr" "$MIN_HYPRLAND"; }; then
+    warn "Hyprland ${hr:+${hr%-*} }can't come from your repositories (the shell needs $MIN_HYPRLAND or newer): install it yourself, or pick niri"
+fi
+if [[ "$WANT_NIRI" == 1 && -z "$nv" ]] && { [[ -z "$nr" ]] || older "$nr" "$MIN_NIRI"; }; then
+    warn "niri ${nr:+${nr%-*} }can't come from your repositories (the shell needs $MIN_NIRI or newer): install it yourself, or pick Hyprland"
+fi
+# One that's installed but too old: a full system update brings the new
+# one (Arch doesn't do partial upgrades), before anything else installs
+OUTDATED=()
+if [[ "$WANT_HYPR" == 1 ]] && older "$hv" "$MIN_HYPRLAND"; then OUTDATED+=("Hyprland ${hv%-*}"); fi
+if [[ "$WANT_NIRI" == 1 ]] && older "$nv" "$MIN_NIRI"; then OUTDATED+=("niri ${nv%-*}"); fi
+SYS_UPDATE=0
+if [[ ${#OUTDATED[@]} -gt 0 && "$SKIP_DEPS" == 0 ]]; then
+    note "$(printf '%s and ' "${OUTDATED[@]}" | sed 's/ and $//') too old for the shell."
+    if confirm "Update the system first (sudo pacman -Syu)?" Y; then SYS_UPDATE=1
+    else warn "Without the update the shell won't run on $(printf '%s and ' "${OUTDATED[@]}" | sed 's/ and $//')"; fi
+fi
 if [[ "$WANT_HYPR" == 1 ]]; then
     choose HYPR_MODE "Hyprland config" "full:Material3UI's hyprland.lua (yours is backed up)" "inject:keep yours, add the shell to it" "skip:don't touch it"
 else
@@ -419,6 +463,9 @@ if [[ "$WANT_NIRI" == 1 ]]; then
 else
     NIRI_MODE=skip
 fi
+choose TERMINAL "Terminal" "alacritty:GPU terminal, recoloured with the wallpaper" "kitty:feature-rich" "foot:minimal and fast" "ghostty:modern GPU terminal"
+choose FILE_MANAGER "File manager" "nemo:Cinnamon's" "thunar:light, from Xfce" "nautilus:GNOME Files" "dolphin:KDE's"
+choose BROWSER "Browser" "librewolf:privacy-minded Firefox" "firefox:Mozilla Firefox" "chromium:open-source Chromium" "zen-browser:Zen (AUR)"
 choose CHANNEL "Updates" "latest:follow main" "release:tagged releases only"
 # The v1 config can't take an injection: it is replaced instead
 if [[ "$HYPR_MODE" == inject ]] && grep -qs "^-- Material3UI Shell — Hyprland" "$HYPR/hyprland.lua"; then
@@ -453,11 +500,26 @@ fi
 # ── 3. The plan ──────────────────────────────────────────────────────────────
 section "The plan"
 if ! command -v jq >/dev/null; then task "jq, to read the package list" sudo pacman -S --needed --noconfirm jq; fi
-PKGS=() MISSING=()
+# What each group still needs: pacman -T prints what isn't satisfied
+# locally (it honours provides). A package counts in its first group
+declare -A MISS=() TOTAL=()
+PKG_COUNT=0 MISSING_COUNT=0
 if [[ "$SKIP_DEPS" == 0 ]]; then
-    mapfile -t PKGS < <(package_list | sort -u)
-    # pacman -T prints what isn't satisfied locally (it honours provides)
-    mapfile -t MISSING < <(pacman -T "${PKGS[@]}" 2>/dev/null || true)
+    seen=" "
+    for g in "${PKG_GROUPS[@]}"; do
+        list=()
+        while read -r p; do
+            [[ -n "$p" && "$seen" != *" $p "* ]] || continue
+            seen+="$p "
+            list+=("$p")
+        done < <(group_packages "$g")
+        TOTAL[$g]=${#list[@]}
+        PKG_COUNT=$((PKG_COUNT + ${#list[@]}))
+        [[ ${#list[@]} -gt 0 ]] || continue
+        MISS[$g]="$(pacman -T "${list[@]}" 2>/dev/null | tr '\n' ' ' || true)"
+        read -ra m <<<"${MISS[$g]}"
+        MISSING_COUNT=$((MISSING_COUNT + ${#m[@]}))
+    done
 fi
 # Configs: what gets written, and what is left as yours
 CONFIGS=() KEPT=()
@@ -509,9 +571,23 @@ row Desktop "${desk_text% and }"
 row Updates "$CHANNEL"
 joined="$(IFS=,; printf '%s' "${extras[*]:-none}")"
 row Extras "${joined//,/, }"
+if [[ "$SYS_UPDATE" == 1 ]]; then row Update "the whole system first (sudo pacman -Syu): $(printf '%s and ' "${OUTDATED[@]}" | sed 's/ and $//') too old"; fi
 if [[ "$SKIP_DEPS" == 1 ]]; then row Packages "skipped (--skip-deps)"
-elif [[ ${#MISSING[@]} -eq 0 ]]; then row Packages "all ${#PKGS[@]} already installed"
-else row Packages "${#MISSING[@]} to install: ${MISSING[*]}" | fold -s -w 100 | sed '2,$s/^/            /'; fi
+elif [[ "$MISSING_COUNT" -eq 0 ]]; then row Packages "all $PKG_COUNT already installed"
+else
+    # In the order they install: the compositor, then the rest
+    label=Packages
+    for g in "${PKG_GROUPS[@]}"; do
+        [[ "${TOTAL[$g]:-0}" -gt 0 ]] || continue
+        read -ra m <<<"${MISS[$g]:-}"
+        if [[ ${#m[@]} -gt 0 ]]; then
+            row "$label" "$(printf '%-16s' "$(group_label "$g")")${#m[@]} to install: ${m[*]}" | fold -s -w 100 | sed '2,$s/^/                            /'
+        else
+            row "$label" "$(printf '%-16s' "$(group_label "$g")")${D}all ${TOTAL[$g]} installed${R}"
+        fi
+        label=""
+    done
+fi
 row Shell "build material3ui $VERSION and install it to /usr"
 label=Configs
 for e in "${CONFIGS[@]}"; do
@@ -537,14 +613,49 @@ if [[ "$DRY" == 0 ]]; then
     sudo -v || fail "sudo is needed for packages and for installing the shell"
     ( while kill -0 "$$" 2>/dev/null; do sudo -n true 2>/dev/null; sleep 50; done ) &
 fi
-if [[ ${#MISSING[@]} -gt 0 ]]; then
+if [[ "$SYS_UPDATE" == 1 ]]; then
+    update=(-Syu)
+    [[ "$YES" == 1 ]] && update+=(--noconfirm)
+    live "Updating the system, for $(printf '%s and ' "${OUTDATED[@]}" | sed 's/ and $//')" sudo pacman "${update[@]}"
+    [[ "$DRY" == 1 ]] || ok "System updated"
+fi
+if [[ "$MISSING_COUNT" -gt 0 ]]; then
     task "AUR helper (yay)" ensure_yay
     flags=(-S --needed)
     [[ "$YES" == 1 ]] && flags+=(--noconfirm)
-    live "Installing ${#MISSING[@]} packages" yay "${flags[@]}" "${MISSING[@]}"
-    ok "Packages installed"
+    # The compositor on its own first, then what the shell needs and the rest
+    read -ra compositor <<<"${MISS[compositor]:-}"
+    if [[ ${#compositor[@]} -gt 0 ]]; then
+        live "The compositor: ${compositor[*]}" yay "${flags[@]}" "${compositor[@]}"
+        [[ "$DRY" == 1 ]] || ok "Compositor installed"
+    fi
+    rest=()
+    for g in "${PKG_GROUPS[@]}"; do
+        [[ "$g" != compositor ]] || continue
+        read -ra m <<<"${MISS[$g]:-}"
+        rest+=("${m[@]}")
+    done
+    if [[ ${#rest[@]} -gt 0 ]]; then
+        live "The shell's dependencies and your apps: ${#rest[@]} packages" yay "${flags[@]}" "${rest[@]}"
+        [[ "$DRY" == 1 ]] || ok "Dependencies installed"
+    fi
+elif [[ "$SKIP_DEPS" == 1 ]]; then
+    note "Skipped (--skip-deps)."
 else
     note "Nothing to install."
+fi
+# The compositor the shell will run on: here, and new enough
+comp_check() { # comp_check NAME PACKAGE MIN
+    local v
+    v="$(installed_version "$2")"
+    if [[ -z "$v" ]]; then warn "$1 isn't installed: install $2 before logging into it"
+    elif older "$v" "$3"; then warn "$1 ${v%-*} is older than $3: update the system (sudo pacman -Syu) before logging into it"
+    else ok "$1 ${v%-*}"; fi
+}
+if [[ "$DRY" == 1 ]]; then note "[dry-run] check the compositor is installed and new enough"
+else
+    if [[ "$WANT_HYPR" == 1 ]]; then comp_check Hyprland hyprland "$MIN_HYPRLAND"; fi
+    if [[ "$WANT_NIRI" == 1 ]]; then comp_check niri niri "$MIN_NIRI"; fi
 fi
 if [[ "$OPT_FONTS" == 1 ]] && ! fc-list 2>/dev/null | grep -qi "Google Sans Flex"; then
     google_sans() {
@@ -570,6 +681,17 @@ fi
 
 # ── 5. The shell ─────────────────────────────────────────────────────────────
 section "The shell"
+# What the build needs, before building: a clear word, not a compiler error
+mapfile -t build_pkgs < <(group_packages build)
+if [[ "$DRY" == 1 ]]; then note "[dry-run] check the build's packages are installed"
+else
+    mapfile -t lacking < <(pacman -T "${build_pkgs[@]}" 2>/dev/null || true)
+    if [[ ${#lacking[@]} -gt 0 ]]; then
+        [[ ${#lacking[@]} -eq 1 ]] && is="isn't" || is="aren't"
+        fail "The build needs ${lacking[*]}, which $is installed: sudo pacman -S --needed ${lacking[*]}, then run ./install.sh again"
+    fi
+    ok "The build's ${#build_pkgs[@]} packages are here"
+fi
 BUILD="$REPO/shell/build-release"
 setup=()
 [[ -d "$BUILD" ]] && setup=(--reconfigure)

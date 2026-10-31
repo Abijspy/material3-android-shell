@@ -83,7 +83,7 @@ You need an Arch-based system (Arch, CachyOS, EndeavourOS, ...). The shell runs 
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Abijspy/material3-android-shell/main/install.sh)"
 ```
 
-The installer asks a few questions, shows you one plan (packages, the shell build, every config it will write) and only then runs, with backups and a `restore.sh` for everything it replaces. To preview it, clone the repo and run `./install.sh --dry-run`.
+The installer asks a few questions, the compositor first, then shows you one plan (packages, the shell build, every config it will write) and only then runs, with backups and a `restore.sh` for everything it replaces. It installs the compositor first, then the shell's dependencies, and only then builds the shell. If the compositor you have is too old, it offers to update the system first. To preview it, clone the repo and run `./install.sh --dry-run`.
 
 - **Hyprland:** it installs Hyprland and the shell's modular Lua config, or adds the shell to the config you have.
 - **niri:** it installs niri with xwayland-satellite (for X11 apps) and the GNOME portal (for screen sharing). Your `config.kdl` stays yours: the installer adds one `include "material3ui.kdl"` line at its end, and the shell's keys, blur and settings live in files beside it.
