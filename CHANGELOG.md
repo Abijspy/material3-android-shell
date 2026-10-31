@@ -1,5 +1,11 @@
 # Changelog
 
+## v6.1 — 2026-10-31
+
+- **Pick your time zone on a world map.** Settings → System → Time zone → Change opens a map of the world, with country borders, lakes and the night side shaded where the sun has set. Point at a place to see its name and the time there, and click to choose it: a pin marks it, a band shows its hours, and every place on the same time right now lights up. Or search for a city, country or zone (UTC and tzdata's other names too). Below the map, the zone in detail: its abbreviation, UTC offset, the time there and when its clocks next change for daylight saving. Nothing changes until you press Set time zone, and if the password prompt is refused, Settings says so and keeps your old zone.
+- **Popups fit small screens.** Wide popups (the time zone map, the file picker) narrow to the screen instead of running off its edge.
+- **The README covers niri throughout:** how Hyprland and niri compare, the keys and files on each, Niri Settings beside Hyprland Settings, and an FAQ for choosing between them.
+
 ## v6.0.2 — 2026-10-30
 
 - **Compositor logos on the login screen.** The session picker shows Hyprland's drop or niri's logo next to each session, on the chip and in its list, and niri's sessions are described instead of showing their command. niri's logo is cropped to stand as tall as Hyprland's (on the About page too).
