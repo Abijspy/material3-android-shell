@@ -113,9 +113,102 @@ ask() { # ask "Question" → the reply ("" when unattended)
     [[ "$YES" == 1 ]] || read -r -p "  ${A}?${R} $1 " reply </dev/tty || true
     printf '%s' "$reply"
 }
+
+# Keys: with a terminal both ways, menus move with the arrows and questions
+# take y or n at once; otherwise (a pipe, a log) the typed prompts below
+KEYS=0
+if [[ "$YES" == 0 && -t 1 ]] && { : </dev/tty; } 2>/dev/null; then KEYS=1; fi
+cols() { # the terminal's width (TERM_COLS when a step has measured it)
+    [[ -z "${TERM_COLS:-}" ]] || { echo "$TERM_COLS"; return; }
+    local s
+    s="$(stty size </dev/tty 2>/dev/null || true)"
+    s="${s#* }"
+    # A terminal that won't say (0, or nothing): 80
+    if [[ "$s" =~ ^[0-9]+$ ]] && (( s >= 40 )); then echo "$s"; else echo 80; fi
+}
+key() { # key → up, down, left, right, home, end, enter, space, tab, esc, eof, or the character typed
+    local k rest
+    IFS= read -rsn1 k </dev/tty || { echo eof; return; }
+    case "$k" in
+        $'\e')
+            IFS= read -rsn2 -t 0.05 rest </dev/tty || true
+            case "$rest" in
+                '[A'|OA) echo up ;; '[B'|OB) echo down ;; '[C'|OC) echo right ;; '[D'|OD) echo left ;;
+                '[H'|OH) echo home ;; '[F'|OF) echo end ;;
+                '[1'|'[7') IFS= read -rsn1 -t 0.05 rest </dev/tty || true; echo home ;;
+                '[4'|'[8') IFS= read -rsn1 -t 0.05 rest </dev/tty || true; echo end ;;
+                *) echo esc ;;
+            esac ;;
+        '') echo enter ;;
+        ' ') echo space ;;
+        $'\t') echo tab ;;
+        *) printf '%s' "$k" ;;
+    esac
+}
+# The options, the one under the cursor lit; drawn again in place as it moves
+menu_draw() {
+    local i desc width
+    width=$(($(cols) - 26))
+    for i in "${!opts[@]}"; do
+        desc="${opts[$i]#*:}"
+        (( ${#desc} <= width )) || desc="${desc:0:$((width > 1 ? width - 1 : 0))}…"
+        if (( i == cur )); then printf '\e[2K    %s❯ %d  %-13s%s%s\n' "$P$B" $((i + 1)) "${values[$i]}" "$R" "$desc"
+        else printf '\e[2K    %s  %d  %-13s%s%s\n' "$D" $((i + 1)) "${values[$i]}" "$desc" "$R"; fi
+    done
+}
+menu() { # menu VAR "Title" "value:description"... (the first is the default)
+    local var="$1" title="$2" cur=0 k n
+    shift 2
+    local opts=("$@") values=("${@%%:*}")
+    n=${#opts[@]}
+    printf '  %s%s%s  %s↑↓ move · Enter picks · 1–%d jumps%s\n\e[?25l' "$B" "$title" "$R" "$D" "$n" "$R"
+    menu_draw
+    while true; do
+        k="$(key)"
+        case "$k" in
+            up|k) cur=$(((cur - 1 + n) % n)) ;;
+            down|j|tab) cur=$(((cur + 1) % n)) ;;
+            home|g) cur=0 ;;
+            end|G) cur=$((n - 1)) ;;
+            enter|space|right|l|eof) break ;;
+            [1-9]) if (( k <= n )); then cur=$((k - 1)); printf '\e[%dA' "$n"; menu_draw; break; fi ;;
+            *) continue ;;
+        esac
+        printf '\e[%dA' "$n"
+        menu_draw
+    done
+    # Folded into the answer: one line in place of the list
+    printf '\e[%dA\e[J  %s✓%s %s  %s%s%s  %s%s%s\n\e[?25h' $((n + 1)) "$G" "$R" "$title" "$B" "${values[$cur]}" "$R" "$D" "${opts[$cur]#*:}" "$R"
+    printf -v "$var" '%s' "${values[$cur]}"
+}
 confirm() { # confirm "Question" Y|N
     if [[ "$YES" == 1 ]]; then [[ "$2" == Y ]]; return; fi
     local hint reply
+    if [[ "$KEYS" == 1 ]]; then
+        local yes=0 k one lead
+        [[ "$2" == Y ]] && yes=1
+        # On one line when it fits; a long question gets the answers under it
+        if (( ${#1} + 32 < $(cols) )); then one=1; lead="  ${A}?${R} $1  "
+        else one=0; printf '  %s?%s %s\n' "$A" "$R" "$1"; lead="    "; fi
+        printf '\e[?25l'
+        while true; do
+            if [[ "$yes" == 1 ]]; then printf '\r\e[2K%s%s❯ Yes%s   %sNo%s  %sy/n · ←→ · Enter%s' "$lead" "$P$B" "$R" "$D" "$R" "$D" "$R"
+            else printf '\r\e[2K%s%s  Yes%s %s❯ No%s  %sy/n · ←→ · Enter%s' "$lead" "$D" "$R" "$P$B" "$R" "$D" "$R"; fi
+            k="$(key)"
+            case "$k" in
+                y|Y) yes=1; break ;;
+                n|N) yes=0; break ;;
+                enter|space|eof) break ;;
+                left|right|tab|h|l) yes=$((1 - yes)) ;;
+            esac
+        done
+        reply=No
+        [[ "$yes" == 1 ]] && reply=Yes
+        if [[ "$one" == 1 ]]; then printf '\r\e[2K  %s✓%s %s  %s%s%s\n\e[?25h' "$G" "$R" "$1" "$B" "$reply" "$R"
+        else printf '\r\e[2K    %s✓%s %s%s%s\n\e[?25h' "$G" "$R" "$B" "$reply" "$R"; fi
+        [[ "$yes" == 1 ]]
+        return
+    fi
     [[ "$2" == Y ]] && hint="Y/n" || hint="y/N"
     reply="$(ask "$1 [$hint]")"
     [[ "${reply:-$2}" =~ ^[Yy] ]]
@@ -129,6 +222,7 @@ choose() { # choose VAR "Title" "value:description"... (the first is the default
         return 0
     fi
     if [[ "$YES" == 1 ]]; then printf -v "$var" '%s' "${values[0]}"; return 0; fi
+    if [[ "$KEYS" == 1 ]]; then menu "$var" "$title" "${opts[@]}"; return 0; fi
     info "${B}$title${R}"
     for i in "${!opts[@]}"; do
         printf '    %s%d%s  %-12s %s%s%s\n' "$A" $((i + 1)) "$R" "${values[$i]}" "$D" "${opts[$i]#*:}" "$R"
@@ -144,7 +238,42 @@ choose() { # choose VAR "Title" "value:description"... (the first is the default
     done
 }
 
-# A quiet step: a spinner while it works, its output in the log, and the end
+# ── Progress: Material 3 Expressive's wavy indicator, in braille ──────────
+# The run's steps weigh what they take (the build ten times a copy). Done
+# is a solid line, the running step a wave travelling along its share, and
+# what's left the track. Each step passes its weight as W=… (1 by default)
+PROG_DONE=0 PROG_TOTAL=0
+# Braille cells with one dot in each column: [left row × 4 + right row]
+readonly WAVE_CELLS=(⠉ ⠑ ⠡ ⢁ ⠊ ⠒ ⠢ ⢂ ⠌ ⠔ ⠤ ⢄ ⡈ ⡐ ⡠ ⣀)
+readonly WAVE_ROWS=(1 0 0 1 2 3 3 2) # a sine, top row 0, sampled twice a cell
+bar() { # bar FRAME WEIGHT → the bar, coloured, BAR_W cells wide
+    local w=${BAR_W:-24} total=$((PROG_TOTAL > 0 ? PROG_TOTAL : 1)) done run x a b out=""
+    done=$((PROG_DONE * w / total))
+    (( done <= w )) || done=$w
+    run=$(((PROG_DONE + $2) * w / total - done))
+    (( run > 0 || $2 == 0 )) || run=1
+    (( done + run <= w )) || run=$((w - done))
+    out+="$P"
+    for ((x = 0; x < done; x++)); do out+="━"; done
+    for ((x = 0; x < run; x++)); do
+        a=$(((2 * x - $1) % 8 + 8)) b=$(((2 * x + 1 - $1) % 8 + 8))
+        out+="${WAVE_CELLS[WAVE_ROWS[a % 8] * 4 + WAVE_ROWS[b % 8]]}"
+    done
+    out+="$R$D"
+    for ((x = done + run; x < w; x++)); do out+="─"; done
+    printf '%s%s' "$out" "$R"
+}
+percent() { local t=$((PROG_TOTAL > 0 ? PROG_TOTAL : 1)); echo $((PROG_DONE * 100 / t > 100 ? 100 : PROG_DONE * 100 / t)); }
+progress_add() { PROG_DONE=$((PROG_DONE + $1)); }
+# The bar with the step beside it, the label cut to the terminal
+progress_line() { # progress_line FRAME WEIGHT "Label" [SECONDS]
+    local label="$3" room
+    room=$(($(cols) - ${BAR_W:-24} - 18))
+    (( ${#label} <= room )) || label="${label:0:$((room > 1 ? room - 1 : 0))}…"
+    printf '\r\e[2K  %s %s%3d%%%s  %s%s' "$(bar "$1" "$2")" "$B" "$(percent)" "$R" "$label" "${4:+ ${D}${4}s${R}}"
+}
+
+# A quiet step: the bar while it works, its output in the log, and the end
 # of the log if it fails
 SPIN_PID=""
 stop_spin() {
@@ -154,13 +283,13 @@ stop_spin() {
     SPIN_PID=""
     printf '\r\e[2K'
 }
-task() { # task "Label" command...
-    local label="$1" start=$SECONDS rc=0
+task() { # [W=weight] task "Label" command...
+    local label="$1" start=$SECONDS rc=0 weight="${W:-1}"
     shift
     if [[ "$DRY" == 1 ]]; then note "[dry-run] $label: $*"; return 0; fi
     if [[ -t 1 ]]; then
-        ( frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'; i=0
-          while true; do printf '\r  %s%s%s %s' "$P" "${frames:i++%10:1}" "$R" "$label"; sleep 0.1; done ) &
+        ( frame=0 TERM_COLS="$(cols)"
+          while true; do progress_line "$frame" "$weight" "$label" $((SECONDS - start)); frame=$((frame + 1)); sleep 0.08; done ) &
         SPIN_PID=$!
     fi
     printf '── %s: %s\n' "$label" "$*" >>"$LOG"
@@ -171,19 +300,22 @@ task() { # task "Label" command...
         tail -n 15 "$LOG" | sed "s/^/    /"
         fail "$label failed"
     fi
+    progress_add "$weight"
     ok "$label ${D}$((SECONDS - start))s${R}"
 }
-# A step that may need the terminal (package prompts): output shown as it runs
-live() { # live "Label" command...
-    local label="$1"
+# A step that may need the terminal (package prompts): output shown as it
+# runs, under the bar as it stands
+live() { # [W=weight] live "Label" command...
+    local label="$1" weight="${W:-1}"
     shift
     if [[ "$DRY" == 1 ]]; then note "[dry-run] $label: $*"; return 0; fi
-    info "${B}$label${R}"
+    if [[ -t 1 ]]; then progress_line 0 "$weight" "${B}$label${R}"; echo; else info "${B}$label${R}"; fi
     "$@" 2>&1 | tee -a "$LOG" | sed "s/^/    /" || fail "$label failed"
+    progress_add "$weight"
 }
 do_() { if [[ "$DRY" == 1 ]]; then note "[dry-run] $*"; else "$@"; fi; }
 trap 'rc=$?; stop_spin; printf "\n  %sStopped at line %s (exit %s). Log: %s%s\n" "$E" "$LINENO" "$rc" "${LOG:-}" "$R" >&2; exit $rc' ERR
-trap 'stop_spin; printf "%s" "$R"' EXIT
+trap 'stop_spin; printf "%s" "$R"; [[ ! -t 1 ]] || printf "\e[?25h"' EXIT
 
 # ── The repository: this checkout, or a fresh clone ──────────────────────────
 locate_repo() {
@@ -606,6 +738,21 @@ note "Backups and a restore.sh go to $(tilde "$BACKUP_DIR")"
 echo
 confirm "Go ahead?" Y || { info "Nothing changed."; exit 0; }
 
+# The bar's whole: each step that will run, by its weight (the same W=…
+# its call passes)
+NEED_GSF=0
+if [[ "$OPT_FONTS" == 1 ]] && ! fc-list 2>/dev/null | grep -qi "Google Sans Flex"; then NEED_GSF=1; fi
+PROG_TOTAL=$((1 + 1 + 10 + 2 + 2 + 1)) # build check, configure, build, install, configs, session
+[[ "$SYS_UPDATE" == 0 ]] || PROG_TOTAL=$((PROG_TOTAL + 8))
+if [[ "$MISSING_COUNT" -gt 0 ]]; then
+    PROG_TOTAL=$((PROG_TOTAL + 1)) # the AUR helper
+    read -ra m <<<"${MISS[compositor]:-}"
+    [[ ${#m[@]} -eq 0 ]] || PROG_TOTAL=$((PROG_TOTAL + 4))
+    [[ "$MISSING_COUNT" -eq ${#m[@]} ]] || PROG_TOTAL=$((PROG_TOTAL + 8))
+fi
+[[ "$NEED_GSF" == 0 ]] || PROG_TOTAL=$((PROG_TOTAL + 1))
+[[ "$OPT_KDE" == 0 ]] || PROG_TOTAL=$((PROG_TOTAL + 3))
+
 # ── 4. Packages ──────────────────────────────────────────────────────────────
 section "Packages"
 # One password prompt, kept fresh to the end
@@ -616,7 +763,7 @@ fi
 if [[ "$SYS_UPDATE" == 1 ]]; then
     update=(-Syu)
     [[ "$YES" == 1 ]] && update+=(--noconfirm)
-    live "Updating the system, for $(printf '%s and ' "${OUTDATED[@]}" | sed 's/ and $//')" sudo pacman "${update[@]}"
+    W=8 live "Updating the system, for $(printf '%s and ' "${OUTDATED[@]}" | sed 's/ and $//')" sudo pacman "${update[@]}"
     [[ "$DRY" == 1 ]] || ok "System updated"
 fi
 if [[ "$MISSING_COUNT" -gt 0 ]]; then
@@ -626,7 +773,7 @@ if [[ "$MISSING_COUNT" -gt 0 ]]; then
     # The compositor on its own first, then what the shell needs and the rest
     read -ra compositor <<<"${MISS[compositor]:-}"
     if [[ ${#compositor[@]} -gt 0 ]]; then
-        live "The compositor: ${compositor[*]}" yay "${flags[@]}" "${compositor[@]}"
+        W=4 live "The compositor: ${compositor[*]}" yay "${flags[@]}" "${compositor[@]}"
         [[ "$DRY" == 1 ]] || ok "Compositor installed"
     fi
     rest=()
@@ -636,7 +783,7 @@ if [[ "$MISSING_COUNT" -gt 0 ]]; then
         rest+=("${m[@]}")
     done
     if [[ ${#rest[@]} -gt 0 ]]; then
-        live "The shell's dependencies and your apps: ${#rest[@]} packages" yay "${flags[@]}" "${rest[@]}"
+        W=8 live "The shell's dependencies and your apps: ${#rest[@]} packages" yay "${flags[@]}" "${rest[@]}"
         [[ "$DRY" == 1 ]] || ok "Dependencies installed"
     fi
 elif [[ "$SKIP_DEPS" == 1 ]]; then
@@ -657,7 +804,7 @@ else
     if [[ "$WANT_HYPR" == 1 ]]; then comp_check Hyprland hyprland "$MIN_HYPRLAND"; fi
     if [[ "$WANT_NIRI" == 1 ]]; then comp_check niri niri "$MIN_NIRI"; fi
 fi
-if [[ "$OPT_FONTS" == 1 ]] && ! fc-list 2>/dev/null | grep -qi "Google Sans Flex"; then
+if [[ "$NEED_GSF" == 1 ]]; then
     google_sans() {
         local tmp dst="$HOME/.local/share/fonts/material3ui-google-sans-flex"
         tmp="$(mktemp -d)"
@@ -676,7 +823,7 @@ if [[ "$OPT_KDE" == 1 ]]; then
         "$venv/bin/pip" install -q --upgrade pip
         "$venv/bin/pip" install -q "materialyoucolor<3.0.0" kde-material-you-colors pykakasi korean_romanizer
     }
-    task "KDE colours (Python venv)" kde_venv
+    W=3 task "KDE colours (Python venv)" kde_venv
 fi
 
 # ── 5. The shell ─────────────────────────────────────────────────────────────
@@ -692,12 +839,13 @@ else
     fi
     ok "The build's ${#build_pkgs[@]} packages are here"
 fi
+progress_add 1
 BUILD="$REPO/shell/build-release"
 setup=()
 [[ -d "$BUILD" ]] && setup=(--reconfigure)
 task "Configuring the build" meson setup "${setup[@]}" "$BUILD" "$REPO/shell" --prefix=/usr --sysconfdir=/etc --buildtype=release
-task "Building (a minute or two the first time)" meson compile -C "$BUILD"
-task "Installing to /usr" sudo meson install -C "$BUILD" --no-rebuild --quiet
+W=10 task "Building (a minute or two the first time)" meson compile -C "$BUILD"
+W=2 task "Installing to /usr" sudo meson install -C "$BUILD" --no-rebuild --quiet
 
 # ── 6. Configs ───────────────────────────────────────────────────────────────
 section "Configs"
@@ -843,6 +991,8 @@ if [[ ${#old[@]} -gt 0 ]]; then
     ok "Old helpers removed (scripting is now: material3ui msg help)"
 fi
 
+progress_add 2 # the configs
+
 # ── 7. Session ───────────────────────────────────────────────────────────────
 section "Session"
 SESSION_LINES=0
@@ -908,6 +1058,11 @@ fi
 
 # ── 8. Done ──────────────────────────────────────────────────────────────────
 section "Done"
+if [[ "$DRY" == 0 && -t 1 ]]; then
+    PROG_DONE=$PROG_TOTAL
+    progress_line 0 0 "${G}installed${R}" "$SECONDS"
+    echo
+fi
 if [[ "$DRY" == 1 ]]; then ok "Dry run finished: nothing was changed"; else ok "Material3UI $VERSION is installed"; fi
 if [[ "$CHANGED" -gt 0 && "$DRY" == 0 ]]; then note "$CHANGED config paths changed; ./install.sh --restore undoes them"; fi
 # niri can't bind Super on its own: Spotlight is Super+Space there

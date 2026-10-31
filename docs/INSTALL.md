@@ -58,7 +58,9 @@ The installer asks everything first, shows one plan, and after you confirm it ru
 6. **Configs:** the Matugen templates and theme hooks, Alacritty, and Hyprland or niri. niri's config is checked with `niri validate` afterwards. The v3 Quickshell shell and older helpers are backed up and removed.
 7. **Session:** NetworkManager and Bluetooth, other polkit agents turned off (the shell is the agent), default apps, and the login screen.
 
-Each step shows a spinner and how long it took. The full output goes to `~/.cache/material3ui/install-<timestamp>.log`, and if a step fails you see the end of that log.
+**Answering:** in a terminal, each list is a menu. ↑/↓ (or j/k) move, Enter picks, a number jumps straight to an option, and Home/End go to the ends. Yes/no questions take `y` or `n` at once, or ←/→ then Enter. Each answer folds into one line. Without a terminal (a pipe, or `--yes`), the installer takes typed answers or the defaults.
+
+**Progress:** a bar in the style of Material 3's wavy progress indicator follows the whole run: a solid line for what's done, a moving wave over the step that's running (its share weighted by how long such a step takes, so the build gets the most), then the percentage, the step and how long it's taken. The full output goes to `~/.cache/material3ui/install-<timestamp>.log`, and if a step fails you see the end of that log.
 
 ### Undo and uninstall
 
