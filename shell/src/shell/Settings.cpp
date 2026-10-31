@@ -413,7 +413,7 @@ void bluetoothPage(Flex* page, Popup&) {
         (void)leases;
         auto& b = Bluetooth::get();
         powerSw->setChecked(b.powered());
-        power.subtitle->setText(!b.available() ? "No Bluetooth adapter" : b.powered() ? "On" : "Off");
+        power.subtitle->setText(!b.service() ? "Its service isn't running" : !b.available() ? "No Bluetooth adapter" : b.powered() ? "On" : "Off");
         power.subtitle->setVisible(true);
         search.subtitle->setText(b.discovering() ? "Searching… put the device in pairing mode" : "Searches while this page is open");
         prompt->clearChildren();
@@ -421,6 +421,10 @@ void bluetoothPage(Flex* page, Popup&) {
         error->setText(b.lastError());
         error->setVisible(!b.lastError().empty());
         lists->clearChildren();
+        if (!b.service()) {
+            serviceOff(group(lists, "Service"), "bluetooth");
+            return;
+        }
         if (!b.powered()) return;
 
         auto add = [](Node* list, const Bluetooth::Device& d) {

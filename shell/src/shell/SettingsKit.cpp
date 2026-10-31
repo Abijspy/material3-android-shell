@@ -3,6 +3,7 @@
 #include "core/Config.h"
 #include "core/EventLoop.h"
 #include "core/Process.h"
+#include "services/Network.h"
 #include "services/Packages.h"
 #include "services/Wallpaper.h"
 #include "shell/PanelKit.h"
@@ -29,6 +30,51 @@ Flex* panelGroup(Node* page, const std::string& title, const std::string& subtit
     auto* inner = group(page, title, subtitle)->add<Flex>(Flex::Direction::Column);
     inner->setAlignItems(Align::Stretch)->setSpacing(12)->setPadding({20, 16});
     return inner;
+}
+
+bool serviceOff(Node* parent, const std::string& which, bool compact) {
+    const bool net = which == "network";
+    if (net ? Network::get().available() : Bluetooth::get().service()) return false;
+    const bool installed = net ? Network::installed() : Bluetooth::installed();
+    std::string title, why, action = installed ? "Turn on" : "Install";
+    if (net) {
+        title = installed ? "NetworkManager isn't running" : "NetworkManager isn't installed";
+        why = "Wi-Fi, connections and VPNs go through it";
+        // Something else runs the network: NetworkManager takes over from it
+        if (const auto rivals = Network::rivals(); installed && !rivals.empty()) {
+            why = rivals.front() + " runs the network now; NetworkManager takes over from it";
+            action = "Switch";
+        }
+    } else {
+        title = installed ? "Bluetooth's service isn't running" : "Bluetooth isn't installed";
+        why = installed ? "bluetoothd, which talks to the adapter" : "BlueZ, which talks to the adapter";
+    }
+    // A row in Settings; in a narrow panel, a card with the button below
+    Node* actions = nullptr;
+    if (compact) {
+        auto* card = parent->add<Flex>(Flex::Direction::Column);
+        card->setPadding({16, 14})->setSpacing(6)->setRadius(Radii(20))->setBackground("surface_container_high", false);
+        card->setAlignItems(Align::Stretch);
+        auto* top = card->add<Flex>(Flex::Direction::Row);
+        top->setSpacing(12);
+        top->add<Icon>(net ? "wifi_off" : "bluetooth_disabled", 22)->setColor("on_surface_variant", false);
+        top->add<Label>(title)->setSize(15)->setWeight(500)->setMaxWidth(250)->setMaxLines(2);
+        card->add<Label>(why)->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(290)->setMaxLines(3);
+        auto* bar = card->add<Flex>(Flex::Direction::Row);
+        bar->setJustify(Align::End)->setPadding({0, 4, 0, 0});
+        actions = bar;
+    } else {
+        actions = row(parent, net ? "wifi_off" : "bluetooth_disabled", title, why).row;
+    }
+    if (net ? Network::get().starting() : Bluetooth::get().starting()) {
+        actions->add<Label>("Starting…")->setSize(13)->setColor("on_surface_variant", false);
+        return true;
+    }
+    pillButton(actions, action, true, [net] {
+        if (net) Network::get().startService();
+        else Bluetooth::get().startService();
+    }, installed ? "power_settings_new" : "download");
+    return true;
 }
 
 void missingTool(Node* group, const std::string& icon, const std::string& title, const std::string& why,

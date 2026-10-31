@@ -94,10 +94,14 @@ void clipboard(Flex* card, Popup& popup) {
     auto query = std::make_shared<std::string>();
     auto first = std::make_shared<Clipboard::Entry>();
 
-    live->sync = [live, query, first, &popup] {
+    live->sync = [live, query, first, clear, field, &popup] {
         live->clearChildren();
         auto& c = Clipboard::get();
         first->line.clear();
+        // Clearing and searching only once there's something to clear or find
+        const bool any = c.available() && !c.entries().empty();
+        clear->setVisible(any);
+        field->setVisible(any);
         if (!c.available()) {
             // cliphist to install, with Install right here; else nothing yet
             missingTool(live, "content_paste_off", "Clipboard history needs cliphist", "Keeps what you copy, pictures too",

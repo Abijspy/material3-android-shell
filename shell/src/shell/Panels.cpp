@@ -1,6 +1,7 @@
 #include "shell/Panels.h"
 
 #include "shell/PanelKit.h"
+#include "shell/SettingsKit.h"
 
 #include "core/Process.h"
 #include "core/Signal.h"
@@ -181,16 +182,18 @@ void network(Flex* card, Popup&) {
     title->setSize(15)->setWeight(500)->setMaxWidth(240);
     auto* sub = texts->add<Label>();
     sub->setSize(13)->setColor("on_surface_variant", false);
+    // NetworkManager off: what it takes to turn it on, in the status's place
+    auto* off = live->add<Flex>(Flex::Direction::Column);
+    off->setAlignItems(Align::Stretch);
 
     live->sync = [=] {
         auto& n = Network::get();
         sw->setChecked(n.wifiEnabled());
         icon->setText(n.icon());
-        if (!n.available()) {
-            title->setText("NetworkManager is not running");
-            sub->setText("Network controls need NetworkManager");
-            return;
-        }
+        off->clearChildren();
+        const bool down = serviceOff(off, "network", true);
+        status->setVisible(!down);
+        if (down) return;
         switch (n.kind()) {
         case Network::Kind::Wifi:
             title->setText(n.name());
@@ -339,6 +342,7 @@ void bluetoothView(Flex* body, const std::function<void()>& back) {
         error->setText(b.lastError());
         error->setVisible(!b.lastError().empty());
         list->clearChildren();
+        if (serviceOff(list, "bluetooth", true)) return;
         if (!b.available()) return (void)caption(list, "No Bluetooth adapter");
         if (!b.powered()) return (void)caption(list, "Bluetooth is off");
 

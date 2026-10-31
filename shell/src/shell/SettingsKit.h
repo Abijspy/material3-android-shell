@@ -85,6 +85,14 @@ Row row(Node* group, const std::string& icon, const std::string& title, const st
 // in a ring
 void accentRows(Node* group);
 Button* pillButton(Node* parent, const std::string& label, bool primary, std::function<void()> fn, const std::string& icon = {});
+// A system service a feature needs, when it isn't running: a row saying so,
+// with Turn on (Install when its package isn't here; Switch when iwd or
+// systemd-networkd runs the network), "Starting…" while it does; the
+// polkit dialog asks for the password. `which`: "network" (NetworkManager)
+// or "bluetooth". True when the row was added. Rebuild it on the service's
+// `changed` (a Live). `compact`: a card for narrow panels, its words
+// wrapping and the button under them
+bool serviceOff(Node* parent, const std::string& which, bool compact = false);
 // What a feature needs that isn't installed: a row saying so, with Install
 // (pacman, one password), "Installing…" while it runs, and gone once every
 // one of `commands` is here. `after` runs when the install succeeds

@@ -27,6 +27,14 @@ public:
     int strength() const { return m_strength; }         // 0–100, Wi-Fi only
     bool wifiEnabled() const { return m_wifiEnabled; }
     bool connecting() const { return m_connecting; }
+    // NetworkManager's service, when it isn't running: installed (its unit
+    // file is here), what else runs the network (iwd, systemd-networkd:
+    // they'd fight it for the Wi-Fi), and starting it, with one password
+    // (installing it first, and turning those off)
+    static bool installed();
+    static std::vector<std::string> rivals();
+    bool starting() const { return m_starting; }
+    void startService();
 
     void setWifiEnabled(bool on);
     std::string icon() const;
@@ -96,7 +104,7 @@ private:
     void loadDetails(const dbus::Value& active);
     void sampleTraffic();
 
-    bool m_available = false, m_wifiEnabled = false, m_connecting = false;
+    bool m_available = false, m_wifiEnabled = false, m_connecting = false, m_starting = false;
     Kind m_kind = Kind::None;
     std::string m_name, m_apPath, m_wifiDevice, m_error;
     std::vector<AccessPoint> m_aps;
@@ -119,8 +127,14 @@ public:
     using Lease = std::shared_ptr<void>;
     static Bluetooth& get();
 
-    bool available() const { return m_available; }
+    bool available() const { return m_available; } // an adapter
     bool powered() const { return m_powered; }
+    // bluetoothd answers; when it doesn't: installed (its unit file is
+    // here), and starting it (installing BlueZ first), with one password
+    bool service() const { return m_service; }
+    static bool installed();
+    bool starting() const { return m_starting; }
+    void startService();
     const std::string& adapter() const { return m_adapter; } // its BlueZ path
     const std::vector<std::string>& connected() const { return m_connected; }
     void setPowered(bool on);
@@ -178,11 +192,11 @@ private:
     std::map<std::string, std::string> m_busy;
     std::string m_error;
 
-    bool m_available = false, m_powered = false, m_discovering = false;
+    bool m_available = false, m_powered = false, m_discovering = false, m_service = false, m_starting = false;
     std::string m_adapter;
     std::vector<std::string> m_connected;
     std::vector<Device> m_devices;
-    dbus::Subscription m_props, m_added, m_removed;
+    dbus::Subscription m_props, m_added, m_removed, m_owner;
     EventLoop::TimerId m_debounce = 0;
 };
 

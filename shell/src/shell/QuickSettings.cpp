@@ -16,6 +16,7 @@
 #include "services/Auth.h"
 #include "core/Paths.h"
 #include "shell/PanelKit.h"
+#include "shell/SettingsKit.h"
 #include "shell/Panels.h"
 #include "ui/Controls.h"
 #include "ui/Theme.h"
@@ -147,6 +148,8 @@ void wifiView(Flex* body, const std::function<void()>& back, bool details, std::
         error->setText(n.lastError());
         error->setVisible(!n.lastError().empty());
         list->clearChildren();
+        // NetworkManager itself off: turning it on, not a switch that can't
+        if (serviceOff(list, "network", !connected)) return; // a card in the panel, a row in Settings
         if (!n.wifiEnabled()) {
             caption(list, "Wi-Fi is off");
             return;
@@ -253,19 +256,33 @@ struct TileDef {
 
 const std::vector<TileDef>& tileDefs() {
     static const std::vector<TileDef> defs = {
+        // With their service off (or not installed), a tap starts it: the
+        // polkit dialog asks
         {"wifi", "wifi", "Wi-Fi", [] { return Network::get().wifiEnabled(); },
          [] {
              auto& n = Network::get();
+             if (!n.available())
+                 return std::string(n.starting() ? "Starting…" : Network::installed() ? "Tap to turn on" : "Tap to install");
              return !n.wifiEnabled() ? std::string("Off") : n.kind() == Network::Kind::Wifi ? n.name() : std::string("On");
          },
-         {}, [](Popup&) { Network::get().setWifiEnabled(!Network::get().wifiEnabled()); }, 1},
+         {}, [](Popup&) {
+             auto& n = Network::get();
+             if (!n.available()) return n.startService();
+             n.setWifiEnabled(!n.wifiEnabled());
+         }, 1},
         {"bluetooth", "bluetooth", "Bluetooth", [] { return Bluetooth::get().powered(); },
          [] {
              auto& b = Bluetooth::get();
-             return !b.available() ? std::string("Unavailable") : !b.powered() ? std::string("Off")
+             if (!b.service())
+                 return std::string(b.starting() ? "Starting…" : Bluetooth::installed() ? "Tap to turn on" : "Tap to install");
+             return !b.available() ? std::string("No adapter") : !b.powered() ? std::string("Off")
                     : b.connected().empty() ? std::string("On") : b.connected().front();
          },
-         {}, [](Popup&) { Bluetooth::get().setPowered(!Bluetooth::get().powered()); }, 2},
+         {}, [](Popup&) {
+             auto& b = Bluetooth::get();
+             if (!b.service()) return b.startService();
+             b.setPowered(!b.powered());
+         }, 2},
         {"dnd", "do_not_disturb_on", "Do not disturb", [] { return Notifications::get().doNotDisturb(); },
          [] { return std::string(Notifications::get().doNotDisturb() ? "On" : "Off"); }, {},
          [](Popup&) { Notifications::get().setDoNotDisturb(!Notifications::get().doNotDisturb()); }},

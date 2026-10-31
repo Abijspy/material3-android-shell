@@ -2,6 +2,7 @@
 
 #include "core/Guard.h"
 #include "core/Log.h"
+#include "core/Process.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -20,6 +21,21 @@ namespace {
 const char* kNM = "org.freedesktop.NetworkManager";
 const char* kNMPath = "/org/freedesktop/NetworkManager";
 const char* kBlueZ = "org.bluez";
+
+// A systemd unit: installed, and running now (systemd marks each active
+// one under /run/systemd/units)
+bool unitFile(const std::string& unit) {
+    std::error_code ec;
+    return std::filesystem::exists("/usr/lib/systemd/system/" + unit, ec);
+}
+bool unitActive(const std::string& unit) {
+    std::error_code ec;
+    return std::filesystem::exists("/run/systemd/units/invocation:" + unit, ec);
+}
+// `script` as root through pkexec, which the shell's polkit dialog asks for
+void asRoot(const std::string& script, std::function<void(bool ok)> done) {
+    run({"pkexec", "/usr/bin/sh", "-c", script}, [done](int code, const std::string&) { done(code == 0); });
+}
 
 std::string str(const dbus::Value& props, const char* key) {
     auto it = props.find(key);
@@ -331,6 +347,36 @@ void Network::forget(const std::string& ssid) {
                              });
 }
 
+bool Network::installed() {
+    return unitFile("NetworkManager.service");
+}
+
+std::vector<std::string> Network::rivals() {
+    std::vector<std::string> out;
+    for (const char* unit : {"iwd", "systemd-networkd"})
+        if (unitActive(std::string(unit) + ".service")) out.emplace_back(unit);
+    return out;
+}
+
+void Network::startService() {
+    if (m_starting) return;
+    m_starting = true;
+    m_error.clear();
+    changed.emit();
+    // Installed first if need be; the others off so they don't fight it
+    std::string script = installed() ? "" : "pacman -S --needed --noconfirm networkmanager && ";
+    script += "{ ";
+    for (const auto& r : rivals()) script += "systemctl disable --now " + r + ".service; ";
+    script += "systemctl enable --now NetworkManager.service; }";
+    asRoot(script, [this](bool ok) {
+        m_starting = false;
+        if (!ok) m_error = "NetworkManager didn't start (or the password was refused)";
+        refresh();
+        findWifiDevice();
+        changed.emit();
+    });
+}
+
 void Network::disconnect() {
     if (!m_wifiDevice.empty())
         dbus::Bus::system().call(kNM, m_wifiDevice, "org.freedesktop.NetworkManager.Device", "Disconnect");
@@ -554,12 +600,36 @@ Bluetooth::Bluetooth() {
     m_props = bus.subscribe(kBlueZ, "", "org.freedesktop.DBus.Properties", "PropertiesChanged", later);
     m_added = bus.subscribe(kBlueZ, "/", "org.freedesktop.DBus.ObjectManager", "InterfacesAdded", later);
     m_removed = bus.subscribe(kBlueZ, "/", "org.freedesktop.DBus.ObjectManager", "InterfacesRemoved", later);
+    // bluetoothd starting or stopping
+    m_owner = bus.subscribe("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameOwnerChanged",
+                            [this, later](const dbus::Value& a, auto* m) {
+                                if (!a.empty() && a[0] == kBlueZ) later(a, m);
+                            });
     refresh();
+}
+
+bool Bluetooth::installed() {
+    return unitFile("bluetooth.service");
+}
+
+void Bluetooth::startService() {
+    if (m_starting) return;
+    m_starting = true;
+    m_error.clear();
+    changed.emit();
+    asRoot(std::string(installed() ? "" : "pacman -S --needed --noconfirm bluez bluez-utils && ") + "systemctl enable --now bluetooth.service",
+           [this](bool ok) {
+               m_starting = false;
+               if (!ok) m_error = "Bluetooth didn't start (or the password was refused)";
+               refresh();
+               changed.emit();
+           });
 }
 
 void Bluetooth::refresh() {
     dbus::Bus::system().call(kBlueZ, "/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects", {},
                              [this](const dbus::Value& a, const std::string& err) {
+        m_service = err.empty();
         m_available = false;
         m_powered = false;
         m_connected.clear();
