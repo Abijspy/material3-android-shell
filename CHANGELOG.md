@@ -1,5 +1,12 @@
 # Changelog
 
+## v6.2.1 — 2026-11-01
+
+- **Updates install again.** On a system where the installer had built the shell over an older package, updating to 6.2 stopped with "Errors occurred, no packages were upgraded": the new version's files (the world map, niri's icon) were already there, owned by no package. Updates now take over the shell's own files whatever pacman had recorded, and the installer installs the shell as a pacman package itself, so this can't build up again. If an update from 6.2 still stops, run `./install.sh` once.
+- **Hyprland stays uninstalled.** If you remove Hyprland (or niri) after setting up both, the installer no longer brings it back when you keep your choices: it sets up the one you still have and says so. Updates no longer write config for a compositor that isn't installed.
+- **Clearer failures.** A failed update shows pacman's actual error rather than its last line.
+- **Release builds without warnings,** with the packaging flags too, on GitHub's current runners.
+
 ## v6.2 — 2026-10-31
 
 - **Install, don't explain.** Where a missing tool used to leave a note or a failure, the shell now offers to install it, with one password:
