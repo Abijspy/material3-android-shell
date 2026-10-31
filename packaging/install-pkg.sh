@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
 # Installs a Material3UI package with pacman (run as root):
 #   install-pkg.sh FILE
-# Files a source build put in place (meson install, the old greeter
-# installer) are taken over by the package instead of stopping pacman.
+# Its own files are taken over from whatever put them in place (meson
+# install, the old greeter installer) instead of stopping pacman: also
+# under an older package, whose list lacks a newer build's files.
 set -euo pipefail
 PKG="$(readlink -f "${1:?usage: install-pkg.sh FILE}")"
-NAME="$(bsdtar -xOf "$PKG" .PKGINFO | sed -n 's/^pkgname = //p')"
 OVERWRITE=()
-if ! pacman -Qq "$NAME" >/dev/null 2>&1; then
-    while IFS= read -r f; do
-        [[ "$f" == .* || "$f" == */ ]] && continue
-        OVERWRITE+=(--overwrite "/$f")
-    done < <(bsdtar -tf "$PKG")
-fi
+while IFS= read -r f; do
+    [[ "$f" == .* || "$f" == */ ]] && continue
+    OVERWRITE+=(--overwrite "/$f")
+done < <(bsdtar -tf "$PKG")
 pacman -U --noconfirm "${OVERWRITE[@]}" "$PKG"

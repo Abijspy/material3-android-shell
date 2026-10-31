@@ -35,6 +35,9 @@ fi
 # Installs from before 6.0 set up Hyprland only
 NIRI_MODE="$(state niri_mode)"; NIRI_MODE="${NIRI_MODE:-skip}"
 NIRI="$CONFIG_HOME/niri"
+# A compositor uninstalled since: its config isn't written for it any more
+if [[ "$HYPR_MODE" != skip ]] && ! command -v Hyprland >/dev/null && ! command -v hyprland >/dev/null; then HYPR_MODE=skip; HYPR_GONE=1; fi
+if [[ "$NIRI_MODE" != skip ]] && ! command -v niri >/dev/null; then NIRI_MODE=skip; NIRI_GONE=1; fi
 
 case "$MODE" in all|shell) ;; *) echo "Usage: $0 [all|shell] [stable|canary] [--force]" >&2; exit 2 ;; esac
 
@@ -102,7 +105,13 @@ fi
 read -ra ROOT <<<"${M3_ROOT:-}"
 read -ra SUDO <<<"${M3_SUDO:-sudo}"
 if [[ -n "$PKG" && ${#ROOT[@]} -gt 0 ]]; then
-    "${ROOT[@]}" install-pkg "$PKG"
+    if ! "${ROOT[@]}" install-pkg "$PKG"; then
+        # Helpers before 6.2.1 take over the files a source build left only
+        # when no Material3UI package is installed: this checkout's
+        # install-pkg.sh takes them whatever (asking for the password again)
+        echo "Installing with $PACKAGING/install-pkg.sh instead..."
+        pkexec "$PACKAGING/install-pkg.sh" "$PKG"
+    fi
 elif [[ -n "$PKG" && -x "$PACKAGING/install-pkg.sh" ]]; then
     "${SUDO[@]}" "$PACKAGING/install-pkg.sh" "$PKG"
 else
@@ -129,6 +138,8 @@ if [[ "$MODE" == all ]]; then
         cp "$DOT/alacritty/alacritty.toml" "$CONFIG_HOME/alacritty/alacritty.toml"
     fi
 
+    [[ -z "${HYPR_GONE:-}" ]] || echo "Hyprland isn't installed: its config is left as it is."
+    [[ -z "${NIRI_GONE:-}" ]] || echo "niri isn't installed: its config is left as it is."
     if [[ "$HYPR_MODE" != skip ]]; then
         echo "Updating Hyprland modules ($HYPR_MODE)..."
         mkdir -p "$HYPR/material3ui"

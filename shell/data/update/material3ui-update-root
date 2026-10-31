@@ -32,13 +32,13 @@ install_pkg() {
     [[ "$pkg" == *.pkg.tar.zst && -f "$pkg" ]] || { echo "not a package: $pkg" >&2; return 2; }
     name="$(bsdtar -xOf "$pkg" .PKGINFO | sed -n 's/^pkgname = //p')"
     [[ "$name" == material3ui || "$name" == material3ui-greeter ]] || { echo "not Material3UI's: $name" >&2; return 2; }
+    # Its own files, from whatever put them there (a source build), also
+    # under an older package whose list lacks a newer build's files
     local overwrite=()
-    if ! pacman -Qq "$name" >/dev/null 2>&1; then
-        while IFS= read -r f; do
-            [[ "$f" == .* || "$f" == */ ]] && continue
-            overwrite+=(--overwrite "/$f")
-        done < <(bsdtar -tf "$pkg")
-    fi
+    while IFS= read -r f; do
+        [[ "$f" == .* || "$f" == */ ]] && continue
+        overwrite+=(--overwrite "/$f")
+    done < <(bsdtar -tf "$pkg")
     pacman -U --noconfirm "${overwrite[@]}" "$pkg"
 }
 

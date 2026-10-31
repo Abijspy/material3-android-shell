@@ -279,14 +279,19 @@ void Packages::runTask(const std::string& label, const std::string& script, cons
     changed.emit();
     run({"sh", "-c", "{ " + script + "; } 2>&1"}, [this, doneText, after](int code, const std::string& out) {
         m_busy = false;
-        // pkexec: 126 when the dialog was dismissed, 127 when not authorised
-        std::string last;
+        // pkexec: 126 when the dialog was dismissed, 127 when not authorised.
+        // Why it stopped: pacman's first "error:" line says more than its
+        // last ("Errors occurred, no packages were upgraded.")
+        std::string last, error;
         std::stringstream ss(out);
-        for (std::string l; std::getline(ss, l);)
+        for (std::string l; std::getline(ss, l);) {
             if (!l.empty()) last = l;
+            if (error.empty() && l.starts_with("error: ")) error = l.substr(7);
+        }
+        const std::string why = !error.empty() ? error : last;
         m_status = code == 0 ? doneText
                  : code == 126 || code == 127 ? std::string("Cancelled: no password given")
-                 : "Didn't finish: " + (last.empty() ? std::to_string(code) : last);
+                 : "Didn't finish: " + (why.empty() ? std::to_string(code) : why);
         if (m_upgrading && code == 0) Hooks::get().fire("updates_installed", {{"M3_UPDATES_COUNT", std::to_string(m_updates.size())}});
         m_upgrading = false;
         checkRestart();

@@ -519,11 +519,27 @@ ok "Material3UI $VERSION from $(tilde "$REPO")"
 
 # ── 2. Choices ───────────────────────────────────────────────────────────────
 section "Your setup"
+# The compositor set up last time, less one uninstalled since while the
+# other is here: you removed it, so it isn't brought back (installs from
+# before 6.0 recorded none: Hyprland)
+PREV_COMP_SAVED="$(previous compositor)"
+PREV_COMP_SAVED="${PREV_COMP_SAVED:-hyprland}"
+case "$PREV_COMP_SAVED" in
+    both)
+        if [[ -z "$hv" && -n "$nv" ]]; then PREV_COMP=niri
+        elif [[ -n "$hv" && -z "$nv" ]]; then PREV_COMP=hyprland
+        else PREV_COMP=both; fi ;;
+    niri) if [[ -z "$nv" && -n "$hv" ]]; then PREV_COMP=hyprland; else PREV_COMP=niri; fi ;;
+    *) if [[ -z "$hv" && -n "$nv" ]]; then PREV_COMP=niri; else PREV_COMP=hyprland; fi ;;
+esac
+if [[ -f "$STATE_FILE" && "$PREV_COMP" != "$PREV_COMP_SAVED" && -z "$COMPOSITOR" ]]; then
+    case "$PREV_COMP" in niri) gone=Hyprland ;; *) gone=niri ;; esac
+    note "$gone isn't installed any more: setting up $([[ "$PREV_COMP" == niri ]] && echo niri || echo Hyprland) only (--compositor both, or another answer below, brings it back)"
+fi
 KEEP_PREVIOUS=1
 if [[ -f "$STATE_FILE" && "$YES" == 0 && -z "$TERMINAL$FILE_MANAGER$BROWSER$COMPOSITOR$HYPR_MODE$NIRI_MODE" ]]; then
     last="$(previous terminal) · $(previous file_manager) · $(previous browser)"
-    # Installs from before 6.0 recorded no compositor: Hyprland's
-    case "$(previous compositor)" in
+    case "$PREV_COMP" in
         niri) last+=" · niri $(previous niri_mode)" ;;
         both) last+=" · Hyprland $(previous hypr_mode) and niri $(previous niri_mode)" ;;
         *) last+=" · Hyprland $(previous hypr_mode)" ;;
@@ -535,11 +551,10 @@ if [[ "$KEEP_PREVIOUS" == 1 ]]; then
     [[ -n "$TERMINAL" ]] || TERMINAL="$(previous terminal)"
     [[ -n "$FILE_MANAGER" ]] || FILE_MANAGER="$(previous file_manager)"
     [[ -n "$BROWSER" ]] || BROWSER="$(previous browser)"
-    [[ -n "$COMPOSITOR" ]] || COMPOSITOR="$(previous compositor)"
+    [[ -n "$COMPOSITOR" ]] || COMPOSITOR="$PREV_COMP"
     # A mode only from an install that set that compositor up (else "skip")
-    prev_comp="$(previous compositor)"
-    if [[ -z "$HYPR_MODE" && "$prev_comp" != niri ]]; then HYPR_MODE="$(previous hypr_mode)"; fi
-    if [[ -z "$NIRI_MODE" && ( "$prev_comp" == niri || "$prev_comp" == both ) ]]; then NIRI_MODE="$(previous niri_mode)"; fi
+    if [[ -z "$HYPR_MODE" && "$PREV_COMP" != niri ]]; then HYPR_MODE="$(previous hypr_mode)"; fi
+    if [[ -z "$NIRI_MODE" && ( "$PREV_COMP" == niri || "$PREV_COMP" == both ) ]]; then NIRI_MODE="$(previous niri_mode)"; fi
 fi
 if [[ -z "$CHANNEL" ]]; then
     case "$(previous channel)" in stable) CHANNEL=release ;; canary) CHANNEL=latest ;; esac
@@ -742,7 +757,7 @@ confirm "Go ahead?" Y || { info "Nothing changed."; exit 0; }
 # its call passes)
 NEED_GSF=0
 if [[ "$OPT_FONTS" == 1 ]] && ! fc-list 2>/dev/null | grep -qi "Google Sans Flex"; then NEED_GSF=1; fi
-PROG_TOTAL=$((1 + 1 + 10 + 2 + 2 + 1)) # build check, configure, build, install, configs, session
+PROG_TOTAL=$((1 + 1 + 10 + 1 + 2 + 2 + 1)) # build check, configure, build, package, install, configs, session
 [[ "$SYS_UPDATE" == 0 ]] || PROG_TOTAL=$((PROG_TOTAL + 8))
 if [[ "$MISSING_COUNT" -gt 0 ]]; then
     PROG_TOTAL=$((PROG_TOTAL + 1)) # the AUR helper
@@ -845,7 +860,18 @@ setup=()
 [[ -d "$BUILD" ]] && setup=(--reconfigure)
 task "Configuring the build" meson setup "${setup[@]}" "$BUILD" "$REPO/shell" --prefix=/usr --sysconfdir=/etc --buildtype=release
 W=10 task "Building (a minute or two the first time)" meson compile -C "$BUILD"
-W=2 task "Installing to /usr" sudo meson install -C "$BUILD" --no-rebuild --quiet
+# As the material3ui package, so pacman knows its files and an update's
+# package replaces them cleanly; plain meson install when it can't be made
+PKG_FILE=""
+package_shell() { PKG_FILE="$("$REPO/packaging/build-pkg.sh" material3ui --build "$BUILD" "$(mktemp -d)")" || PKG_FILE=""; }
+task "Packaging it for pacman" package_shell
+if [[ -n "$PKG_FILE" || "$DRY" == 1 ]]; then
+    W=2 task "Installing the material3ui package" sudo "$REPO/packaging/install-pkg.sh" "${PKG_FILE:-material3ui-$VERSION.pkg.tar.zst}"
+    [[ -z "$PKG_FILE" ]] || rm -rf "$(dirname "$PKG_FILE")"
+else
+    warn "Couldn't make the package (see the log): installing the build directly"
+    W=2 task "Installing to /usr" sudo meson install -C "$BUILD" --no-rebuild --quiet
+fi
 
 # ── 6. Configs ───────────────────────────────────────────────────────────────
 section "Configs"
