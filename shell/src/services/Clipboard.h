@@ -20,9 +20,9 @@ public:
         std::string line;    // cliphist's "id<TAB>preview", what decode takes
         std::string id, preview;
         bool image = false;  // image data (a screenshot, a copied picture)
-        std::string file;    // a picture or video file the entry names
+        std::string file = {};  // a picture or video file the entry names
         bool video = false;  // that file is a video
-        std::string thumb;   // a picture to show for it, once ready
+        std::string thumb = {}; // a picture to show for it, once ready
     };
 
     static Clipboard& get();

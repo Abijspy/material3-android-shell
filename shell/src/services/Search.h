@@ -17,7 +17,7 @@ struct SearchResult {
     std::string emoji;  // drawn as text instead of an icon
     double score = 0;
     std::function<void()> activate;
-    std::string image;  // a picture to show as a thumbnail (clipboard images, videos)
+    std::string image = {}; // a picture to show as a thumbnail (clipboard images, videos)
     bool video = false; // the thumbnail is a video's frame
 };
 

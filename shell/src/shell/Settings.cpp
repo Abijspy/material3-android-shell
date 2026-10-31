@@ -1322,7 +1322,7 @@ void barPage(Flex* page, Popup&) {
         bool linked;
         int place = 0; // unlinked: 0 the island, 1 the Clock widget
         Flex* body = nullptr;
-        std::function<void()> fill;
+        std::function<void()> fill = {};
     };
     auto ui = std::make_shared<ClockUi>(ClockUi{Config::get().value<bool>("/bar/clock/linked", sameAs())});
     auto link = row(clocks, "link", "Same for both", "Off: set the island and the Clock widget apart");

@@ -1562,7 +1562,7 @@ void ruleSections(Flex* page, HyprOptions::RuleKind kind) {
 std::vector<std::pair<std::string, std::string>> cursorThemes() {
     std::vector<std::pair<std::string, std::string>> out;
     const std::string home = paths::home();
-    for (const std::string dir : {home + "/.local/share/icons", home + "/.icons", std::string("/usr/share/icons")}) {
+    for (const auto& dir : {home + "/.local/share/icons", home + "/.icons", std::string("/usr/share/icons")}) {
         std::error_code ec;
         for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
             const auto p = e.path();

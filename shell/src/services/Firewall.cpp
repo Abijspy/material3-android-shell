@@ -219,7 +219,7 @@ void Firewall::add(const std::string& action, const std::string& port, const std
         }
         std::ranges::replace(p, ':', '-');
         std::string script;
-        for (const std::string pr : {std::string("tcp"), std::string("udp")}) {
+        for (const auto& pr : {std::string("tcp"), std::string("udp")}) {
             if (proto != "any" && proto != pr) continue;
             if (!script.empty()) script += " && ";
             script += std::format("firewall-cmd --permanent --add-port={0}/{1} && firewall-cmd --add-port={0}/{1}", p, pr);

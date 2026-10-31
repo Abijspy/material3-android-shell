@@ -49,7 +49,7 @@ public:
 
     // Wired adapters and their state (NetworkManager)
     struct Wired {
-        std::string path, iface, ipv4;
+        std::string path, iface = {}, ipv4 = {};
         int state = 0; // NM: 20 no cable, 30 disconnected, 40–90 connecting, 100 connected
         int speed = 0; // Mb/s, while linked
         bool cable() const { return state > 20; }
