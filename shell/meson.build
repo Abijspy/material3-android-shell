@@ -88,6 +88,7 @@ sources = files(
   'src/services/HyprOptions.cpp',
   'src/services/Idle.cpp',
   'src/services/Kdl.cpp',
+  'src/services/TimeZones.cpp',
   'src/services/Keybinds.cpp',
   'src/services/HookEvents.cpp',
   'src/services/Hooks.cpp',
@@ -147,6 +148,7 @@ sources = files(
   'src/shell/HyprPages.cpp',
   'src/shell/KeyCapture.cpp',
   'src/shell/MonitorLayout.cpp',
+  'src/shell/TimeZoneMap.cpp',
   'src/shell/NiriPages.cpp',
   'src/shell/Settings.cpp',
   'src/shell/SecurityPages.cpp',
@@ -193,6 +195,8 @@ install_data('data/update/material3ui-update-root', 'data/update/material3ui-roo
 install_data('data/update/io.github.abijspy.material3ui.update.policy',
   install_dir: get_option('datadir') / 'polkit-1/actions')
 install_data('data/icons/Material3UI.svg', 'data/icons/hyprland-logo.svg', 'data/icons/niri-logo.svg', install_dir: get_option('datadir') / 'material3ui/icons')
+# The world's land, for Settings → System's time zone map
+install_data('data/maps/world.svg', install_dir: get_option('datadir') / 'material3ui/maps')
 # The package's icon (no .desktop file: the shell is not an app to launch)
 install_data('data/icons/Material3UI.svg', rename: 'material3ui.svg',
   install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps')
@@ -234,4 +238,6 @@ test('version', executable('version_test', 'tests/version_test.cpp', 'src/core/V
 test('niri-settings', executable('niri_settings_test', 'tests/niri_settings_test.cpp', 'src/services/NiriSettings.cpp',
   include_directories: include_directories('src')))
 test('kdl', executable('kdl_test', 'tests/kdl_test.cpp', 'src/services/Kdl.cpp',
+  include_directories: include_directories('src')))
+test('timezones', executable('timezones_test', 'tests/timezones_test.cpp', 'src/services/TimeZones.cpp',
   include_directories: include_directories('src')))

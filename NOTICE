@@ -28,11 +28,17 @@ no Noctalia source code is included.
 shell/data/icons/hyprland-logo.svg is the Hyprland logo, cropped to its drop from
 assets/header.svg in Hyprland (https://github.com/hyprwm/Hyprland), Copyright (c)
 Hyprland contributors, under the BSD-3-Clause license. It is used only to name
-Hyprland in Settings → About and does not imply endorsement.
+Hyprland in Settings → About and on the login screen, and does not imply
+endorsement.
 
 shell/data/icons/niri-logo.svg is the niri icon, docs/wiki/logo/niri-icon.svg in
 niri (https://github.com/niri-wm/niri), by the niri contributors, licensed under
 CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/). It is recoloured
-here from red and orange to teal (the logo is meant to be recoloured), and that
-file stays under CC BY-SA 4.0. It is used only to name niri in Settings → About
-and does not imply endorsement.
+here from red and orange to teal (the logo is meant to be recoloured) and cropped
+to its artwork, and that file stays under CC BY-SA 4.0. It is used only to name
+niri in Settings → About and on the login screen, and does not imply endorsement.
+
+shell/data/maps/world.svg, the time zone map in Settings → System, is drawn from
+Natural Earth's 1:50m land, lakes and country borders
+(https://www.naturalearthdata.com), which are in the public domain;
+scripts/generate_world_map.py makes it.

@@ -51,6 +51,7 @@
 #include "shell/Popup.h"
 #include "shell/PrintersPage.h"
 #include "shell/Ringer.h"
+#include "shell/TimeZoneMap.h"
 #include "services/Hooks.h"
 #include "shell/bar/Bar.h"
 #include "shell/bar/Frame.h"
@@ -469,6 +470,11 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         opts.anchor = -1;
         opts.centredVertically = true;
         build = [arg](ui::Flex* card, Popup& p) { panels::filePicker(card, p, arg.empty() ? "wallpaper" : arg); };
+    } else if (name == "timezone") {
+        opts.width = 960;
+        opts.anchor = -1;
+        opts.centredVertically = true;
+        build = timeZoneDialog;
     } else if (name == "whatsnew") {
         opts.width = 560;
         opts.anchor = -1;

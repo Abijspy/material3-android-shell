@@ -36,6 +36,7 @@ public:
     bool fill = false;
     bool fromBottom = false; // the bar is on the bottom edge: drop up from it
     float bottomGap = 8;     // room kept under the card (the dock's, for its menus)
+    float width = 0;         // the card's, narrowed to a screen too small for it
 
 protected:
     SizeF doMeasure(SizeF available) override { return available; }
@@ -47,6 +48,7 @@ protected:
             card->arrange({r.x + 32, r.y + 32, r.w - 64, r.h - 64});
             return;
         }
+        if (width > 0) card->fixedWidth = std::min(width, std::max(0.0f, r.w - margin * 2));
         const SizeF s = card->measure({r.w - margin * 2, r.h - margin * 2});
         if (anchor >= 0 && !centreV && besideBar && (edge == BarEdge::Left || edge == BarEdge::Right)) {
             const float h = std::min(s.h, r.h - margin * 2);
@@ -164,7 +166,7 @@ Popup::Popup(wl::Output* output, Options options, const std::function<void(Flex*
     m_card->setPadding(Insets(20))->setSpacing(12)->setAlignItems(Align::Stretch);
     m_card->setBackground(ColorRef("surface_container", Theme::get().panelOpacity()), false)->setRadius(Radii(28));
     m_card->blurBehind = true;
-    if (!m_options.fill && m_options.width > 0) m_card->fixedWidth = m_options.width;
+    if (!m_options.fill && m_options.width > 0) m_card->fixedWidth = root->width = m_options.width;
     // Enter: fade in while dropping a few pixels into place
     // In with a pop: from a little smaller and lower, springing past full size
     m_card->setOpacity(0, false);

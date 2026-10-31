@@ -32,6 +32,7 @@
 #include "shell/PrintersPage.h"
 #include "shell/SecurityPages.h"
 #include "shell/SoftwarePages.h"
+#include "shell/TimeZoneMap.h"
 #include "shell/WellbeingPage.h"
 #include "shell/KeyCapture.h"
 #include "shell/NiriPages.h"
@@ -2192,7 +2193,6 @@ void backupRows(Flex* page) {
 
 void systemPage(Flex* page, Popup&) {
     auto alive = page->add<AliveGuard>()->alive;
-    namespace fs = std::filesystem;
     auto* dt = group(page, "Date & time");
     auto ntp = row(dt, "schedule", "Set time automatically", "From the network");
     auto* ntpSw = ntp.row->add<Switch>();
@@ -2200,30 +2200,7 @@ void systemPage(Flex* page, Popup&) {
         if (*alive) ntpSw->setChecked(out.starts_with("yes"), false);
     });
     ntpSw->onToggled = [](bool on) { m3::run({"timedatectl", "set-ntp", on ? "true" : "false"}, nullptr); };
-    // The zone /etc/localtime points into (no wait for timedatectl)
-    auto zone = std::make_shared<std::string>("UTC");
-    {
-        std::error_code ec;
-        const std::string target = fs::read_symlink("/etc/localtime", ec).string();
-        if (const auto at = target.find("zoneinfo/"); at != std::string::npos) *zone = target.substr(at + 9);
-    }
-    pickerRow(
-        dt, "public", "Time zone", [zone] { return *zone; },
-        [](auto done) {
-            static std::vector<std::string> zones;
-            if (!zones.empty()) return done(zones);
-            m3::run({"timedatectl", "list-timezones"}, [done](int, const std::string& out) {
-                std::stringstream ss(out);
-                for (std::string l; std::getline(ss, l);)
-                    if (!l.empty()) zones.push_back(l);
-                done(zones);
-            });
-        },
-        [zone](const std::string& z) {
-            *zone = z;
-            m3::run({"timedatectl", "set-timezone", z}, nullptr);
-        },
-        {"Search time zones"});
+    addTimeZoneRow(dt);
 
     auto* lang = group(page, "Language & region", "A new language applies after you sign in again");
     auto locale = std::make_shared<std::string>("en_US.UTF-8");
