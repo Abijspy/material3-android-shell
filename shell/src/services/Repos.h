@@ -72,6 +72,9 @@ public:
 
     // Flatpak
     bool flatpak() const;
+    // Flatpak, with Flathub added, in one install (one password); the
+    // remotes are read again after
+    void installFlatpak();
     const std::vector<Remote>& remotes() const { return m_remotes; }
     void addRemote(const std::string& name, const std::string& url, bool user = false);
     void addFlathub();

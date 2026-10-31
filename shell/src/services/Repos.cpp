@@ -380,6 +380,12 @@ void Repos::addRemote(const std::string& name, const std::string& url, bool user
                 "Added " + name);
 }
 
+void Repos::installFlatpak() {
+    Packages::get().runAsRoot(Packages::installingLabel("Flatpak"),
+                              std::string("pacman -S --needed --noconfirm flatpak && flatpak remote-add --if-not-exists flathub ") + kFlathub,
+                              "Installed Flatpak, with Flathub", [this](bool) { load(); });
+}
+
 void Repos::addFlathub() {
     addRemote("flathub", kFlathub);
 }

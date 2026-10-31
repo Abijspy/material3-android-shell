@@ -85,6 +85,11 @@ Row row(Node* group, const std::string& icon, const std::string& title, const st
 // in a ring
 void accentRows(Node* group);
 Button* pillButton(Node* parent, const std::string& label, bool primary, std::function<void()> fn, const std::string& icon = {});
+// What a feature needs that isn't installed: a row saying so, with Install
+// (pacman, one password), "Installing…" while it runs, and gone once every
+// one of `commands` is here. `after` runs when the install succeeds
+void missingTool(Node* group, const std::string& icon, const std::string& title, const std::string& why,
+                 std::vector<std::string> commands, std::vector<std::string> packages, std::function<void()> after = {});
 
 // A dropdown: a pill showing the choice, opening a list of items inside
 // `g` (below the row it sits in); `lead` adds something before each item

@@ -2971,6 +2971,11 @@ void toolsPage(Flex* page, Popup& popup) {
     choiceRow<int>(share, "speed", "Frame rate", "At most", "/share/maxFps", 60, {{30, "30"}, {60, "60"}, {120, "120"}});
 
     auto* clip = group(page, "Clipboard", "History through cliphist (and wl-clipboard)");
+    missingTool(clip, "content_paste_off", "Clipboard history needs cliphist", "Keeps what you copy, pictures too, for Super+V",
+                {"cliphist", "wl-copy", "wl-paste"}, {"cliphist", "wl-clipboard"}, [] {
+                    Clipboard::get().ensureWatchers();
+                    Clipboard::get().refresh();
+                });
     switchRow(clip, "history", "Keep history", "Starts the wl-paste watchers if nothing else runs them", "/clipboard/history", true,
               [](bool on) {
                   if (on) Clipboard::get().ensureWatchers();
@@ -2983,6 +2988,16 @@ void toolsPage(Flex* page, Popup& popup) {
     });
 
     auto* shots = group(page, "Screenshots", "grim and slurp; edited in satty or swappy");
+    // What each tool brings, offered only while it's missing
+    missingTool(shots, "screenshot_region", "Screenshots need grim and slurp", "Taking the screen, a window or a region",
+                {"grim", "slurp"}, {"grim", "slurp"});
+    missingTool(shots, "document_scanner", "Copying text needs tesseract", "Super+Shift+X reads the text in a region (English; more languages as tesseract-data-*)",
+                {"tesseract"}, {"tesseract", "tesseract-data-eng"});
+    missingTool(shots, "videocam", "Recording needs wf-recorder", "Super+Shift+R records a region, a window or a screen",
+                {"wf-recorder"}, {"wf-recorder"});
+    if (!haveCommand("satty"))
+        missingTool(shots, "edit", "Editing needs swappy", "Draw on, crop and annotate a screenshot before saving it",
+                    {"swappy"}, {"swappy"});
     textRow(shots, "folder", "Save to", "/screenshot/directory", "~/Pictures/Screenshots");
     switchRow(shots, "content_copy", "Copy to the clipboard", "", "/screenshot/copy", true);
     switchRow(shots, "edit", "Open in the editor", "", "/screenshot/edit", false);
@@ -3654,6 +3669,42 @@ void keybindsPage(Flex* page, Popup&) {
     kb.refresh();
 }
 
+// Flatpak has somewhere to get apps from: a remote in the system's or your
+// installation (read from their configs: no wait for flatpak)
+bool flatpakRemotes() {
+    const char* home = std::getenv("HOME");
+    for (const auto& path : {std::string("/var/lib/flatpak/repo/config"), std::string(home ? home : "") + "/.local/share/flatpak/repo/config"}) {
+        std::ifstream in(path);
+        for (std::string l; std::getline(in, l);)
+            if (l.starts_with("[remote \"")) return true;
+    }
+    return false;
+}
+
+// The Flatpak tab before there's anything to search: Flatpak to install
+// (Flathub comes with it), or Flathub to add
+void flatpakSetup(Flex* body, bool installed) {
+    auto& p = Packages::get();
+    auto* card = body->add<Flex>(Flex::Direction::Column);
+    card->setPadding({24, 28})->setSpacing(10)->setRadius(Radii(24))->setBackground("surface_container_high", false);
+    card->setAlignItems(Align::Center);
+    card->add<Icon>("storefront", 48)->setColor("primary", false);
+    card->add<Label>(installed ? "Add Flathub to get apps" : "Get apps from Flathub")->setSize(20)->setWeight(600);
+    card->add<Label>(installed ? "Flatpak is installed, but has nowhere to get apps from yet. Flathub is where most Flatpak apps are published."
+                               : "Thousands of apps, each in its own sandbox, updated along with the rest of your system. Install Flatpak to search Flathub and install them here.")
+        ->setSize(14)->setColor("on_surface_variant", false)->setMaxWidth(520)->setMaxLines(3)->setCentered(true);
+    if (p.busy()) {
+        card->add<Label>(p.status())->setSize(13)->setColor("primary", false)->setMaxWidth(520);
+        card->add<kit::WavyBar>()->alignSelf = Align::Stretch;
+        return;
+    }
+    auto* actions = card->add<Flex>(Flex::Direction::Row);
+    actions->setPadding({0, 6, 0, 0});
+    if (installed) pillButton(actions, "Add Flathub", true, [] { Repos::get().addFlathub(); }, "add");
+    else pillButton(actions, "Install Flatpak", true, [] { Repos::get().installFlatpak(); }, "download");
+    if (!installed) card->add<Label>("Flathub is added along with it")->setSize(12)->setColor("on_surface_variant", false);
+}
+
 void packagesPage(Flex* page, Popup&) {
     auto* live = page->add<Live>();
     auto tab = std::make_shared<int>(0); // 0 updates, 1 repositories, 2 official, 3 AUR, 4 Flatpak
@@ -3807,6 +3858,16 @@ void packagesPage(Flex* page, Popup&) {
             return;
         }
         if (*tab == 1) return repositoriesTab(body);
+        // Flatpak without Flatpak, or without a remote: getting it, in place
+        // of a search that can't find anything
+        if (*tab == 4 && (!Repos::get().flatpak() || !flatpakRemotes())) return flatpakSetup(body, Repos::get().flatpak());
+        // The AUR searches without a helper, but installs only with one
+        const bool noHelper = *tab == 3 && p.aurHelper().empty();
+        if (noHelper) {
+            auto* g = group(body, "No AUR helper", "Search works without one; installing from the AUR needs yay or paru");
+            auto r = row(g, "build", "yay", "Built from the AUR in a terminal, where it asks for your password");
+            pillButton(r.row, "Install yay", true, [] { Packages::get().installAurHelper(); }, "terminal");
+        }
         auto* field = body->add<TextField>();
         field->setPlaceholder(*tab == 2 ? "Search the official repositories" : *tab == 3 ? "Search the AUR" : "Search Flathub");
         field->setText(*query);
@@ -3828,6 +3889,8 @@ void packagesPage(Flex* page, Popup&) {
                 pill(badge->setBackground("secondary_container", false))->setPadding({12, 6})->setSpacing(4);
                 badge->add<Icon>("check", 16)->setColor("on_secondary_container", false);
                 badge->add<Label>("Installed")->setSize(12)->setColor("on_secondary_container", false);
+            } else if (noHelper) {
+                rr.row->add<Label>("Needs an AUR helper")->setSize(12)->setColor("on_surface_variant", false);
             } else {
                 pillButton(rr.row, "Install", true, [r] { Packages::get().install(r); }, "download");
             }
@@ -3837,6 +3900,7 @@ void packagesPage(Flex* page, Popup&) {
     // list on result changes, the tabs and field on tab changes
     live->sync = rebuild;
     live->watch(Packages::get().changed);
+    live->watch(Repos::get().changed);
     rebuild();
     // A check from more than an hour ago (or none): look again
     if (std::time(nullptr) - Packages::get().lastChecked() > 3600) Packages::get().check();
@@ -3984,10 +4048,12 @@ void aboutPage(Flex* page, Popup&) {
                     if (s.is_string()) status += (status.empty() ? "" : ", ") + s.get<std::string>();
             row(sys, "battery_full", std::format("{:.0f}%", num(b, "capacity")), status.empty() ? "Battery" : "Battery · " + status);
         }
-        if (fetched.is_null() && access("/usr/bin/fastfetch", X_OK) != 0) {
-            auto r = row(sys, "info", "More details with fastfetch", "Install fastfetch for the GPU, disks, displays, packages and battery");
-            r.title->setColor("on_surface_variant", false);
-        }
+        if (fetched.is_null() && !haveCommand("fastfetch"))
+            missingTool(sys, "info", "More details with fastfetch", "The GPU, disks, displays, packages and battery",
+                        {"fastfetch"}, {"fastfetch"}, [alive = details->alive()] {
+                            // fastfetch is asked as the page opens: open it again, if it's still open
+                            if (*alive) EventLoop::get().defer([] { settingsPage("about"); });
+                        });
     };
     details->sync();
     // Asked again each time About opens; the page may be gone by the answer

@@ -9,8 +9,8 @@
 | **Updates** | Pending updates from the official repos (`checkupdates`, which never touches pacman's own databases), the AUR (`yay -Qua`, or `paru -Qua`) and Flatpak, plus Material3UI's own. **Update now** installs them all in the background with one password: the shell's polkit dialog asks once. If pacman has a question a background run can't answer, **Use a terminal** runs the update there instead. |
 | **Repositories** | pacman's repositories, mirrors, downloads and held-back packages, and Flatpak's remotes (see below). |
 | **Official** | Search the Arch repositories and install. |
-| **AUR** | Search the AUR through its web API (no helper needed to search) and install with your AUR helper. |
-| **Flatpak** | Search Flathub and your other remotes and install. |
+| **AUR** | Search the AUR through its web API (no helper needed to search) and install with your AUR helper. Without one, the tab offers **Install yay**, built from the AUR in a terminal, where makepkg asks for your password. |
+| **Flatpak** | Search Flathub and your other remotes and install. Without Flatpak, the tab offers **Install Flatpak** in place of the search (Flathub is added with it, one password), and **Add Flathub** when Flatpak has no remote yet. |
 
 When an update needs a restart (a new kernel, systemd, drivers) or a new login (Hyprland's libraries), a banner says so and offers it.
 
@@ -43,7 +43,7 @@ The page lists the mirrors in use, in the order pacman tries them, each removabl
 
 ### Flatpak
 
-Without Flatpak, the page offers to install it. With it, every remote is listed (the system's and yours) with a switch and a remove button. **Flathub** can be added in one tap, and any other remote from its `.flatpakrepo` address. Flatpak asks for the password itself for the system's remotes.
+Without Flatpak, the page offers to install it, with Flathub added in the same step. With it, every remote is listed (the system's and yours) with a switch and a remove button. **Flathub** can be added in one tap, and any other remote from its `.flatpakrepo` address. Flatpak asks for the password itself for the system's remotes.
 
 ## Firmware
 

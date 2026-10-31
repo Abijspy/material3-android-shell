@@ -99,7 +99,13 @@ void clipboard(Flex* card, Popup& popup) {
         auto& c = Clipboard::get();
         first->line.clear();
         if (!c.available()) {
-            caption(live, "Clipboard history needs cliphist (and wl-clipboard)");
+            // cliphist to install, with Install right here; else nothing yet
+            missingTool(live, "content_paste_off", "Clipboard history needs cliphist", "Keeps what you copy, pictures too",
+                        {"cliphist", "wl-copy", "wl-paste"}, {"cliphist", "wl-clipboard"}, [] {
+                            Clipboard::get().ensureWatchers();
+                            Clipboard::get().refresh();
+                        });
+            if (haveCommand("cliphist")) caption(live, "Nothing copied yet");
             return;
         }
         size_t shown = 0;

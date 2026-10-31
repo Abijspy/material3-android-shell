@@ -247,9 +247,7 @@ void flatpakGroup(Node* page) {
     auto* g = group(page, "Flatpak", "Remotes Flatpak installs apps from");
     if (!r.flatpak()) {
         auto none = row(g, "apps", "Flatpak isn't installed", "Apps from Flathub, each in its own sandbox");
-        pillButton(none.row, "Install", true, [] {
-            Packages::get().runAsRoot("Installing Flatpak…", "pacman -S --needed --noconfirm flatpak", "Installed Flatpak: add Flathub to get apps");
-        }, "download");
+        pillButton(none.row, "Install", true, [] { Repos::get().installFlatpak(); }, "download");
         return;
     }
     bool flathub = false;

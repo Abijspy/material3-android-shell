@@ -6,6 +6,7 @@
 #include "core/Paths.h"
 #include "core/Process.h"
 #include "services/Compositor.h"
+#include "services/Packages.h"
 
 #include <algorithm>
 #include <ctime>
@@ -109,13 +110,27 @@ void Screenshot::capture(Mode mode, int delayMs, const std::string& output) {
     });
 }
 
+namespace {
+
+// A tool the action needs isn't installed: say so, and open Settings →
+// Tools, where it installs with one click, rather than fail
+bool needs(const std::string& command, const std::string& what) {
+    if (haveCommand(command)) return false;
+    run({"notify-send", "-a", "Screenshot", what, "Install it in Settings → Tools"}, nullptr);
+    if (Packages::get().openSettings) Packages::get().openSettings("tools");
+    return true;
+}
+
+} // namespace
+
 void Screenshot::ocr() {
+    if (needs("tesseract", "Copying text needs tesseract")) return;
     run({"slurp", "-d"}, [](int code, const std::string& out) {
         const std::string geometry = trimmed(out);
         if (code != 0 || geometry.empty()) return;
         run({"sh", "-c", "grim -g \"$1\" - | tesseract - - 2>/dev/null", "sh", geometry}, [](int, const std::string& text) {
             if (trimmed(text).empty()) {
-                run({"notify-send", "-a", "Screenshot", "No text found", "Is tesseract installed?"}, nullptr);
+                run({"notify-send", "-a", "Screenshot", "No text found", "Nothing tesseract could read in that region"}, nullptr);
                 return;
             }
             run({"wl-copy"}, nullptr, trimmed(text));
@@ -150,7 +165,7 @@ void Screenshot::toggleRecording(bool region, const std::string& output) {
 }
 
 void Screenshot::startRecording(const RecordOptions& o, const std::string& output, int delayMs) {
-    if (m_recording) return;
+    if (m_recording || needs("wf-recorder", "Recording needs wf-recorder")) return;
     std::string dir = paths::home() + "/Videos/Recordings";
     std::error_code ec;
     fs::create_directories(dir, ec);
@@ -191,7 +206,7 @@ void Screenshot::startRecording(const RecordOptions& o, const std::string& outpu
             recordingChanged.emit();
             std::error_code ec;
             if (code < 0 || !fs::exists(capture, ec)) {
-                run({"notify-send", "-a", "Screen recording", "Recording failed", "Is wf-recorder installed?"}, nullptr);
+                run({"notify-send", "-a", "Screen recording", "Recording failed", "wf-recorder saved nothing: try another format, or recording without hardware encoding"}, nullptr);
                 return;
             }
             if (!gif) {
@@ -279,7 +294,9 @@ void Screenshot::saved(const std::string& file) {
     // Copied, opened in the editor or announced, as Settings → Tools says
     const auto& c = Config::get();
     if (c.value<bool>("/screenshot/copy", true)) run({"sh", "-c", "wl-copy --type image/png < \"$1\"", "sh", file}, nullptr);
-    if (c.value<bool>("/screenshot/edit", false))
+    const bool editor = haveCommand("satty") || haveCommand("swappy");
+    if (c.value<bool>("/screenshot/edit", false) && !editor) needs("swappy", "Editing screenshots needs swappy (saved without it)");
+    if (c.value<bool>("/screenshot/edit", false) && editor)
         spawn(std::format("command -v satty >/dev/null && satty --filename '{0}' --output-filename '{0}' || swappy -f '{0}'", file));
     else if (c.value<bool>("/screenshot/notify", true))
         run({"notify-send", "-a", "Screenshot", "-i", file, "Screenshot saved",

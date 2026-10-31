@@ -915,7 +915,10 @@ void monitorSections(Flex* page) {
             const size_t enabled = static_cast<size_t>(std::ranges::count_if(monitors, [](const auto& x) { return !x.disabled; }));
             sw->onToggled = [m, enabled, sw](bool v) {
                 // The last display stays on: nothing could turn it back
-                if (!v && enabled <= 1) return sw->setChecked(true);
+                if (!v && enabled <= 1) {
+                    sw->setChecked(true);
+                    return;
+                }
                 changeMonitor(m, {{"disabled", !v}}, true);
             };
             if (m.disabled) continue;

@@ -15,6 +15,10 @@ bool spawn(const std::string& command);
 int run(const std::vector<std::string>& argv, std::function<void(int code, const std::string& out)> done,
          const std::string& input = {});
 
+// A command on PATH (or a path) that can run: whether a feature's tool is
+// installed
+bool haveCommand(const std::string& name);
+
 // Called on SIGCHLD: reaps the exited children spawn() and run() started
 // (never others: libraries wait for their own) and completes run() jobs
 void reapChildren();

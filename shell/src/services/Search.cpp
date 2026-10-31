@@ -4,6 +4,7 @@
 #include "core/Paths.h"
 #include "core/Process.h"
 #include "services/Clipboard.h"
+#include "services/Packages.h"
 
 #include <algorithm>
 #include <cctype>
@@ -471,8 +472,13 @@ std::string imageDetails(const std::string& preview) {
 std::vector<SearchResult> clipboard(const std::string& q) {
     std::vector<SearchResult> out;
     auto& cb = Clipboard::get();
-    if (!cb.available())
-        return {{"Clipboard history is unavailable", "Install cliphist and run wl-paste --watch cliphist store", "", "content_paste_off", "", 0, {}}};
+    if (!cb.available()) {
+        // cliphist missing: Return opens Settings → Tools, where it installs
+        if (haveCommand("cliphist")) return {{"Nothing copied yet", "What you copy shows up here", "", "content_paste_off", "", 0, {}}};
+        return {{"Clipboard history needs cliphist", "Return opens Settings → Tools, where it installs", "", "content_paste_off", "", 0, [] {
+                     if (Packages::get().openSettings) Packages::get().openSettings("tools");
+                 }}};
+    }
     double rank = 1000;
     for (const auto& e : cb.entries()) {
         if (out.size() >= 80) break;

@@ -2,8 +2,12 @@
 
 #include "core/Config.h"
 #include "core/EventLoop.h"
+#include "core/Process.h"
+#include "services/Packages.h"
 #include "services/Wallpaper.h"
+#include "shell/PanelKit.h"
 
+#include <algorithm>
 #include <format>
 #include <linux/input-event-codes.h>
 #include <memory>
@@ -25,6 +29,33 @@ Flex* panelGroup(Node* page, const std::string& title, const std::string& subtit
     auto* inner = group(page, title, subtitle)->add<Flex>(Flex::Direction::Column);
     inner->setAlignItems(Align::Stretch)->setSpacing(12)->setPadding({20, 16});
     return inner;
+}
+
+void missingTool(Node* group, const std::string& icon, const std::string& title, const std::string& why,
+                 std::vector<std::string> commands, std::vector<std::string> packages, std::function<void()> after) {
+    auto* live = group->add<kit::Live>();
+    live->collapseWhenEmpty = true;
+    std::string what;
+    for (size_t i = 0; i < packages.size(); ++i) what += (i == 0 ? "" : i + 1 == packages.size() ? " and " : ", ") + packages[i];
+    live->sync = [live, icon, title, why, commands, packages, after, what] {
+        live->clearChildren();
+        if (std::ranges::all_of(commands, [](const std::string& c) { return haveCommand(c); })) return;
+        auto r = row(live, icon, title, why);
+        auto& p = Packages::get();
+        if (p.busy()) {
+            // Ours running, or another task first: one at a time
+            r.row->add<Label>(p.status() == Packages::installingLabel(what) ? "Installing…" : "After the current task")
+                ->setSize(13)->setColor("on_surface_variant", false);
+            return;
+        }
+        pillButton(r.row, "Install", true, [packages, after, what] {
+            Packages::get().installTools(what, packages, [after](bool ok) {
+                if (ok && after) after();
+            });
+        }, "download");
+    };
+    live->watch(Packages::get().changed);
+    live->sync();
 }
 
 Row row(Node* group, const std::string& icon, const std::string& title, const std::string& subtitle) {

@@ -271,12 +271,13 @@ std::string Packages::helperCommand(const std::string& args) const {
     return m_helper + " " + args + " --noconfirm --sudo pkexec --answerclean None --answerdiff None --answeredit None";
 }
 
-void Packages::runTask(const std::string& label, const std::string& script, const std::string& doneText) {
+void Packages::runTask(const std::string& label, const std::string& script, const std::string& doneText,
+                       std::function<void(bool ok)> after) {
     if (m_busy) return;
     m_busy = true;
     m_status = label;
     changed.emit();
-    run({"sh", "-c", "{ " + script + "; } 2>&1"}, [this, doneText](int code, const std::string& out) {
+    run({"sh", "-c", "{ " + script + "; } 2>&1"}, [this, doneText, after](int code, const std::string& out) {
         m_busy = false;
         // pkexec: 126 when the dialog was dismissed, 127 when not authorised
         std::string last;
@@ -293,6 +294,7 @@ void Packages::runTask(const std::string& label, const std::string& script, cons
                                : m_restart.session ? "Log out and back in to finish"
                                : m_restart.shell ? "Restart the shell to finish" : "";
         run({"notify-send", "-a", "Software & updates", m_status, note}, nullptr);
+        if (after) after(code == 0);
         changed.emit();
         refreshInstalled();
         check();
@@ -351,11 +353,37 @@ void Packages::checkRestart() {
     if (m_restart.any() && !was) changed.emit();
 }
 
-void Packages::runAsRoot(const std::string& label, const std::string& script, const std::string& doneText) {
+void Packages::runAsRoot(const std::string& label, const std::string& script, const std::string& doneText,
+                         std::function<void(bool ok)> after) {
     // One prompt for the whole script
     std::string quoted = "'";
     for (char c : script) quoted += c == '\'' ? std::string("'\\''") : std::string(1, c);
-    runTask(label, "pkexec /usr/bin/sh -c " + quoted + "'", doneText);
+    runTask(label, "pkexec /usr/bin/sh -c " + quoted + "'", doneText, std::move(after));
+}
+
+void Packages::installTools(const std::string& what, const std::vector<std::string>& packages, std::function<void(bool ok)> after) {
+    // Package names only: they go into a root shell's command line
+    std::string names;
+    for (const auto& p : packages) {
+        if (p.empty() || p.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789@._+-") != std::string::npos) return;
+        names += " " + p;
+    }
+    if (names.empty()) return;
+    runAsRoot(installingLabel(what), "pacman -S --needed --noconfirm" + names, "Installed " + what, std::move(after));
+}
+
+void Packages::installAurHelper() {
+    // makepkg won't run as root: in a terminal, as you, sudo asking there
+    const std::string script =
+        "tmp=$(mktemp -d) && sudo pacman -S --needed base-devel git && "
+        "git clone --depth 1 https://aur.archlinux.org/yay-bin.git \"$tmp/yay-bin\" && cd \"$tmp/yay-bin\" && makepkg -si; "
+        "cd /; rm -rf \"$tmp\"; echo; read -p 'Press Enter to close…' _";
+    run({terminal(), "-e", "sh", "-c", script}, [this](int, const std::string&) {
+        for (const char* h : {"yay", "paru"})
+            if (m_helper.empty() && haveCommand(h)) m_helper = h;
+        changed.emit();
+        check();
+    });
 }
 
 namespace {

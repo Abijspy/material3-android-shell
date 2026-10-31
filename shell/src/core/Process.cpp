@@ -3,6 +3,7 @@
 #include "core/EventLoop.h"
 
 #include <cerrno>
+#include <cstdlib>
 #include <csignal>
 #include <fcntl.h>
 #include <map>
@@ -165,6 +166,20 @@ void reapChildren() {
         job->code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
         job->maybeFinish();
     }
+}
+
+bool haveCommand(const std::string& name) {
+    if (name.empty()) return false;
+    if (name.find('/') != std::string::npos) return access(name.c_str(), X_OK) == 0;
+    const char* env = std::getenv("PATH");
+    const std::string path = env && *env ? env : "/usr/local/bin:/usr/bin:/bin";
+    size_t start = 0;
+    while (start <= path.size()) {
+        const size_t end = std::min(path.find(':', start), path.size());
+        if (end > start && access((path.substr(start, end - start) + "/" + name).c_str(), X_OK) == 0) return true;
+        start = end + 1;
+    }
+    return false;
 }
 
 } // namespace m3

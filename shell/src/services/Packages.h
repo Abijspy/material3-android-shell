@@ -51,8 +51,17 @@ public:
     // The git checkout install.sh made (empty if unknown)
     std::string installDir() const;
     void setChannel(const std::string& channel);
-    // Runs `script` with root, asking through polkit; `done` gets success
-    void runAsRoot(const std::string& label, const std::string& script, const std::string& doneText);
+    // Runs `script` with root, asking through polkit; `after` gets success
+    void runAsRoot(const std::string& label, const std::string& script, const std::string& doneText,
+                   std::function<void(bool ok)> after = {});
+    // Tools a feature needs, from the official repositories, with one
+    // password: installingLabel(what) is the status while it runs, and
+    // `after` gets how it ended
+    void installTools(const std::string& what, const std::vector<std::string>& packages, std::function<void(bool ok)> after = {});
+    static std::string installingLabel(const std::string& what) { return "Installing " + what + "…"; }
+    // yay, built from the AUR in a terminal: makepkg runs as you and sudo
+    // asks there; the helper is looked for again when it closes
+    void installAurHelper();
 
     // What an update left waiting for a restart: the computer (a new kernel,
     // systemd, glibc, drivers, firmware), the session (Hyprland's own
@@ -79,7 +88,8 @@ public:
     std::function<void(const std::string& page)> openSettings;
     // A background task (pacman, pkexec…): its label while it runs, then
     // doneText or why it didn't finish; one at a time
-    void runTask(const std::string& label, const std::string& script, const std::string& doneText);
+    void runTask(const std::string& label, const std::string& script, const std::string& doneText,
+                 std::function<void(bool ok)> after = {});
     // Search and install
     void search(Source source, const std::string& query);
     bool searching() const { return m_searching; }
