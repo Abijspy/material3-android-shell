@@ -1,5 +1,16 @@
 # Changelog
 
+## v6.2 — 2026-10-31
+
+- **Install, don't explain.** Where a missing tool used to leave a note or a failure, the shell now offers to install it, with one password:
+  - **Flatpak:** the Flatpak tab in Software & updates shows Install Flatpak (Flathub comes with it) in place of a search that couldn't find anything, and Add Flathub when Flatpak has nowhere to get apps from.
+  - **AUR:** without an AUR helper, the AUR tab offers to install yay, and its results say they need one instead of failing.
+  - **Tools:** clipboard history (cliphist, in Settings → Tools and the Super+V popup), copying text from the screen (tesseract), screen recording (wf-recorder) and the screenshot editor (swappy) each show Install while they're missing. About offers fastfetch.
+  - **Shortcuts:** copying text, recording and the editor now check first: a missing tool brings up a notice and Settings → Tools, rather than a failure afterwards.
+- **Turn Bluetooth and the network on.** When bluetoothd or NetworkManager isn't running, the Quick Settings tiles say "Tap to turn on" and a tap starts it; the Bluetooth and Wi-Fi panels and Settings show Turn on too (Install when it isn't installed). If iwd or systemd-networkd runs your network, NetworkManager takes over from it in the same step. Bluetooth now tells a stopped service from a missing adapter.
+- **A quieter clipboard popup.** Clear all and the search field appear only once there's something to clear or find.
+- **Steadier.** A clean build has no warnings any more. One of them was real: switching the last display back on in Hyprland Settings → Displays left a function without its return value.
+
 ## v6.1 — 2026-10-31
 
 - **Pick your time zone on a world map.** Settings → System → Time zone → Change opens a map of the world, with country borders, lakes and the night side shaded where the sun has set. Point at a place to see its name and the time there, and click to choose it: a pin marks it, a band shows its hours, and every place on the same time right now lights up. Or search for a city, country or zone (UTC and tzdata's other names too). Below the map, the zone in detail: its abbreviation, UTC offset, the time there and when its clocks next change for daylight saving. Nothing changes until you press Set time zone, and if the password prompt is refused, Settings says so and keeps your old zone.
