@@ -123,8 +123,10 @@ bool SharePicker::start() {
     std::filesystem::create_directories(paths::runtimeDir(), ec);
     for (const auto& m : monitors) {
         const std::string file = paths::runtimeDir() + "/share-" + m.name + ".png";
-        // Taken now, before the picker covers the screen
-        std::system(std::format("grim -s 0.25 -o '{}' '{}' 2>/dev/null", m.name, file).c_str());
+        // Taken now, before the picker covers the screen. A grab that fails
+        // shows no preview, never the one an earlier share left
+        if (std::system(std::format("grim -s 0.25 -o '{}' '{}' 2>/dev/null", m.name, file).c_str()) != 0)
+            std::filesystem::remove(file, ec);
         shots.push_back({m.name, file});
     }
 

@@ -13,7 +13,9 @@ on:
 
 jobs:
   packages:
-    runs-on: ubuntu-latest
+    # The build runs in the Arch container; the host only runs it. Named, so
+    # ubuntu-latest moving to a new release changes nothing here
+    runs-on: ubuntu-24.04
     container: archlinux:base-devel
     permissions:
       contents: write
@@ -22,7 +24,7 @@ jobs:
     steps:
       - name: Tools
         run: pacman -Syu --noconfirm git github-cli
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ env.TAG }}
           fetch-depth: 0
