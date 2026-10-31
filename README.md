@@ -15,6 +15,7 @@
   <a href="#hyprland-or-niri">Hyprland or niri</a> ·
   <a href="#a-tour">Tour</a> ·
   <a href="#make-it-yours">Customise</a> ·
+  <a href="#repository-structure">Code</a> ·
   <a href="#faq">FAQ</a> ·
   <a href="https://github.com/Abijspy/material3-android-shell/releases/latest">Releases</a> ·
   <a href="CHANGELOG.md">Changelog</a>
@@ -293,15 +294,48 @@ flowchart LR
     S --- U[pacman · AUR · Flatpak]
 ```
 
-| Path | Contents |
-| :--- | :--- |
-| [`shell/`](shell) | The shell: Wayland, rendering, services and every panel, in C++ ([architecture](shell/README.md)) |
-| [`dotfiles/.config/hypr/`](dotfiles/.config/hypr) | Modular Hyprland Lua config |
-| [`dotfiles/.config/niri/`](dotfiles/.config/niri) | `material3ui.kdl`: the shell's part of a niri config (startup, your apps, keys, and the include for what Settings writes) |
-| [`dotfiles/.config/matugen/`](dotfiles/.config/matugen) | Colour templates for other apps |
-| [`dotfiles/.local/share/material3ui/`](dotfiles/.local/share/material3ui) | Theme hooks Matugen runs (GTK, KDE, terminals) |
-| [`greeter/`](greeter) | The greetd sessions for the login screen (on Hyprland or niri) and the `material3ui-greeter` tool |
-| [`data/dependencies.json`](data/dependencies.json) | What the installer installs, per compositor ([readable list](docs/DEPENDENCIES.md)) |
+### Repository structure
+
+```text
+material3-android-shell/
+├── install.sh                  the installer: the compositor, packages, the shell, configs (--help)
+├── update.sh                   updates the shell and the configs it ships, keeping yours
+├── VERSION, CHANGELOG.md       the release, and what changed (the shell's What's new reads it)
+├── shell/                      the shell itself, in C++20
+│   ├── src/
+│   │   ├── core/               the event loop, config.json, file watching, processes, versions
+│   │   ├── wayland/            outputs, input, layer and lock surfaces, app windows
+│   │   ├── render/             OpenGL ES drawing, text (Pango) and pictures (icons, SVG, photos)
+│   │   ├── ui/                 the widget toolkit: layout, labels, buttons, sliders, text fields, theme
+│   │   ├── services/           Hyprland and niri, audio, network, Bluetooth, power, notifications,
+│   │   │                       packages, weather, calendar, time zones and the rest
+│   │   ├── shell/              the bar, dock, panels, lock screen, Settings, Hyprland and Niri Settings
+│   │   ├── greeter/            `material3ui greeter`, the login screen greetd runs
+│   │   ├── dbus/  ipc/         sd-bus on the event loop; the IPC socket and `material3ui msg`
+│   │   ├── polkit/             the polkit agent
+│   │   ├── quickshare/         Quick Share with Android phones (Bluetooth LE, mDNS, QR codes)
+│   │   └── share/              the screen-sharing picker
+│   ├── data/                   installed to /usr/share/material3ui: icons, wallpapers, avatars, the world
+│   │                           map, .desktop files, the lock screen's PAM file, the update helper
+│   ├── tests/                  unit tests (meson test)
+│   └── tools/                  for development: a container build, headless runs with screenshots,
+│                               stand-ins for Hyprland and greetd, a virtual pointer, UI test scripts
+├── dotfiles/
+│   ├── .config/hypr/           the modular Hyprland config: hyprland.lua and material3ui/*.lua
+│   ├── .config/niri/           material3ui.kdl, the shell's part of a niri config
+│   ├── .config/matugen/        colour templates: GTK, KDE, terminals, editors, Hyprland and more
+│   ├── .config/alacritty/      the terminal, recoloured with the wallpaper
+│   └── .local/share/material3ui/scripts/   the theme hooks Matugen runs
+├── greeter/                    the login screen's sessions (on Hyprland or niri) and material3ui-greeter
+├── packaging/                  PKGBUILDs for material3ui and material3ui-greeter, and build-pkg.sh
+├── data/dependencies.json      every package the installer can install, by group (list: docs/DEPENDENCIES.md)
+├── docs/                       the guides: install, Hyprland, niri, the login screen, IPC, packages, migration
+├── scripts/                    generators for the emoji list, the logo, the wallpapers and the world map
+├── extras/                     optional configs: kitty, fish, hypridle and hyprlock, a Ryzen power-mode service
+└── .github/workflows/          builds both packages for every release
+```
+
+How the shell's code fits together, and the rules it follows: [shell/README.md](shell/README.md).
 
 ### How it's measured
 
