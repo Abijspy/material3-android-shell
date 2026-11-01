@@ -6,6 +6,7 @@
 
 #include "core/Config.h"
 #include "core/EventLoop.h"
+#include "core/FileWatcher.h"
 #include "core/Log.h"
 #include "core/Process.h"
 #include "core/Version.h"
@@ -15,12 +16,14 @@
 #include "services/PacmanLog.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <format>
 #include <nlohmann/json.hpp>
 #include <regex>
 #include <fstream>
+#include <map>
 #include <sstream>
 #include <sys/stat.h>
 #include <sys/utsname.h>
@@ -102,6 +105,74 @@ Packages::Packages() {
     loadCache();
     refreshInstalled();
     checkRestart();
+    // The list as it was saved, less what's been installed since (update.sh
+    // restarts the shell before the update's own check could run)
+    prune();
+    // pacman closes its log as each run ends: an update by hand in a
+    // terminal, say. Updates run here prune and check when they end
+    FileWatcher::get().watch("/var/log/pacman.log", [this] {
+        EventLoop::get().debounce(m_logTimer, 3000, [this] {
+            if (m_busy) return;
+            checkRestart();
+            refreshInstalled();
+            prune();
+            check();
+        });
+    });
+}
+
+bool Packages::installedSinceCheck() const {
+    std::error_code ec;
+    const auto t = std::filesystem::last_write_time("/var/log/pacman.log", ec);
+    if (ec) return false;
+    const auto when = std::chrono::clock_cast<std::chrono::system_clock>(t);
+    return std::chrono::system_clock::to_time_t(when) > m_lastChecked;
+}
+
+void Packages::prune() {
+    // Repo and AUR packages still at the version the check found them at
+    // stay: one replaced (or removed) since is off the list until a check
+    // finds something newer again. The shell: off once this build is the
+    // release it offered, or the checkout holds the commits it counted
+    std::vector<std::string> argv{"sh", "-c", "", "sh"};
+    bool shellCommits = false;
+    for (const auto& u : m_updates) {
+        if (u.source == Source::Repo || u.source == Source::Aur) argv.push_back(u.name);
+        if (u.source == Source::Shell && u.to.ends_with(" new commits")) shellCommits = true;
+    }
+    const std::string dir = m_shellDir.empty() ? installDir() : m_shellDir;
+    argv[2] = std::string(argv.size() > 4 ? "pacman -Q -- \"$@\" 2>/dev/null; " : "") +
+              (shellCommits && !dir.empty() ? "echo \"#SHELL $(git -C '" + dir + "' rev-list --count HEAD..origin/main 2>/dev/null)\"; " : "") +
+              "exit 0";
+    run(argv, [this](int, const std::string& out) {
+        std::map<std::string, std::string> installed;
+        int commits = -1;
+        std::stringstream ss(out);
+        for (std::string line; std::getline(ss, line);) {
+            std::stringstream ls(line);
+            std::string name, version;
+            ls >> name >> version;
+            if (name == "#SHELL") commits = version.empty() ? -1 : std::atoi(version.c_str());
+            else if (!version.empty()) installed[name] = version;
+        }
+        const size_t before = m_updates.size();
+        std::erase_if(m_updates, [&](const Update& u) {
+            switch (u.source) {
+            case Source::Repo:
+            case Source::Aur: {
+                const auto it = installed.find(u.name);
+                return it == installed.end() || it->second != u.from;
+            }
+            case Source::Shell:
+                return u.to.ends_with(" new commits") ? commits == 0 : !newerVersion(u.to, M3_VERSION);
+            case Source::Flatpak: break; // only a check can tell
+            }
+            return false;
+        });
+        if (m_updates.size() == before) return;
+        saveCache();
+        changed.emit();
+    });
 }
 
 bool Packages::includes(Source s) {
@@ -169,7 +240,9 @@ void Packages::startAutoCheck() {
 void Packages::autoCheck() {
     const int hours = Config::get().value<int>("/updates/checkEvery", 24);
     if (hours <= 0 || m_checking || m_busy) return;
-    if (m_lastChecked && std::time(nullptr) - m_lastChecked < static_cast<std::time_t>(hours) * 3600 - 60) return;
+    // Due, or packages installed since (the update that restarted the shell)
+    const bool due = !m_lastChecked || std::time(nullptr) - m_lastChecked >= static_cast<std::time_t>(hours) * 3600 - 60;
+    if (!due && !installedSinceCheck()) return;
     const auto before = std::make_shared<std::set<std::string>>(m_seen);
     auto waiting = std::make_shared<int>(1);
     auto finish = [this, before, waiting] {
@@ -302,6 +375,9 @@ void Packages::runTask(const std::string& label, const std::string& script, cons
         if (after) after(code == 0);
         changed.emit();
         refreshInstalled();
+        // What it installed off the list now; the check (mirrors, the AUR,
+        // Flatpak) takes a while to confirm the rest
+        prune();
         check();
     });
 }
@@ -505,6 +581,7 @@ void Packages::upgradeInTerminal() {
                             std::string("; command -v flatpak >/dev/null && flatpak update; echo; read -p 'Done. Press Enter to close…' _");
     run({terminal(), "-e", "sh", "-c", cmd}, [this](int, const std::string&) {
         refreshInstalled();
+        prune();
         check();
     });
 }

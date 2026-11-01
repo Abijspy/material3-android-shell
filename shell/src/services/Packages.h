@@ -103,6 +103,12 @@ public:
 private:
     Packages();
     void refreshInstalled();
+    // Takes what's been installed since the list was made off it at once,
+    // from pacman's own database and the checkout (no network): an update
+    // run here, in a terminal, or by update.sh, which restarts the shell
+    void prune();
+    // pacman's log written since the last check: something was installed
+    bool installedSinceCheck() const;
     // A newer release (stable channel) or new commits (latest) of the shell
     void checkShell(std::function<void()> done);
     void autoCheck();
@@ -125,7 +131,7 @@ private:
     int m_token = 0;
     std::set<std::string> m_seen; // updates already told about
     bool m_upgrading = false;
-    EventLoop::TimerId m_autoTimer = 0;
+    EventLoop::TimerId m_autoTimer = 0, m_logTimer = 0;
 };
 
 } // namespace m3
