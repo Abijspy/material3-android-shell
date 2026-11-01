@@ -1,5 +1,12 @@
 # Changelog
 
+## v6.2.5 — 2026-11-01
+
+- **Airplane mode.** One switch turns off every radio (Wi-Fi, Bluetooth and any other) without asking for a password, and turning it off brings Wi-Fi and Bluetooth back just as they were. You can still turn either one on by itself while it's on. It's at the top of Settings → Network & internet, and the Airplane mode tile in Quick Settings now really switches the radios off (add it with the pencil button). The status bar shows a plane in place of Wi-Fi while it's on.
+- **The airplane key works with it.** On laptops with an airplane key, pressing it switches airplane mode and shows "Airplane mode on" or "off" on screen, on niri and Hyprland. Without the shell running, the key switches the radios as before. Scripts can use `material3ui msg airplane on|off|toggle`.
+- **Status icons that react.** Bluetooth springs in when it turns on and settles out when it turns off. Muting shakes the speaker and unmuting pops it back. Do not disturb tucks the bell away, and a new notification rings it. With animations off, they stay still.
+- **Installed updates leave the list straight away.** The updates chip no longer counts updates you've just installed. It used to keep them until the next check, and for up to a day after an update that included the shell itself. Updates installed in a terminal are noticed too, and a fresh check follows to confirm what's left.
+
 ## v6.2.4 — 2026-11-01
 
 - **Nothing runs over anything any more.** Settings rows make room for themselves: when a row's controls would crowd its title, the title takes a line of its own and the controls go under it, onto more lines if need be. This happens in a narrow window, with large text, or with a long name. The password fields in Users no longer cover their title or push Change off the page.
