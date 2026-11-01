@@ -1,5 +1,13 @@
 # Changelog
 
+## v6.2.2 — 2026-11-01
+
+- **A status bar in Material 3 Expressive's style.** The icons look as they do on Android 16:
+  - **Wi-Fi:** a dot under three rounded arcs, with the arcs your signal doesn't reach shown faint.
+  - **Battery:** a pill that the charge fills, with the percentage inside in bold, readable at any level. It shows a bolt while charging, turns red when low, and takes your palette's tertiary colour in power saver.
+  - **The rest:** Bluetooth, volume and notifications are filled.
+- **Tap to click on the login screen.** On niri, the login screen now uses your touchpad settings (tap to click, natural scrolling, click method, speed), and your mouse's too, synced like your keyboard layout and monitors. Tapping works there even before the first sync.
+
 ## v6.2.1 — 2026-11-01
 
 - **Updates install again.** On a system where the installer had built the shell over an older package, updating to 6.2 stopped with "Errors occurred, no packages were upgraded": the new version's files (the world map, niri's icon) were already there, owned by no package. Updates now take over the shell's own files whatever pacman had recorded, and the installer installs the shell as a pacman package itself, so this can't build up again. If an update from 6.2 still stops, run `./install.sh` once.
