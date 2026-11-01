@@ -2,6 +2,7 @@
 
 #include "shell/bar/Widgets.h"
 
+#include "core/EventLoop.h"
 #include "render/Images.h"
 #include "render/Renderer.h"
 #include "services/Audio.h"
@@ -12,6 +13,7 @@
 #include "services/Tray.h"
 #include "ui/Theme.h"
 
+#include <algorithm>
 #include <cairo.h>
 #include <cmath>
 #include <linux/input-event-codes.h>
@@ -107,10 +109,13 @@ private:
         if (auto it = made.find(key); it != made.end()) return it->second;
         cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, px, px);
         cairo_t* cr = cairo_create(surface);
-        const double s = px, cx = s / 2, cy = s * 0.82, stroke = s * 0.12;
+        // Inside its box with a margin: the outer arc's round-capped ends
+        // reach 0.707 r + stroke/2 from the centre (0.46 of the width), and
+        // the whole stands centred top to bottom
+        const double s = px, cx = s / 2, cy = s * 0.775, stroke = s * 0.10;
         cairo_set_source_rgba(cr, 1, 1, 1, 1);
         if (lit == (arcs >= 0)) {
-            cairo_arc(cr, cx, cy, s * 0.09, 0, 2 * std::numbers::pi);
+            cairo_arc(cr, cx, cy, s * 0.085, 0, 2 * std::numbers::pi);
             cairo_fill(cr);
         }
         cairo_set_line_width(cr, stroke);
@@ -118,7 +123,7 @@ private:
         for (int i = 0; i < 3; ++i) {
             if ((i < arcs) != lit) continue;
             cairo_new_sub_path(cr);
-            cairo_arc(cr, cx, cy, s * (0.30 + 0.20 * i), -0.75 * std::numbers::pi, -0.25 * std::numbers::pi);
+            cairo_arc(cr, cx, cy, s * (0.22 + 0.18 * i), -0.75 * std::numbers::pi, -0.25 * std::numbers::pi);
             cairo_stroke(cr);
         }
         cairo_destroy(cr);
@@ -148,10 +153,14 @@ protected:
 };
 
 // The charge as Android 16 draws it: a rounded body the charge fills, the
-// percentage inside it in bold, a bolt while charging, the tip on its
-// right. Red when low, the tertiary colour in power saver. The number is
+// percentage inside it in bold, a bolt while plugged in, the tip on its
+// right, in batteryColor()'s colour. The number is
 // drawn twice, split where the charge ends: in the bar's colour over the
-// charge, in the charge's over the rest, so it reads at any level
+// charge, in the charge's over the rest, so it reads at any level.
+// Plugging in pops it (the bolt springing in, the charge flashing the
+// accent); unplugging dips it (the bolt gone). While it charges
+// a light sweeps along the charge every few seconds, drawn only while it
+// moves (frames between sweeps would cost power for hours)
 class BatteryPill : public Node {
 public:
     explicit BatteryPill(bool compact) : m_compact(compact) {
@@ -161,19 +170,33 @@ public:
             m_text[i]->setSpacing(0)->setAlignItems(Align::Center);
             m_bolt[i] = m_text[i]->add<Icon>("bolt", compact ? 9 : 11);
             m_bolt[i]->setFill(true);
+            m_bolt[i]->setVisible(false);
             m_label[i] = m_text[i]->add<Label>();
             m_label[i]->setSize(compact ? 8.5f : 10)->setWeight(700);
         }
     }
-    void set(int percent, bool charging, const std::string& role) {
+    ~BatteryPill() override {
+        if (m_timer) EventLoop::get().cancel(m_timer);
+    }
+    void set(int percent, bool plugged, bool charging, const ColorRef& color) {
         m_percent = std::clamp(percent, 0, 100);
-        m_role = role;
+        m_color = color;
         for (int i = 0; i < 2; ++i) {
-            const ColorRef c = i == 0 ? ColorRef("surface") : ColorRef(role);
+            const ColorRef c = i == 0 ? ColorRef("surface") : color;
             m_label[i]->setText(std::to_string(m_percent));
             m_label[i]->setColor(c, false);
             m_bolt[i]->setColor(c, false);
-            m_bolt[i]->setVisible(charging);
+        }
+        // The cable: in at once the first time, animated after that
+        if (!m_known || plugged != m_plugged) {
+            const bool animate = m_known;
+            m_known = true;
+            m_plugged = plugged;
+            plugged ? plugIn(animate) : plugOut(animate);
+        }
+        if (charging != m_charging) {
+            m_charging = charging;
+            sweepSoon(charging ? 900 : 0);
         }
         requestLayout();
     }
@@ -192,14 +215,25 @@ protected:
         m_clip[1]->arrange({b.x + filled, b.y, b.w - filled, b.h});
         for (auto* t2 : m_text) t2->arrange(at);
     }
+    bool doAnimating() const override { return m_flash.running() || m_sweep.running(); }
     void doPaint(Renderer& r) override {
+        const auto& theme = Theme::get();
         const RectF b = body();
-        const Color c = Theme::get().color(m_role);
+        const Color c = m_color.resolve();
         const Radii round(m_compact ? 3.5f : 4.5f);
         r.rect(b, c.withAlpha(0.35f), round);
+        const float filled = b.w * static_cast<float>(m_percent) / 100.0f;
         if (m_percent > 0) {
-            r.pushClip({b.x, b.y, b.w * static_cast<float>(m_percent) / 100.0f, b.h});
+            r.pushClip({b.x, b.y, filled, b.h});
             r.rect(b, c, round);
+            // Just plugged in: the charge lit in the accent, fading back
+            if (const float f = m_flash.value(); f > 0.01f) r.rect(b, theme.color("primary").withAlpha(f), round);
+            // Charging: a soft light travelling along the charge
+            if (m_sweep.running()) {
+                const float band = b.h * 1.4f, v = m_sweep.value();
+                const float x = b.x - band + (filled + band) * v;
+                r.rect({x, b.y, band, b.h}, theme.color("inverse_primary").withAlpha(0.55f * std::sin(v * std::numbers::pi_v<float>)), Radii(band / 2));
+            }
             r.popClip();
         }
         const float tipH = b.h * 0.4f;
@@ -211,14 +245,69 @@ private:
         const RectF& r = rect();
         return {r.x, r.y, r.w - 3, r.h};
     }
+    void plugIn(bool animate) {
+        for (auto* bolt : m_bolt) {
+            bolt->setVisible(true);
+            if (animate) bolt->setScale(0.2f, false);
+            bolt->setScale(1, animate);
+        }
+        if (!animate) return;
+        // A pop: up at once, then the bouncy spring back
+        setScale(1.22f, false);
+        setScale(1);
+        m_flash.set(0.85f, false);
+        m_flash.set(0);
+        requestRedraw();
+    }
+    void plugOut(bool animate) {
+        // The bolt gone at once: the number closing up under the dip
+        for (auto* bolt : m_bolt) bolt->setVisible(false);
+        if (!animate) return;
+        setScale(0.82f, false);
+        setScale(1);
+        requestRedraw();
+    }
+    // The next sweep in `ms` while charging; none once it stops
+    void sweepSoon(int ms) {
+        if (m_timer) EventLoop::get().cancel(m_timer);
+        m_timer = 0;
+        if (!m_charging || motion::scale <= 0) return;
+        m_timer = EventLoop::get().addTimer(ms, [this] {
+            m_timer = 0;
+            m_sweep.set(0, false);
+            m_sweep.set(1);
+            requestRedraw();
+            sweepSoon(6000);
+        });
+    }
+
     bool m_compact;
     int m_percent = 100;
-    std::string m_role = "on_surface";
+    bool m_known = false, m_plugged = false, m_charging = false;
+    ColorRef m_color = ColorRef("on_surface");
     Clip* m_clip[2];
     Flex* m_text[2];
     Icon* m_bolt[2];
     Label* m_label[2];
+    Tween m_flash{0, 700, Easing::standard()};
+    Tween m_sweep{0, 1400, Easing::standard()};
+    EventLoop::TimerId m_timer = 0;
 };
+
+// The battery's colour: red below 20%; yellow while it charges; green once
+// charged (on the cable and no longer charging: full, or held at a charge
+// limit); else the bar's, or the tertiary colour in power saver. Material
+// You has no yellow or green: Material's own at tone 80 on a dark theme
+// (light fills under dark digits), tone 40 on a light one
+ColorRef batteryColor(int percent, bool plugged, bool charging, bool full, bool saver) {
+    if (percent < 20) return ColorRef("error");
+    const Color s = Theme::get().color("surface");
+    const bool dark = 0.2126f * s.r + 0.7152f * s.g + 0.0722f * s.b < 0.5f;
+    if (plugged && (full || !charging || percent >= 100))
+        return dark ? Color{0.427f, 0.835f, 0.549f, 1} : Color{0.078f, 0.424f, 0.180f, 1}; // #6dd58c, #146c2e
+    if (charging) return dark ? Color{1.0f, 0.835f, 0.31f, 1} : Color{0.478f, 0.349f, 0.0f, 1}; // #ffd54f, #7a5900
+    return saver ? ColorRef("tertiary") : ColorRef("on_surface");
+}
 
 // ── StatusIcons ──
 
@@ -301,14 +390,15 @@ BatteryStatus::BatteryStatus(OpenPopup open, bool vertical) : Button(vertical ? 
     };
     m_pill = add<BatteryPill>(vertical);
     m_conn = Power::get().changed.connect([this] { sync(); });
+    // A light or dark theme picks the green and yellow tones
+    m_theme = Theme::get().changed.connect([this] { sync(); });
     sync();
 }
 
 void BatteryStatus::sync() {
     auto& p = Power::get();
     setVisible(p.hasBattery());
-    const bool low = p.percent() <= 15 && !p.charging();
-    m_pill->set(p.percent(), p.charging(), low ? "error" : p.profile() == "power-saver" ? "tertiary" : "on_surface");
+    m_pill->set(p.percent(), p.pluggedIn(), p.charging(), batteryColor(p.percent(), p.pluggedIn(), p.charging(), p.full(), p.profile() == "power-saver"));
     setTooltip(std::format("Battery {}% · {}", p.percent(), p.status()));
 }
 

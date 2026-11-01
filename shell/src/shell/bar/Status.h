@@ -33,8 +33,9 @@ private:
     Connection m_a, m_b, m_c, m_d;
 };
 
-// Charge in the bar, as Material 3 Expressive draws it (BatteryPill); opens
-// the battery popup (status and power mode)
+// Charge in the bar, as Material 3 Expressive draws it (BatteryPill): red
+// below 20%, yellow while charging, green once charged; opens the battery
+// popup (status and power mode)
 class BatteryStatus : public ui::Button {
 public:
     explicit BatteryStatus(OpenPopup open, bool vertical = false);
@@ -42,7 +43,7 @@ public:
 private:
     void sync();
     BatteryPill* m_pill;
-    Connection m_conn;
+    Connection m_conn, m_theme;
 };
 
 // Now playing: icon + "Title · Artist"; click toggles playback, scroll skips.
