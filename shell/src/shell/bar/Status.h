@@ -15,6 +15,7 @@ using OpenPopup = std::function<void(const std::string& name, float along)>;
 
 class WifiGlyph;
 class BatteryPill;
+class StatusGlyph;
 
 // Network, Bluetooth and volume icons in one capsule; each opens its popup.
 // `vertical`: stacked, for a side bar (as the others below)
@@ -28,8 +29,13 @@ private:
     ui::Button* m_bt;
     ui::Button* m_vol;
     ui::Button* m_bell;
-    ui::Icon *m_netIcon, *m_btIcon, *m_volIcon, *m_bellIcon;
+    StatusGlyph* m_netIcon;
+    // Each reacts when its state flips: Bluetooth on or off, sound muted or
+    // not, Do not disturb, a new notification (StatusGlyph)
+    StatusGlyph *m_btIcon, *m_volIcon, *m_bellIcon;
     WifiGlyph* m_wifi; // Wi-Fi in Android 16's style; the glyph for the rest
+    bool m_known = false, m_btOn = false, m_muted = false, m_dnd = false;
+    size_t m_unread = 0;
     Connection m_a, m_b, m_c, m_d;
 };
 

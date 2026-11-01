@@ -309,11 +309,54 @@ ColorRef batteryColor(int percent, bool plugged, bool charging, bool full, bool 
     return saver ? ColorRef("tertiary") : ColorRef("on_surface");
 }
 
+// A status glyph that answers its state flipping, on M3 Expressive's
+// springs: springing in from small (on), popping large and settling (off),
+// or shaking side to side (a muted speaker's "no", a bell ringing for a new
+// notification). Drawn moved only while it moves
+class StatusGlyph : public Icon {
+public:
+    explicit StatusGlyph(float size) : Icon("", size) {}
+    void popIn() { pop(0.35f); }
+    void popOut() { pop(1.4f); }
+    void shake() {
+        m_shake.set(3.5f, false);
+        m_shake.set(0);
+        requestRedraw();
+    }
+
+protected:
+    bool doAnimating() const override { return Icon::doAnimating() || m_pop.running() || m_shake.running(); }
+    void doPaint(Renderer& r) override {
+        const float s = m_pop.value(), dx = m_shake.value();
+        const bool moved = std::abs(s - 1) > 0.001f || std::abs(dx) > 0.01f;
+        if (moved) {
+            const RectF& b = rect();
+            r.pushTranslate(dx, 0);
+            r.pushScale(b.x + b.w / 2, b.y + b.h / 2, std::max(0.0f, s));
+        }
+        Icon::doPaint(r);
+        if (moved) {
+            r.popTranslate();
+            r.popTranslate();
+        }
+    }
+
+private:
+    void pop(float from) {
+        if (motion::scale <= 0) return;
+        m_pop.set(from, false);
+        m_pop.set(1);
+        requestRedraw();
+    }
+    Tween m_pop{1, Spring::bouncy()};
+    Tween m_shake{0, Spring{900, 0.18f}}; // lightly damped: a few swings, gone in half a second
+};
+
 // ── StatusIcons ──
 
 StatusIcons::StatusIcons(OpenPopup open, bool vertical) : Flex(vertical ? Direction::Column : Direction::Row) {
     setSpacing(2);
-    auto make = [&](const char* popup, Icon*& icon) {
+    auto make = [&](const char* popup) {
         auto* b = add<Button>();
         if (vertical) {
             pill(b)->setPadding({0, 6})->setJustify(Align::Center);
@@ -322,20 +365,25 @@ StatusIcons::StatusIcons(OpenPopup open, bool vertical) : Flex(vertical ? Direct
             pill(b)->setPadding({6, 0});
             b->fixedHeight = 28;
         }
-        // Filled and a touch heavier, as Material 3 Expressive's status bar
-        icon = b->add<Icon>("", 18);
-        icon->setWeight(500);
-        icon->setFill(true);
         b->onClicked = [this, b, open, popup](uint32_t button) {
             if (button == BTN_LEFT) open(popup, alongBar(b));
         };
         return b;
     };
-    m_net = make("quicksettings", m_netIcon);
+    // Filled and a touch heavier, as Material 3 Expressive's status bar
+    auto style = [](Icon* icon) {
+        icon->setWeight(500);
+        icon->setFill(true);
+    };
+    m_net = make("quicksettings");
+    style(m_netIcon = m_net->add<StatusGlyph>(18));
     m_wifi = m_net->add<WifiGlyph>(18);
-    m_bt = make("quicksettings", m_btIcon);
-    m_vol = make("audio", m_volIcon);
-    m_bell = make("notifications", m_bellIcon);
+    m_bt = make("quicksettings");
+    style(m_btIcon = m_bt->add<StatusGlyph>(18));
+    m_vol = make("audio");
+    style(m_volIcon = m_vol->add<StatusGlyph>(18));
+    m_bell = make("notifications");
+    style(m_bellIcon = m_bell->add<StatusGlyph>(18));
     m_vol->onScrolled = [](int d) { Audio::get().stepVolume(-0.05f * static_cast<float>(d)); };
     m_vol->onClicked = [this, open](uint32_t button) {
         if (button == BTN_LEFT) open("audio", alongBar(m_vol));
@@ -364,6 +412,22 @@ void StatusIcons::sync() {
     m_vol->setVisible(Audio::get().ready());
     auto& n = Notifications::get();
     m_bellIcon->setText(n.doNotDisturb() ? "notifications_off" : n.current().empty() ? "notifications" : "notifications_unread");
+    // A state flipped since the last look: its icon answers (not at start)
+    const bool btOn = Bluetooth::get().powered(), dnd = n.doNotDisturb();
+    const auto* out = Audio::get().sink();
+    const bool muted = !out || out->muted || out->volume() <= 0.001f;
+    const size_t unread = n.current().size();
+    if (m_known) {
+        if (btOn != m_btOn) btOn ? m_btIcon->popIn() : m_btIcon->popOut();
+        if (muted != m_muted) muted ? m_volIcon->shake() : m_volIcon->popIn();
+        if (dnd != m_dnd) dnd ? m_bellIcon->popOut() : m_bellIcon->popIn();
+        else if (!dnd && unread > m_unread) m_bellIcon->shake(); // a new one rings the bell
+    }
+    m_known = true;
+    m_btOn = btOn;
+    m_muted = muted;
+    m_dnd = dnd;
+    m_unread = unread;
     // What each says, for its tooltip
     auto& net = Network::get();
     m_net->setTooltip(net.kind() == Network::Kind::None ? "Not connected" : net.name().empty() ? "Connected" : net.name());
