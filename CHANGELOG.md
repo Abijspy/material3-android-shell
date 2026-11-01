@@ -1,5 +1,11 @@
 # Changelog
 
+## v6.2.3 — 2026-11-01
+
+- **The battery says how it's doing in colour.** Red below 20%, yellow while it charges, green once it's charged (full, or held at your laptop's charge limit), in shades that read on light and dark themes alike.
+- **Plugging in and out, animated.** Plugging in makes the battery pop, its charge flash your accent colour and the bolt spring in; unplugging gives it a little dip. While it charges, a light sweeps along the charge every few seconds (drawn only while it moves, so charging for hours costs nothing).
+- **The Wi-Fi icon fits.** Its outer arc no longer runs past the icon and gets cut off at both ends.
+
 ## v6.2.2 — 2026-11-01
 
 - **A status bar in Material 3 Expressive's style.** The icons look as they do on Android 16:
