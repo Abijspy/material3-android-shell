@@ -3,6 +3,7 @@
 #include "shell/bar/Widgets.h"
 
 #include "render/Images.h"
+#include "render/Renderer.h"
 #include "services/Audio.h"
 #include "services/Mpris.h"
 #include "shell/PanelKit.h"
@@ -11,8 +12,12 @@
 #include "services/Tray.h"
 #include "ui/Theme.h"
 
+#include <cairo.h>
 #include <cmath>
 #include <linux/input-event-codes.h>
+#include <map>
+#include <numbers>
+#include <tuple>
 
 namespace m3::shell {
 
@@ -64,7 +69,156 @@ private:
     Tray::Item m_item;
 };
 
+// A Wi-Fi strength from NetworkManager's 0–100: the arcs it reaches
+int wifiArcs(int strength) { return strength >= 75 ? 3 : strength >= 50 ? 2 : strength >= 25 ? 1 : 0; }
+
 } // namespace
+
+// ── Material 3 Expressive status glyphs ──
+
+// Wi-Fi as Android 16 draws it: a dot under three arcs, round-capped, the
+// arcs the signal doesn't reach faint. Drawn with Cairo, once per size and
+// strength, as masks the theme tints
+class WifiGlyph : public Node {
+public:
+    explicit WifiGlyph(float size) : m_size(size) {}
+    // Arcs lit (0–3), or -1: nothing reached (on, not connected)
+    void setLevel(int arcs) {
+        if (arcs == m_arcs) return;
+        m_arcs = arcs;
+        requestRedraw();
+    }
+
+protected:
+    SizeF doMeasure(SizeF) override { return {m_size, m_size}; }
+    void doPaint(Renderer& r) override {
+        const int px = static_cast<int>(std::lround(m_size * r.scale()));
+        const Color fg = Theme::get().color("on_surface");
+        const RectF& b = rect();
+        if (const GLuint faint = mask(px, m_arcs, false)) r.mask(faint, b, fg.withAlpha(0.3f));
+        if (const GLuint lit = mask(px, m_arcs, true)) r.mask(lit, b, fg);
+    }
+
+private:
+    // The lit part (the dot and the arcs reached) or the faint rest
+    static GLuint mask(int px, int arcs, bool lit) {
+        static std::map<std::tuple<int, int, bool>, GLuint> made;
+        const auto key = std::make_tuple(px, arcs, lit);
+        if (auto it = made.find(key); it != made.end()) return it->second;
+        cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, px, px);
+        cairo_t* cr = cairo_create(surface);
+        const double s = px, cx = s / 2, cy = s * 0.82, stroke = s * 0.12;
+        cairo_set_source_rgba(cr, 1, 1, 1, 1);
+        if (lit == (arcs >= 0)) {
+            cairo_arc(cr, cx, cy, s * 0.09, 0, 2 * std::numbers::pi);
+            cairo_fill(cr);
+        }
+        cairo_set_line_width(cr, stroke);
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+        for (int i = 0; i < 3; ++i) {
+            if ((i < arcs) != lit) continue;
+            cairo_new_sub_path(cr);
+            cairo_arc(cr, cx, cy, s * (0.30 + 0.20 * i), -0.75 * std::numbers::pi, -0.25 * std::numbers::pi);
+            cairo_stroke(cr);
+        }
+        cairo_destroy(cr);
+        cairo_surface_flush(surface);
+        GLuint id = 0;
+        glGenTextures(1, &id);
+        glBindTexture(GL_TEXTURE_2D, id);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, px, px, 0, GL_RGBA, GL_UNSIGNED_BYTE, cairo_image_surface_get_data(surface));
+        cairo_surface_destroy(surface);
+        return made[key] = id;
+    }
+
+    float m_size;
+    int m_arcs = 3;
+};
+
+// Children cut to its rect; it leaves them where its owner puts them
+class Clip : public Node {
+protected:
+    SizeF doMeasure(SizeF) override { return {}; }
+    void doArrange() override {}
+    bool clipsChildren() const override { return true; }
+};
+
+// The charge as Android 16 draws it: a rounded body the charge fills, the
+// percentage inside it in bold, a bolt while charging, the tip on its
+// right. Red when low, the tertiary colour in power saver. The number is
+// drawn twice, split where the charge ends: in the bar's colour over the
+// charge, in the charge's over the rest, so it reads at any level
+class BatteryPill : public Node {
+public:
+    explicit BatteryPill(bool compact) : m_compact(compact) {
+        for (int i = 0; i < 2; ++i) {
+            m_clip[i] = add<Clip>();
+            m_text[i] = m_clip[i]->add<Flex>(Flex::Direction::Row);
+            m_text[i]->setSpacing(0)->setAlignItems(Align::Center);
+            m_bolt[i] = m_text[i]->add<Icon>("bolt", compact ? 9 : 11);
+            m_bolt[i]->setFill(true);
+            m_label[i] = m_text[i]->add<Label>();
+            m_label[i]->setSize(compact ? 8.5f : 10)->setWeight(700);
+        }
+    }
+    void set(int percent, bool charging, const std::string& role) {
+        m_percent = std::clamp(percent, 0, 100);
+        m_role = role;
+        for (int i = 0; i < 2; ++i) {
+            const ColorRef c = i == 0 ? ColorRef("surface") : ColorRef(role);
+            m_label[i]->setText(std::to_string(m_percent));
+            m_label[i]->setColor(c, false);
+            m_bolt[i]->setColor(c, false);
+            m_bolt[i]->setVisible(charging);
+        }
+        requestLayout();
+    }
+
+protected:
+    SizeF doMeasure(SizeF available) override {
+        const SizeF t = m_text[0]->measure(available);
+        return {std::max(t.w + (m_compact ? 6 : 8), m_compact ? 20.0f : 26.0f) + 3, m_compact ? 12.0f : 14.0f};
+    }
+    void doArrange() override {
+        const RectF b = body();
+        const SizeF t = m_text[0]->measure({b.w, b.h});
+        const RectF at{b.x + (b.w - t.w) / 2, b.y + (b.h - t.h) / 2, t.w, t.h};
+        const float filled = b.w * static_cast<float>(m_percent) / 100.0f;
+        m_clip[0]->arrange({b.x, b.y, filled, b.h});
+        m_clip[1]->arrange({b.x + filled, b.y, b.w - filled, b.h});
+        for (auto* t2 : m_text) t2->arrange(at);
+    }
+    void doPaint(Renderer& r) override {
+        const RectF b = body();
+        const Color c = Theme::get().color(m_role);
+        const Radii round(m_compact ? 3.5f : 4.5f);
+        r.rect(b, c.withAlpha(0.35f), round);
+        if (m_percent > 0) {
+            r.pushClip({b.x, b.y, b.w * static_cast<float>(m_percent) / 100.0f, b.h});
+            r.rect(b, c, round);
+            r.popClip();
+        }
+        const float tipH = b.h * 0.4f;
+        r.rect({b.right() + 1, b.y + (b.h - tipH) / 2, 2, tipH}, m_percent == 100 ? c : c.withAlpha(0.35f), Radii(1));
+    }
+
+private:
+    RectF body() const {
+        const RectF& r = rect();
+        return {r.x, r.y, r.w - 3, r.h};
+    }
+    bool m_compact;
+    int m_percent = 100;
+    std::string m_role = "on_surface";
+    Clip* m_clip[2];
+    Flex* m_text[2];
+    Icon* m_bolt[2];
+    Label* m_label[2];
+};
 
 // ── StatusIcons ──
 
@@ -79,13 +233,17 @@ StatusIcons::StatusIcons(OpenPopup open, bool vertical) : Flex(vertical ? Direct
             pill(b)->setPadding({6, 0});
             b->fixedHeight = 28;
         }
+        // Filled and a touch heavier, as Material 3 Expressive's status bar
         icon = b->add<Icon>("", 18);
+        icon->setWeight(500);
+        icon->setFill(true);
         b->onClicked = [this, b, open, popup](uint32_t button) {
             if (button == BTN_LEFT) open(popup, alongBar(b));
         };
         return b;
     };
     m_net = make("quicksettings", m_netIcon);
+    m_wifi = m_net->add<WifiGlyph>(18);
     m_bt = make("quicksettings", m_btIcon);
     m_vol = make("audio", m_volIcon);
     m_bell = make("notifications", m_bellIcon);
@@ -102,15 +260,21 @@ StatusIcons::StatusIcons(OpenPopup open, bool vertical) : Flex(vertical ? Direct
 }
 
 void StatusIcons::sync() {
-    m_netIcon->setText(Network::get().icon());
-    m_net->setVisible(Network::get().available());
+    // Connected over Wi-Fi, or on with nothing reached: the arcs; else the
+    // glyph (Wi-Fi off, Ethernet, VPN)
+    auto& nw = Network::get();
+    const bool arcs = nw.available() && nw.wifiEnabled() && (nw.kind() == Network::Kind::Wifi || nw.kind() == Network::Kind::None);
+    m_wifi->setVisible(arcs);
+    m_netIcon->setVisible(!arcs);
+    if (arcs) m_wifi->setLevel(nw.kind() == Network::Kind::Wifi ? wifiArcs(nw.strength()) : -1);
+    else m_netIcon->setText(!nw.wifiEnabled() && nw.kind() == Network::Kind::None ? "wifi_off" : nw.icon());
+    m_net->setVisible(nw.available());
     m_btIcon->setText(Bluetooth::get().icon());
     m_bt->setVisible(Bluetooth::get().available());
     m_volIcon->setText(volumeIcon());
     m_vol->setVisible(Audio::get().ready());
     auto& n = Notifications::get();
     m_bellIcon->setText(n.doNotDisturb() ? "notifications_off" : n.current().empty() ? "notifications" : "notifications_unread");
-    m_bellIcon->setFill(!n.current().empty());
     // What each says, for its tooltip
     auto& net = Network::get();
     m_net->setTooltip(net.kind() == Network::Kind::None ? "Not connected" : net.name().empty() ? "Connected" : net.name());
@@ -123,21 +287,19 @@ void StatusIcons::sync() {
 
 // ── BatteryStatus ──
 
-BatteryStatus::BatteryStatus(OpenPopup open, bool vertical) : Button(vertical ? Direction::Column : Direction::Row), m_vertical(vertical) {
+BatteryStatus::BatteryStatus(OpenPopup open, bool vertical) : Button(vertical ? Direction::Column : Direction::Row) {
     if (vertical) {
-        // The icon over its percentage, small enough for the bar's width
-        pill(this)->setPadding({0, 8})->setSpacing(2);
+        // Narrower, for the side bar's width
+        pill(this)->setPadding({0, 8})->setJustify(Align::Center);
         fixedWidth = 28;
     } else {
-        pill(this)->setPadding({10, 0})->setSpacing(4);
+        pill(this)->setPadding({10, 0})->setAlignItems(Align::Center);
         fixedHeight = 28;
     }
     onClicked = [this, open = std::move(open)](uint32_t button) {
         if (button == BTN_LEFT) open("battery", alongBar(this));
     };
-    m_icon = add<Icon>("battery_full", 18);
-    m_label = add<Label>();
-    m_label->setSize(vertical ? 11 : 13)->setWeight(500);
+    m_pill = add<BatteryPill>(vertical);
     m_conn = Power::get().changed.connect([this] { sync(); });
     sync();
 }
@@ -145,9 +307,8 @@ BatteryStatus::BatteryStatus(OpenPopup open, bool vertical) : Button(vertical ? 
 void BatteryStatus::sync() {
     auto& p = Power::get();
     setVisible(p.hasBattery());
-    m_icon->setText(p.icon());
-    m_icon->setColor(p.percent() <= 15 && !p.charging() ? ColorRef("error") : ColorRef("on_surface"));
-    m_label->setText(std::to_string(p.percent()) + (m_vertical ? "" : "%"));
+    const bool low = p.percent() <= 15 && !p.charging();
+    m_pill->set(p.percent(), p.charging(), low ? "error" : p.profile() == "power-saver" ? "tertiary" : "on_surface");
     setTooltip(std::format("Battery {}% · {}", p.percent(), p.status()));
 }
 

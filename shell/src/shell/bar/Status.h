@@ -13,6 +13,9 @@ namespace m3::shell {
 // anchor it (x on a top or bottom bar, y on a side one: alongBar)
 using OpenPopup = std::function<void(const std::string& name, float along)>;
 
+class WifiGlyph;
+class BatteryPill;
+
 // Network, Bluetooth and volume icons in one capsule; each opens its popup.
 // `vertical`: stacked, for a side bar (as the others below)
 class StatusIcons : public ui::Flex {
@@ -26,19 +29,19 @@ private:
     ui::Button* m_vol;
     ui::Button* m_bell;
     ui::Icon *m_netIcon, *m_btIcon, *m_volIcon, *m_bellIcon;
+    WifiGlyph* m_wifi; // Wi-Fi in Android 16's style; the glyph for the rest
     Connection m_a, m_b, m_c, m_d;
 };
 
-// Charge in the bar; opens the battery popup (status and power mode)
+// Charge in the bar, as Material 3 Expressive draws it (BatteryPill); opens
+// the battery popup (status and power mode)
 class BatteryStatus : public ui::Button {
 public:
     explicit BatteryStatus(OpenPopup open, bool vertical = false);
 
 private:
     void sync();
-    ui::Icon* m_icon;
-    ui::Label* m_label;
-    bool m_vertical;
+    BatteryPill* m_pill;
     Connection m_conn;
 };
 
