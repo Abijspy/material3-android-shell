@@ -1,5 +1,12 @@
 # Changelog
 
+## v6.2.4 — 2026-11-01
+
+- **Nothing runs over anything any more.** Settings rows make room for themselves: when a row's controls would crowd its title, the title takes a line of its own and the controls go under it, onto more lines if need be. This happens in a narrow window, with large text, or with a long name. The password fields in Users no longer cover their title or push Change off the page.
+- **Button groups, tabs and choices wrap.** The clock styles, the Software & updates tabs and the firewall's rule options go onto a second line instead of past the edge, and text in a tight row ends in "…" rather than pushing anything out.
+- **The lock screen's board fits its page.** Its cells share the width instead of running off the side.
+- **Checked everywhere.** Every Settings and Niri Settings page and every panel passes the shell's layout check in the narrowest window, with normal and with the largest text. The check (`material3ui msg layout check`) now also catches overlaps and squeezed text, and `shell/tools/test-layout.sh` runs it on every page.
+
 ## v6.2.3 — 2026-11-01
 
 - **The battery says how it's doing in colour.** Red below 20%, yellow while it charges, green once it's charged (full, or held at your laptop's charge limit), in shades that read on light and dark themes alike.
