@@ -8,6 +8,11 @@ input {
     keyboard {
         numlock
     }
+    // Tap to click until the sync brings your touchpad's settings (they
+    // replace this block whole)
+    touchpad {
+        tap
+    }
 }
 
 layout {

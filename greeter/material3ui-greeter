@@ -307,8 +307,8 @@ else:
     if os.path.exists(cursor_file): os.remove(cursor_file)
 
 # The same for the greeter's niri session: the keyboard layout (Settings →
-# Keyboard on niri, else Hyprland's), the cursor, and the monitors as your
-# niri config sets them
+# Keyboard on niri, else Hyprland's), the cursor, the touchpad and mouse
+# (tap to click…) and the monitors as your niri config sets them
 def kdl_quote(s): return '"%s"' % s.replace("\\", "\\\\").replace('"', '\\"')
 
 def kdl_blocks(text, name):
@@ -356,7 +356,22 @@ if isinstance(layouts, str) and layouts:
     kdl += ["        xkb {", "            layout %s" % kdl_quote(layouts)]
     if isinstance(options, str) and options: kdl.append("            options %s" % kdl_quote(options))
     kdl.append("        }")
-kdl += ["        numlock", "    }", "}"]
+kdl += ["        numlock", "    }"]
+# The touchpad, mouse, trackpoint and trackball: each as the file niri reads
+# last has it (the shell's settings over your config.kdl: an include
+# replaces such a section whole)
+devices = {}
+for name in ("config.kdl", "material3ui-settings.kdl"):
+    try: text = open(os.path.join(niri_dir, name)).read()
+    except OSError: continue
+    for block in kdl_blocks(text, "input"):
+        inner = block[block.index("{") + 1:-1]
+        for device in ("touchpad", "mouse", "trackpoint", "trackball"):
+            found = kdl_blocks(inner, device)
+            if found: devices[device] = found[-1]
+pointing = ["\n".join("    " + line.strip() if i == 0 or line.strip() == "}" else "        " + line.strip()
+                       for i, line in enumerate(b.splitlines()) if line.strip())
+            for b in devices.values()]
 if cursor: kdl += ["cursor {", "    xcursor-theme %s" % kdl_quote(cursor[0]), "    xcursor-size %d" % cursor[1], "}"]
 # Your config.kdl's blocks first, then the shell's: for one monitor, the first wins
 monitors, seen = [], set()
@@ -368,9 +383,17 @@ for name in ("config.kdl", "material3ui-settings.kdl"):
         if m and m.group(1) not in seen:
             seen.add(m.group(1)); monitors.append(block)
 head = "// Synced from %s by material3ui-greeter\n" % user
-local = head + "\n".join(kdl + monitors) + "\n"
-if monitors and not niri_valid(local): local = head + "\n".join(kdl) + "\n"
-if not niri_valid(local): local = head
+def assemble(with_pointing, with_monitors):
+    keyboard, rest = kdl[:kdl.index("    }") + 1], kdl[kdl.index("    }") + 1:]
+    return head + "\n".join(keyboard + (pointing if with_pointing else []) + ["}"] + rest +
+                             (monitors if with_monitors else [])) + "\n"
+# Everything, else without what niri refuses (monitors first, then the
+# pointing devices), else nothing
+local = head
+for with_pointing, with_monitors in ((True, True), (True, False), (False, True), (False, False)):
+    if niri_valid(assemble(with_pointing, with_monitors)):
+        local = assemble(with_pointing, with_monitors)
+        break
 with open(os.path.join(data, "niri-local.kdl.tmp"), "w") as f: f.write(local)
 os.chmod(os.path.join(data, "niri-local.kdl.tmp"), 0o644)
 os.replace(os.path.join(data, "niri-local.kdl.tmp"), os.path.join(data, "niri-local.kdl"))
