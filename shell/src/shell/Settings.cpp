@@ -1886,13 +1886,19 @@ void usersPage(Flex* page, Popup&) {
             asRoot("usermod -c " + shellQuote(t) + " " + shellQuote(me), "", report("Name saved"));
         };
 
-        auto pwRow = row(you, "password", "Password", "Type it twice");
-        auto* pw1 = pwRow.row->add<TextField>();
+        // The title over its fields: two fields and a button beside it left
+        // no room for the title, and the button ran off the page
+        auto* pwBox = you->add<Flex>(Flex::Direction::Column);
+        pwBox->setAlignItems(Align::Stretch);
+        row(pwBox, "password", "Password", "Type it twice, then Change");
+        auto* pwFields = pwBox->add<Flex>(Flex::Direction::Row);
+        pwFields->setPadding({58, 0, 20, 14})->setSpacing(10)->setAlignItems(Align::Center); // under the title
+        auto* pw1 = pwFields->add<TextField>();
         pw1->setSecret(true)->setPlaceholder("New password");
-        pw1->fixedWidth = 170;
-        auto* pw2 = pwRow.row->add<TextField>();
+        pw1->grow = true;
+        auto* pw2 = pwFields->add<TextField>();
         pw2->setSecret(true)->setPlaceholder("Again");
-        pw2->fixedWidth = 150;
+        pw2->grow = true;
         auto changePw = [me, pw1, pw2, status, live, report] {
             if (pw1->text().empty() || pw1->text() != pw2->text()) {
                 *status = pw1->text().empty() ? "Type a new password" : "The two passwords don't match";
@@ -1902,7 +1908,7 @@ void usersPage(Flex* page, Popup&) {
             asRoot("chpasswd", me + ":" + pw1->text() + "\n", report("Password changed"));
         };
         pw2->onSubmit = [changePw](const std::string&) { changePw(); };
-        pillButton(pwRow.row, "Change", true, changePw);
+        pillButton(pwFields, "Change", true, changePw);
 
         // Every profile, and who may administer the system
         auto* all = group(live, "Profiles on this device", "Administrators can install software and change system settings");
@@ -3242,7 +3248,7 @@ void lockScreenPage(Flex* page, Popup& popup) {
                 const Item* it = at(c, r);
                 const bool selected = sel->first == c && sel->second == r;
                 auto* cell = rowFlex->add<Button>(Flex::Direction::Row);
-                cell->fixedWidth = 208; // equal thirds of the board
+                cell->grow = true; // equal thirds of the board, at any width
                 cell->fixedHeight = 70;
                 cell->setRadius(Radii(16))->setSpacing(8)->setJustify(Align::Center);
                 cell->pressedRadius = 8;
@@ -3714,6 +3720,7 @@ void packagesPage(Flex* page, Popup&) {
     auto tab = std::make_shared<int>(0); // 0 updates, 1 repositories, 2 official, 3 AUR, 4 Flatpak
     auto* tabs = live->add<Flex>(Flex::Direction::Row);
     tabs->setSpacing(6);
+    tabs->wrap = true; // large text: a second line of tabs, not one off the page
     auto* body = live->add<Flex>(Flex::Direction::Column);
     body->setAlignItems(Align::Stretch)->setSpacing(12);
     auto query = std::make_shared<std::string>();

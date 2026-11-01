@@ -279,13 +279,90 @@ float Flex::cornerRadius() const {
     return std::max({r.tl, r.tr, r.br, r.bl});
 }
 
+namespace {
+// Text that can give width back (wrapping, or ending in "…"); icons can't
+bool shrinks(const Node* n) {
+    return dynamic_cast<const Label*>(n) && !dynamic_cast<const Icon*>(n);
+}
+} // namespace
+
+float Flex::labelShare(SizeF inner) {
+    float others = 0, labels = 0;
+    int count = 0;
+    for (auto& c : children()) {
+        if (!c->shown() || c->floating) continue;
+        ++count;
+        if (c->grow) continue;
+        const float w = c->measure(inner).w;
+        (shrinks(c.get()) ? labels : others) += w;
+    }
+    if (count > 1) others += m_spacing * static_cast<float>(count - 1);
+    if (labels <= 0 || others + labels <= inner.w + 0.5f) return 1;
+    return std::max(0.0f, inner.w - others) / labels;
+}
+
+float Flex::roomFor(Node* c, SizeF inner, float grown, float share) {
+    if (c->grow && grown > 0) return grown;
+    if (share < 1 && shrinks(c)) return std::floor(c->measure(inner).w * share);
+    return inner.w;
+}
+
+SizeF Flex::measureWrapped(SizeF inner) {
+    float lineW = 0, lineH = 0, height = 0, widest = 0;
+    for (auto& c : children()) {
+        if (!c->shown() || c->floating) continue;
+        const SizeF s = c->measure(inner);
+        const float w = std::min(s.w, inner.w);
+        if (lineW > 0 && lineW + m_spacing + w > inner.w + 0.5f) {
+            height += lineH + m_spacing;
+            widest = std::max(widest, lineW);
+            lineW = lineH = 0;
+        }
+        lineW += (lineW > 0 ? m_spacing : 0) + w;
+        lineH = std::max(lineH, s.h);
+    }
+    height += lineH;
+    widest = std::max(widest, lineW);
+    return {widest + m_padding.left + m_padding.right, height + m_padding.top + m_padding.bottom};
+}
+
+void Flex::arrangeWrapped(const RectF& content) {
+    // Lines of what fits side by side, each child centred in its line
+    std::vector<std::pair<Node*, SizeF>> line;
+    float y = content.y, lineW = 0, lineH = 0;
+    auto flush = [&] {
+        // Each line where the row's justify puts it (start, centre, end)
+        const float spare = std::max(0.0f, content.w - lineW);
+        float x = content.x + (m_justify == Align::Center ? spare / 2 : m_justify == Align::End ? spare : 0);
+        for (auto& [c, s] : line) {
+            c->arrange({x, y + (lineH - s.h) / 2, s.w, s.h});
+            x += s.w + m_spacing;
+        }
+        y += lineH + m_spacing;
+        line.clear();
+        lineW = lineH = 0;
+    };
+    for (auto& c : children()) {
+        if (!c->shown() || c->floating) continue;
+        SizeF s = c->measure({content.w, content.h});
+        s.w = std::min(s.w, content.w);
+        if (!line.empty() && lineW + m_spacing + s.w > content.w + 0.5f) flush();
+        lineW += (line.empty() ? 0 : m_spacing) + s.w;
+        lineH = std::max(lineH, s.h);
+        line.push_back({c.get(), s});
+    }
+    if (!line.empty()) flush();
+}
+
 SizeF Flex::doMeasure(SizeF available) {
     const bool row = m_dir == Direction::Row;
     const SizeF inner{std::max(0.0f, available.w - m_padding.left - m_padding.right),
                       std::max(0.0f, available.h - m_padding.top - m_padding.bottom)};
+    if (row && wrap) return measureWrapped(inner);
     float main = 0, cross = 0;
     int count = 0;
     const float grown = row ? growRoom(inner) : 0;
+    const float share = row ? labelShare(inner) : 1;
     float filling = row ? -1 : fillRoom(inner);
     for (auto& c : children()) {
         if (!c->shown() || c->floating) continue;
@@ -296,9 +373,13 @@ SizeF Flex::doMeasure(SizeF available) {
         // and the row is as tall as that)
         const float spent = main + (count > 0 ? m_spacing * static_cast<float>(count) : 0);
         const bool fills = filling >= 0 && c->fillsHeight();
-        const auto s = c->measure(row     ? SizeF{c->grow && grown > 0 ? grown : inner.w, inner.h}
-                                  : fills ? SizeF{inner.w, filling}
-                                          : SizeF{inner.w, std::max(0.0f, inner.h - spent)});
+        const float across = row ? roomFor(c.get(), inner, grown, share) : inner.w;
+        auto s = c->measure(row     ? SizeF{across, inner.h}
+                            : fills ? SizeF{inner.w, filling}
+                                    : SizeF{inner.w, std::max(0.0f, inner.h - spent)});
+        // A label giving way keeps to its share, maxWidth or not (one
+        // without ends in "…" when laid out narrower: Label::doArrange)
+        if (row && share < 1 && shrinks(c.get())) s.w = std::min(s.w, across);
         if (fills) filling = std::max(0.0f, filling - s.h); // what the next one that fills gets
         main += row ? s.w : s.h;
         cross = std::max(cross, row ? s.h : s.w);
@@ -355,21 +436,24 @@ void Flex::doArrange() {
                         std::max(0.0f, rect().h - m_padding.top - m_padding.bottom)};
     const float contentMain = row ? content.w : content.h;
     const float contentCross = row ? content.h : content.w;
+    if (row && wrap) return arrangeWrapped(content);
 
     std::vector<SizeF> sizes;
     float used = 0;
     int visibleCount = 0, growCount = 0;
     const float grown = row ? growRoom({content.w, content.h}) : 0;
+    const float share = row ? labelShare({content.w, content.h}) : 1;
     float filling = row ? -1 : fillRoom({content.w, content.h});
     for (auto& c : children()) {
         // As in doMeasure: the room left after the earlier siblings, or for
         // one that fills, after all the others
         const float spent = used + m_spacing * static_cast<float>(visibleCount);
         const bool fills = filling >= 0 && c->shown() && !c->floating && c->fillsHeight();
-        const SizeF room = row     ? SizeF{c->grow && grown > 0 ? grown : content.w, content.h}
+        const SizeF room = row     ? SizeF{roomFor(c.get(), {content.w, content.h}, grown, share), content.h}
                            : fills ? SizeF{content.w, filling}
                                    : SizeF{content.w, std::max(0.0f, content.h - spent)};
         sizes.push_back(c->shown() && !c->floating ? c->measure(room) : SizeF{});
+        if (row && share < 1 && c->shown() && !c->floating && shrinks(c.get())) sizes.back().w = std::min(sizes.back().w, room.w);
         if (fills) filling = std::max(0.0f, filling - sizes.back().h);
         if (!c->shown() || c->floating) continue;
         used += row ? sizes.back().w : sizes.back().h;

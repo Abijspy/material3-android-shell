@@ -239,6 +239,10 @@ public:
     float cornerRadius() const override;
     bool fillsHeight() const override; // holds something that does
     bool paintsBox() const { return m_background.value().a > 0.001f || m_borderWidth > 0; } // a card, a pill: a visible box
+    // A row that flows onto more lines when its children don't fit side by
+    // side (chips, a connected button group), instead of running past its
+    // end
+    bool wrap = false;
 
 protected:
     SizeF doMeasure(SizeF available) override;
@@ -251,6 +255,16 @@ protected:
     // Across a row: the width each growing child has once the others are
     // in (0: nothing grows, or the others fill it)
     float growRoom(SizeF inner);
+    // Across a row too narrow for its children: the share of its natural
+    // width each label keeps, so what the others leave is spread over the
+    // labels (they wrap or end in "…") rather than anything running past
+    // the row's end; 1 when everything fits
+    float labelShare(SizeF inner);
+    // A row's room for child `c` across: the growing child's share, a
+    // label's (labelShare), else the whole row
+    float roomFor(Node* c, SizeF inner, float grown, float share);
+    SizeF measureWrapped(SizeF inner);
+    void arrangeWrapped(const RectF& content);
     // Down a column: the height left for the children that fill it, once the
     // others are in (< 0: none fills it)
     float fillRoom(SizeF inner);

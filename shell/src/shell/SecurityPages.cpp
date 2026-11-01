@@ -185,6 +185,7 @@ void firewallPage(Flex* page, Popup&) {
         port->onChanged = [draft](const std::string& t) { draft->port = t; };
         auto* opts = rules->add<Flex>(Flex::Direction::Row);
         opts->setPadding({20, 4, 20, 14})->setSpacing(10)->setJustify(Align::End)->setAlignItems(Align::Center);
+        opts->wrap = true; // the choices and Add onto more lines before past the edge
         connectedGroup<std::string>(opts, draft->proto, {{"any", "TCP & UDP"}, {"tcp", "TCP"}, {"udp", "UDP"}},
                                     [draft](std::string p) { draft->proto = p; });
         if (f.tool() == Firewall::Tool::Ufw)

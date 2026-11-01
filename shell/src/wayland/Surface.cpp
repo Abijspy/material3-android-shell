@@ -124,6 +124,18 @@ std::string Surface::overflow(int& checked) const {
         // Hidden, moved on purpose, or empty: nothing to see
         if (!n->shown() || n->opacity() <= 0.01f || n->transformed()) return;
         const RectF& r = n->rect();
+        // Text squeezed to nothing, alone or with the box it's in (a title
+        // whose row's controls took the width)
+        if (r.w <= 4 && r.h > 0.5f) {
+            std::function<void(const ui::Node*)> squeezed = [&](const ui::Node* m) {
+                if (!m->shown()) return;
+                if (const auto* l = dynamic_cast<const ui::Label*>(m); l && !l->text().empty() && m->rect().w <= 4)
+                    out += std::format("{}: {} at {:.0f},{:.0f} is squeezed to {:.0f}px wide\n", m_tag, typeOf(m), m->rect().x,
+                                       m->rect().y, m->rect().w);
+                for (const auto& c : m->children()) squeezed(c.get());
+            };
+            squeezed(n);
+        }
         if (r.w <= 0.5f || r.h <= 0.5f) return;
         ++checked;
         if (const auto s = onScreen ? outside(r, screen) : std::string(); !s.empty())
@@ -136,6 +148,29 @@ std::string Surface::overflow(int& checked) const {
         // it, but can still stick out of the boxes inside it
         const auto* flex = dynamic_cast<const ui::Flex*>(n);
         const ui::Node* next = n->clips() ? nullptr : flex && flex->paintsBox() ? n : box;
+        // In a row or column, children that fit never overlap each other or
+        // leave it: one that does is squeezed (a title under its controls)
+        // or spilling (a control past the edge), as a narrow window does
+        if (flex && !n->clips()) {
+            const ui::Node* prev = nullptr;
+            for (const auto& c : n->children()) {
+                if (!c->shown() || c->floating || c->transformed() || c->opacity() <= 0.01f) continue;
+                const RectF& cr = c->rect();
+                if (cr.w <= 0.5f || cr.h <= 0.5f) continue;
+                if (const auto side = outside(cr, r); !side.empty())
+                    out += std::format("{}: {} at {:.0f},{:.0f} {:.0f}x{:.0f} spills out of its {} ({})\n", m_tag, typeOf(c.get()), cr.x, cr.y,
+                                       cr.w, cr.h, typeOf(n), side);
+                if (prev) {
+                    const RectF& pr = prev->rect();
+                    const float ox = std::min(pr.right(), cr.right()) - std::max(pr.x, cr.x);
+                    const float oy = std::min(pr.bottom(), cr.bottom()) - std::max(pr.y, cr.y);
+                    if (ox > 1 && oy > 1)
+                        out += std::format("{}: {} at {:.0f},{:.0f} overlaps {} in its {} ({:.0f}x{:.0f})\n", m_tag, typeOf(c.get()), cr.x, cr.y,
+                                           typeOf(prev), typeOf(n), ox, oy);
+                }
+                prev = c.get();
+            }
+        }
         for (const auto& c : n->children()) walk(c.get(), next, onScreen && !n->clips());
     };
     if (m_root) walk(m_root.get(), nullptr, true);

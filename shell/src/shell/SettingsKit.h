@@ -110,6 +110,7 @@ template <typename T>
 Flex* connectedGroup(Node* parent, T current, std::vector<std::pair<T, std::string>> options, std::function<void(T)> pick) {
     auto* chips = parent->add<Flex>(Flex::Direction::Row);
     chips->setSpacing(2);
+    chips->wrap = true; // onto a second line before past the edge
     auto buttons = std::make_shared<std::vector<std::pair<T, Button*>>>();
     auto paint = [buttons](const T& selected, bool animate) {
         const size_t n = buttons->size();
