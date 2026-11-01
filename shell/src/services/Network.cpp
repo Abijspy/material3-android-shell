@@ -1,5 +1,7 @@
 #include "services/Network.h"
 
+#include "core/Config.h"
+#include "core/EventLoop.h"
 #include "core/Guard.h"
 #include "core/Log.h"
 #include "core/Process.h"
@@ -13,7 +15,12 @@
 #include <fstream>
 #include <memory>
 #include <sstream>
+#include <cstring>
+#include <fcntl.h>
+#include <linux/rfkill.h>
+#include <sys/ioctl.h>
 #include <systemd/sd-bus.h>
+#include <unistd.h>
 
 namespace m3 {
 
@@ -567,6 +574,8 @@ std::string Network::Details::band() const {
 }
 
 void Network::setWifiEnabled(bool on) {
+    // In airplane mode: its radio unblocked too (NetworkManager won't)
+    if (on) Airplane::get().unblock(Airplane::Radio::Wlan);
     dbus::Bus::system().setProperty(kNM, kNMPath, kNM, "WirelessEnabled", dbus::variant(on));
 }
 
@@ -670,6 +679,15 @@ void Bluetooth::refresh() {
 }
 
 void Bluetooth::setPowered(bool on) {
+    // In airplane mode: its radio unblocked first, then powered once BlueZ
+    // has the adapter back (Powered fails while it's blocked)
+    if (on && Airplane::get().blocked(Airplane::Radio::Bluetooth)) {
+        Airplane::get().unblock(Airplane::Radio::Bluetooth);
+        EventLoop::get().addTimer(1000, [this] {
+            if (m_available) dbus::Bus::system().setProperty(kBlueZ, m_adapter, "org.bluez.Adapter1", "Powered", dbus::variant(true));
+        });
+        return;
+    }
     if (m_available) dbus::Bus::system().setProperty(kBlueZ, m_adapter, "org.bluez.Adapter1", "Powered", dbus::variant(on));
 }
 
@@ -1159,6 +1177,96 @@ void Brightness::step(float delta) {
     // Something else may have changed it (keys handled by the firmware)
     m_current = readInt("/sys/class/backlight/" + m_device + "/brightness");
     set(value() + delta);
+}
+
+// ── Airplane mode ──
+
+Airplane& Airplane::get() {
+    static Airplane instance;
+    return instance;
+}
+
+Airplane::Airplane() {
+    m_fd = open("/dev/rfkill", O_RDWR | O_NONBLOCK | O_CLOEXEC);
+    m_writable = m_fd >= 0;
+    if (m_fd < 0) m_fd = open("/dev/rfkill", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+    if (m_fd < 0) return; // no rfkill: no radios to block
+    dispatch(0);          // every radio, queued as the file opens
+    EventLoop::get().add(this);
+}
+
+Airplane::~Airplane() {
+    if (m_fd >= 0) close(m_fd);
+}
+
+void Airplane::dispatch(short) {
+    rfkill_event e{};
+    while (read(m_fd, &e, RFKILL_EVENT_SIZE_V1) == RFKILL_EVENT_SIZE_V1) {
+        if (e.op == RFKILL_OP_DEL) m_radios.erase(e.idx);
+        else if (e.op == RFKILL_OP_ADD || e.op == RFKILL_OP_CHANGE) m_radios[e.idx] = {e.type, e.soft != 0, e.hard != 0};
+    }
+    update();
+}
+
+void Airplane::update() {
+    // On: every radio there is blocked, by the shell or a switch
+    const bool on = !m_radios.empty() && std::ranges::all_of(m_radios, [](const auto& r) { return r.second.soft || r.second.hard; });
+    if (on == m_on) return;
+    m_on = on;
+    changed.emit();
+}
+
+bool Airplane::hardBlocked() const {
+    return std::ranges::any_of(m_radios, [](const auto& r) { return r.second.hard; });
+}
+
+bool Airplane::blocked(Radio type) const {
+    return std::ranges::any_of(m_radios, [type](const auto& r) { return r.second.type == static_cast<uint8_t>(type) && r.second.soft; });
+}
+
+bool Airplane::write(uint8_t type, uint8_t op, bool block) {
+    rfkill_event e{};
+    e.type = type;
+    e.op = op;
+    e.soft = block ? 1 : 0;
+    if (!m_writable || ::write(m_fd, &e, RFKILL_EVENT_SIZE_V1) != RFKILL_EVENT_SIZE_V1) {
+        log::warn("airplane mode: can't write /dev/rfkill: {}", m_writable ? std::strerror(errno) : "no permission");
+        return false;
+    }
+    // Ahead of the events that confirm it, so what follows sees it
+    for (auto& [idx, r] : m_radios)
+        if (type == RFKILL_TYPE_ALL || r.type == type) r.soft = block;
+    update();
+    return true;
+}
+
+void Airplane::set(bool on) {
+    if (on == m_on) return;
+    auto& c = Config::get();
+    // What comes back after: Wi-Fi and Bluetooth as they are now
+    if (on) {
+        c.set("/network/airplane/wifi", Network::get().wifiEnabled());
+        c.set("/network/airplane/bluetooth", Bluetooth::get().powered());
+    }
+    if (!write(RFKILL_TYPE_ALL, RFKILL_OP_CHANGE_ALL, on) || on) return;
+    // Back as before: Wi-Fi at once, Bluetooth once BlueZ has its adapter
+    // back (it may power it up by itself)
+    Network::get().setWifiEnabled(c.value<bool>("/network/airplane/wifi", true));
+    const bool bt = c.value<bool>("/network/airplane/bluetooth", false);
+    EventLoop::get().addTimer(1500, [bt] {
+        auto& b = Bluetooth::get();
+        if (b.available() && b.powered() != bt) b.setPowered(bt);
+    });
+}
+
+void Airplane::unblock(Radio type) {
+    if (blocked(type)) write(static_cast<uint8_t>(type), RFKILL_OP_CHANGE_ALL, false);
+}
+
+void Airplane::takeKey() {
+    if (m_key || m_fd < 0) return;
+    m_key = ioctl(m_fd, RFKILL_IOCTL_NOINPUT) == 0;
+    if (!m_key) log::warn("airplane mode: the kernel keeps the airplane key: {}", std::strerror(errno));
 }
 
 } // namespace m3

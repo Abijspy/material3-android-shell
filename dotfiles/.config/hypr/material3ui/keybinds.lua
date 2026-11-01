@@ -51,6 +51,10 @@ run("XF86AudioLowerVolume", "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-", "Media:
 run("XF86AudioMute", "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle", "Media: Mute", { locked = true })
 run("XF86AudioMicMute", "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle", "Media: Mute microphone", { locked = true })
 
+-- The airplane key: the shell's airplane mode (the kernel's own toggle
+-- stands down while the shell runs)
+run("XF86RFKill", "material3ui msg airplane toggle", "Airplane mode", { locked = true })
+
 -- Media
 run("XF86AudioPlay", "playerctl play-pause", "Media: Play / pause", { locked = true })
 run("XF86AudioPause", "playerctl play-pause", "Media: Pause", { locked = true })

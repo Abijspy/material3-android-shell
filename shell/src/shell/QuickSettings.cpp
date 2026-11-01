@@ -357,15 +357,13 @@ const std::vector<TileDef>& tileDefs() {
              popup.close();
              if (open) open("settings printers"); // opens Settings too, if it's closed
          }},
-        {"airplane", "flight", "Airplane mode",
-         [] { return !Network::get().wifiEnabled() && !Bluetooth::get().powered(); },
-         [] { return std::string(!Network::get().wifiEnabled() && !Bluetooth::get().powered() ? "On" : "Off"); }, {},
-         [](Popup&) {
-             // Off again turns Wi-Fi back on; Bluetooth stays as the user leaves it
-             const bool on = !Network::get().wifiEnabled() && !Bluetooth::get().powered();
-             Network::get().setWifiEnabled(on);
-             if (!on) Bluetooth::get().setPowered(false);
-         }},
+        // Every radio blocked; off again, Wi-Fi and Bluetooth as they were
+        {"airplane", "flight", "Airplane mode", [] { return Airplane::get().on(); },
+         [] {
+             auto& a = Airplane::get();
+             return std::string(!a.available() ? "No radios" : a.on() ? "On" : "Off");
+         },
+         {}, [](Popup&) { Airplane::get().toggle(); }},
         {"powersaver", "eco", "Power saver", [] { return Power::get().profile() == "power-saver"; },
          [] { return std::string(Power::get().profile() == "power-saver" ? "On" : "Off"); }, {},
          [](Popup&) { Power::get().setProfile(Power::get().profile() == "power-saver" ? "balanced" : "power-saver"); }},
@@ -845,6 +843,7 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
     live->watch(Brightness::get().changed);
     live->watch(Network::get().changed);
     live->watch(Bluetooth::get().changed);
+    live->watch(Airplane::get().changed);
     live->watch(Notifications::get().changed);
     live->watch(Idle::get().changed);
     live->watch(NightLight::get().changed);

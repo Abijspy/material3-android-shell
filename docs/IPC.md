@@ -50,6 +50,7 @@ Running a panel command again closes the panel.
 | `lock` | Locks the session (ext-session-lock) |
 | `workspace <n>\|next\|prev` | Goes to a workspace (on niri, the focused monitor's own numbers) |
 | `idle inhibit\|allow` | Caffeine: keeps the screen awake |
+| `airplane [on\|off\|toggle]` | Airplane mode: every radio off through rfkill, then Wi-Fi and Bluetooth back as they were. The airplane key (`XF86RFKill`) runs `toggle`. |
 | `updates [list\|check\|upgrade]` | Pending updates (firmware's too), a check now, or the update itself (asks for the password) |
 | `firmware [list\|check\|update [id]]` | fwupd's devices and their updates; updates one device, or all of them |
 | `repos [list]` · `repos enable\|disable <repo>` | pacman's repositories, mirrors and held-back packages, and Flatpak's remotes; switches a repository |

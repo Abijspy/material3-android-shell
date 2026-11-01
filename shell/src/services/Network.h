@@ -269,4 +269,45 @@ private:
     int m_max = 1, m_current = 0;
 };
 
+// Airplane mode: every radio (Wi-Fi, Bluetooth, mobile) blocked through
+// rfkill, which the session may write (/dev/rfkill is the seat's: no
+// password). Turned off, Wi-Fi and Bluetooth come back as they were; either
+// turned on by itself unblocks just its own radio. Followed from rfkill's
+// events, so `rfkill` or a laptop's switch show at once.
+class Airplane : public EventSource {
+public:
+    enum class Radio : uint8_t { Wlan = 1, Bluetooth = 2 }; // rfkill's types
+
+    static Airplane& get();
+    ~Airplane() override;
+    bool available() const { return !m_radios.empty(); } // any radio to block
+    bool on() const { return m_on; }
+    // A switch on the laptop has a radio off: only the switch turns it on
+    bool hardBlocked() const;
+    void set(bool on);
+    void toggle() { set(!m_on); }
+    bool blocked(Radio type) const;
+    void unblock(Radio type);
+    // The airplane key (KEY_RFKILL) is the shell's, bound in the compositor
+    // to `msg airplane toggle`: the kernel's handler, which would toggle the
+    // radios as well, stands down while the shell runs (as GNOME's does)
+    void takeKey();
+    Signal<> changed;
+
+    int fd() const override { return m_fd; }
+    void dispatch(short revents) override;
+
+private:
+    Airplane();
+    bool write(uint8_t type, uint8_t op, bool block);
+    void update();
+    struct State {
+        uint8_t type = 0;
+        bool soft = false, hard = false;
+    };
+    std::map<uint32_t, State> m_radios; // by rfkill index
+    int m_fd = -1;
+    bool m_on = false, m_writable = false, m_key = false;
+};
+
 } // namespace m3

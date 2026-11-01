@@ -278,6 +278,23 @@ void connectionDetails(Flex* parent, const char* fg, std::function<void()> disco
 }
 
 void networkPage(Flex* page, Popup&) {
+    // Airplane mode: every radio off, the airplane key's switch too
+    if (Airplane::get().available()) {
+        auto* live = page->add<Live>();
+        auto r = row(group(live, "Radios"), "flight", "Airplane mode");
+        auto* sw = r.row->add<Switch>();
+        sw->onToggled = [](bool on) { Airplane::get().set(on); };
+        live->sync = [r, sw] {
+            auto& a = Airplane::get();
+            sw->setChecked(a.on());
+            r.subtitle->setText(a.hardBlocked() ? "The laptop's wireless switch has a radio off"
+                                : a.on()        ? "On: Wi-Fi and Bluetooth can still be turned on by themselves"
+                                                : "Turns off Wi-Fi, Bluetooth and every other radio");
+            r.subtitle->setVisible(true);
+        };
+        live->watch(Airplane::get().changed);
+        live->sync();
+    }
     // Wi-Fi first, then wired adapters; the connection in use carries its
     // speeds and details inside its own entry
     wifiView(panelGroup(page, "Wi-Fi networks", "Tap one to connect; saved networks connect at once"), {}, false,

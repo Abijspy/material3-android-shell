@@ -393,19 +393,21 @@ StatusIcons::StatusIcons(OpenPopup open, bool vertical) : Flex(vertical ? Direct
     m_b = Bluetooth::get().changed.connect([this] { sync(); });
     m_c = Audio::get().changed.connect([this] { sync(); });
     m_d = Notifications::get().changed.connect([this] { sync(); });
+    m_e = Airplane::get().changed.connect([this] { sync(); });
     sync();
 }
 
 void StatusIcons::sync() {
-    // Connected over Wi-Fi, or on with nothing reached: the arcs; else the
-    // glyph (Wi-Fi off, Ethernet, VPN)
+    // Airplane mode: a plane. Connected over Wi-Fi, or on with nothing
+    // reached: the arcs; else the glyph (Wi-Fi off, Ethernet, VPN)
     auto& nw = Network::get();
-    const bool arcs = nw.available() && nw.wifiEnabled() && (nw.kind() == Network::Kind::Wifi || nw.kind() == Network::Kind::None);
+    const bool airplane = Airplane::get().on();
+    const bool arcs = !airplane && nw.available() && nw.wifiEnabled() && (nw.kind() == Network::Kind::Wifi || nw.kind() == Network::Kind::None);
     m_wifi->setVisible(arcs);
     m_netIcon->setVisible(!arcs);
     if (arcs) m_wifi->setLevel(nw.kind() == Network::Kind::Wifi ? wifiArcs(nw.strength()) : -1);
-    else m_netIcon->setText(!nw.wifiEnabled() && nw.kind() == Network::Kind::None ? "wifi_off" : nw.icon());
-    m_net->setVisible(nw.available());
+    else m_netIcon->setText(airplane ? "flight" : !nw.wifiEnabled() && nw.kind() == Network::Kind::None ? "wifi_off" : nw.icon());
+    m_net->setVisible(nw.available() || airplane);
     m_btIcon->setText(Bluetooth::get().icon());
     m_bt->setVisible(Bluetooth::get().available());
     m_volIcon->setText(volumeIcon());
@@ -418,19 +420,22 @@ void StatusIcons::sync() {
     const bool muted = !out || out->muted || out->volume() <= 0.001f;
     const size_t unread = n.current().size();
     if (m_known) {
+        if (airplane != m_airplane) m_netIcon->popIn(); // the plane lands, or the signal comes back
         if (btOn != m_btOn) btOn ? m_btIcon->popIn() : m_btIcon->popOut();
         if (muted != m_muted) muted ? m_volIcon->shake() : m_volIcon->popIn();
         if (dnd != m_dnd) dnd ? m_bellIcon->popOut() : m_bellIcon->popIn();
         else if (!dnd && unread > m_unread) m_bellIcon->shake(); // a new one rings the bell
     }
     m_known = true;
+    m_airplane = airplane;
     m_btOn = btOn;
     m_muted = muted;
     m_dnd = dnd;
     m_unread = unread;
     // What each says, for its tooltip
     auto& net = Network::get();
-    m_net->setTooltip(net.kind() == Network::Kind::None ? "Not connected" : net.name().empty() ? "Connected" : net.name());
+    m_net->setTooltip(airplane ? "Airplane mode"
+                      : net.kind() == Network::Kind::None ? "Not connected" : net.name().empty() ? "Connected" : net.name());
     m_bt->setTooltip(Bluetooth::get().powered() ? "Bluetooth on" : "Bluetooth off");
     const auto* sink = Audio::get().sink();
     m_vol->setTooltip(!sink ? "Sound" : sink->muted ? "Muted" : std::format("Volume {}%", std::lround(sink->volume() * 100)));

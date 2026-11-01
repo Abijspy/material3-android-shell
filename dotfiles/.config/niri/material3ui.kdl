@@ -47,6 +47,9 @@ binds {
     XF86AudioRaiseVolume allow-when-locked=true { spawn "material3ui" "msg" "volume" "up"; }
     XF86AudioLowerVolume allow-when-locked=true { spawn "material3ui" "msg" "volume" "down"; }
     XF86AudioMute allow-when-locked=true { spawn "material3ui" "msg" "volume" "mute"; }
+    // The airplane key: the shell's airplane mode (the kernel's own toggle
+    // stands down while the shell runs)
+    XF86RFKill allow-when-locked=true { spawn "material3ui" "msg" "airplane" "toggle"; }
 }
 
 // The shell's Settings (cursor, touchpad, keyboard, monitors, your keys):

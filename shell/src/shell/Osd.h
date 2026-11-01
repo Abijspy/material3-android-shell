@@ -16,6 +16,7 @@ class Osd {
 public:
     explicit Osd(std::function<wl::Output*()> output);
 
+    // value: the bar's level, 0–1; below 0, no bar (a state: "Airplane mode on")
     void show(const std::string& icon, float value, const std::string& label);
 
 private:

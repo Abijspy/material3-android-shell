@@ -120,6 +120,19 @@ bool Shell::start() {
     auto focused = [this] { return focusedOutput(); };
     m_toasts = std::make_unique<Toasts>(focused);
     m_osd = std::make_unique<Osd>(focused);
+    // The airplane key: the shell's where the compositor's config sends it
+    // here (material3ui.kdl, keybinds.lua), else the kernel's toggle stays
+    {
+        auto binds = [](const std::filesystem::path& file) {
+            std::ifstream in(file);
+            const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            return text.find("XF86RFKill") != std::string::npos;
+        };
+        const auto config = std::filesystem::path(paths::configDir()).parent_path();
+        const bool niri = !Hyprland::get().available() && Niri::get().available();
+        if (niri ? binds(config / "niri" / "material3ui.kdl") : binds(config / "hypr" / "material3ui" / "keybinds.lua"))
+            Airplane::get().takeKey();
+    }
     // Locking: IPC, loginctl lock-session, idle timeout, before suspend
     panels::lock = [] { EventLoop::get().defer([] { LockScreen::get().lock(); }); };
     // Tooltips on the bar and the dock
@@ -1037,6 +1050,20 @@ void Shell::registerIpc() {
         const int by = !a.empty() && a[0] == "prev" ? -1 : 1;
         EventLoop::get().defer([this, by] { switcher::step(focusedOutput(), by); });
         return std::string();
+    });
+    ipc.add("airplane", "airplane [on|off|toggle]: every radio off, or back as they were (the airplane key)",
+            [this](const IpcServer::Args& a) {
+        auto& ap = Airplane::get();
+        if (!ap.available()) return std::string("error: no radios (rfkill)");
+        if (!a.empty()) {
+            if (a[0] != "on" && a[0] != "off" && a[0] != "toggle") return std::string("error: airplane [on|off|toggle]");
+            const bool want = a[0] == "toggle" ? !ap.on() : a[0] == "on";
+            ap.set(want);
+            if (ap.on() != want)
+                return std::string(ap.hardBlocked() ? "error: the laptop's wireless switch has a radio off" : "error: couldn't change rfkill (see the log)");
+            if (m_osd) m_osd->show(want ? "flight" : "airplanemode_inactive", -1, want ? "Airplane mode on" : "Airplane mode off");
+        }
+        return std::string(ap.on() ? "on" : "off");
     });
     ipc.add("idle", "idle [inhibit|allow]: keep the screen awake (Caffeine)", [](const IpcServer::Args& a) {
         if (!a.empty()) Idle::get().setInhibited(a[0] == "inhibit");

@@ -86,8 +86,11 @@ void Osd::show(const std::string& icon, float value, const std::string& label) {
     if (m_destroy) EventLoop::get().cancel(m_destroy);
     m_destroy = 0;
     m_icon->setText(icon);
-    m_bar->value.set(value);
+    // No level (value < 0): the label alone, as wide as it needs
+    m_bar->setVisible(value >= 0);
+    if (value >= 0) m_bar->value.set(value);
     m_bar->requestRedraw();
+    m_label->fixedWidth = value >= 0 ? std::optional<float>(48) : std::nullopt;
     m_label->setText(label);
     m_pill->setOpacity(1);
     m_pill->setTranslateY(0);
