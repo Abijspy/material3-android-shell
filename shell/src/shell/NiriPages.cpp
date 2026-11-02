@@ -424,11 +424,26 @@ void niriAnimationsPage(Flex* page, Popup&) {
     // Each animation: on or off, and its motion, a spring or a curve (a
     // custom one drawn in the curve editor). Rebuilt when the motion or the
     // curve changes, which decide its rows; the sliders write as they move
+    // Each animation's rows below show the motion this decides
+    auto list = std::make_shared<Live*>(nullptr);
+    auto* windows = group(page, "Windows");
+    switchRow(windows, "animation", "Material 3 Expressive", "Windows grow in on a spring and leave quickly, the way the shell's panels do",
+              kLook + "expressiveWindows", true, [list](bool) {
+                  if (*list) (*list)->syncSoon();
+              });
+
     auto* each = page->add<Live>();
+    *list = each;
     each->setSpacing(0);
     each->sync = [each, doc] {
         each->clearChildren();
-        for (const auto& d : niri::animationDefs()) {
+        const bool expressive = Config::get().value<bool>(kLook + "expressiveWindows", true);
+        for (const auto& niriDef : niri::animationDefs()) {
+            // Windows' motion with Material 3 Expressive on: its own, unless
+            // your config.kdl sets one
+            const kdl::Node* own = kdl::last(doc, {"animations", niriDef.name});
+            const auto* exp = expressive && !(own && !own->children.empty()) ? niri::expressiveDef(niriDef.name) : nullptr;
+            const auto& d = exp ? *exp : niriDef;
             const std::string base = kLook + "anim/" + d.name + "/";
             const auto mine = Config::get().value<nlohmann::json>("/niri/look/anim/" + std::string(d.name), nlohmann::json::object());
             // Yours, from config.kdl (its last section for this animation)

@@ -69,6 +69,51 @@ const std::vector<AnimationDef>& animationDefs() {
     return defs;
 }
 
+const AnimationDef* expressiveDef(const std::string& name) {
+    // Opening: a spatial spring with a little overshoot (the shader turns
+    // it into growth past full size). Closing: a quick even run that the
+    // shader accelerates: exits are faster than entrances
+    static const AnimationDef open{"window-open", "Windows opening", true, 0.65, 420, 150, "ease-out-expo"};
+    static const AnimationDef close{"window-close", "Windows closing", false, 1, 800, 220, "linear"};
+    return name == open.name ? &open : name == close.name ? &close : nullptr;
+}
+
+std::string expressiveShader(const std::string& name) {
+    // Sampled only inside the window's texture (its rounding, border and
+    // shadow included), so nothing smears past its edges as it scales
+    static const char* sample = R"(
+vec4 m3_sample(vec2 c) {
+    vec3 t = niri_geo_to_tex * vec3(c, 1.0);
+    if (t.x < 0.0 || t.x > 1.0 || t.y < 0.0 || t.y > 1.0) return vec4(0.0);
+    return texture2D(niri_tex, t.st);
+}
+)";
+    if (name == "window-open")
+        return std::string(sample) + R"(
+// Material 3 Expressive: grows out of 85% on the spring, a touch past full
+// size, rising into place and fading in over the first part
+vec4 open_color(vec3 coords_geo, vec3 size_geo) {
+    float p = niri_progress;
+    float scale = 0.85 + 0.15 * p;
+    float rise = (1.0 - p) * 32.0 / size_geo.y;
+    vec2 c = (coords_geo.xy - vec2(0.5, 0.5 + rise)) / scale + vec2(0.5);
+    return m3_sample(c) * clamp(niri_clamped_progress * 2.5, 0.0, 1.0);
+}
+)";
+    if (name == "window-close")
+        return std::string(sample) + R"(
+// Material 3 Expressive exit: shrinks to 90% and fades on an accelerating
+// curve, so it leaves rather than lingers
+vec4 close_color(vec3 coords_geo, vec3 size_geo) {
+    float e = niri_clamped_progress * niri_clamped_progress;
+    float scale = 1.0 - 0.1 * e;
+    vec2 c = (coords_geo.xy - vec2(0.5)) / scale + vec2(0.5);
+    return m3_sample(c) * (1.0 - e);
+}
+)";
+    return {};
+}
+
 bool validCurve(const std::string& curve) {
     return curve == "linear" || curve == "ease-out-quad" || curve == "ease-out-cubic" || curve == "ease-out-expo" || curve == "cubic-bezier";
 }
@@ -229,10 +274,8 @@ std::string render(const Settings& s) {
     std::string anims;
     if (l.animations) anims += *l.animations ? "    on\n" : "    off\n";
     if (l.slowdown) anims += std::format("    slowdown {:.2f}\n", *l.slowdown);
-    for (const auto& a : l.anims) {
-        if (std::ranges::none_of(animationDefs(), [&](const AnimationDef& d) { return a.name == d.name; })) continue;
+    auto motion = [](const Settings::Look::Animation& a) {
         std::string body;
-        if (a.off) body += "        off\n";
         if (a.kind == "spring") {
             body += std::format("        spring damping-ratio={:.2f} stiffness={} epsilon=0.0001\n", std::clamp(a.damping, 0.05, 2.0),
                                 std::clamp(static_cast<int>(std::lround(a.stiffness)), 10, 5000));
@@ -244,8 +287,36 @@ std::string render(const Settings& s) {
             else
                 body += std::format("        curve {}\n", quote(a.curve));
         }
+        return body;
+    };
+    // Windows opening and closing, Material 3 Expressive's way: its motion
+    // unless one's set here, and its shader
+    auto expressive = [&](const std::string& name) -> const AnimationDef* {
+        return s.expressiveWindows && !s.yourWindowAnims.contains(name) ? expressiveDef(name) : nullptr;
+    };
+    auto shaded = [&](std::string body, const std::string& kind, const AnimationDef* def) {
+        if (kind.empty()) {
+            Settings::Look::Animation m;
+            m.kind = def->spring ? "spring" : "easing";
+            m.damping = def->damping;
+            m.stiffness = def->stiffness;
+            m.duration = def->duration;
+            m.curve = def->curve;
+            body += motion(m);
+        }
+        return body + "        custom-shader " + quote(expressiveShader(def->name)) + "\n";
+    };
+    std::set<std::string> written;
+    for (const auto& a : l.anims) {
+        if (std::ranges::none_of(animationDefs(), [&](const AnimationDef& d) { return a.name == d.name; })) continue;
+        written.insert(a.name);
+        std::string body = a.off ? "        off\n" : motion(a);
+        if (const auto* def = expressive(a.name); def && !a.off) body = shaded(body, a.kind, def);
         if (!body.empty()) anims += std::format("    {} {{\n", a.name) + body + "    }\n";
     }
+    for (const char* name : {"window-open", "window-close"})
+        if (const auto* def = expressive(name); def && !written.contains(name))
+            anims += std::format("    {} {{\n", name) + shaded("", "", def) + "    }\n";
     if (!anims.empty()) out += "\nanimations {\n" + anims + "}\n";
     if (l.preferNoCsd) out += std::format("\nprefer-no-csd {}\n", *l.preferNoCsd);
     if (l.skipHotkeys) out += std::format("\nhotkey-overlay {{\n    skip-at-startup {}\n}}\n", *l.skipHotkeys);

@@ -68,6 +68,11 @@ public:
     std::function<bool(const ui::KeyEvent&)> onKey;
     // Pointer pressed where no interactive node is (popups close on this)
     std::function<void(float x, float y)> onEmptyClick;
+    // Once, laid out and about to paint its first frame: entrances start
+    // here, not when built (building, the first layout and the compositor's
+    // configure can take longer than the animation)
+    std::function<void()> onFirstFrame;
+    bool rendered() const { return m_rendered; }
 
     // ui::Host
     void requestLayout() override;
@@ -135,6 +140,7 @@ private:
     int m_width = 0, m_height = 0;
     float m_scale = 1;
     bool m_configured = false;
+    bool m_rendered = false;
     bool m_needsLayout = true;
     bool m_dirty = true;
     bool m_scheduled = false;

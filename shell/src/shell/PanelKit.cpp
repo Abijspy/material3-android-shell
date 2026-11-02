@@ -655,6 +655,10 @@ SmallTile::SmallTile(const std::string& icon, float width) : Button(Direction::R
 
 void SmallTile::set(bool active, const std::string& icon) {
     setBackground(active ? ColorRef("primary") : ColorRef("on_surface", 0.1f));
+    // M3 Expressive: round while off, a rounded square while on, morphing
+    // between them (at once the first time)
+    morphRadius(Radii(active ? 20 : 32), m_shaped);
+    m_shaped = true;
     if (!icon.empty()) m_icon->setText(icon);
     m_icon->setFill(active)->setColor(active ? "on_primary" : "on_surface");
 }

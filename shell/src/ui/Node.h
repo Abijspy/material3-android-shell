@@ -47,6 +47,8 @@ public:
     void adopt(std::unique_ptr<Node> child);
     void adopt(std::unique_ptr<Node> child, size_t index);
     void remove(Node* child);
+    // Taken out, to live on elsewhere (a toast flying off over the others)
+    std::unique_ptr<Node> release(Node* child);
     void clearChildren();
     const std::vector<std::unique_ptr<Node>>& children() const { return m_children; }
 
@@ -101,19 +103,34 @@ public:
     void focus();
     Node* parentNode() const { return m_parent; }
 
-    // Visual-only transforms for transitions; layout and hit testing ignore them
-    void setOpacity(float o, bool animate = true);
-    void setTranslateY(float dy, bool animate = true);
-    void setTranslateX(float dx, bool animate = true);
+    // Visual-only transforms for transitions; layout and hit testing ignore
+    // them. `delayMs`: begun that much later (staggered entrances)
+    void setOpacity(float o, bool animate = true, int delayMs = 0);
+    void setTranslateY(float dy, bool animate = true, int delayMs = 0);
+    void setTranslateX(float dx, bool animate = true, int delayMs = 0);
     // Moved at once without asking for a frame: for a node that is
     // painting it this very frame (a scrolling title)
     void shiftX(float dx) { m_translateX.set(dx, false); }
-    // Drawn scaled about its centre (springy pops); layout and hit tests
-    // ignore it
-    void setScale(float s, bool animate = true);
+    // Drawn scaled about its centre, or the point scaleOrigin names (0–1
+    // across and down it: a popup grows from the button that opened it);
+    // layout and hit tests ignore it
+    void setScale(float s, bool animate = true, int delayMs = 0);
+    float scaleOriginX = 0.5f, scaleOriginY = 0.5f;
+    // The springs its moves and its scale use (by default M3's spatial
+    // spring, and the bouncy one pops are made of)
+    void setMoveSpring(Spring s) {
+        m_translateX.setSpring(s);
+        m_translateY.setSpring(s);
+    }
+    void setScaleSpring(Spring s) { m_scale.setSpring(s); }
+    void setFadeSpring(Spring s) { m_opacity.setSpring(s); }
     float translateX() const { return m_translateX.value(); }
     float translateY() const { return m_translateY.value(); }
     float opacity() const { return m_opacity.target(); } // where it's heading
+    // As drawn this moment, mid-animation (the compositor's blur behind
+    // follows them)
+    float opacityNow() const { return m_opacity.value(); }
+    float scaleNow() const { return m_scale.value(); }
     // Moved or scaled at rest (not just animating): drawn away from its
     // place on purpose (a magnified dock icon, a hidden dock)
     bool transformed() const { return m_scale.target() != 1 || m_translateX.target() != 0 || m_translateY.target() != 0; }
@@ -319,6 +336,8 @@ protected:
     void doArrange() override;
     void doPaint(Renderer& r) override;
     bool doAnimating() const override { return m_color.running(); }
+    // After setText changed it (an icon answers a new glyph)
+    virtual void onTextChanged() {}
     TextStyle style() const;
     // The width it wraps (or ellipsizes) within, offered `room`: its
     // maxWidth, or less when that's all there is
@@ -342,17 +361,28 @@ protected:
 // A Material Symbols glyph by ligature name ("wifi", "volume_up"), or an
 // SVG file by its path, drawn as a shape in the icon's colour (symbols the
 // font lacks: Quick Share's)
+//
+// M3 Expressive icon motion, once it's on screen: filling morphs the font's
+// FILL axis from outline to solid (and back) with a little pop, and a new
+// glyph springs in from smaller (play becoming pause, a tile's state)
 class Icon : public Label {
 public:
     explicit Icon(std::string name = {}, float size = 20);
     Icon* setFill(bool filled);
+    // Off where the owner choreographs its own motion (the status bar's)
+    bool popOnChange = true;
 
 protected:
     SizeF doMeasure(SizeF available) override;
     void doPaint(Renderer& r) override;
+    bool doAnimating() const override { return Label::doAnimating() || m_fillT.running(); }
+    void onTextChanged() override;
 
 private:
     bool isFile() const { return m_text.starts_with('/'); }
+    void pop(float from);
+    Tween m_fillT{0, Spring::effectsDefault()};
+    bool m_painted = false; // drawn once: changes from here on animate
 };
 
 // Clickable container with the Material state layer: an on-surface tint at

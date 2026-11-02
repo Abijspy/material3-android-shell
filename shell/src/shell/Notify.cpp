@@ -150,13 +150,16 @@ NotificationCard::NotificationCard(const Notifications::Notification& n, bool to
     if (provider) {
         auto* img = head->add<ImageView>(40, provider);
         img->cover = !n.image.data.empty() || !n.imagePath.empty();
+        m_avatar = img;
     } else {
         auto* bubble = head->add<Flex>(Direction::Row);
         pill(bubble->setBackground("primary_container", false))->setJustify(Align::Center);
         bubble->fixedWidth = bubble->fixedHeight = 40;
         bubble->add<Icon>("notifications", 22)->setColor("on_primary_container", false);
+        m_avatar = bubble;
     }
     auto* texts = head->add<Flex>(Direction::Column);
+    m_parts.push_back(texts);
     texts->setSpacing(2)->setAlignItems(Align::Start);
     texts->grow = true;
     auto* meta = texts->add<Label>(std::format("{} · {}", n.app.empty() ? "Notification" : n.app, ago(n.time)));
@@ -182,6 +185,7 @@ NotificationCard::NotificationCard(const Notifications::Notification& n, bool to
         auto* body = add<Label>(n.body);
         body->setSize(14)->setColor("on_surface_variant", false)->setMaxWidth(toast ? kToastWidth - 32 : 340)->setMaxLines(4);
         body->alignSelf = Align::Start;
+        m_parts.push_back(body);
     }
 
     std::vector<Notifications::Action> visible;
@@ -190,6 +194,7 @@ NotificationCard::NotificationCard(const Notifications::Notification& n, bool to
     if (!visible.empty()) {
         auto* row = add<Flex>(Direction::Row);
         row->setSpacing(8)->setJustify(Align::End);
+        m_parts.push_back(row);
         for (const auto& a : visible) {
             auto* b = row->add<Button>();
             pill(b->setBackground("secondary_container", false))->setPadding({16, 8});
@@ -212,6 +217,7 @@ void NotificationCard::onDrag(float x, float) {
     m_dx = x - m_x0;
     // A few pixels first, so a slightly moving click is still a click
     if (!m_swiping && std::abs(m_dx) < 8) return;
+    if (!m_swiping) morphRadius(Radii(36)); // M3 Expressive: picked up, its corners round
     m_swiping = true;
     const float w = std::max(rect().w, 1.0f);
     setTranslateX(m_dx, false);
@@ -224,9 +230,10 @@ void NotificationCard::onRelease() {
     if (!m_swiping) return;
     m_swiped = true;
     if (std::abs(m_dx) > rect().w * 0.35f) return flyOff(m_dx < 0 ? -1 : 1);
-    // Not far enough: back, with a little bounce
+    // Not far enough: back, with a little bounce, its corners as they were
     setTranslateX(0);
     setOpacity(1);
+    morphRadius(Radii(24));
 }
 
 void NotificationCard::onClick(uint32_t button) {
@@ -246,6 +253,25 @@ void NotificationCard::flyOff(float direction) {
     EventLoop::get().addTimer(motion::ms(220), [id] { Notifications::get().dismiss(id); });
 }
 
+void NotificationCard::enter() {
+    if (motion::scale <= 0) return;
+    if (m_avatar) {
+        m_avatar->setOpacity(0, false);
+        m_avatar->setScale(0.3f, false);
+        m_avatar->setOpacity(1, true, 70);
+        m_avatar->setScale(1, true, 70);
+    }
+    int i = 0;
+    for (auto* part : m_parts) {
+        const int delay = 90 + 45 * i++;
+        part->setMoveSpring(Spring::expressive());
+        part->setOpacity(0, false);
+        part->setTranslateX(24, false);
+        part->setOpacity(1, true, delay);
+        part->setTranslateX(0, true, delay);
+    }
+}
+
 void NotificationCard::onHoverWithin(bool hovered) {
     // Over the Reply button still counts as over the card: keep it up
     if (onHoverChanged) onHoverChanged(hovered);
@@ -254,6 +280,18 @@ void NotificationCard::onHoverWithin(bool hovered) {
 // ── Toasts ──
 
 namespace {
+
+// The surface's root: the column, and over it the toasts leaving, each
+// left where it was (they arrange nothing: they only fly off)
+class ToastRoot : public Node {
+protected:
+    SizeF doMeasure(SizeF available) override { return available; }
+};
+class Leaving : public Node {
+protected:
+    SizeF doMeasure(SizeF) override { return {0, 0}; }
+    void doArrange() override {}
+};
 
 // Column of toasts that reports where they are, for the input region.
 // When one comes or goes the others glide to their new places: each starts
@@ -299,10 +337,12 @@ void Toasts::ensureSurface() {
     o.anchor = wl::LayerSurface::Top | wl::LayerSurface::Right | wl::LayerSurface::Bottom;
     o.width = static_cast<int>(kToastWidth + kMargin * 2);
     m_surface = std::make_unique<wl::LayerSurface>(out, o);
-    auto root = std::make_unique<ToastColumn>();
-    root->setPadding(Insets(kMargin))->setSpacing(10)->setAlignItems(Align::End);
-    root->onArranged = [this] { updateInput(); };
-    m_column = root.get();
+    auto root = std::make_unique<ToastRoot>();
+    auto* column = root->add<ToastColumn>();
+    column->setPadding(Insets(kMargin))->setSpacing(10)->setAlignItems(Align::End);
+    column->onArranged = [this] { updateInput(); };
+    m_column = column;
+    m_leaving = root->add<Leaving>();
     m_surface->setInputRegion(std::vector<RectF>{}); // click-through until laid out
     m_surface->setRoot(std::move(root));
 }
@@ -310,8 +350,7 @@ void Toasts::ensureSurface() {
 void Toasts::updateInput() {
     if (!m_surface) return;
     std::vector<RectF> rects;
-    for (const auto& t : m_toasts)
-        if (!t.leaving) rects.push_back(t.card->rect());
+    for (const auto& t : m_toasts) rects.push_back(t.card->rect());
     m_surface->setInputRegion(rects);
 }
 
@@ -347,14 +386,34 @@ void Toasts::show(uint32_t id) {
     auto card = std::make_unique<NotificationCard>(*n, true);
     NotificationCard* raw = card.get();
     m_column->adopt(std::move(card), 0); // newest on top
-    // In from the side, popping up to size
+    // M3 Expressive: in from the screen's edge on an expressive spring,
+    // growing from that side a touch past full size; then its picture
+    // pops and its words follow
+    raw->setMoveSpring(Spring::expressive());
+    raw->setScaleSpring(Spring::expressive());
+    raw->scaleOriginX = 1;
     raw->setOpacity(0, false);
-    raw->setTranslateX(kToastWidth / 2, false);
-    raw->setScale(0.85f, false);
-    raw->setOpacity(1);
-    raw->setTranslateX(0);
-    raw->setScale(1);
+    raw->setTranslateX(kToastWidth * 0.7f, false);
+    raw->setScale(0.88f, false);
     m_toasts.insert(m_toasts.begin(), Toast{id, raw});
+    auto start = [this, raw] {
+        // Still up (a notification can be replaced before the first frame)
+        if (std::ranges::none_of(m_toasts, [raw](const Toast& t) { return t.card == raw; })) return;
+        raw->setOpacity(1);
+        raw->setTranslateX(0);
+        raw->setScale(1);
+        raw->enter();
+    };
+    // A surface just made: from its first frame
+    if (m_surface->rendered()) {
+        start();
+    } else {
+        auto before = std::move(m_surface->onFirstFrame);
+        m_surface->onFirstFrame = [before, start] {
+            if (before) before();
+            start();
+        };
+    }
 
     raw->onHoverChanged = [this, id](bool hovered) {
         for (auto& t : m_toasts) {
@@ -377,29 +436,45 @@ void Toasts::show(uint32_t id) {
 
 void Toasts::hide(uint32_t id, bool animate) {
     auto it = std::ranges::find(m_toasts, id, &Toast::id);
-    if (it == m_toasts.end() || it->leaving) return;
+    if (it == m_toasts.end()) return;
     if (it->timer) EventLoop::get().cancel(it->timer);
     NotificationCard* card = it->card;
-    auto remove = [this, card] {
-        std::erase_if(m_toasts, [card](auto& t) { return t.card == card; });
+    m_toasts.erase(it);
+    if (!animate || !m_leaving || motion::scale <= 0) {
         if (m_column) m_column->remove(card);
-        if (m_toasts.empty()) {
-            // No toasts: drop the surface entirely
-            EventLoop::get().defer([this] {
-                if (m_toasts.empty()) {
-                    m_column = nullptr;
-                    m_surface.reset();
-                }
-            });
-        }
-    };
-    if (!animate) return remove();
-    it->leaving = true;
+        dropSurfaceIfDone();
+        return;
+    }
+    // Out of the column now, so the rest glide up together while it flies
+    // off over them: the way it was swiped, else back to the screen's edge,
+    // quicker than it came and without a bounce
+    auto node = m_column->release(card);
+    if (!node) return dropSurfaceIfDone();
+    m_leaving->adopt(std::move(node));
     updateInput();
+    const float dir = card->translateX() < -1 ? -1.0f : 1.0f;
+    card->setMoveSpring(Spring::spatialFast());
+    card->setScaleSpring(Spring::spatialFast());
+    card->setFadeSpring(Spring::effectsFast());
+    card->setTranslateX(dir * (kToastWidth + kMargin * 2));
     card->setOpacity(0);
-    card->setTranslateX(kToastWidth / 2);
-    card->setScale(0.9f);
-    EventLoop::get().addTimer(ui::motion::ms(ui::motion::mediumMs), remove);
+    card->setScale(0.92f);
+    EventLoop::get().addTimer(ui::motion::ms(240), [this, card] {
+        if (!m_leaving) return;
+        m_leaving->remove(card);
+        dropSurfaceIfDone();
+    });
+}
+
+void Toasts::dropSurfaceIfDone() {
+    if (!m_toasts.empty() || (m_leaving && !m_leaving->children().empty())) return;
+    // No toasts: drop the surface entirely
+    EventLoop::get().defer([this] {
+        if (!m_toasts.empty() || (m_leaving && !m_leaving->children().empty())) return;
+        m_column = nullptr;
+        m_leaving = nullptr;
+        m_surface.reset();
+    });
 }
 
 } // namespace m3::shell

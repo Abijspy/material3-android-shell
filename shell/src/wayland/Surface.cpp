@@ -369,6 +369,11 @@ void Surface::render() {
     const bool laidOut = m_needsLayout;
     const long measuresBefore = ui::Node::measureCount();
     if (m_needsLayout) layout();
+    if (!m_rendered) {
+        m_rendered = true;
+        if (auto first = std::move(onFirstFrame)) first();
+        onFirstFrame = nullptr;
+    }
     const auto t1 = Clock::now();
     m_dirty = false;
 
@@ -439,20 +444,30 @@ void addRounded(std::vector<RectF>& out, const RectF& r, float radius) {
     out.push_back({r.x, r.y + radius, r.w, r.h - radius * 2});
 }
 
-// Where it's drawn: moved with its ancestors (a dock sliding away takes its
-// blur with it), and none for what's fading out
-void collectBlur(const ui::Node* n, std::vector<RectF>& out, float dx = 0, float dy = 0) {
-    if (!n->shown() || n->opacity() <= 0.01f) return;
-    dx += n->translateX();
-    dy += n->translateY();
+// Where it's drawn: moved and scaled with its ancestors as the renderer
+// draws them (a dock sliding away, a popup growing out of its button take
+// their blur with them). None for what's fading out, nor for what's still
+// mostly see-through fading in: a blur can't fade, and a full one behind a
+// faint card shows as a ghost of it
+struct BlurXform {
+    float s = 1, x = 0, y = 0;
+};
+void collectBlur(const ui::Node* n, std::vector<RectF>& out, BlurXform xf = {}) {
+    if (!n->shown() || std::min(n->opacity(), n->opacityNow()) <= 0.5f) return;
+    xf.x += n->translateX() * xf.s;
+    xf.y += n->translateY() * xf.s;
+    if (const float k = n->scaleNow(); k != 1) {
+        const RectF& b = n->rect();
+        xf.x += xf.s * (b.x + b.w * n->scaleOriginX) * (1 - k);
+        xf.y += xf.s * (b.y + b.h * n->scaleOriginY) * (1 - k);
+        xf.s *= std::max(0.0f, k);
+    }
     if (n->blurBehind && n->rect().w > 0 && n->rect().h > 0) {
-        RectF r = n->rect();
-        r.x += dx;
-        r.y += dy;
-        addRounded(out, r, n->cornerRadius());
+        const RectF& b = n->rect();
+        addRounded(out, {b.x * xf.s + xf.x, b.y * xf.s + xf.y, b.w * xf.s, b.h * xf.s}, n->cornerRadius() * xf.s);
         return; // children sit on top of it
     }
-    for (const auto& c : n->children()) collectBlur(c.get(), out, dx, dy);
+    for (const auto& c : n->children()) collectBlur(c.get(), out, xf);
 }
 
 } // namespace

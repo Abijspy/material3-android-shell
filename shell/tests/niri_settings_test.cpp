@@ -200,10 +200,42 @@ int main(int argc, char** argv) {
     expect(niri::validVariable("GDK_BACKEND") && !niri::validVariable("2X") && !niri::validVariable("A-B"), "variable names");
     expect(niri::validAction("focus-column-left") && !niri::validAction("spawn foot") && !niri::validAction("-x"), "action names");
 
-    // For a check by niri itself: niri_settings_test <file> [<file>] writes
-    // the full one, and the one with Niri Settings' options
+    // Material 3 Expressive windows: their motion and shader where nothing
+    // else is set; a motion set in Niri Settings kept, with the shader; off
+    // stays off; and nothing over an animation your config.kdl has
+    niri::Settings e;
+    e.expressiveWindows = true;
+    const std::string exp = niri::render(e);
+    expect(has(exp, "\nanimations {\n    window-open {\n        spring damping-ratio=0.65 stiffness=420 epsilon=0.0001\n"
+                    "        custom-shader \"") &&
+               has(exp, "vec4 open_color(vec3 coords_geo, vec3 size_geo)") && has(exp, "window-close {\n        duration-ms 220\n"
+                                                                                       "        curve \"linear\"\n        custom-shader \"") &&
+               has(exp, "vec4 close_color(vec3 coords_geo, vec3 size_geo)"),
+           "expressive windows: motion and shaders");
+    expect(!has(exp, "custom-shader \"\n") && has(exp, "\\n// Material 3 Expressive"), "the shader on one line, its newlines escaped");
+    Anim mine;
+    mine.name = "window-open";
+    mine.kind = "easing";
+    mine.duration = 300;
+    mine.curve = "ease-out-cubic";
+    Anim shut;
+    shut.name = "window-close";
+    shut.off = true;
+    e.look.anims = {mine, shut};
+    const std::string kept = niri::render(e);
+    expect(has(kept, "    window-open {\n        duration-ms 300\n        curve \"ease-out-cubic\"\n        custom-shader \"") &&
+               has(kept, "    window-close {\n        off\n    }\n") && !has(kept, "close_color"),
+           "a motion set here kept with the shader; off stays off");
+    e.look.anims.clear();
+    e.yourWindowAnims = {"window-open", "window-close"};
+    expect(!has(niri::render(e), "window-open") && !has(niri::render(e), "window-close"), "your config.kdl's own left alone");
+
+    // For a check by niri itself: niri_settings_test <file> [<file> [<file>]]
+    // writes the full one, the one with Niri Settings' options, and the
+    // expressive windows'
     if (argc > 1) std::ofstream(argv[1]) << full;
     if (argc > 2) std::ofstream(argv[2]) << more;
+    if (argc > 3) std::ofstream(argv[3]) << exp;
 
     if (failures) std::fprintf(stderr, "%d failed\n", failures);
     return failures ? 1 : 0;

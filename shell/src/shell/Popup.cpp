@@ -48,12 +48,20 @@ protected:
             card->arrange({r.x + 32, r.y + 32, r.w - 64, r.h - 64});
             return;
         }
+        // It grows from (and shrinks back into) the button that opened it:
+        // the point of its edge nearest the anchor; centred ones from their
+        // middle
+        auto origin = [&card](float fx, float fy) {
+            card->scaleOriginX = std::clamp(fx, 0.0f, 1.0f);
+            card->scaleOriginY = std::clamp(fy, 0.0f, 1.0f);
+        };
         if (width > 0) card->fixedWidth = std::min(width, std::max(0.0f, r.w - margin * 2));
         const SizeF s = card->measure({r.w - margin * 2, r.h - margin * 2});
         if (anchor >= 0 && !centreV && besideBar && (edge == BarEdge::Left || edge == BarEdge::Right)) {
             const float h = std::min(s.h, r.h - margin * 2);
             const float y = std::clamp(anchor - offsetY - h / 2, r.y + margin, std::max(r.y + margin, r.bottom() - margin - h));
             card->arrange({edge == BarEdge::Left ? r.x + margin : r.right() - margin - s.w, y, s.w, h});
+            origin(edge == BarEdge::Left ? 0 : 1, h > 0 ? (anchor - offsetY - y) / h : 0.5f);
             return;
         }
         float x = anchor < 0 ? (r.w - s.w) / 2 : anchor - offsetX - s.w / 2;
@@ -63,6 +71,7 @@ protected:
         // must not start above its top edge
         const float y = centreV ? std::max(r.y + margin, r.y + (r.h - h) / 3) : fromBottom ? r.bottom() - bottomGap - h : r.y + margin;
         card->arrange({x, y, s.w, h});
+        origin(anchor < 0 || s.w <= 0 ? 0.5f : (anchor - offsetX - x) / s.w, centreV ? 0.5f : fromBottom ? 1.0f : 0.0f);
     }
 };
 
@@ -167,16 +176,15 @@ Popup::Popup(wl::Output* output, Options options, const std::function<void(Flex*
     m_card->setBackground(ColorRef("surface_container", Theme::get().panelOpacity()), false)->setRadius(Radii(28));
     m_card->blurBehind = true;
     if (!m_options.fill && m_options.width > 0) m_card->fixedWidth = root->width = m_options.width;
-    // Enter: fade in while dropping a few pixels into place
-    // In with a pop: from a little smaller and lower, springing past full size
+    // M3 Expressive enter: it grows out of the button that opened it (the
+    // layout puts the scale's origin there) on an expressive spring, a
+    // touch past full size, fading in quicker than it grows
+    m_card->setScaleSpring(Spring::expressive());
+    m_card->setMoveSpring(Spring::expressive());
     m_card->setOpacity(0, false);
-    m_card->setTranslateY(12 * m_drop, false);
-    m_card->setTranslateX(12 * m_slide, false);
-    m_card->setScale(0.92f, false);
-    m_card->setOpacity(1);
-    m_card->setTranslateY(0);
-    m_card->setTranslateX(0);
-    m_card->setScale(1);
+    m_card->setTranslateY(10 * m_drop, false);
+    m_card->setTranslateX(10 * m_slide, false);
+    m_card->setScale(0.84f, false);
 
     // Opacity and roundness are live: Settings previews them on itself
     m_theme = Theme::get().changed.connect([this] {
@@ -200,6 +208,31 @@ Popup::Popup(wl::Output* output, Options options, const std::function<void(Flex*
         body->setPadding(Insets(20))->setSpacing(12)->setAlignItems(Align::Stretch);
     }
     build(body, *this);
+    // Its sections follow the card in, one after another, moving the way
+    // it grows
+    if (!m_options.fill)
+        for (const auto& part : body->children()) {
+            part->setMoveSpring(Spring::expressive());
+            part->setOpacity(0, false);
+            part->setTranslateY(14 * m_drop, false);
+            part->setTranslateX(14 * m_slide, false);
+        }
+    // From its first frame, so all of it is seen; the sections as they are
+    // then (a panel may have rebuilt some: new ones are already in place)
+    m_surface->onFirstFrame = [this, body, fill = m_options.fill] {
+        m_card->setOpacity(1);
+        m_card->setTranslateY(0);
+        m_card->setTranslateX(0);
+        m_card->setScale(1);
+        if (fill) return;
+        int i = 0;
+        for (const auto& part : body->children()) {
+            const int delay = 50 + 35 * std::min(i++, 6);
+            part->setOpacity(1, true, delay);
+            part->setTranslateY(0, true, delay);
+            part->setTranslateX(0, true, delay);
+        }
+    };
     m_surface->setRoot(std::move(root));
     if (initialFocus) m_surface->setFocus(initialFocus);
 
@@ -274,11 +307,16 @@ void Popup::close() {
         });
         return;
     }
+    // Exit: quicker than it came and without a bounce, back into the
+    // button it came from
+    m_card->setScaleSpring(Spring::spatialFast());
+    m_card->setMoveSpring(Spring::spatialFast());
+    m_card->setFadeSpring(Spring::effectsFast());
     m_card->setOpacity(0);
     m_card->setTranslateY(8 * m_drop);
     m_card->setTranslateX(8 * m_slide);
-    m_card->setScale(0.96f);
-    m_closeTimer = EventLoop::get().addTimer(ui::motion::ms(ui::motion::mediumMs), [this] {
+    m_card->setScale(0.9f);
+    m_closeTimer = EventLoop::get().addTimer(ui::motion::ms(200), [this] {
         m_closeTimer = 0;
         if (onClosed) onClosed(); // the owner destroys us here
     });

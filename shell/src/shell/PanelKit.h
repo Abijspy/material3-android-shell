@@ -316,6 +316,7 @@ public:
 
 private:
     ui::Icon* m_icon;
+    bool m_shaped = false;
 };
 
 } // namespace m3::shell::kit

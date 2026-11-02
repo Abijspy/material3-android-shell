@@ -2,6 +2,7 @@
 
 #include <array>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -75,6 +76,12 @@ struct Settings {
     bool shellBlur = false;
     int shellRadius = 18;
     bool blurredBackdrop = false;
+    // Windows open and close the way Material 3 Expressive moves surfaces:
+    // niri's custom shaders and the springs and curves for them. Not where
+    // your config.kdl has its own for one (`yourWindowAnims`), or where
+    // Niri Settings sets the motion (the shader stays)
+    bool expressiveWindows = false;
+    std::set<std::string> yourWindowAnims;
 
     struct Output {
         std::string name;
@@ -120,6 +127,10 @@ struct AnimationDef {
     const char* curve;
 };
 const std::vector<AnimationDef>& animationDefs();
+// With expressiveWindows: the motion windows opening and closing get (null
+// for the other animations), and the GLSL niri draws them with
+const AnimationDef* expressiveDef(const std::string& name);
+std::string expressiveShader(const std::string& name);
 // The curves niri knows (cubic-bezier with its four numbers)
 bool validCurve(const std::string& curve);
 

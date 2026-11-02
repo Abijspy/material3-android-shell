@@ -173,6 +173,14 @@ niri::Settings NiriConfig::collect() const {
     s.shellBlur = c.value<bool>("/appearance/blur/enabled", true);
     s.blurredBackdrop = blurredOverview();
     if (auto v = num("overviewZoom")) l.overviewZoom = std::clamp(*v, 0.05, 0.75);
+    // Windows opening and closing as Material 3 Expressive moves surfaces,
+    // unless your config.kdl has its own for one
+    s.expressiveWindows = c.value<bool>("/niri/look/expressiveWindows", true);
+    if (s.expressiveWindows) {
+        const auto doc = yours(false);
+        for (const char* name : {"window-open", "window-close"})
+            if (const kdl::Node* n = kdl::last(doc, {"animations", name}); n && !n->children.empty()) s.yourWindowAnims.insert(name);
+    }
     // Each animation's own (Niri Settings → Animations): /niri/look/anim/<name>
     if (look.is_object() && look.contains("anim") && look["anim"].is_object())
         for (const auto& [name, a] : look["anim"].items()) {
@@ -181,10 +189,14 @@ niri::Settings NiriConfig::collect() const {
             an.name = name;
             an.off = !a.value("on", true);
             an.kind = a.value("kind", "");
-            // What isn't set here: niri's default for this animation
+            // What isn't set here: niri's default for this animation (the
+            // expressive one for windows, with those on)
             const auto& defs = niri::animationDefs();
-            const auto def = std::ranges::find_if(defs, [&](const niri::AnimationDef& d) { return name == d.name; });
-            const bool known = def != defs.end();
+            const niri::AnimationDef* def = nullptr;
+            if (s.expressiveWindows && !s.yourWindowAnims.contains(name)) def = niri::expressiveDef(name);
+            if (!def)
+                if (auto it = std::ranges::find_if(defs, [&](const niri::AnimationDef& d) { return name == d.name; }); it != defs.end()) def = &*it;
+            const bool known = def != nullptr;
             an.damping = a.value("damping", known ? def->damping : 1.0);
             an.stiffness = a.value("stiffness", known ? def->stiffness : 800.0);
             an.duration = a.value("duration", known ? def->duration : 200);

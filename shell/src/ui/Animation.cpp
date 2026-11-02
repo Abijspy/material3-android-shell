@@ -26,7 +26,8 @@ float Easing::at(float t) const {
 
 float Tween::springTime() const {
     if (motion::scale <= 0) return 1e6f; // animations off: settled at once
-    return std::chrono::duration<float>(AnimClock::now() - m_start).count() / motion::scale;
+    // Before a delayed start: still where it was
+    return std::max(0.0f, std::chrono::duration<float>(AnimClock::now() - m_start).count() / motion::scale);
 }
 
 // x'' = -k·d - 2ζ√k·x', d = x - target: the closed form, from (d0, v0)
@@ -74,6 +75,13 @@ void Tween::set(float target, bool animate) {
     m_from = animate ? value() : target;
     m_to = target;
     m_start = AnimClock::now();
+}
+
+void Tween::setAfter(float target, int delayMs) {
+    if (delayMs <= 0 || motion::scale <= 0 || target == m_to) return set(target);
+    set(target);
+    // The same move, begun later (the delay at the animation speed too)
+    m_start += std::chrono::milliseconds(static_cast<int>(static_cast<float>(delayMs) * motion::scale));
 }
 
 float Tween::value() const {

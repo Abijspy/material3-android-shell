@@ -315,7 +315,7 @@ ColorRef batteryColor(int percent, bool plugged, bool charging, bool full, bool 
 // notification). Drawn moved only while it moves
 class StatusGlyph : public Icon {
 public:
-    explicit StatusGlyph(float size) : Icon("", size) {}
+    explicit StatusGlyph(float size) : Icon("", size) { popOnChange = false; } // its own moves, below
     void popIn() { pop(0.35f); }
     void popOut() { pop(1.4f); }
     void shake() {

@@ -84,14 +84,21 @@ local curves = {
 	subtleBounce    = { {0.14, 1.1}, {0.2, 1.0} },
 	easeOutQuint    = { {0.23, 1}, {0.32, 1} },
 	easeOutExpo     = { {0.16, 1}, {0.3, 1} },
+	-- M3 Expressive's spatial springs, as overshooting curves
+	expressive      = { {0.38, 1.21}, {0.22, 1.0} },
+	expressiveFast  = { {0.42, 1.67}, {0.21, 0.9} },
 }
 for name, points in pairs(curves) do
 	hl.curve(name, { type = "bezier", points = points })
 end
 
 hl.animation({ leaf = "windows",     enabled = true, speed = 4,  bezier = "subtleBounce",    style = "popin 85%" })
-hl.animation({ leaf = "windowsIn",   enabled = true, speed = 4,  bezier = "emphasizedDecel", style = "popin 85%" })
-hl.animation({ leaf = "windowsOut",  enabled = true, speed = 3,  bezier = "emphasizedAccel", style = "popin 80%" })
+-- Material 3 Expressive: windows grow in a touch past full size, and leave
+-- quicker than they came, without a bounce
+hl.animation({ leaf = "windowsIn",   enabled = true, speed = 4,  bezier = "expressive",      style = "popin 85%" })
+hl.animation({ leaf = "windowsOut",  enabled = true, speed = 2,  bezier = "emphasizedAccel", style = "popin 90%" })
+hl.animation({ leaf = "fadeIn",      enabled = true, speed = 2,  bezier = "standard" })
+hl.animation({ leaf = "fadeOut",     enabled = true, speed = 2,  bezier = "emphasizedAccel" })
 hl.animation({ leaf = "windowsMove", enabled = true, speed = 4,  bezier = "easeOutQuint",    style = "slide" })
 hl.animation({ leaf = "border",      enabled = true, speed = 10, bezier = "default" })
 hl.animation({ leaf = "borderangle", enabled = true, speed = 8,  bezier = "default" })

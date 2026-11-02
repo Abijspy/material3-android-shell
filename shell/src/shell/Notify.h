@@ -30,9 +30,13 @@ public:
     void onClick(uint32_t button) override;
     // Off to the side, then dismissed
     void flyOff(float direction);
+    // A toast arriving: its picture pops, then its words and buttons follow
+    void enter();
 
 private:
     uint32_t m_id;
+    ui::Node* m_avatar = nullptr;
+    std::vector<ui::Node*> m_parts; // the words, the body, the buttons
     float m_x0 = 0, m_dx = 0;
     bool m_pressing = false, m_swiping = false, m_swiped = false;
 };
@@ -55,7 +59,6 @@ private:
         uint32_t id;
         NotificationCard* card;
         EventLoop::TimerId timer = 0;
-        bool leaving = false;
     };
     void show(uint32_t id);
     void hide(uint32_t id, bool animate = true);
@@ -66,7 +69,11 @@ private:
     std::function<wl::Output*()> m_output;
     std::unique_ptr<wl::LayerSurface> m_surface;
     ui::Flex* m_column = nullptr;
+    // Toasts leaving: out of the column (the rest close up at once), flying
+    // off over it until they're gone
+    ui::Node* m_leaving = nullptr;
     std::vector<Toast> m_toasts;
+    void dropSurfaceIfDone();
     Connection m_posted, m_closed;
 };
 

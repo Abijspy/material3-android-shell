@@ -31,6 +31,16 @@ void Node::remove(Node* child) {
     requestLayout();
 }
 
+std::unique_ptr<Node> Node::release(Node* child) {
+    auto it = std::ranges::find_if(m_children, [child](auto& c) { return c.get() == child; });
+    if (it == m_children.end()) return nullptr;
+    auto out = std::move(*it);
+    m_children.erase(it);
+    out->m_parent = nullptr;
+    requestLayout();
+    return out;
+}
+
 void Node::clearChildren() {
     m_children.clear();
     requestLayout();
@@ -105,7 +115,7 @@ void Node::paint(Renderer& r) {
     if (moved) r.pushTranslate(dx, dy);
     const float sc = m_scale.value();
     const bool scaled = sc != 1;
-    if (scaled) r.pushScale(m_rect.x + m_rect.w / 2, m_rect.y + m_rect.h / 2, std::max(0.0f, sc));
+    if (scaled) r.pushScale(m_rect.x + m_rect.w * scaleOriginX, m_rect.y + m_rect.h * scaleOriginY, std::max(0.0f, sc));
     // On the desktop and lock screen, the card's backdrop blurred in the frame
     if (blurBehind && r.inlineBlur > 0) r.blurBackdrop(m_rect, blurRadius > 0 ? blurRadius : r.inlineBlur, Radii(cornerRadius()));
     doPaint(r);
@@ -136,23 +146,30 @@ void Node::focus() {
     if (auto* h = host()) h->requestFocus(this);
 }
 
-void Node::setOpacity(float o, bool animate) {
-    m_opacity.set(o, animate);
+namespace {
+void move(Tween& t, float to, bool animate, int delayMs) {
+    if (animate && delayMs > 0) t.setAfter(to, delayMs);
+    else t.set(to, animate);
+}
+} // namespace
+
+void Node::setOpacity(float o, bool animate, int delayMs) {
+    move(m_opacity, o, animate, delayMs);
     requestRedraw();
 }
 
-void Node::setTranslateX(float dx, bool animate) {
-    m_translateX.set(dx, animate);
+void Node::setTranslateX(float dx, bool animate, int delayMs) {
+    move(m_translateX, dx, animate, delayMs);
     requestRedraw();
 }
 
-void Node::setScale(float sc, bool animate) {
-    m_scale.set(sc, animate);
+void Node::setScale(float sc, bool animate, int delayMs) {
+    move(m_scale, sc, animate, delayMs);
     requestRedraw();
 }
 
-void Node::setTranslateY(float dy, bool animate) {
-    m_translateY.set(dy, animate);
+void Node::setTranslateY(float dy, bool animate, int delayMs) {
+    move(m_translateY, dy, animate, delayMs);
     requestRedraw();
 }
 
@@ -510,6 +527,7 @@ Label* Label::setText(const std::string& text) {
     if (text == m_text) return this;
     m_text = text;
     requestLayout();
+    onTextChanged();
     return this;
 }
 
@@ -658,7 +676,14 @@ SizeF Icon::doMeasure(SizeF available) {
 }
 
 void Icon::doPaint(Renderer& r) {
-    if (!isFile()) return Label::doPaint(r);
+    m_painted = true;
+    if (!isFile()) {
+        // The axis in tenths: a morph draws from a handful of cached masks
+        m_fill = std::round(std::clamp(m_fillT.value(), 0.0f, 1.0f) * 10) / 10;
+        Label::doPaint(r);
+        if (m_fillT.running()) requestRedraw();
+        return;
+    }
     // The SVG's alpha, tinted: the mask shader reads only alpha
     const float px = shownSize();
     const auto* tex = Images::get().icon(m_text, static_cast<int>(std::lround(px * r.scale())));
@@ -670,9 +695,23 @@ void Icon::doPaint(Renderer& r) {
 }
 
 Icon* Icon::setFill(bool filled) {
-    m_fill = filled ? 1 : 0;
+    const float to = filled ? 1 : 0;
+    if (to == m_fillT.target()) return this;
+    m_fillT.set(to, m_painted);
+    if (!m_painted) m_fill = to;
+    else if (popOnChange) pop(filled ? 0.78f : 0.9f);
     requestRedraw();
     return this;
+}
+
+void Icon::onTextChanged() {
+    if (m_painted && popOnChange) pop(0.5f);
+}
+
+void Icon::pop(float from) {
+    if (motion::scale <= 0) return;
+    setScale(from, false);
+    setScale(1);
 }
 
 // ── Button ──

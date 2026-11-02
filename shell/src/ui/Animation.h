@@ -30,6 +30,10 @@ struct Spring {
     static constexpr Spring spatialSlow() { return {300, 0.9f}; }
     // Expressive's bouncier spatial spring, for presses and pops
     static constexpr Spring bouncy() { return {800, 0.6f}; }
+    // M3 Expressive's spatial springs for whole surfaces (popups, toasts,
+    // windows): a visible but calm overshoot. Exits use the standard ones
+    static constexpr Spring expressive() { return {500, 0.75f}; }
+    static constexpr Spring expressiveSlow() { return {380, 0.8f}; }
     static constexpr Spring effectsFast() { return {3800, 1}; }
     static constexpr Spring effectsDefault() { return {1600, 1}; }
     static constexpr Spring effectsSlow() { return {800, 1}; }
@@ -61,6 +65,15 @@ public:
     Tween(float initial, Spring spring) : m_from(initial), m_to(initial), m_duration(0), m_easing(Easing::standard()), m_spring(spring), m_springy(true) {}
 
     void set(float target, bool animate = true);
+    // Starts after `delayMs` (held where it is until then): staggered
+    // entrances, each part a beat after the one before
+    void setAfter(float target, int delayMs);
+    // Moves on another spring from here on (a surface leaving faster than
+    // it came)
+    void setSpring(Spring spring) {
+        m_spring = spring;
+        m_springy = true;
+    }
     // For animations that vary their length (a fling, a wheel step)
     void setDuration(int ms) { m_duration = ms; }
     float value() const;
