@@ -1,5 +1,14 @@
 # Changelog
 
+## v6.2.6 — 2026-11-02
+
+- **Liquid glass.** A new look in Settings → Look & feel → Liquid glass (off by default). The bar, dock, panels, notifications, the volume and brightness indicator, and widgets turn to glass. They're clearer, and their edges catch the light: a bright rim from above, a soft glow just inside, and a sheen across the top. On the desktop and lock screen, what's behind a widget also bends at its edges, like real glass. Over windows the compositor does the blur, so there you get the light without the bending.
+- **Windows open and close the Material 3 Expressive way on niri.** A window grows in from a little smaller, rising into place and settling just past full size. Closing, it shrinks and fades quickly. It's on by default; Niri Settings → Animations → Material 3 Expressive turns it off. Any motion you set there is kept, and window animations in your own config.kdl are left alone. On Hyprland, windows open and close on matching curves.
+- **Panels grow out of their buttons.** Quick Settings and the other panels grow from the button you clicked, on a spring, with their sections following one after another. They close quicker, back into the button. Their entrances now play in full: before, most of the motion was over by the time a panel first appeared.
+- **Notifications with choreography.** A new one slides in from the screen's edge, its picture pops and its text follows. Dismissed or swiped away, it flies off while the rest close up at the same time, and a card's corners round as you swipe it.
+- **Icons that answer.** Turning something on fills its icon from outline to solid with a little pop, and an icon that changes (play to pause) springs in. Small Quick Settings tiles change shape like the large ones: round while off, a rounded square while on.
+- **Desktop widgets** no longer show a square of blur behind their rounded cards.
+
 ## v6.2.5 — 2026-11-01
 
 - **Airplane mode.** One switch turns off every radio (Wi-Fi, Bluetooth and any other) without asking for a password, and turning it off brings Wi-Fi and Bluetooth back just as they were. You can still turn either one on by itself while it's on. It's at the top of Settings → Network & internet, and the Airplane mode tile in Quick Settings now really switches the radios off (add it with the pencil button). The status bar shows a plane in place of Wi-Fi while it's on.
