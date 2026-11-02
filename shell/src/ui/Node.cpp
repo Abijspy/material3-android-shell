@@ -117,8 +117,13 @@ void Node::paint(Renderer& r) {
     const bool scaled = sc != 1;
     if (scaled) r.pushScale(m_rect.x + m_rect.w * scaleOriginX, m_rect.y + m_rect.h * scaleOriginY, std::max(0.0f, sc));
     // On the desktop and lock screen, the card's backdrop blurred in the frame
-    if (blurBehind && r.inlineBlur > 0) r.blurBackdrop(m_rect, blurRadius > 0 ? blurRadius : r.inlineBlur, Radii(cornerRadius()));
+    // Liquid glass: what's behind bends at its edges (where the shell drew
+    // it), then its own light over its tint
+    const bool glass = blurBehind && glassRim && Theme::get().glass();
+    if (blurBehind && r.inlineBlur > 0)
+        r.blurBackdrop(m_rect, blurRadius > 0 ? blurRadius : r.inlineBlur, Radii(cornerRadius()), glass ? 14.0f : 0.0f);
     doPaint(r);
+    if (glass) r.glass(m_rect, Radii(cornerRadius()));
     if (clipsChildren()) r.pushClip(m_rect);
     for (auto& c : m_children) c->paint(r);
     doPaintOver(r);
@@ -513,7 +518,10 @@ void Flex::doArrange() {
 }
 
 void Flex::doPaint(Renderer& r) {
-    const Color bg = m_background.value();
+    Color bg = m_background.value();
+    // Liquid glass is never more than lightly tinted: an opaque card that
+    // blurs what's behind it (a desktop widget) turns to glass too
+    if (blurBehind && glassRim && Theme::get().glass()) bg.a = std::min(bg.a, 0.55f);
     const Color border = m_border.resolve();
     if (bg.a > 0 || (m_borderWidth > 0 && border.a > 0)) r.rect(rect(), bg, effectiveRadius(), m_borderWidth, border);
     if (m_background.running() || m_morph.running()) requestRedraw();

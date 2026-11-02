@@ -81,6 +81,12 @@ void Theme::loadEffects() {
     m_blur = c.value<bool>("/appearance/blur/enabled", true);
     m_barOpacity = std::clamp(static_cast<float>(c.value<double>("/appearance/transparency/bar", 0.7)), 0.3f, 1.0f);
     m_panelOpacity = std::clamp(static_cast<float>(c.value<double>("/appearance/transparency/panels", 0.72)), 0.3f, 1.0f);
+    m_glass = c.value<bool>("/appearance/glass", false);
+    // Glass is clear: the tint lighter, the blur and the light doing the rest
+    if (glass()) {
+        m_barOpacity = std::max(0.2f, m_barOpacity * 0.6f);
+        m_panelOpacity = std::max(0.2f, m_panelOpacity * 0.6f);
+    }
     m_roundness = std::clamp(static_cast<float>(c.value<double>("/appearance/roundness", 1.0)), 0.0f, 1.5f);
     ui::motion::scale = std::clamp(static_cast<float>(c.value<double>("/appearance/animationSpeed", 1.0)), 0.0f, 2.0f);
     m_textScale = std::clamp(static_cast<float>(c.value<double>("/accessibility/textScale", 1.0)), 0.85f, 1.5f);

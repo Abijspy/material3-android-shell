@@ -27,6 +27,10 @@ public:
 
     // Effects from config.json, cached on every reload (read while painting)
     bool blur() const { return m_blur; }
+    // Look & feel → Liquid glass (with blur on): clearer panels whose rims
+    // and bevels catch the light, and where the shell draws what's behind
+    // (the desktop, the lock screen) that bending at their edges
+    bool glass() const { return m_glass && m_blur; }
     float barOpacity() const { return m_barOpacity; }     // bar backgrounds
     float panelOpacity() const { return m_panelOpacity; } // popups, toasts, OSD
     float roundness() const { return m_roundness; }       // multiplies corner radii
@@ -52,7 +56,7 @@ private:
     void loadEffects();
 
     std::map<std::string, Color> m_palette;
-    bool m_blur = true;
+    bool m_blur = true, m_glass = false;
     float m_barOpacity = 0.8f, m_panelOpacity = 0.9f, m_roundness = 1, m_textScale = 1;
     bool m_boldText = false;
     float m_areaScale[AreaCount] = {1, 1, 1, 1};

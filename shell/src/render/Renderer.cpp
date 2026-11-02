@@ -158,6 +158,7 @@ precision mediump float;
 uniform vec4 u_rect;
 uniform vec4 u_radii;
 uniform float u_px;
+uniform float u_refract; // liquid glass: logical px the edges bend by; 0 none
 uniform sampler2D u_tex;
 varying vec2 v_local;
 
@@ -171,9 +172,83 @@ void main() {
     vec2 p = v_local - halfSize;
     float r = p.x < 0.0 ? (p.y < 0.0 ? u_radii.x : u_radii.w) : (p.y < 0.0 ? u_radii.y : u_radii.z);
     r = min(r, min(halfSize.x, halfSize.y));
-    float coverage = clamp(0.5 - sdRoundBox(p, halfSize, r) / u_px, 0.0, 1.0);
+    float d = sdRoundBox(p, halfSize, r);
+    float coverage = clamp(0.5 - d / u_px, 0.0, 1.0);
     vec2 uv = v_local / u_rect.zw;
-    gl_FragColor = texture2D(u_tex, vec2(uv.x, 1.0 - uv.y)) * coverage;
+    vec2 at = vec2(uv.x, 1.0 - uv.y);
+    if (u_refract <= 0.0) {
+        gl_FragColor = texture2D(u_tex, at) * coverage;
+        return;
+    }
+    // Liquid glass: near the edge, where the glass curves, what's behind is
+    // seen from further in (the outward normal from the distance field's
+    // slope), red bent a little more than blue
+    vec2 e = vec2(0.5, 0.0);
+    vec2 n = vec2(sdRoundBox(p + e.xy, halfSize, r) - sdRoundBox(p - e.xy, halfSize, r),
+                  sdRoundBox(p + e.yx, halfSize, r) - sdRoundBox(p - e.yx, halfSize, r));
+    n /= max(length(n), 0.0001);
+    float bevel = max(min(18.0, 0.5 * min(halfSize.x, halfSize.y)), 2.0);
+    float k = 1.0 - clamp(-d / bevel, 0.0, 1.0);
+    vec2 off = -n * k * k * u_refract / u_rect.zw;
+    off.y = -off.y; // the copy's rows run bottom-up
+    vec4 c = vec4(texture2D(u_tex, at + off * 1.15).r, texture2D(u_tex, at + off).g, texture2D(u_tex, at + off * 0.85).b,
+                  texture2D(u_tex, at + off).a);
+    // A touch more vivid, as glass over colour looks
+    float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+    c.rgb = clamp(mix(vec3(l), c.rgb, 1.2), vec3(0.0), vec3(c.a));
+    gl_FragColor = c * coverage;
+}
+)";
+
+// Liquid glass's light over a card (premultiplied: white light, a dark
+// shade): a rim, a bevel and a sheen, lit from above and a little left
+const char* kGlassFragment = R"(
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform vec4 u_rect;
+uniform vec4 u_radii;
+uniform float u_px;
+uniform float u_opacity;
+uniform float u_scale; // the transform's: widths keep to the card as it scales
+varying vec2 v_local;
+
+float sdRoundBox(vec2 p, vec2 halfSize, float r) {
+    vec2 q = abs(p) - halfSize + r;
+    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+}
+
+void main() {
+    vec2 h = u_rect.zw * 0.5;
+    vec2 p = v_local - h;
+    float r = p.x < 0.0 ? (p.y < 0.0 ? u_radii.x : u_radii.w) : (p.y < 0.0 ? u_radii.y : u_radii.z);
+    r = min(r, min(h.x, h.y));
+    float d = sdRoundBox(p, h, r);
+    float inside = clamp(0.5 - d / u_px, 0.0, 1.0);
+    if (inside <= 0.0) {
+        gl_FragColor = vec4(0.0);
+        return;
+    }
+    vec2 e = vec2(0.5, 0.0);
+    vec2 n = vec2(sdRoundBox(p + e.xy, h, r) - sdRoundBox(p - e.xy, h, r), sdRoundBox(p + e.yx, h, r) - sdRoundBox(p - e.yx, h, r));
+    n /= max(length(n), 0.0001);
+    float lit = dot(n, normalize(vec2(-0.45, -1.0)));
+    float depth = -d / u_scale;
+    // The rim: a hairline, bright facing the light, fainter opposite
+    float rim = clamp(1.0 - depth / 1.25, 0.0, 1.0);
+    float light = rim * (0.1 + 0.65 * max(lit, 0.0) + 0.3 * max(-lit, 0.0));
+    // The bevel: light gathering where the glass curves, a shade opposite
+    float bevel = max(min(12.0, 0.45 * min(h.x, h.y) / u_scale), 2.0);
+    float b = 1.0 - clamp(depth / bevel, 0.0, 1.0);
+    b *= b;
+    light += b * (0.04 + 0.16 * max(lit, 0.0));
+    float shade = b * 0.14 * max(-lit, 0.0);
+    // A sheen over the upper half
+    light += 0.05 * clamp(1.0 - v_local.y / u_rect.w * 2.0, 0.0, 1.0);
+    light = clamp(light, 0.0, 1.0);
+    gl_FragColor = vec4(vec3(light), light + shade * (1.0 - light)) * inside * u_opacity;
 }
 )";
 
@@ -261,6 +336,16 @@ bool Renderer::buildPrograms() {
         d.radii = glGetUniformLocation(d.id, "u_radii");
         d.px = glGetUniformLocation(d.id, "u_px");
         d.tex = glGetUniformLocation(d.id, "u_tex");
+        d.refract = glGetUniformLocation(d.id, "u_refract");
+    }
+    m_glassProg.id = link(kVertex, kGlassFragment);
+    if (auto& g = m_glassProg; g.id) {
+        g.viewport = glGetUniformLocation(g.id, "u_viewport");
+        g.rect = glGetUniformLocation(g.id, "u_rect");
+        g.radii = glGetUniformLocation(g.id, "u_radii");
+        g.px = glGetUniformLocation(g.id, "u_px");
+        g.opacity = glGetUniformLocation(g.id, "u_opacity");
+        g.scale = glGetUniformLocation(g.id, "u_scale");
     }
     if (!m_rectProg.id || !m_maskProg.id || !m_imageProg.id) return false;
 
@@ -477,7 +562,24 @@ void Renderer::blurEdge(const RectF& r, float radius, bool strongAtTop) {
     glEnable(GL_BLEND);
 }
 
-void Renderer::blurBackdrop(const RectF& r, float radius, Radii radii) {
+void Renderer::glass(const RectF& r, Radii radii) {
+    const float o = m_opacity.back();
+    if (!m_glassProg.id || r.w <= 0 || r.h <= 0 || o <= 0) return;
+    auto& g = m_glassProg;
+    glUseProgram(g.id);
+    glUniform2f(g.viewport, m_bufferWidth / m_scale, m_bufferHeight / m_scale);
+    const auto& xf = m_xforms.back();
+    const RectF m = xf.map(r);
+    const Radii rr = scaled(radii, xf.s);
+    glUniform4f(g.rect, m.x, m.y, m.w, m.h);
+    glUniform4f(g.radii, rr.tl, rr.tr, rr.br, rr.bl);
+    glUniform1f(g.px, 1.0f / m_scale);
+    glUniform1f(g.opacity, o);
+    glUniform1f(g.scale, std::max(xf.s, 0.01f));
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+}
+
+void Renderer::blurBackdrop(const RectF& r, float radius, Radii radii, float refract) {
     if (!m_blurProg.id || !m_backdropProg.id || radius <= 0.25f || r.w <= 0 || r.h <= 0) return;
     const RectF m = m_xforms.back().map(r);
     const int x0 = std::max(0, static_cast<int>(std::floor(m.x * m_scale)));
@@ -548,6 +650,7 @@ void Renderer::blurBackdrop(const RectF& r, float radius, Radii radii) {
     glUniform4f(d.rect, x0 / m_scale, y0 / m_scale, w / m_scale, h / m_scale);
     glUniform4f(d.radii, radii.tl, radii.tr, radii.br, radii.bl);
     glUniform1f(d.px, 1.0f / m_scale);
+    glUniform1f(d.refract, refract * m_xforms.back().s);
     glBindTexture(GL_TEXTURE_2D, m_blurred2);
     glUniform1i(d.tex, 0);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);

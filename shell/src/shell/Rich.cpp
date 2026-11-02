@@ -327,7 +327,7 @@ Node* weatherCard(Node* parent) {
     };
     live->watch(Weather::get().changed);
     live->sync();
-    return live;
+    return wx; // the card (a desktop widget blurs behind it), not its Live
 }
 
 // CPU, memory, the root disk and uptime, live (sampling while shown)
@@ -358,7 +358,7 @@ Node* systemCard(Node* parent) {
     };
     live->watch(SystemStats::get().changed);
     live->sync();
-    return live;
+    return sys; // the card (a desktop widget blurs behind it), not its Live
 }
 
 } // namespace

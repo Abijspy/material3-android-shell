@@ -794,6 +794,9 @@ void stylePage(Flex* page, Popup&) {
     switchRow(fx, "wallpaper", "Blur behind widgets", "On the desktop, the lock screen and the login screen", "/appearance/blur/widgets", true);
     sliderRow(fx, "blur_circular", "Widget blur strength", "/appearance/blur/widgetRadius", 6, 2, 24, 1,
               [](double v) { return std::format("Radius {:.0f}", v); });
+    switchRow(fx, "water_drop", "Liquid glass",
+              "Clearer panels with edges that catch the light; desktop and lock screen cards bend what's behind",
+              "/appearance/glass", false);
     sliderRow(fx, "toolbar", "Bar opacity", "/appearance/transparency/bar", 0.7, 0.3, 1, 0.05, percent);
     sliderRow(fx, "select_window", "Panel opacity", "/appearance/transparency/panels", 0.72, 0.3, 1, 0.05, percent);
     // Hyprland 0.57's blur styles (glass, frost, acrylic…) and wobbly
@@ -962,7 +965,7 @@ void stylePage(Flex* page, Popup&) {
     auto* reset = group(page, "Defaults");
     auto r = row(reset, "restart_alt", "Reset look & feel", "Blur, opacity, corners and motion");
     pillButton(r.row, "Reset", false, [] {
-        for (const char* key : {"/appearance/blur/enabled", "/appearance/blur/widgets", "/appearance/blur/widgetRadius", "/appearance/textScale", "/appearance/scroll",
+        for (const char* key : {"/appearance/blur/enabled", "/appearance/glass", "/appearance/blur/widgets", "/appearance/blur/widgetRadius", "/appearance/textScale", "/appearance/scroll",
                                 "/appearance/transparency/bar",
                                 "/appearance/transparency/panels", "/appearance/roundness", "/appearance/animationSpeed"})
             Config::get().set(key, nullptr);

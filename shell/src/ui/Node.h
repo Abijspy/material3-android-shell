@@ -116,6 +116,9 @@ public:
     // layout and hit tests ignore it
     void setScale(float s, bool animate = true, int delayMs = 0);
     float scaleOriginX = 0.5f, scaleOriginY = 0.5f;
+    // A blurred card wears liquid glass's light when that's on; off for
+    // what only carries blur (the frame's strips round the screen)
+    bool glassRim = true;
     // The springs its moves and its scale use (by default M3's spatial
     // spring, and the bouncy one pops are made of)
     void setMoveSpring(Spring s) {

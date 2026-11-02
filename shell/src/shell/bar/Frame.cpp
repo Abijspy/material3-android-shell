@@ -31,7 +31,11 @@ public:
     float radius = 25;
 
     FrameShape() {
-        for (int i = 0; i < 4; ++i) add<BlurStrip>()->blurBehind = barBlur();
+        for (int i = 0; i < 4; ++i) {
+            auto* strip = add<BlurStrip>();
+            strip->blurBehind = barBlur();
+            strip->glassRim = false; // blur only: the frame's shape draws its edges
+        }
     }
 
 protected:

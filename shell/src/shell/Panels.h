@@ -41,6 +41,8 @@ void overview(ui::Flex* card, Popup& popup);
 void settings(ui::Flex* card, Popup& popup, const std::string& page);
 // The dashboard's cards on their own, for the desktop: "calendar",
 // "weather", "system" (null for anything else)
+// The rounded card itself, not whatever refreshes it: what a desktop widget
+// blurs behind
 ui::Node* dashboardWidget(ui::Node* parent, const std::string& id);
 // Hyprland Settings: the compositor's options, a window of its own
 void hyprSettings(ui::Flex* card, Popup& popup, const std::string& page);

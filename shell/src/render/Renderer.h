@@ -52,7 +52,14 @@ public:
     void blurEdge(const RectF& r, float radius, bool strongAtTop);
     // What's been drawn under `r`, blurred evenly and put back with rounded
     // corners: behind cards on surfaces that draw their own wallpaper
-    void blurBackdrop(const RectF& r, float radius, Radii radii);
+    // `refract` > 0: liquid glass, what's behind bending by up to that
+    // many logical px at the edges (split a little by colour) and a touch
+    // more vivid
+    void blurBackdrop(const RectF& r, float radius, Radii radii, float refract = 0);
+    // Liquid glass's light over a card already drawn: a hairline rim that
+    // catches it (fainter on the far side, where it passes through), a
+    // bevel gathering it just inside the edge, a shade opposite, a sheen
+    void glass(const RectF& r, Radii radii);
     // Set by a surface while it paints: blurBehind nodes blur what's under
     // them in the frame itself (0: the compositor does it)
     float inlineBlur = 0;
@@ -103,8 +110,12 @@ private:
     } m_blurProg;
     struct BackdropProgram {
         GLuint id = 0;
-        GLint viewport, rect, radii, px, tex;
+        GLint viewport, rect, radii, px, tex, refract;
     } m_backdropProg;
+    struct GlassProgram {
+        GLuint id = 0;
+        GLint viewport, rect, radii, px, opacity, scale;
+    } m_glassProg;
     GLuint m_blurred2 = 0;
     int m_blurred2W = 0, m_blurred2H = 0;
     GLuint m_quad = 0;
