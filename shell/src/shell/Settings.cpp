@@ -25,6 +25,7 @@
 #include "services/Session.h"
 #include "services/SystemStats.h"
 #include "services/DarkSchedule.h"
+#include "services/DataUsage.h"
 #include "services/Wallpaper.h"
 #include "services/Weather.h"
 #include "shell/ClockPanel.h"
@@ -390,6 +391,52 @@ void networkPage(Flex* page, Popup&) {
     };
     wiredLive->watch(Network::get().changed);
     wiredLive->sync();
+
+    // Data usage: today, this month, and the last week as bars
+    auto* usage = page->add<Live>();
+    usage->setSpacing(6);
+    usage->sync = [usage] {
+        usage->clearChildren();
+        auto& u = DataUsage::get();
+        auto* g = group(usage, "Data usage", "Everything this computer sent and received, by day (counted from when the shell first ran with it)");
+        auto line = [](const DataUsage::Day& d) {
+            return std::format("↓ {}  ·  ↑ {}", formatBytes(d.rx), formatBytes(d.tx));
+        };
+        row(g, "today", "Today", line(u.today()));
+        row(g, "calendar_month", "This month", line(u.month()));
+        // The week: a bar a day, taller for more, today's in the accent
+        const auto days = u.lastDays(7);
+        uint64_t most = 1;
+        for (const auto& d : days) most = std::max(most, d.rx + d.tx);
+        auto* box = g->add<Flex>(Flex::Direction::Column);
+        box->setPadding({20, 14})->setSpacing(8)->setAlignItems(Align::Stretch);
+        box->add<Label>("The last 7 days")->setSize(13)->setColor("on_surface_variant", false);
+        auto* bars = box->add<Flex>(Flex::Direction::Row);
+        bars->setSpacing(10)->setJustify(Align::Center)->setAlignItems(Align::End);
+        for (size_t i = 0; i < days.size(); ++i) {
+            const auto& d = days[i];
+            auto* col = bars->add<Flex>(Flex::Direction::Column);
+            col->setSpacing(4)->setAlignItems(Align::Center);
+            col->grow = true;
+            col->add<Label>(d.rx + d.tx ? formatBytes(d.rx + d.tx) : "")->setSize(10)->setColor("on_surface_variant", false);
+            auto* bar = col->add<Flex>(Flex::Direction::Column);
+            bar->fixedWidth = 22;
+            bar->fixedHeight = std::max(4.0f, 90.0f * static_cast<float>(d.rx + d.tx) / static_cast<float>(most));
+            bar->setRadius(Radii(8))->setBackground(i + 1 == days.size() ? "primary" : "secondary_container", false);
+            // Mon, Tue… (today: Today)
+            std::tm tm{};
+            std::sscanf(d.date.c_str(), "%d-%d-%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday);
+            tm.tm_year -= 1900;
+            tm.tm_mon -= 1;
+            tm.tm_hour = 12;
+            std::mktime(&tm);
+            char name[16];
+            std::strftime(name, sizeof name, "%a", &tm);
+            col->add<Label>(i + 1 == days.size() ? "Today" : name)->setSize(11)->setColor("on_surface_variant", false);
+        }
+    };
+    usage->watch(DataUsage::get().changed);
+    usage->sync();
 }
 
 // Quick Share, the shell's own: phones nearby send files, links and text
