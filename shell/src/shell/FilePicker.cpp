@@ -6,6 +6,7 @@
 #include "core/Process.h"
 #include "render/Images.h"
 #include "services/Backups.h"
+#include "services/KdeConnect.h"
 #include "services/Vpn.h"
 #include "services/Wallpaper.h"
 #include "shell/PanelKit.h"
@@ -80,8 +81,11 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
                                          : settingsFile ? std::vector<std::string>{".json"}
                                                         : std::vector<std::string>{};
     // Files of any kind, picked (several, when sending) by tapping
-    const bool sending = purpose.starts_with("send") || importing;
-    std::string already = sending && purpose.size() > 4 ? purpose.substr(5) : "";
+    // "phone <id>": files for a phone (KDE Connect), sent when chosen
+    const bool phone = purpose.starts_with("phone ");
+    const std::string phoneId = phone ? purpose.substr(6) : "";
+    const bool sending = purpose.starts_with("send") || importing || phone;
+    std::string already = sending && !phone && purpose.size() > 4 ? purpose.substr(5) : "";
     struct State {
         fs::path dir;
         std::string chosen;
@@ -119,9 +123,9 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
     title->setSize(22)->setWeight(600);
     title->grow = true;
     // Closing while sending goes back to Quick Share, files kept
-    iconButton(head, "close", [&popup, sending, importing, already] {
+    iconButton(head, "close", [&popup, sending, importing, phone, already] {
         popup.close();
-        if (sending && !importing) open("quickshare-send " + already);
+        if (sending && !importing && !phone) open("quickshare-send " + already);
     });
 
     auto* columns = card->add<Flex>(Flex::Direction::Row);
@@ -321,10 +325,22 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
     st->chosenName = foot->add<Label>("Pick a picture");
     st->chosenName->setSize(14)->setMaxWidth(520)->setColor("on_surface_variant", false);
     st->chosenName->grow = true;
-    pillButton(foot, "Cancel", false, [&popup, sending, importing, already] {
+    pillButton(foot, "Cancel", false, [&popup, sending, importing, phone, already] {
         popup.close();
-        if (sending && !importing) open("quickshare-send " + already);
+        if (sending && !importing && !phone) open("quickshare-send " + already);
     });
+    if (phone) {
+        st->choose = pillButton(foot, "Send to phone", true, [st, phoneId, &popup] {
+            if (st->picked.empty()) return;
+            KdeConnect::get().share(phoneId, st->picked);
+            m3::run({"notify-send", "-a", "KDE Connect", "-i", "kdeconnect",
+                     st->picked.size() == 1 ? std::string("Sending a file to your phone") : std::format("Sending {} files to your phone", st->picked.size())},
+                    nullptr);
+            popup.close();
+        }, "send");
+        st->fill();
+        return;
+    }
     if (settingsFile) {
         // What's there now is backed up first; a bad file changes nothing
         st->choose = pillButton(foot, "Import", true, [st, &popup] {

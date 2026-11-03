@@ -36,6 +36,7 @@
 #include "services/DarkSchedule.h"
 #include "services/NightLight.h"
 #include "services/DataUsage.h"
+#include "services/KdeConnect.h"
 #include "services/Notes.h"
 #include "services/Privacy.h"
 #include "services/Notifications.h"
@@ -151,6 +152,7 @@ bool Shell::start() {
     Wallpaper::get().startSlideshow();
     Privacy::get().start();
     DataUsage::get().start();
+    KdeConnect::get().start();
     // Updates: checked in the background (Settings → Software & updates); a
     // notification's Review opens the page
     Packages::get().openSettings = [this](const std::string& page) { EventLoop::get().defer([this, page] { openSettings(page); }); };

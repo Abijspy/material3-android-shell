@@ -6,6 +6,7 @@
 #include "services/Alarms.h"
 #include "services/Firewall.h"
 #include "services/Firmware.h"
+#include "services/KdeConnect.h"
 #include "services/Network.h"
 #include "services/Notifications.h"
 #include "services/Packages.h"
@@ -426,6 +427,27 @@ private:
 };
 
 // The firewall: a shield, struck through while it's off
+// Your phone (KDE Connect): its battery; dim with none connected
+class PhoneChip : public Chip {
+public:
+    explicit PhoneChip(std::function<void()> click) : Chip("smartphone", std::move(click)) {
+        m_conn = KdeConnect::get().changed.connect([this] { sync(); });
+        sync();
+    }
+
+private:
+    void sync() {
+        const auto* p = KdeConnect::get().phone();
+        set(p && p->charging ? "mobile_charge" : "smartphone", p && p->battery >= 0 ? std::format("{}%", p->battery) : "");
+        m_icon->setColor(p ? "on_surface" : "on_surface_variant");
+        tooltip = !KdeConnect::get().enabled() ? std::string("KDE Connect is off (Settings → Connected devices)")
+                : !p                           ? std::string("No phone connected")
+                : p->battery >= 0              ? std::format("{}: {}% battery{}", p->name, p->battery, p->charging ? ", charging" : "")
+                                               : p->name;
+    }
+    Connection m_conn;
+};
+
 class FirewallChip : public Chip {
 public:
     explicit FirewallChip(std::function<void()> click) : Chip("shield_lock", std::move(click)) {
@@ -492,6 +514,7 @@ const std::vector<Bar::Module>& Bar::modules() {
         {"vpn", "vpn_key", "VPN", "The VPN in use; click to connect or disconnect"},
         {"quickshare", quickShare.c_str(), "Quick Share", "Transfers' progress; opens Send files"},
         {"firewall", "shield_lock", "Firewall", "On or off; opens Firewall settings"},
+        {"phone", "smartphone", "Phone", "Your phone's battery (KDE Connect); opens its settings"},
         {"printers", "print", "Printers", "Jobs waiting; opens Printers"},
         {"updates", "system_update_alt", "Updates", "How many are waiting; opens Software & updates"},
         {"quicksettings", "tune", "Quick Settings", "Opens Quick Settings"},
@@ -684,7 +707,7 @@ void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
         if (vertical) c->setPadding({0, 2});
         c->add<Media>(vertical);
     } else if (id == "screentime" || id == "vpn" || id == "quickshare" || id == "firewall" || id == "focus" || id == "bedtime" ||
-               id == "printers" || id == "alarms" || id == "updates") {
+               id == "printers" || id == "alarms" || id == "updates" || id == "phone") {
         auto* c = capsule(zone, filled);
         c->setPadding(vertical ? Insets{0, 4} : Insets{4, 0});
         auto open = [this](const std::string& name, Node* from) { m_openPopup(name, alongBar(from)); };
@@ -725,6 +748,11 @@ void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
                 if (b == BTN_LEFT && alarms->ringing()) Alarms::get().stopAll();
                 else if (b == BTN_LEFT) open("clock", alarms);
                 else if (b == BTN_RIGHT) open("settings clock", alarms);
+            };
+        } else if (id == "phone") {
+            chip = c->add<PhoneChip>(std::function<void()>{});
+            chip->onClicked = [open, chip](uint32_t b) {
+                if (b == BTN_LEFT || b == BTN_RIGHT) open("settings bluetooth", chip);
             };
         } else if (id == "firewall") {
             chip = c->add<FirewallChip>(std::function<void()>{});

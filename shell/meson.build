@@ -94,6 +94,7 @@ sources = files(
   'src/services/Privacy.cpp',
   'src/services/DataUsage.cpp',
   'src/services/Notes.cpp',
+  'src/services/KdeConnect.cpp',
   'src/services/DarkSchedule.cpp',
   'src/services/Keybinds.cpp',
   'src/services/HookEvents.cpp',

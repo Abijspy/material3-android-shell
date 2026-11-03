@@ -26,6 +26,8 @@
 #include "services/SystemStats.h"
 #include "services/DarkSchedule.h"
 #include "services/DataUsage.h"
+#include "services/Firewall.h"
+#include "services/KdeConnect.h"
 #include "shell/ColorPicker.h"
 #include "services/Wallpaper.h"
 #include "services/Weather.h"
@@ -500,6 +502,8 @@ void quickShareRows(Flex* page) {
     live->sync();
 }
 
+void phoneRows(Node* page);
+
 void bluetoothPage(Flex* page, Popup&) {
     quickShareRows(page);
     auto* live = page->add<Live>();
@@ -567,6 +571,81 @@ void bluetoothPage(Flex* page, Popup&) {
         }
     };
     live->watch(Bluetooth::get().changed);
+    live->sync();
+    phoneRows(page);
+}
+
+// Your phone through KDE Connect: installed, switched on, its devices with
+// their battery and what can be done with them
+void phoneRows(Node* page) {
+    auto* live = page->add<Live>();
+    live->setSpacing(6);
+    live->sync = [live] {
+        live->clearChildren();
+        auto& k = KdeConnect::get();
+        auto* g = group(live, "Phone · KDE Connect", "Your phone's notifications here, its battery, and files and the clipboard sent across");
+        if (!KdeConnect::installed()) {
+            missingTool(g, "phonelink_off", "KDE Connect isn't installed", "Then install the KDE Connect app on your phone",
+                        {"kdeconnect-cli"}, {"kdeconnect"}, [] { reshowPage("bluetooth"); });
+            return;
+        }
+        switchRow(g, "phonelink", "Use KDE Connect",
+                  k.enabled() && !k.name().empty() ? "This computer shows up as “" + k.name() + "” in the app"
+                                                   : "This computer shows up in the KDE Connect app on your phone",
+                  "/kdeconnect/enabled", false, [](bool) { reshowPage("bluetooth"); });
+        if (!k.enabled()) return;
+        // The firewall would keep the phone from reaching it
+        auto& fw = Firewall::get();
+        if (fw.installed() && fw.enabled() && fw.blocksIncoming() && !fw.allows("1714:1764/tcp")) {
+            auto r = row(g, "shield", "The firewall blocks KDE Connect", "Ports 1714 to 1764 must be open for your phone to connect");
+            pillButton(r.row, "Allow", true, [] { Firewall::get().allow({"1714:1764/tcp", "1714:1764/udp"}, "KDE Connect"); }, "check");
+        }
+        if (!k.running()) {
+            row(g, "hourglass_empty", "Starting KDE Connect…");
+            return;
+        }
+        if (k.devices().empty()) {
+            row(g, "smartphone", "No devices yet", "Open KDE Connect on your phone, on the same network as this computer");
+            return;
+        }
+        for (const auto& d : k.devices()) {
+            const std::string state = d.pairRequested ? "Wants to pair"
+                                    : !d.paired       ? (d.reachable ? "Not paired" : "Not paired · not nearby")
+                                    : !d.reachable    ? "Paired · not connected"
+                                    : d.battery >= 0  ? std::format("Connected · {}% battery{}", d.battery, d.charging ? ", charging" : "")
+                                                      : std::string("Connected");
+            auto r = row(g, d.glyph(), d.name, state);
+            const std::string id = d.id;
+            if (d.pairRequested) {
+                pillButton(r.row, "Reject", false, [id] { KdeConnect::get().reject(id); });
+                pillButton(r.row, "Accept", true, [id] { KdeConnect::get().accept(id); }, "check");
+                continue;
+            }
+            if (!d.paired) {
+                if (d.reachable) pillButton(r.row, "Pair", true, [id] { KdeConnect::get().pair(id); }, "link");
+                continue;
+            }
+            if (d.reachable) {
+                auto action = [&](const char* glyph, std::function<void()> fn) {
+                    auto* b = r.row->add<Button>();
+                    pill(b)->setPadding(Insets(8));
+                    b->add<Icon>(glyph, 20)->setColor("on_surface_variant", false);
+                    b->onClicked = [fn = std::move(fn)](uint32_t button) {
+                        if (button == BTN_LEFT) fn();
+                    };
+                };
+                if (d.has("findmyphone")) action("ring_volume", [id] { KdeConnect::get().ring(id); });
+                if (d.has("ping")) action("notifications_active", [id] { KdeConnect::get().ping(id); });
+                if (d.has("clipboard")) action("content_paste_go", [id] { KdeConnect::get().sendClipboard(id); });
+                if (d.has("share")) action("upload_file", [id] {
+                    if (open) open("files phone " + id);
+                });
+            }
+            kit::confirmButton(r.row, "kdc:" + id, "link_off", [id] { KdeConnect::get().unpair(id); });
+        }
+    };
+    live->watch(KdeConnect::get().changed);
+    live->watch(Firewall::get().changed);
     live->sync();
 }
 
