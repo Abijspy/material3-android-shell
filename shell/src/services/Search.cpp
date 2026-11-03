@@ -5,6 +5,7 @@
 #include "core/Paths.h"
 #include "core/Process.h"
 #include "services/Clipboard.h"
+#include "services/Currency.h"
 #include "services/Packages.h"
 #include "services/Units.h"
 
@@ -522,6 +523,18 @@ std::vector<SearchResult> query(const std::string& raw) {
     const auto& cfg = Config::get();
     if (cfg.value<bool>("/spotlight/calculator", true) && looksLikeMath(text)) addCalc(out, text, 200);
     if (cfg.value<bool>("/spotlight/units", true)) addConversion(out, text, 210);
+    // Money: the ECB's rates of the day, fetched the first time one's asked
+    if (cfg.value<bool>("/spotlight/currency", true) && currency::looksLike(text)) {
+        auto& money = currency::Service::get();
+        if (const auto* rates = money.rates()) {
+            if (auto c = currency::convert(text, *rates, money.local()))
+                out.push_back({c->text, std::format("{} {} in {} · rates of {} (European Central Bank) · Enter copies", formatNumber(c->value),
+                                                    c->from, c->to, rates->date),
+                               "", "currency_exchange", "", 205, [t = c->text] { copy(t); }});
+        } else {
+            out.push_back({"Getting exchange rates…", "The European Central Bank's, once a day", "", "currency_exchange", "", 205, {}});
+        }
+    }
     std::ranges::stable_sort(out, std::greater{}, &SearchResult::score);
     if (out.size() > 50) out.resize(50);
     // Last of all: what you typed, searched for on the web

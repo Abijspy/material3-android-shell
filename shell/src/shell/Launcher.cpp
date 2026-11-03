@@ -1,6 +1,7 @@
 #include "core/EventLoop.h"
 #include "render/Images.h"
 #include "services/Clipboard.h"
+#include "services/Currency.h"
 #include "services/Search.h"
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
@@ -37,6 +38,12 @@ public:
         m_field->setText(initial);
         popup.initialFocus = m_field;
         refresh();
+        // Exchange rates fetched for a conversion being typed: answered now
+        m_rates = currency::Service::get().ready.connect([this] {
+            EventLoop::get().defer([this, alive = m_alive] {
+                if (*alive) refresh();
+            });
+        });
         // Clipboard thumbnails arrive after the list: show them as they do
         m_clipboard = Clipboard::get().changed.connect([this] {
             EventLoop::get().defer([this, alive = m_alive] {
@@ -184,7 +191,7 @@ private:
     float m_scrollTarget = 0;
     EventLoop::TimerId m_debounce = 0;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
-    Connection m_clipboard;
+    Connection m_clipboard, m_rates;
 };
 
 } // namespace

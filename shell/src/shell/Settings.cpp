@@ -25,6 +25,7 @@
 #include "services/Session.h"
 #include "services/SystemStats.h"
 #include "services/DarkSchedule.h"
+#include "services/Currency.h"
 #include "services/DataUsage.h"
 #include "services/Firewall.h"
 #include "services/KdeConnect.h"
@@ -3207,6 +3208,20 @@ void spotlightPage(Flex* page, Popup&) {
     auto* answers = group(page, "Answers", "Shown above apps as you type");
     switchRow(answers, "calculate", "Calculator", "2^10, sqrt(2), (4+5)*3: Enter copies the result", "/spotlight/calculator", true);
     switchRow(answers, "straighten", "Unit conversions", "5 km to mi, 100 f in c, 3 cups, 10 GB in GiB", "/spotlight/units", true);
+    switchRow(answers, "currency_exchange", "Currency conversion",
+              "100 usd to inr, $50 in eur: the European Central Bank's rates of the day, fetched when you first convert", "/spotlight/currency", true);
+    {
+        // A lone "100 usd" converts to this
+        auto* item = answers->add<Flex>(Flex::Direction::Column);
+        item->setAlignItems(Align::Stretch);
+        auto r = row(item, "payments", "Your currency", "What a lone \"100 usd\" converts to");
+        std::vector<std::pair<std::string, std::string>> codes;
+        for (const char* c : {"AUD", "BGN", "BRL", "CAD", "CHF", "CNY", "CZK", "DKK", "EUR", "GBP", "HKD", "HUF", "IDR", "ILS", "INR", "ISK",
+                              "JPY", "KRW", "MXN", "MYR", "NOK", "NZD", "PHP", "PLN", "RON", "SEK", "SGD", "THB", "TRY", "USD", "ZAR"})
+            codes.push_back({c, c});
+        dropdown(r.row, item, currency::Service::get().local(), codes,
+                 [](const std::string& v) { Config::get().set("/spotlight/localCurrency", v); });
+    }
 
     auto* prefixes = group(page, "Shortcuts", "Start with one of these to search just that");
     for (const auto& [glyph, prefix, what, example] : std::vector<std::array<const char*, 4>>{
