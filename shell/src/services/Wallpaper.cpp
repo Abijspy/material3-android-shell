@@ -117,7 +117,19 @@ void Wallpaper::set(const std::string& p) {
     recolour();
 }
 
+bool Wallpaper::dayNight() {
+    return Config::get().value<bool>("/background/dayNight/enabled", false);
+}
+
 void Wallpaper::recolour() {
+    // Day and night: the theme turned, so the wallpaper for it (whose
+    // setting recolours, once)
+    if (dayNight()) {
+        const bool dark = Config::get().value<bool>("/background/darkmode", true);
+        const std::string want = Config::get().value<std::string>(dark ? "/background/dayNight/night" : "/background/dayNight/day", "");
+        std::error_code ec;
+        if (!want.empty() && want != path() && std::filesystem::exists(want, ec)) return set(want);
+    }
     // New palette for the whole desktop, written where Theme watches
     if (!Config::get().value<bool>("/background/matugen", true)) return;
     const bool dark = Config::get().value<bool>("/background/darkmode", true);

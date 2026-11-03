@@ -47,6 +47,10 @@ public:
     // in order or, with /background/slideshow/shuffle, any. Counted from the
     // last change, yours included, across restarts
     void startSlideshow();
+    // Day and night (Wallpaper & style): /background/dayNight/day and
+    // /night, the one for the theme put up whenever it turns light or dark
+    // (by hand or on its schedule: every turn recolours)
+    static bool dayNight();
 
     Signal<> changed;
 

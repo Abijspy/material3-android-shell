@@ -957,6 +957,23 @@ void appearancePage(Flex* page, Popup& popup) {
             shuffleItem->setVisible(v != "0");
         });
     }
+    // Day and night: a wallpaper for each, swapped as the theme turns
+    {
+        auto& c = Config::get();
+        auto name = [](const std::string& p) { return p.empty() ? std::string("Not chosen") : std::filesystem::path(p).filename().string(); };
+        switchRow(wp, "routine", "Day and night", "A wallpaper for the light theme and one for the dark, swapped as it turns",
+                  "/background/dayNight/enabled", false, [](bool) { reshowPage("appearance"); });
+        if (c.value<bool>("/background/dayNight/enabled", false)) {
+            for (const auto& [key, glyph, title] : {std::tuple{"day", "light_mode", "Day wallpaper"}, std::tuple{"night", "dark_mode", "Night wallpaper"}}) {
+                const std::string pointer = std::string("/background/dayNight/") + key;
+                auto r = row(wp, glyph, title, name(c.value<std::string>(pointer, "")));
+                pillButton(r.row, "Use current", false, [pointer] {
+                    Config::get().set(pointer, Wallpaper::get().path());
+                    EventLoop::get().defer([] { reshowPage("appearance"); });
+                }, "check");
+            }
+        }
+    }
     choiceRow<std::string>(wp, "animation", "Transition", "", "/background/wallpaperTransition", "random",
                            {{"random", "Random"}, {"fade", "Fade"}, {"wipe", "Wipe"}, {"grow", "Grow"}});
     switchRow(wp, "schedule", "Desktop clock", "A large clock on the wallpaper", "/desktop/clock", true);
