@@ -73,6 +73,19 @@ void audio(Flex* card, Popup&) {
     auto* deviceList = devices->add<Flex>(Flex::Direction::Column);
     deviceList->setAlignItems(Align::Stretch)->setSpacing(2);
 
+    // Apps playing: each its own volume, mute and (with more than one) output
+    auto* appsCaption = caption(live, "Apps");
+    auto* appList = live->add<Flex>(Flex::Direction::Column);
+    appList->setAlignItems(Align::Stretch)->setSpacing(6);
+    struct AppRow {
+        uint32_t index;
+        Slider* slider;
+        Icon* mute;
+        Label* output;
+    };
+    auto appRows = std::make_shared<std::vector<AppRow>>();
+    auto appsKey = std::make_shared<std::string>();
+
     auto* micRow = live->add<Flex>(Flex::Direction::Row);
     micRow->setSpacing(12);
     micRow->add<Icon>("mic", 22)->setColor("primary");
@@ -149,6 +162,92 @@ void audio(Flex* card, Popup&) {
                 l->grow = true;
                 const std::string name = d.name;
                 b->onClicked = [name](uint32_t) { Audio::get().setDefault(name); };
+            }
+        }
+
+        // Apps: rebuilt when they come or go (or the outputs change), else
+        // their sliders follow, so dragging one isn't cut off
+        std::string apps;
+        for (const auto& st : a.playing()) apps += std::to_string(st.index) + ';';
+        apps += "|" + key;
+        appsCaption->setVisible(!a.playing().empty());
+        appList->setVisible(!a.playing().empty());
+        if (apps != *appsKey) {
+            *appsKey = apps;
+            appList->clearChildren();
+            appRows->clear();
+            for (const auto& st : a.playing()) {
+                auto* r = appList->add<Flex>(Flex::Direction::Column);
+                r->setPadding({12, 8})->setSpacing(4)->setRadius(Radii(16))->setBackground("surface_container_high", false);
+                r->setAlignItems(Align::Stretch);
+                auto* top = r->add<Flex>(Flex::Direction::Row);
+                top->setSpacing(10);
+                // Its icon: the one it names, else its desktop file's
+                const std::string icon = !st.icon.empty() ? st.icon : Apps::get().iconForClass(st.binary);
+                if (!icon.empty() && !Images::get().findIcon(icon, 48).empty()) {
+                    top->add<ImageView>(24, [icon](float scale, int& w, int& h) -> GLuint {
+                        auto* t = Images::get().icon(icon, static_cast<int>(std::lround(24 * scale)));
+                        if (!t) return 0;
+                        w = t->width;
+                        h = t->height;
+                        return t->id;
+                    });
+                } else {
+                    top->add<Icon>("music_note", 22)->setColor("primary", false);
+                }
+                auto* names = top->add<Flex>(Flex::Direction::Column);
+                names->setAlignItems(Align::Start)->setSpacing(0);
+                names->grow = true;
+                names->add<Label>(st.app)->setSize(14)->setWeight(500)->setMaxWidth(200);
+                if (!st.title.empty() && st.title != st.app)
+                    names->add<Label>(st.title)->setSize(12)->setColor("on_surface_variant", false)->setMaxWidth(200);
+                // Another output: a tap moves it to the next
+                Label* output = nullptr;
+                if (a.sinks().size() > 1) {
+                    auto* move = top->add<Button>();
+                    pill(move->setBackground("secondary_container", false))->setPadding({10, 4});
+                    output = move->add<Label>();
+                    output->setSize(12)->setMaxWidth(110)->setColor("on_secondary_container", false);
+                    const uint32_t index = st.index;
+                    move->onClicked = [index](uint32_t) {
+                        auto& au = Audio::get();
+                        const auto& sinks = au.sinks();
+                        auto it = std::ranges::find(au.playing(), index, &Audio::Stream::index);
+                        if (it == au.playing().end() || sinks.empty()) return;
+                        auto here = std::ranges::find(sinks, it->device, &Audio::Device::name);
+                        const size_t next = here == sinks.end() ? 0 : (static_cast<size_t>(here - sinks.begin()) + 1) % sinks.size();
+                        au.moveStream(index, sinks[next].name);
+                    };
+                }
+                auto* bottom = r->add<Flex>(Flex::Direction::Row);
+                bottom->setSpacing(8);
+                auto* muteBtn = bottom->add<Button>();
+                pill(muteBtn)->setPadding(Insets(4));
+                auto* muteIcon = muteBtn->add<Icon>("volume_up", 18);
+                muteIcon->setColor("on_surface_variant", false);
+                const uint32_t index = st.index;
+                muteBtn->onClicked = [index](uint32_t) {
+                    auto& au = Audio::get();
+                    auto it = std::ranges::find(au.playing(), index, &Audio::Stream::index);
+                    if (it != au.playing().end()) au.setStreamMuted(index, !it->muted);
+                };
+                auto* sl = bottom->add<Slider>();
+                sl->grow = true;
+                sl->setRange(0, 1);
+                sl->onChanged = [index](float v) { Audio::get().setStreamVolume(index, v); };
+                appRows->push_back({index, sl, muteIcon, output});
+            }
+        }
+        for (const auto& row : *appRows) {
+            auto it = std::ranges::find(a.playing(), row.index, &Audio::Stream::index);
+            if (it == a.playing().end()) continue;
+            row.slider->setValue(std::min(1.0f, it->volume()));
+            row.mute->setText(it->muted ? "volume_off" : it->volume() < 0.5f ? "volume_down" : "volume_up");
+            if (row.output) {
+                std::string where = it->device;
+                for (const auto& d : a.sinks())
+                    if (d.name == it->device) where = d.description;
+                row.output->setText(where);
             }
         }
 

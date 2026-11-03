@@ -169,8 +169,8 @@ struct Audio::Impl {
         s.app = prop(PA_PROP_APPLICATION_NAME);
         s.title = name ? name : prop(PA_PROP_MEDIA_NAME);
         s.icon = prop(PA_PROP_APPLICATION_ICON_NAME);
-        if (s.icon.empty()) s.icon = prop(PA_PROP_APPLICATION_PROCESS_BINARY);
-        if (s.app.empty()) s.app = !s.icon.empty() ? s.icon : s.title;
+        s.binary = prop(PA_PROP_APPLICATION_PROCESS_BINARY);
+        if (s.app.empty()) s.app = !s.binary.empty() ? s.binary : s.title;
         for (uint8_t i = 0; i < cv.channels; ++i) s.volumes.push_back(static_cast<float>(cv.values[i]) / PA_VOLUME_NORM);
         s.muted = mute != 0;
         s.paused = corked != 0;

@@ -30,7 +30,8 @@ public:
     struct Stream {
         uint32_t index = 0;
         std::string app, title; // "Firefox", "YouTube — …"
-        std::string icon;       // its icon name, else its program's name
+        std::string icon;       // its icon name ("" when it gives none)
+        std::string binary;     // its program ("firefox")
         std::string device;     // the output (or input) it's on
         std::vector<float> volumes;
         bool muted = false, paused = false;
