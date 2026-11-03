@@ -52,6 +52,15 @@ void settingsClosed(bool hypr = false);
 void clipboard(ui::Flex* card, Popup& popup);
 // A to-do list (Notes), and its card for the desktop (what blurs behind it)
 void notes(ui::Flex* card, Popup& popup);
+// Floating panels beside the bar's chips (Flyouts.cpp): what Settings
+// would be opened for, at hand, with the page a tap away
+void phone(ui::Flex* card, Popup& popup);
+void updates(ui::Flex* card, Popup& popup);
+void weather(ui::Flex* card, Popup& popup);
+void wellbeing(ui::Flex* card, Popup& popup);
+void printers(ui::Flex* card, Popup& popup);
+void firewall(ui::Flex* card, Popup& popup);
+void vpn(ui::Flex* card, Popup& popup);
 ui::Node* notesCard(ui::Node* parent);
 void screenshot(ui::Flex* card, Popup& popup);
 // The Wi-Fi network list (Quick Settings and Settings); back may be empty.

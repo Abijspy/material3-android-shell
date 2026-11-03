@@ -141,6 +141,7 @@ sources = files(
   'src/shell/Osd.cpp',
   'src/shell/ColorPicker.cpp',
   'src/shell/NotesPanel.cpp',
+  'src/shell/Flyouts.cpp',
   'src/shell/Ringer.cpp',
   'src/shell/PanelKit.cpp',
   'src/shell/Panels.cpp',

@@ -451,6 +451,17 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
     } else if (name == "barwidgets") {
         opts.width = 480;
         build = [arg](ui::Flex* card, Popup& p) { panels::barWidgets(card, p, arg); };
+    } else if (name == "phone" || name == "updates" || name == "weather" || name == "wellbeing" || name == "printers" ||
+               name == "firewall" || name == "vpn") {
+        // The chips' floating panels, beside the chip
+        opts.width = name == "updates" || name == "weather" ? 400 : 380;
+        build = name == "phone"     ? panels::phone
+              : name == "updates"   ? panels::updates
+              : name == "weather"   ? panels::weather
+              : name == "wellbeing" ? panels::wellbeing
+              : name == "printers"  ? panels::printers
+              : name == "firewall"  ? panels::firewall
+                                    : panels::vpn;
     } else if (name == "notes") {
         opts.width = 440;
         opts.anchor = -1;
@@ -594,7 +605,8 @@ void Shell::registerIpc() {
         for (auto& [_, frame] : m_frames) frame->setVisible(m_barsVisible);
         return std::string(m_barsVisible ? "shown" : "hidden");
     });
-    ipc.add("popup", "popup <quicksettings [wifi]|notifications|dashboard|overview|power|audio|network|bluetooth|battery|run|clock [alarms|timers]>: toggle a panel",
+    ipc.add("popup", "popup <quicksettings [wifi]|notifications|dashboard|overview|power|audio|network|bluetooth|battery|run|clock [alarms|timers]|"
+            "phone|updates|weather|wellbeing|printers|firewall|vpn>: toggle a panel",
             [this](const IpcServer::Args& a) {
         if (a.empty()) return std::string("error: popup needs a name");
         // Status panels open under the right end of the bar; the dashboard

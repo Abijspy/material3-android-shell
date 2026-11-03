@@ -354,8 +354,11 @@ const std::vector<TileDef>& tileDefs() {
          [] { return Printers::get().summary(); },
          {},
          [](Popup& popup) {
+             // Its floating panel: the default printer and the queue
              popup.close();
-             if (open) open("settings printers"); // opens Settings too, if it's closed
+             EventLoop::get().defer([] {
+                 if (open) open("printers");
+             });
          }},
         // Every radio blocked; off again, Wi-Fi and Bluetooth as they were
         {"airplane", "flight", "Airplane mode", [] { return Airplane::get().on(); },

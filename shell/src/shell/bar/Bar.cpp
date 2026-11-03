@@ -715,13 +715,13 @@ void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
         if (id == "screentime") {
             chip = c->add<ScreenTimeChip>(std::function<void()>{});
             chip->onClicked = [open, chip](uint32_t b) {
-                if (b == BTN_LEFT) open("settings wellbeing", chip);
+                if (b == BTN_LEFT || b == BTN_RIGHT) open("wellbeing", chip);
             };
         } else if (id == "vpn") {
             chip = c->add<VpnChip>(std::function<void()>{});
             chip->onClicked = [open, chip](uint32_t b) {
                 if (b == BTN_LEFT) Vpn::get().toggleLast();
-                else if (b == BTN_RIGHT) open("settings vpn", chip);
+                else if (b == BTN_RIGHT) open("vpn", chip);
             };
         } else if (id == "quickshare") {
             chip = c->add<QuickShareChip>(std::function<void()>{});
@@ -732,12 +732,13 @@ void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
         } else if (id == "printers") {
             chip = c->add<PrintersChip>(std::function<void()>{});
             chip->onClicked = [open, chip](uint32_t b) {
-                if (b == BTN_LEFT) open("settings printers", chip);
+                if (b == BTN_LEFT || b == BTN_RIGHT) open("printers", chip);
             };
         } else if (id == "updates") {
             chip = c->add<UpdatesChip>(std::function<void()>{});
             chip->onClicked = [open, chip](uint32_t b) {
-                if (b == BTN_LEFT || b == BTN_RIGHT) open("settings packages", chip);
+                if (b == BTN_LEFT) open("updates", chip);
+                else if (b == BTN_RIGHT) open("settings packages", chip);
                 // Middle: update straight away (the password asked as ever)
                 else if (b == BTN_MIDDLE && !Packages::get().updates().empty()) Packages::get().upgrade();
             };
@@ -752,24 +753,25 @@ void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
         } else if (id == "phone") {
             chip = c->add<PhoneChip>(std::function<void()>{});
             chip->onClicked = [open, chip](uint32_t b) {
-                if (b == BTN_LEFT || b == BTN_RIGHT) open("settings bluetooth", chip);
+                if (b == BTN_LEFT) open("phone", chip);
+                else if (b == BTN_RIGHT) open("settings bluetooth", chip);
             };
         } else if (id == "firewall") {
             chip = c->add<FirewallChip>(std::function<void()>{});
             chip->onClicked = [open, chip](uint32_t b) {
-                if (b == BTN_LEFT) open("settings firewall", chip);
+                if (b == BTN_LEFT || b == BTN_RIGHT) open("firewall", chip);
             };
         } else if (id == "focus") {
             chip = c->add<ToggleChip>("self_improvement", [] { return Wellbeing::get().focus(); }, "Focus mode", Wellbeing::get().changed);
             chip->onClicked = [open, chip](uint32_t b) {
                 if (b == BTN_LEFT) Wellbeing::get().setFocus(!Wellbeing::get().focus());
-                else if (b == BTN_RIGHT) open("settings wellbeing", chip);
+                else if (b == BTN_RIGHT) open("wellbeing", chip);
             };
         } else {
             chip = c->add<ToggleChip>("bedtime", [] { return Wellbeing::get().bedtime(); }, "Bedtime", Wellbeing::get().changed);
             chip->onClicked = [open, chip](uint32_t b) {
                 if (b == BTN_LEFT) Wellbeing::get().setBedtimeNow(!Wellbeing::get().bedtime());
-                else if (b == BTN_RIGHT) open("settings wellbeing", chip);
+                else if (b == BTN_RIGHT) open("wellbeing", chip);
             };
         }
     } else if (id == "weather" || id == "calendar" || id == "notifications" || id == "sysmon") {
@@ -781,7 +783,7 @@ void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
         else if (id == "calendar") chip = c->add<DateChip>(std::function<void()>{});
         else if (id == "notifications") chip = c->add<NotificationChip>(std::function<void()>{});
         else chip = c->add<SysmonChip>(std::function<void()>{});
-        const std::string target = id == "weather" ? "settings weather" : id == "calendar" ? "dashboard"
+        const std::string target = id == "weather" ? "weather" : id == "calendar" ? "dashboard"
                                  : id == "notifications" ? "notifications" : "sysmon";
         chip->tooltip = id == "weather" ? "Weather" : id == "calendar" ? "Calendar" : id == "notifications" ? "Notifications" : "System monitor";
         chip->onClicked = [open, chip, target](uint32_t b) {
