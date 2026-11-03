@@ -1,5 +1,18 @@
 # Changelog
 
+## v6.3.1 — 2026-11-03
+
+- **Panels beside the bar, instead of Settings.** The bar's chips open a small panel beside themselves, with what you'd go to Settings for, and Settings a tap away. **Phone** has your phone's battery and Ring, Ping, Clipboard, Send files and Messages. **Updates** lists what's waiting, with Update now. Also **Weather**, **Screen time** (with Focus and Bedtime), **Printers** (the queue), **Firewall** and **VPN** (each connection with a switch).
+- **Text messages from your phone.** A Messages panel (in the Phone panel, or `material3ui msg messages`) shows your conversations with contacts' names, opens one as bubbles to reply in, and sends new ones, through KDE Connect. If the list is empty, it explains how to give KDE Connect the SMS permission on your phone.
+- **App shortcuts.** An app's own shortcuts ("New private window", "Compose") appear in the dock's right-click menu, and in Spotlight under the app or by their own name ("private").
+- **Currency conversion in Spotlight.** "100 usd to inr", "$50 in eur" or "50 euros to rupees", using the European Central Bank's rates of the day. A lone "100 usd" converts to your currency, which you can set in Settings → Spotlight.
+- **Rain alerts.** When it's dry and rain is due within the hour, you're told once ("Rain in about 30 minutes"), and the weather panel says so too. Switch it off in Settings → Weather.
+- **Day and night wallpapers.** Wallpaper & style → Day and night: one wallpaper for the light theme and one for the dark, swapped whenever the theme changes, by hand or at sunset and sunrise.
+- **Sound effects.** Settings → Sound → Sound effects (off until you switch it on): the charger, a new notification, a tick as the volume steps, and a shutter for screenshots. Each has its own switch and a button to hear it.
+- **Focus timer.** The clock panel's new Focus tab works in 25-minute stretches with breaks between and a longer one every fourth round. While you're focusing, Focus mode and Do not disturb are on. It's also available through `material3ui msg pomodoro`.
+- **Wi-Fi hotspot.** Share this computer's connection over Wi-Fi from Settings → Network or a Quick Settings tile, with its own name and password. Most Wi-Fi cards pause their own connection while it's on, and the setting tells you so.
+- **Battery history.** Settings → Battery shows the charge over the last 24 hours or 7 days, and how long it's been since you unplugged and how much you've used since.
+
 ## v6.3.0 — 2026-11-03
 
 - **Dark theme on a schedule.** Look & feel → Colours → Automatically: dark from sunset to sunrise where you are, or between two times you set. Sunrise and sunset are worked out on your computer from your weather location or time zone, with no network needed. Switch it by hand and it stays that way until the next change.
