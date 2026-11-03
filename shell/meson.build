@@ -90,6 +90,7 @@ sources = files(
   'src/services/Kdl.cpp',
   'src/services/TimeZones.cpp',
   'src/services/Sun.cpp',
+  'src/services/Units.cpp',
   'src/services/DarkSchedule.cpp',
   'src/services/Keybinds.cpp',
   'src/services/HookEvents.cpp',
@@ -244,4 +245,6 @@ test('kdl', executable('kdl_test', 'tests/kdl_test.cpp', 'src/services/Kdl.cpp',
 test('timezones', executable('timezones_test', 'tests/timezones_test.cpp', 'src/services/TimeZones.cpp',
   include_directories: include_directories('src')))
 test('sun', executable('sun_test', 'tests/sun_test.cpp', 'src/services/Sun.cpp',
+  include_directories: include_directories('src')))
+test('units', executable('units_test', 'tests/units_test.cpp', 'src/services/Units.cpp',
   include_directories: include_directories('src')))

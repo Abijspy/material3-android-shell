@@ -1,10 +1,12 @@
 #include "services/Search.h"
 
+#include "core/Config.h"
 #include "core/FileWatcher.h"
 #include "core/Paths.h"
 #include "core/Process.h"
 #include "services/Clipboard.h"
 #include "services/Packages.h"
+#include "services/Units.h"
 
 #include <algorithm>
 #include <cctype>
@@ -406,7 +408,41 @@ void addCalc(std::vector<SearchResult>& out, const std::string& expr, double sco
     }
 }
 
+std::string urlEncoded(const std::string& s) {
+    std::string out;
+    for (unsigned char c : s) {
+        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') out += static_cast<char>(c);
+        else out += std::format("%{:02X}", c);
+    }
+    return out;
+}
+
+void addConversion(std::vector<SearchResult>& out, const std::string& text, double score) {
+    const auto c = units::convert(text);
+    if (!c) return;
+    out.push_back({c->text, std::format("{} {} in {} · Enter copies the result", formatNumber(c->value), c->from, c->to), "", "straighten", "",
+                   score, [t = c->text] { copy(t); }});
+}
+
 } // namespace
+
+const std::vector<std::pair<std::string, std::string>>& engines() {
+    static const std::vector<std::pair<std::string, std::string>> e = {
+        {"duckduckgo", "DuckDuckGo"}, {"google", "Google"}, {"bing", "Bing"},
+        {"brave", "Brave Search"},    {"startpage", "Startpage"}, {"ecosia", "Ecosia"},
+    };
+    return e;
+}
+
+std::string webSearchUrl(const std::string& engine, const std::string& q) {
+    const std::string e = urlEncoded(q);
+    if (engine == "google") return "https://www.google.com/search?q=" + e;
+    if (engine == "bing") return "https://www.bing.com/search?q=" + e;
+    if (engine == "brave") return "https://search.brave.com/search?q=" + e;
+    if (engine == "startpage") return "https://www.startpage.com/do/search?q=" + e;
+    if (engine == "ecosia") return "https://www.ecosia.org/search?q=" + e;
+    return "https://duckduckgo.com/?q=" + e;
+}
 
 std::vector<SearchResult> query(const std::string& raw) {
     std::vector<SearchResult> out;
@@ -445,9 +481,21 @@ std::vector<SearchResult> query(const std::string& raw) {
         out.push_back({app.name, !app.comment.empty() ? app.comment : app.generic, app.icon, "apps", "", s,
                        [app] { Apps::get().launch(app); }});
     }
-    if (looksLikeMath(text)) addCalc(out, text, 200);
+    // Answers (Settings → Spotlight): maths, and unit conversions
+    const auto& cfg = Config::get();
+    if (cfg.value<bool>("/spotlight/calculator", true) && looksLikeMath(text)) addCalc(out, text, 200);
+    if (cfg.value<bool>("/spotlight/units", true)) addConversion(out, text, 210);
     std::ranges::stable_sort(out, std::greater{}, &SearchResult::score);
     if (out.size() > 50) out.resize(50);
+    // Last of all: what you typed, searched for on the web
+    if (!text.empty() && cfg.value<bool>("/spotlight/web", true)) {
+        const std::string engine = cfg.value<std::string>("/spotlight/engine", "duckduckgo");
+        std::string name = "DuckDuckGo";
+        for (const auto& [id, n] : engines())
+            if (id == engine) name = n;
+        out.push_back({std::format("Search the web for “{}”", text), "With " + name, "", "travel_explore", "", 0,
+                       [url = webSearchUrl(engine, text)] { run({"xdg-open", url}, nullptr); }});
+    }
     return out;
 }
 

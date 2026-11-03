@@ -46,6 +46,7 @@
 #include "ui/Controls.h"
 #include "ui/Theme.h"
 
+#include <array>
 #include <cmath>
 #include <csignal>
 #include <filesystem>
@@ -3055,6 +3056,41 @@ void hooksPage(Flex* page, Popup&) {
     }
 }
 
+// Spotlight (Super+Space by default): its answers, the web search after
+// them, and the prefixes that switch what it searches
+void spotlightPage(Flex* page, Popup&) {
+    auto* top = group(page, "Spotlight", "Apps, files, maths, conversions and more, from one search");
+    auto open = row(top, "search", "Try it", "Type to search; Enter opens or copies the first result");
+    pillButton(open.row, "Open Spotlight", true, [] { spawn("material3ui msg launcher"); }, "search");
+
+    auto* web = group(page, "Search the web");
+    switchRow(web, "travel_explore", "Offer a web search", "Last in the results: what you typed, in your browser", "/spotlight/web", true);
+    auto* engineItem = web->add<Flex>(Flex::Direction::Column);
+    engineItem->setAlignItems(Align::Stretch);
+    auto engine = row(engineItem, "public", "Search engine");
+    const std::string current = Config::get().value<std::string>("/spotlight/engine", "duckduckgo");
+    std::string shown = "DuckDuckGo";
+    for (const auto& [id, name] : search::engines())
+        if (id == current) shown = name;
+    std::vector<std::pair<std::string, std::string>> items;
+    for (const auto& [id, name] : search::engines()) items.push_back({id, name});
+    dropdown(engine.row, engineItem, shown, items, [](const std::string& v) { Config::get().set("/spotlight/engine", v); });
+
+    auto* answers = group(page, "Answers", "Shown above apps as you type");
+    switchRow(answers, "calculate", "Calculator", "2^10, sqrt(2), (4+5)*3: Enter copies the result", "/spotlight/calculator", true);
+    switchRow(answers, "straighten", "Unit conversions", "5 km to mi, 100 f in c, 3 cups, 10 GB in GiB", "/spotlight/units", true);
+
+    auto* prefixes = group(page, "Shortcuts", "Start with one of these to search just that");
+    for (const auto& [glyph, prefix, what, example] : std::vector<std::array<const char*, 4>>{
+             {"calculate", "=", "Calculator", "=2^10"},
+             {"mood", ":", "Emoji", ":heart"},
+             {"content_paste", "#", "Clipboard history", "#password"},
+             {"folder_open", "@", "Files", "@invoice"},
+             {"terminal", ">", "Run a command", ">htop"},
+         })
+        row(prefixes, glyph, std::format("{}   {}", prefix, what), std::string("e.g. ") + example);
+}
+
 void toolsPage(Flex* page, Popup& popup) {
     // Screen sharing: what apps (browsers, calls) see, asked through the portal
     auto* share = group(page, "Screen sharing", "When an app asks to share your screen, a window or a part of it");
@@ -4227,7 +4263,7 @@ HueChip categoryColours(const std::string& id) {
         {{"lock", "firewall", "lockscreen", "users", "hypr-window-rules", "hypr-layer-rules", "hypr-workspace-rules", "hypr-profiles", "niri-rules"},
          &teal},
         {{"hypr-debug"}, &red},
-        {{"accessibility", "tools", "hooks", "hypr-plugins"}, &purple},
+        {{"accessibility", "tools", "spotlight", "hooks", "hypr-plugins"}, &purple},
     };
     const Pair* pair = &grey; // the rest: system, about, keyboard, mouse…
     for (const auto& [ids, p] : table)
@@ -4294,6 +4330,7 @@ const PageDef kPages[] = {
     {"defaults", "apps", "Apps", "Default apps for links, files and the terminal", defaultAppsPage},
     {"notifications", "notifications", "Notifications", "Do not disturb and pop-ups", notificationsPage},
     {"tools", "construction", "Tools", "Clipboard history and screenshots", toolsPage},
+    {"spotlight", "search", "Spotlight", "Search, calculator, conversions and the web", spotlightPage},
     {"wellbeing", "digital_wellbeing", "Digital Wellbeing", "Screen time, app timers, Focus mode and Bedtime", wellbeingPage},
     {"calendar", "calendar_month", "Calendar", "Your events, subscribed calendars and reminders", calendarPage},
     {"clock", "alarm", "Alarms & timers", "Alarms, timers, their sound and snooze", clockPage},

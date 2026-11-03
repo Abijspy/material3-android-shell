@@ -24,7 +24,7 @@ check() { # check LABEL: the open surfaces, the wallpaper left out
     fi
 }
 
-pages="network vpn bluetooth printers defaults notifications tools wellbeing calendar clock weather battery storage monitor
+pages="network vpn bluetooth printers defaults notifications tools spotlight wellbeing calendar clock weather battery storage monitor
        sound display appearance style bar dock lockscreen accessibility lock firewall users system mouse keybinds hooks
        packages firmware about"
 for page in $pages; do

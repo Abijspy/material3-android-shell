@@ -61,6 +61,10 @@ std::string formatNumber(double v);
 // "#" clipboard history (cliphist), "@" files (fd), ">" run a command;
 // otherwise applications, plus the calculator when the query is maths.
 namespace search {
+// Spotlight's web search (Settings → Spotlight): the engines, as
+// {id, name}, and where one searches for `q`
+const std::vector<std::pair<std::string, std::string>>& engines();
+std::string webSearchUrl(const std::string& engine, const std::string& q);
 std::vector<SearchResult> query(const std::string& text);
 // Providers that run a process report back asynchronously
 void queryAsync(const std::string& text, std::function<void(std::vector<SearchResult>)> done);

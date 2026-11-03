@@ -24,7 +24,7 @@ M3_INSTANCE=test material3ui msg workspaces
 | `popup quicksettings [wifi]` | Quick Settings, or straight to its Wi-Fi list |
 | `popup notifications` · `dashboard` · `overview` · `sysmon` · `power` | The notification centre, dashboard, workspace overview, system monitor and power menu |
 | `popup audio` · `network` · `bluetooth` · `run` | The small status panels and the run dialog |
-| `settings [page]` | Settings. Pages: `network`, `vpn`, `bluetooth`, `printers`, `defaults`, `notifications`, `tools`, `wellbeing`, `calendar`, `weather`, `battery`, `storage`, `monitor`, `sound`, `display`, `appearance`, `style`, `bar`, `dock`, `lockscreen`, `accessibility`, `lock`, `firewall`, `users`, `system`, `mouse`, `keybinds`, `hooks`, `packages`, `firmware`, `about` |
+| `settings [page]` | Settings. Pages: `network`, `vpn`, `bluetooth`, `printers`, `defaults`, `notifications`, `tools`, `spotlight`, `wellbeing`, `calendar`, `weather`, `battery`, `storage`, `monitor`, `sound`, `display`, `appearance`, `style`, `bar`, `dock`, `lockscreen`, `accessibility`, `lock`, `firewall`, `users`, `system`, `mouse`, `keybinds`, `hooks`, `packages`, `firmware`, `about` |
 | `hyprsettings [page]` | Hyprland Settings (pages `hypr-…`); on niri, Niri Settings |
 | `nirisettings [page]` | Niri Settings, on niri. Pages: `niri-layout`, `niri-decoration`, `niri-animations`, `niri-behaviour`, `niri-keys`, `niri-rules`, `niri-startup`, `niri-environment` |
 | `clipboard` | Clipboard history |
