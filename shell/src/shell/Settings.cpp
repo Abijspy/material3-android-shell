@@ -24,6 +24,7 @@
 #include "services/Search.h"
 #include "services/Session.h"
 #include "services/SystemStats.h"
+#include "services/DarkSchedule.h"
 #include "services/Wallpaper.h"
 #include "services/Weather.h"
 #include "shell/ClockPanel.h"
@@ -169,6 +170,53 @@ void timeDateRows(Node* g, const std::vector<ClockKeys>& targets) {
     };
 }
 
+// The dark theme, by hand or on a schedule: sunset to sunrise where you
+// are, or your own times. The switch follows the schedule when it flips
+void darkThemeRows(Node* page, Node* g) {
+    auto& c = Config::get();
+    auto dark = row(g, "dark_mode", "Dark theme");
+    auto* sw = dark.row->add<Switch>();
+    sw->setChecked(c.value<bool>("/background/darkmode", true), false);
+    sw->onToggled = [](bool on) {
+        Config::get().set("/background/darkmode", on);
+        Wallpaper::get().recolour();
+    };
+    choiceRow<std::string>(g, "brightness_auto", "Automatically", "", "/background/darkAuto", "off",
+                           {{"off", "Off"}, {"sun", "Sunset to sunrise"}, {"custom", "Set times"}});
+    auto halfHours = [] {
+        std::vector<std::pair<std::string, std::string>> out;
+        for (int m = 0; m < 24 * 60; m += 30) {
+            const std::string t = std::format("{:02}:{:02}", m / 60, m % 60);
+            out.push_back({t, t});
+        }
+        return out;
+    }();
+    auto* fromItem = g->add<Flex>(Flex::Direction::Column);
+    fromItem->setAlignItems(Align::Stretch);
+    auto from = row(fromItem, "bedtime", "Dark from");
+    dropdown(from.row, fromItem, c.value<std::string>("/background/darkFrom", "19:00"), halfHours,
+             [](const std::string& v) { Config::get().set("/background/darkFrom", v); });
+    auto* toItem = g->add<Flex>(Flex::Direction::Column);
+    toItem->setAlignItems(Align::Stretch);
+    auto to = row(toItem, "wb_twilight", "Light from");
+    dropdown(to.row, toItem, c.value<std::string>("/background/darkTo", "07:00"), halfHours,
+             [](const std::string& v) { Config::get().set("/background/darkTo", v); });
+    // Follows the theme and the schedule (an unseen node: it lays out nothing)
+    auto* follow = page->add<Live>();
+    follow->setVisible(false);
+    follow->sync = [=] {
+        auto& s = DarkSchedule::get();
+        sw->setChecked(Config::get().value<bool>("/background/darkmode", true));
+        const std::string summary = s.summary();
+        dark.subtitle->setText(summary);
+        dark.subtitle->setVisible(!summary.empty());
+        fromItem->setVisible(s.mode() == "custom");
+        toItem->setVisible(s.mode() == "custom");
+    };
+    follow->watch(Config::get().changed);
+    follow->sync();
+}
+
 std::string percent(double v) {
     return std::format("{:.0f}%", v * 100);
 }
@@ -179,11 +227,6 @@ std::string readFirstLine(const std::string& path, const std::string& prefix = {
     while (std::getline(in, line))
         if (prefix.empty() || line.starts_with(prefix)) return prefix.empty() ? line : line.substr(prefix.size());
     return {};
-}
-
-// Re-run Matugen (after scheme, mode or accent changes)
-void recolour() {
-    Wallpaper::get().recolour();
 }
 
 // ── Pages ──
@@ -775,7 +818,7 @@ void appearancePage(Flex* page, Popup& popup) {
                  {{"/desktop/timeFormat", "hh:mm", "/desktop/showDate", true, "/desktop/dateFormat", "dddd, d MMMM"}});
 
     auto* colour = group(page, "Colours", "Material You colours come from the wallpaper, or from an accent you pick");
-    switchRow(colour, "dark_mode", "Dark theme", "", "/background/darkmode", true, [](bool) { recolour(); });
+    darkThemeRows(page, colour);
     // The wallpaper's colours in four styles, basic colours, and the style
     accentRows(colour);
 

@@ -33,6 +33,7 @@
 #include "services/Effects.h"
 #include "services/Mpris.h"
 #include "services/Network.h"
+#include "services/DarkSchedule.h"
 #include "services/NightLight.h"
 #include "services/Notifications.h"
 #include "services/Tray.h"
@@ -142,6 +143,7 @@ bool Shell::start() {
     Idle::get().lockRequested.connectForever([] { LockScreen::get().lock(); });
     Idle::get().start();
     NightLight::get().start(); // as Settings left it, the screens up now
+    DarkSchedule::get().start();
     // Updates: checked in the background (Settings → Software & updates); a
     // notification's Review opens the page
     Packages::get().openSettings = [this](const std::string& page) { EventLoop::get().defer([this, page] { openSettings(page); }); };
