@@ -2,6 +2,7 @@
 
 #include "core/Signal.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -25,6 +26,17 @@ public:
         float balance() const; // -1 left … 1 right (stereo)
     };
 
+    // An app's stream: playing to an output, or recording from an input
+    struct Stream {
+        uint32_t index = 0;
+        std::string app, title; // "Firefox", "YouTube — …"
+        std::string icon;       // its icon name, else its program's name
+        std::string device;     // the output (or input) it's on
+        std::vector<float> volumes;
+        bool muted = false, paused = false;
+        float volume() const;
+    };
+
     static Audio& get();
 
     bool ready() const { return m_ready; }
@@ -41,6 +53,14 @@ public:
     void toggleMuted(bool input = false);
     void setDefault(const std::string& name, bool input = false);
 
+    // Apps playing (one per stream), and apps recording from a microphone
+    // (not from an output's monitor: a screen recorder taking the sound)
+    const std::vector<Stream>& playing() const { return m_playing; }
+    const std::vector<Stream>& recording() const { return m_recording; }
+    void setStreamVolume(uint32_t index, float v);
+    void setStreamMuted(uint32_t index, bool muted);
+    void moveStream(uint32_t index, const std::string& sink); // to another output
+
     Signal<> changed;
 
     ~Audio();
@@ -52,6 +72,7 @@ private:
 
     bool m_ready = false;
     std::vector<Device> m_sinks, m_sources;
+    std::vector<Stream> m_playing, m_recording;
     friend struct Impl;
 };
 

@@ -24,6 +24,10 @@ float Audio::Device::volume() const {
     return volumes.empty() ? 0 : *std::max_element(volumes.begin(), volumes.end());
 }
 
+float Audio::Stream::volume() const {
+    return volumes.empty() ? 0 : *std::max_element(volumes.begin(), volumes.end());
+}
+
 float Audio::Device::balance() const {
     if (volumes.size() != 2) return 0;
     const float l = volumes[0], r = volumes[1];
@@ -40,6 +44,12 @@ struct Audio::Impl {
     // pulse thread state, rebuilt on each refresh
     std::string defaultSink, defaultSource;
     std::vector<Device> sinks, sources;
+    std::vector<Stream> playing, recording;
+    std::map<uint32_t, std::string> sinkNames, sourceNames; // by index
+    std::map<uint32_t, bool> monitors;                       // sources that are an output's monitor
+    std::map<uint32_t, uint32_t> playingOn, recordingFrom;   // stream → its device's index
+    std::map<uint32_t, pa_cvolume> streamVolumes;
+    std::map<uint32_t, pa_cvolume> streamVolumesShared;
     std::map<std::string, pa_channel_map> maps;
     std::map<std::string, pa_cvolume> cvolumes;
     int pending = 0;
@@ -68,10 +78,20 @@ struct Audio::Impl {
         }
         sinks.clear();
         sources.clear();
-        pending = 3;
+        playing.clear();
+        recording.clear();
+        streamVolumes.clear();
+        sinkNames.clear();
+        sourceNames.clear();
+        monitors.clear();
+        playingOn.clear();
+        recordingFrom.clear();
+        pending = 5;
         pa_operation_unref(pa_context_get_server_info(ctx, &Impl::onServer, this));
         pa_operation_unref(pa_context_get_sink_info_list(ctx, &Impl::onSink, this));
         pa_operation_unref(pa_context_get_source_info_list(ctx, &Impl::onSource, this));
+        pa_operation_unref(pa_context_get_sink_input_info_list(ctx, &Impl::onSinkInput, this));
+        pa_operation_unref(pa_context_get_source_output_info_list(ctx, &Impl::onSourceOutput, this));
     }
 
     void finishOne() {
@@ -80,10 +100,23 @@ struct Audio::Impl {
         for (auto& d : sources) d.isDefault = d.name == defaultSource;
         mapsShared = maps;
         cvolumesShared = cvolumes;
-        EventLoop::get().post([sinks = sinks, sources = sources] {
+        streamVolumesShared = streamVolumes;
+        // Streams list their device by index: by name, once all are known;
+        // recording from a monitor isn't the microphone
+        for (auto& s : playing)
+            if (auto it = sinkNames.find(playingOn[s.index]); it != sinkNames.end()) s.device = it->second;
+        std::erase_if(recording, [this](const Stream& s) {
+            auto m = monitors.find(recordingFrom[s.index]);
+            return m != monitors.end() && m->second;
+        });
+        for (auto& s : recording)
+            if (auto it = sourceNames.find(recordingFrom[s.index]); it != sourceNames.end()) s.device = it->second;
+        EventLoop::get().post([sinks = sinks, sources = sources, playing = playing, recording = recording] {
             auto& a = Audio::get();
             a.m_sinks = sinks;
             a.m_sources = sources;
+            a.m_playing = playing;
+            a.m_recording = recording;
             a.m_ready = true;
             a.changed.emit();
         });
@@ -108,16 +141,59 @@ struct Audio::Impl {
         self->sinks.push_back(toDevice(info->name, info->description, info->volume, info->channel_map, info->mute));
         self->maps[info->name] = info->channel_map;
         self->cvolumes[info->name] = info->volume;
+        self->sinkNames[info->index] = info->name;
     }
 
     static void onSource(pa_context*, const pa_source_info* info, int eol, void* ud) {
         auto* self = static_cast<Impl*>(ud);
         if (eol) return self->finishOne();
         // Monitors of outputs are not microphones
+        self->monitors[info->index] = info->monitor_of_sink != PA_INVALID_INDEX;
         if (info->monitor_of_sink != PA_INVALID_INDEX) return;
+        self->sourceNames[info->index] = info->name;
         self->sources.push_back(toDevice(info->name, info->description, info->volume, info->channel_map, info->mute));
         self->maps[info->name] = info->channel_map;
         self->cvolumes[info->name] = info->volume;
+    }
+
+    // An app's stream from its properties: its name, icon and title; the
+    // shell's own (and pavucontrol's level meters) left out
+    static bool toStream(Stream& s, uint32_t index, const char* name, pa_proplist* p, const pa_cvolume& cv, int mute, int corked) {
+        auto prop = [p](const char* key) {
+            const char* v = p ? pa_proplist_gets(p, key) : nullptr;
+            return std::string(v ? v : "");
+        };
+        const std::string id = prop(PA_PROP_APPLICATION_ID);
+        if (id == "dev.material3ui.shell" || id == "org.PulseAudio.pavucontrol" || prop(PA_PROP_MEDIA_ROLE) == "event") return false;
+        s.index = index;
+        s.app = prop(PA_PROP_APPLICATION_NAME);
+        s.title = name ? name : prop(PA_PROP_MEDIA_NAME);
+        s.icon = prop(PA_PROP_APPLICATION_ICON_NAME);
+        if (s.icon.empty()) s.icon = prop(PA_PROP_APPLICATION_PROCESS_BINARY);
+        if (s.app.empty()) s.app = !s.icon.empty() ? s.icon : s.title;
+        for (uint8_t i = 0; i < cv.channels; ++i) s.volumes.push_back(static_cast<float>(cv.values[i]) / PA_VOLUME_NORM);
+        s.muted = mute != 0;
+        s.paused = corked != 0;
+        return true;
+    }
+
+    static void onSinkInput(pa_context*, const pa_sink_input_info* info, int eol, void* ud) {
+        auto* self = static_cast<Impl*>(ud);
+        if (eol) return self->finishOne();
+        Stream s;
+        if (!toStream(s, info->index, info->name, info->proplist, info->volume, info->mute, info->corked)) return;
+        self->playingOn[info->index] = info->sink; // named in finishOne, once every output is known
+        self->streamVolumes[info->index] = info->volume;
+        self->playing.push_back(std::move(s));
+    }
+
+    static void onSourceOutput(pa_context*, const pa_source_output_info* info, int eol, void* ud) {
+        auto* self = static_cast<Impl*>(ud);
+        if (eol) return self->finishOne();
+        Stream s;
+        if (!toStream(s, info->index, info->name, info->proplist, info->volume, info->mute, info->corked)) return;
+        self->recordingFrom[info->index] = info->source;
+        self->recording.push_back(std::move(s));
     }
 
     static void onEvent(pa_context*, pa_subscription_event_type_t, uint32_t, void* ud) {
@@ -131,6 +207,7 @@ struct Audio::Impl {
             pa_context_set_subscribe_callback(c, &Impl::onEvent, self);
             pa_operation_unref(pa_context_subscribe(
                 c, static_cast<pa_subscription_mask_t>(PA_SUBSCRIPTION_MASK_SINK | PA_SUBSCRIPTION_MASK_SOURCE |
+                                                       PA_SUBSCRIPTION_MASK_SINK_INPUT | PA_SUBSCRIPTION_MASK_SOURCE_OUTPUT |
                                                        PA_SUBSCRIPTION_MASK_SERVER),
                 nullptr, nullptr));
             self->refresh();
@@ -259,6 +336,24 @@ void Audio::setMuted(bool m, bool input) {
 void Audio::toggleMuted(bool input) {
     const Device* d = input ? source() : sink();
     if (d) setMuted(!d->muted, input);
+}
+
+void Audio::setStreamVolume(uint32_t index, float v) {
+    m_impl->locked([&](pa_context* c) {
+        auto it = m_impl->streamVolumesShared.find(index);
+        if (it == m_impl->streamVolumesShared.end()) return;
+        pa_cvolume cv = it->second;
+        pa_cvolume_scale(&cv, toPa(v));
+        pa_operation_unref(pa_context_set_sink_input_volume(c, index, &cv, nullptr, nullptr));
+    });
+}
+
+void Audio::setStreamMuted(uint32_t index, bool muted) {
+    m_impl->locked([&](pa_context* c) { pa_operation_unref(pa_context_set_sink_input_mute(c, index, muted, nullptr, nullptr)); });
+}
+
+void Audio::moveStream(uint32_t index, const std::string& sink) {
+    m_impl->locked([&](pa_context* c) { pa_operation_unref(pa_context_move_sink_input_by_name(c, index, sink.c_str(), nullptr, nullptr)); });
 }
 
 void Audio::setDefault(const std::string& name, bool input) {

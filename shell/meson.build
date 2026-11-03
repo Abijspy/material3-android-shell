@@ -91,6 +91,7 @@ sources = files(
   'src/services/TimeZones.cpp',
   'src/services/Sun.cpp',
   'src/services/Units.cpp',
+  'src/services/Privacy.cpp',
   'src/services/DarkSchedule.cpp',
   'src/services/Keybinds.cpp',
   'src/services/HookEvents.cpp',

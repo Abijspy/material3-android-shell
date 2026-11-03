@@ -10,6 +10,7 @@
 #include "shell/PanelKit.h"
 #include "services/Network.h"
 #include "services/Notifications.h"
+#include "services/Privacy.h"
 #include "services/Tray.h"
 #include "ui/Theme.h"
 
@@ -375,6 +376,26 @@ StatusIcons::StatusIcons(OpenPopup open, bool vertical) : Flex(vertical ? Direct
         icon->setWeight(500);
         icon->setFill(true);
     };
+    // The privacy chip: green while the microphone or camera is in use; a
+    // tap shows the sound panel, which lists who's recording
+    m_privacy = add<Button>();
+    pill(m_privacy->setBackground(ColorRef(Color::fromHex("#1e8e3e").value_or(Color{0.12f, 0.56f, 0.24f, 1})), false))
+        ->setPadding({6, 0})
+        ->setSpacing(2)
+        ->setJustify(Align::Center);
+    if (vertical) m_privacy->fixedWidth = 28;
+    else m_privacy->fixedHeight = 22;
+    m_privacy->alignSelf = Align::Center;
+    m_micDot = m_privacy->add<Icon>("mic", 14);
+    m_camDot = m_privacy->add<Icon>("videocam", 14);
+    for (auto* i : {m_micDot, m_camDot}) {
+        i->setColor(ColorRef(Color{1, 1, 1, 1}), false);
+        i->setFill(true);
+    }
+    m_privacy->onClicked = [this, open](uint32_t button) {
+        if (button == BTN_LEFT) open("audio", alongBar(m_privacy));
+    };
+    m_privacy->setVisible(false);
     m_net = make("quicksettings");
     style(m_netIcon = m_net->add<StatusGlyph>(18));
     m_wifi = m_net->add<WifiGlyph>(18);
@@ -394,10 +415,38 @@ StatusIcons::StatusIcons(OpenPopup open, bool vertical) : Flex(vertical ? Direct
     m_c = Audio::get().changed.connect([this] { sync(); });
     m_d = Notifications::get().changed.connect([this] { sync(); });
     m_e = Airplane::get().changed.connect([this] { sync(); });
+    m_f = Privacy::get().changed.connect([this] { sync(); });
     sync();
 }
 
 void StatusIcons::sync() {
+    // Who's listening or watching
+    {
+        auto& p = Privacy::get();
+        const auto mic = p.micApps();
+        const auto& cam = p.cameraApps();
+        const bool shown = !mic.empty() || !cam.empty();
+        m_micDot->setVisible(!mic.empty());
+        m_camDot->setVisible(!cam.empty());
+        if (shown != m_privacyShown) {
+            m_privacy->setVisible(shown);
+            if (shown) {
+                // Springs in, so it's noticed
+                m_privacy->setScale(0.4f, false);
+                m_privacy->setScale(1);
+            }
+            m_privacyShown = shown;
+        }
+        auto list = [](const std::vector<std::string>& v) {
+            std::string s;
+            for (const auto& a : v) s += (s.empty() ? "" : ", ") + a;
+            return s;
+        };
+        std::string tip;
+        if (!mic.empty()) tip += "Microphone: " + list(mic);
+        if (!cam.empty()) tip += (tip.empty() ? "" : "\n") + std::string("Camera: ") + list(cam);
+        m_privacy->setTooltip(tip);
+    }
     // Airplane mode: a plane. Connected over Wi-Fi, or on with nothing
     // reached: the arcs; else the glyph (Wi-Fi off, Ethernet, VPN)
     auto& nw = Network::get();

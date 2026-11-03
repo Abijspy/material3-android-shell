@@ -25,6 +25,11 @@ public:
 
 private:
     void sync();
+    // Android's privacy indicator: green, with a microphone and a camera,
+    // while either is in use (who, in its tooltip)
+    ui::Button* m_privacy;
+    ui::Icon *m_micDot, *m_camDot;
+    bool m_privacyShown = false;
     ui::Button* m_net;
     ui::Button* m_bt;
     ui::Button* m_vol;
@@ -36,7 +41,7 @@ private:
     WifiGlyph* m_wifi; // Wi-Fi in Android 16's style; the glyph for the rest
     bool m_known = false, m_btOn = false, m_muted = false, m_dnd = false, m_airplane = false;
     size_t m_unread = 0;
-    Connection m_a, m_b, m_c, m_d, m_e;
+    Connection m_a, m_b, m_c, m_d, m_e, m_f;
 };
 
 // Charge in the bar, as Material 3 Expressive draws it (BatteryPill): red
