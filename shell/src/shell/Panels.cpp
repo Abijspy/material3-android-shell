@@ -361,7 +361,8 @@ void bluetoothView(Flex* body, const std::function<void()>& back) {
             texts->grow = true;
             texts->add<Label>(d.name)->setSize(14)->setMaxWidth(240)->setColor(fg, false);
             const std::string busy = b.busy(d.path);
-            const std::string state = !busy.empty() ? busy : d.connected ? "Connected · tap to disconnect"
+            const std::string state = !busy.empty() ? busy
+                                    : d.connected ? (d.battery >= 0 ? std::format("Connected · {}% battery", d.battery) : "Connected · tap to disconnect")
                                     : d.paired ? "Paired · tap to connect" : "Tap to pair";
             texts->add<Label>(state)->setSize(12)->setColor(d.connected ? fg : "on_surface_variant", false);
             const std::string path = d.path;

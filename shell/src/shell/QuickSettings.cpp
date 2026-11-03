@@ -276,7 +276,7 @@ const std::vector<TileDef>& tileDefs() {
              if (!b.service())
                  return std::string(b.starting() ? "Starting…" : Bluetooth::installed() ? "Tap to turn on" : "Tap to install");
              return !b.available() ? std::string("No adapter") : !b.powered() ? std::string("Off")
-                    : b.connected().empty() ? std::string("On") : b.connected().front();
+                    : b.connected().empty() ? std::string("On") : b.connectedLabel();
          },
          {}, [](Popup&) {
              auto& b = Bluetooth::get();

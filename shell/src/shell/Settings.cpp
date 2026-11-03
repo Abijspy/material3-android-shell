@@ -490,8 +490,9 @@ void bluetoothPage(Flex* page, Popup&) {
 
         auto add = [](Node* list, const Bluetooth::Device& d) {
             const std::string busy = Bluetooth::get().busy(d.path);
+            const std::string charge = d.battery >= 0 ? std::format(" · {}% battery", d.battery) : "";
             auto r = row(list, bluetoothGlyph(d.icon), d.name,
-                         !busy.empty() ? busy : d.connected ? "Connected" : d.paired ? "Paired" : "Available");
+                         !busy.empty() ? busy : d.connected ? "Connected" + charge : d.paired ? "Paired" : "Available");
             const std::string path = d.path;
             if (!busy.empty()) {
                 if (busy == "Pairing…") pillButton(r.row, "Cancel", false, [] { Bluetooth::get().cancelPairing(); });

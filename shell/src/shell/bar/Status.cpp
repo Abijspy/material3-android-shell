@@ -436,7 +436,8 @@ void StatusIcons::sync() {
     auto& net = Network::get();
     m_net->setTooltip(airplane ? "Airplane mode"
                       : net.kind() == Network::Kind::None ? "Not connected" : net.name().empty() ? "Connected" : net.name());
-    m_bt->setTooltip(Bluetooth::get().powered() ? "Bluetooth on" : "Bluetooth off");
+    const std::string device = Bluetooth::get().connectedLabel();
+    m_bt->setTooltip(!Bluetooth::get().powered() ? "Bluetooth off" : device.empty() ? "Bluetooth on" : "Bluetooth: " + device);
     const auto* sink = Audio::get().sink();
     m_vol->setTooltip(!sink ? "Sound" : sink->muted ? "Muted" : std::format("Volume {}%", std::lround(sink->volume() * 100)));
     m_bell->setTooltip(n.doNotDisturb() ? "Do not disturb" : n.current().empty() ? "No notifications"

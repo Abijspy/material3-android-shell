@@ -137,6 +137,9 @@ public:
     void startService();
     const std::string& adapter() const { return m_adapter; } // its BlueZ path
     const std::vector<std::string>& connected() const { return m_connected; }
+    // The first connected device's name, with its charge where it reports
+    // one: "WH-1000XM4 · 80%" ("" with none connected)
+    std::string connectedLabel() const;
     void setPowered(bool on);
     std::string icon() const;
 
@@ -145,6 +148,7 @@ public:
         bool paired = false, connected = false, trusted = false;
         bool named = false; // has a real name (unnamed ones are beacons and the like)
         int rssi = 0;
+        int battery = -1;   // its charge, 0–100, where it reports one (BlueZ's Battery1)
     };
     const std::vector<Device>& devices() const { return m_devices; } // connected, paired, then nearby
     bool discovering() const { return m_discovering; }
@@ -195,6 +199,7 @@ private:
     bool m_available = false, m_powered = false, m_discovering = false, m_service = false, m_starting = false;
     std::string m_adapter;
     std::vector<std::string> m_connected;
+    std::map<std::string, int> m_lowWarned; // device → the last low-battery level told of
     std::vector<Device> m_devices;
     dbus::Subscription m_props, m_added, m_removed, m_owner;
     EventLoop::TimerId m_debounce = 0;

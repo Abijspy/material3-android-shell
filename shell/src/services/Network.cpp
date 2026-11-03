@@ -656,6 +656,7 @@ void Bluetooth::refresh() {
                 Device d{path, str(*dev, "Alias"), str(*dev, "Icon"), flag(*dev, "Paired"), flag(*dev, "Connected"),
                          flag(*dev, "Trusted"), !str(*dev, "Name").empty(), num<int>(*dev, "RSSI")};
                 if (d.name.empty()) d.name = str(*dev, "Address");
+                if (auto bat = ifaces.find("org.bluez.Battery1"); bat != ifaces.end()) d.battery = num<int>(*bat, "Percentage", -1);
                 if (d.connected) m_connected.push_back(d.name);
                 m_devices.push_back(std::move(d));
             }
@@ -665,6 +666,23 @@ void Bluetooth::refresh() {
             if (x.paired != y.paired) return x.paired;
             return x.rssi > y.rssi;
         });
+        // A connected device running low: told once at 20% and again at 10%
+        for (const auto& d : m_devices) {
+            if (!d.connected || d.battery < 0) continue;
+            if (d.battery > 25) {
+                m_lowWarned.erase(d.path);
+                continue;
+            }
+            for (const int level : {10, 20}) {
+                auto told = m_lowWarned.find(d.path);
+                if (d.battery > level || (told != m_lowWarned.end() && told->second <= level)) continue;
+                m_lowWarned[d.path] = level;
+                run({"notify-send", "-a", "Bluetooth", "-i", "battery-low", "-u", level <= 10 ? "critical" : "normal",
+                     std::format("{} is low on battery", d.name), std::format("{}% left", d.battery)},
+                    nullptr);
+                break;
+            }
+        }
         if (m_available && !m_agentRegistered) registerAgent();
         // Switched on while a device list is open: look for devices
         if (m_powered && !m_wasPowered && m_scanLeases > 0 && !m_discovering) setDiscovering(true);
@@ -676,6 +694,12 @@ void Bluetooth::refresh() {
         }
         changed.emit();
     });
+}
+
+std::string Bluetooth::connectedLabel() const {
+    for (const auto& d : m_devices)
+        if (d.connected) return d.battery >= 0 ? std::format("{} · {}%", d.name, d.battery) : d.name;
+    return {};
 }
 
 void Bluetooth::setPowered(bool on) {
