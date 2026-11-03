@@ -50,6 +50,9 @@ void hyprSettings(ui::Flex* card, Popup& popup, const std::string& page);
 void settingsPage(const std::string& id);
 void settingsClosed(bool hypr = false);
 void clipboard(ui::Flex* card, Popup& popup);
+// A to-do list (Notes), and its card for the desktop (what blurs behind it)
+void notes(ui::Flex* card, Popup& popup);
+ui::Node* notesCard(ui::Node* parent);
 void screenshot(ui::Flex* card, Popup& popup);
 // The Wi-Fi network list (Quick Settings and Settings); back may be empty.
 // `details` adds the connected network's speeds and addresses above it.

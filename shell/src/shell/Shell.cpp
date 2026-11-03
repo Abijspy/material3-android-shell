@@ -36,6 +36,7 @@
 #include "services/DarkSchedule.h"
 #include "services/NightLight.h"
 #include "services/DataUsage.h"
+#include "services/Notes.h"
 #include "services/Privacy.h"
 #include "services/Notifications.h"
 #include "services/Tray.h"
@@ -448,6 +449,11 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
     } else if (name == "barwidgets") {
         opts.width = 480;
         build = [arg](ui::Flex* card, Popup& p) { panels::barWidgets(card, p, arg); };
+    } else if (name == "notes") {
+        opts.width = 440;
+        opts.anchor = -1;
+        opts.centredVertically = true;
+        build = panels::notes;
     } else if (name == "clipboard") {
         opts.width = 560;
         opts.anchor = -1;
@@ -605,6 +611,29 @@ void Shell::registerIpc() {
     ipc.add("clipboard", "clipboard: toggle the clipboard history", [this](const auto&) {
         togglePopup("clipboard", focusedOutput(), -1);
         return std::string(m_popup && !m_popup->closing() ? "open" : "closed");
+    });
+    ipc.add("notes", "notes [list|add <text>|done <n>|remove <n>|clear]: the to-do list (n from 1, as listed); no argument opens it",
+            [this](const IpcServer::Args& a) {
+        auto& n = Notes::get();
+        if (a.empty()) {
+            togglePopup("notes", focusedOutput(), -1);
+            return std::string("open");
+        }
+        auto rest = [&a] {
+            std::string t;
+            for (size_t i = 1; i < a.size(); ++i) t += (i > 1 ? " " : "") + a[i];
+            return t;
+        };
+        const size_t i = a.size() > 1 ? static_cast<size_t>(std::max(0, std::atoi(a[1].c_str()) - 1)) : 0;
+        if (a[0] == "add") n.add(rest());
+        else if (a[0] == "done") n.toggle(i);
+        else if (a[0] == "remove") n.remove(i);
+        else if (a[0] == "clear") n.clearDone();
+        else if (a[0] != "list") return std::string("error: notes [list|add <text>|done <n>|remove <n>|clear]");
+        std::string out;
+        for (size_t k = 0; k < n.items().size(); ++k)
+            out += std::format("{}. [{}] {}\n", k + 1, n.items()[k].done ? "x" : " ", n.items()[k].text);
+        return out.empty() ? std::string("no notes") : out;
     });
     ipc.add("colorpicker", "colorpicker: pick a colour from the screen (copied as #rrggbb); colorpicker recent: the last ones",
             [this](const IpcServer::Args& a) {

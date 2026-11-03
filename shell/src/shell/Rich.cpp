@@ -369,6 +369,7 @@ ui::Node* dashboardWidget(ui::Node* parent, const std::string& id) {
     if (id == "calendar") return card(parent)->add<MonthView>()->parentNode();
     if (id == "weather") return weatherCard(parent);
     if (id == "system") return systemCard(parent);
+    if (id == "notes") return notesCard(parent);
     return nullptr;
 }
 
