@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -229,6 +230,14 @@ public:
     const std::vector<std::string>& profiles() const { return m_profiles; }
     void setProfile(const std::string& profile);
 
+    // The charge over the last `seconds`, as UPower keeps it (oldest
+    // first): when, how full, and whether it was charging
+    struct Reading {
+        std::time_t when = 0;
+        double percent = 0;
+        bool charging = false; // charging, or full on the charger
+    };
+    void history(int seconds, std::function<void(std::vector<Reading>)> done) const;
     Signal<> changed;
 
 private:

@@ -1745,6 +1745,34 @@ void dockPage(Flex* page, Popup&) {
 
 // ── Battery ──
 
+// The charge over a day or a week, from UPower's history: an area, a
+// column for each few pixels at the charge then, in the accent while it
+// drained and the tertiary while it charged
+class ChargeChart : public Node {
+public:
+    std::vector<Power::Reading> readings;
+    std::time_t from = 0, to = 0;
+
+protected:
+    SizeF doMeasure(SizeF available) override { return {available.w, 120}; }
+    void doPaint(Renderer& r) override {
+        const RectF b = rect();
+        for (int g : {0, 50, 100})
+            r.rect({b.x, b.y + b.h * (1 - static_cast<float>(g) / 100) - 0.5f, b.w, 1}, ColorRef("outline_variant", 0.6f).resolve());
+        if (readings.empty() || to <= from) return;
+        constexpr float kStep = 3;
+        for (float x = 0; x + kStep <= b.w; x += kStep) {
+            const std::time_t t = from + static_cast<std::time_t>(static_cast<double>(to - from) * x / b.w);
+            auto it = std::upper_bound(readings.begin(), readings.end(), t, [](std::time_t v, const Power::Reading& p) { return v < p.when; });
+            if (it == readings.begin()) continue; // before the history starts
+            const auto& p = *(it - 1);
+            const float h = std::max(1.0f, b.h * static_cast<float>(p.percent) / 100);
+            // Flush, so the columns read as one filled area
+            r.rect({b.x + x, b.y + b.h - h, kStep, h}, ColorRef(p.charging ? "tertiary" : "primary", 0.85f).resolve());
+        }
+    }
+};
+
 void batteryPage(Flex* page, Popup&) {
     auto* live = page->add<Live>();
     live->setSpacing(6);
@@ -1791,6 +1819,59 @@ void batteryPage(Flex* page, Popup&) {
         connectedGroup<std::string>(r.row, p.profile(), options, [](std::string v) { Power::get().setProfile(v); });
     };
     live->sync();
+
+    // The charge over the last day or week, and how long since unplugging
+    if (!Power::get().hasBattery()) return;
+    auto* hist = page->add<Live>();
+    hist->setSpacing(6);
+    auto span = std::make_shared<int>(Config::get().value<int>("/battery/historySpan", 1));
+    hist->sync = [hist, span] {
+        hist->clearChildren();
+        auto* g = group(hist, "Battery level", "As the battery reported it");
+        auto* box = g->add<Flex>(Flex::Direction::Column);
+        box->setPadding({20, 14})->setSpacing(8)->setAlignItems(Align::Stretch);
+        auto* top = box->add<Flex>(Flex::Direction::Row);
+        auto* since = top->add<Label>("");
+        since->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(320)->setMaxLines(2);
+        since->grow = true;
+        connectedGroup<int>(top, *span, {{1, "24 hours"}, {7, "7 days"}}, [hist, span](int v) {
+            *span = v;
+            Config::get().set("/battery/historySpan", v);
+            hist->syncSoon();
+        });
+        auto* chart = box->add<ChargeChart>();
+        auto* axis = box->add<Flex>(Flex::Direction::Row);
+        auto* left = axis->add<Label>(*span == 7 ? "7 days ago" : "24 hours ago");
+        left->setSize(11)->setColor("on_surface_variant", false);
+        left->grow = true;
+        axis->add<Label>("Now")->setSize(11)->setColor("on_surface_variant", false);
+        // A week's history each time: "since unplugged" may be days back
+        Power::get().history(7 * 86400, [chart, since, span, alive = hist->alive()](std::vector<Power::Reading> r) {
+            if (!*alive) return;
+            const std::time_t now = std::time(nullptr);
+            chart->from = now - static_cast<std::time_t>(*span) * 86400;
+            chart->to = now;
+            chart->readings = r;
+            chart->requestRedraw();
+            // Since the last time it was on the charger
+            auto& p = Power::get();
+            if (p.charging() || p.pluggedIn()) {
+                since->setText("On the charger");
+                return;
+            }
+            auto last = std::find_if(r.rbegin(), r.rend(), [](const Power::Reading& x) { return x.charging; });
+            if (last == r.rend()) {
+                since->setText(r.empty() ? "No history yet" : "Not on the charger all week");
+                return;
+            }
+            const auto off = last.base(); // the first reading after it
+            const std::time_t at = off != r.end() ? off->when : last->when;
+            const long m = static_cast<long>(now - at) / 60;
+            const int used = std::max(0, static_cast<int>(std::lround(last->percent)) - p.percent());
+            since->setText(std::format("Unplugged {} ago · {}% used", m >= 60 ? std::format("{} h {} min", m / 60, m % 60) : std::format("{} min", m), used));
+        });
+    };
+    hist->sync();
 }
 
 // ── Storage ──

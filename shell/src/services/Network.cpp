@@ -939,6 +939,34 @@ Power& Power::get() {
     return instance;
 }
 
+void Power::history(int seconds, std::function<void(std::vector<Reading>)> done) const {
+    // The battery itself keeps a history (the display device doesn't)
+    auto& bus = dbus::Bus::system();
+    bus.call("org.freedesktop.UPower", "/org/freedesktop/UPower", "org.freedesktop.UPower", "EnumerateDevices", {},
+             [seconds, done](const dbus::Value& a, const std::string& err) {
+        std::string battery;
+        if (err.empty() && a.is_array() && !a.empty() && a[0].is_array())
+            for (const auto& p : a[0])
+                if (p.is_string() && battery.empty() && p.get<std::string>().find("/battery_") != std::string::npos) battery = p.get<std::string>();
+        if (battery.empty()) return done({});
+        dbus::Bus::system().call("org.freedesktop.UPower", battery, "org.freedesktop.UPower.Device", "GetHistory",
+                                 dbus::args(std::string("charge"), static_cast<uint32_t>(seconds), static_cast<uint32_t>(400)),
+                                 [done](const dbus::Value& h, const std::string& e) {
+            std::vector<Reading> out;
+            if (e.empty() && h.is_array() && !h.empty() && h[0].is_array())
+                for (const auto& r : h[0]) {
+                    // (time, value, state): 1 charging, 2 discharging, 4 full; 0 unknown (skipped)
+                    if (!r.is_array() || r.size() < 3 || !r[0].is_number() || !r[1].is_number() || !r[2].is_number()) continue;
+                    const int state = r[2].get<int>();
+                    if (state == 0) continue;
+                    out.push_back({static_cast<std::time_t>(r[0].get<long long>()), r[1].get<double>(), state == 1 || state == 4});
+                }
+            std::ranges::sort(out, {}, &Reading::when);
+            done(std::move(out));
+        });
+    });
+}
+
 Power::Power() {
     const std::string dev = "/org/freedesktop/UPower/devices/DisplayDevice";
     auto load = [this, dev] {
