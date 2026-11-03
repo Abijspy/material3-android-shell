@@ -102,15 +102,33 @@ void Apps::reload() {
             App app;
             app.id = id;
             app.path = it->path().string();
+            // Its shortcuts: the order Actions= lists, each from its section
+            std::vector<std::string> order;
+            std::map<std::string, App::Action> sections;
+            std::string action; // the [Desktop Action …] being read
             while (std::getline(in, line)) {
                 if (line.starts_with('[')) {
                     inEntry = line == "[Desktop Entry]";
+                    action = line.starts_with("[Desktop Action ") && line.ends_with(']') ? line.substr(16, line.size() - 17) : "";
                     continue;
                 }
-                if (!inEntry) continue;
                 const auto eq = line.find('=');
                 if (eq == std::string::npos) continue;
                 const std::string key = line.substr(0, eq), val = line.substr(eq + 1);
+                if (!action.empty()) {
+                    auto& a = sections[action];
+                    a.id = action;
+                    if (key == "Name") a.name = val;
+                    else if (key == "Exec") a.exec = cleanExec(val);
+                    else if (key == "Icon") a.icon = val;
+                    continue;
+                }
+                if (!inEntry) continue;
+                if (key == "Actions") {
+                    std::stringstream ss(val);
+                    for (std::string a; std::getline(ss, a, ';');)
+                        if (!a.empty()) order.push_back(a);
+                }
                 if (key == "Type") isApp = val == "Application";
                 else if (key == "Name") app.name = val;
                 else if (key == "GenericName") app.generic = val;
@@ -126,6 +144,9 @@ void Apps::reload() {
                 else if (key == "OnlyShowIn" && val.find(desktop) == std::string::npos) hidden = true;
                 else if (key == "NotShowIn" && val.find(desktop) != std::string::npos) hidden = true;
             }
+            for (const auto& a : order)
+                if (auto s = sections.find(a); s != sections.end() && !s->second.name.empty() && !s->second.exec.empty())
+                    app.actions.push_back(s->second);
             if (isApp && !hidden && !app.name.empty() && !app.exec.empty()) m_apps.push_back(std::move(app));
         }
     }
@@ -188,6 +209,12 @@ void Apps::launch(const App& app) {
     else
         m_counts.emplace_back(app.id, 1);
     saveCounts();
+}
+
+void Apps::launch(const App& app, const App::Action& action) {
+    App as = app;
+    as.exec = action.exec;
+    launch(as); // counted as the app's
 }
 
 void Apps::saveCounts() const {
@@ -481,6 +508,16 @@ std::vector<SearchResult> query(const std::string& raw) {
         out.push_back({app.name, !app.comment.empty() ? app.comment : app.generic, app.icon, "apps", "", s,
                        [app] { Apps::get().launch(app); }});
     }
+    // Apps' shortcuts ("New private window"): under their app as it's typed,
+    // or found by their own name, once there's enough to go on
+    if (text.size() >= 3)
+        for (const auto& app : Apps::get().all())
+            for (const auto& a : app.actions) {
+                const double s = std::max(fuzzyScore(text, app.name) * 0.8, fuzzyScore(text, a.name) * 0.9);
+                if (s <= 0.3) continue;
+                out.push_back({a.name, app.name, !a.icon.empty() ? a.icon : app.icon, "bolt", "", s,
+                               [app, a] { Apps::get().launch(app, a); }});
+            }
     // Answers (Settings → Spotlight): maths, and unit conversions
     const auto& cfg = Config::get();
     if (cfg.value<bool>("/spotlight/calculator", true) && looksLikeMath(text)) addCalc(out, text, 200);

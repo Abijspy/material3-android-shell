@@ -546,6 +546,14 @@ void dockMenu(Flex* card, Popup& popup, const std::string& arg) {
         const Apps::App copy = *app;
         item(windows.empty() ? "open_in_new" : "add", windows.empty() ? "Open" : "New window", false,
              [copy] { Apps::get().launch(copy); });
+        // Its own shortcuts ("New private window", "Compose")
+        for (const auto& a : copy.actions) {
+            // "New window" is already above when it has windows (not "New private window")
+            std::string n = a.name;
+            for (auto& c : n) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (!windows.empty() && n.find("new window") != std::string::npos) continue;
+            item("bolt", a.name, false, [copy, a] { Apps::get().launch(copy, a); });
+        }
     }
     item(pinned ? "keep_off" : "keep", pinned ? "Unpin from dock" : "Pin to dock", false, [id, pinned] {
         auto now = Dock::pinned();

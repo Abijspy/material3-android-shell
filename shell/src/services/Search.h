@@ -30,6 +30,12 @@ public:
         std::string mimeTypes, categories; // ';'-separated, as in the file
         std::string path;                  // the .desktop file
         bool terminal = false;
+        // Its shortcuts ([Desktop Action …]): "New window", "New private
+        // window", "Compose", in the file's order
+        struct Action {
+            std::string id, name, exec, icon;
+        };
+        std::vector<Action> actions;
     };
 
     static Apps& get();
@@ -37,6 +43,7 @@ public:
     void reload();
     Signal<> changed; // the list reloaded: apps were installed or removed
     void launch(const App& app);
+    void launch(const App& app, const App::Action& action); // one of its shortcuts
     int launches(const std::string& id) const;
     // Icon for a window class (Hyprland's "class"), via StartupWMClass or the desktop id
     std::string iconForClass(const std::string& cls) const;
