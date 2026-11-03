@@ -1,5 +1,18 @@
 # Changelog
 
+## v6.3.0 — 2026-11-03
+
+- **Dark theme on a schedule.** Look & feel → Colours → Automatically: dark from sunset to sunrise where you are, or between two times you set. Sunrise and sunset are worked out on your computer from your weather location or time zone, with no network needed. Switch it by hand and it stays that way until the next change.
+- **Wallpaper slideshow.** Wallpaper & style → Change automatically: a new wallpaper from your folder every 15 minutes, hour, three hours or day, in order or shuffled. Restarting doesn't reset the timer.
+- **Spotlight answers more.** Type "5 km to mi", "100 f in c", "3 cups" or "10 GB in GiB" for a conversion; Enter copies it. When nothing else matches, the last result searches the web. A new **Settings → Spotlight** page picks the search engine (DuckDuckGo, Google, Bing, Brave, Startpage, Ecosia), switches the calculator and conversions on or off, and explains the shortcuts (`=` `:` `#` `@` `>`).
+- **Bluetooth device batteries.** Headphones, mice and keyboards that report their charge show it in the Bluetooth panel, Settings, the Quick Settings tile and the bar. You're told when one gets to 20% and again at 10%.
+- **Privacy indicator.** A green chip appears in the bar while an app uses the microphone or the camera, as on Android. Its tooltip says which app, and tapping it opens the sound panel.
+- **Per-app volume.** The sound panel lists each app that's playing, with its own volume and mute. With more than one output, you can move an app to another one.
+- **Data usage.** Settings → Network → Data usage shows how much your computer sent and received today, this month and over the last seven days. It keeps counting across restarts and reboots.
+- **Colour picker.** Press Super+Shift+C, or use Tools → Colour picker. A magnifier follows the pointer, and a click copies the colour as `#rrggbb`. Tools keeps the last ten, so you can copy one again with a tap.
+- **Notes.** A to-do list (`material3ui msg notes`): add one with Enter, tap to tick it off, and clear the done ones. A Notes desktop widget shows the list.
+- **Your phone, through KDE Connect.** Settings → Connected devices → Phone installs it and turns it on. Pair your phone to see its battery, ring it, ping it, and send it the clipboard or files. Its notifications show up here as usual. If your firewall blocks it, one tap allows it. A Phone bar widget shows its battery.
+
 ## v6.2.6 — 2026-11-02
 
 - **Liquid glass.** A new look in Settings → Look & feel → Liquid glass (off by default). The bar, dock, panels, notifications, the volume and brightness indicator, and widgets turn to glass. They're clearer, and their edges catch the light: a bright rim from above, a soft glow just inside, and a sheen across the top. On the desktop and lock screen, what's behind a widget also bends at its edges, like real glass. Over windows the compositor does the blur, so there you get the light without the bending.
