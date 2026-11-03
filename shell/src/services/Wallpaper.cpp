@@ -3,15 +3,18 @@
 #include "core/Config.h"
 #include "core/Log.h"
 #include "core/Paths.h"
+#include "core/EventLoop.h"
 #include "core/Process.h"
 #include "services/Hooks.h"
 
 #include <algorithm>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <map>
+#include <random>
 #include <sstream>
 #include <unistd.h>
 
@@ -40,10 +43,23 @@ Wallpaper& Wallpaper::get() {
     return instance;
 }
 
+namespace {
+// When the wallpaper last changed (a slideshow counts from it)
+std::string slideshowFile() {
+    return paths::stateDir() + "/slideshow";
+}
+void markChanged() {
+    std::error_code ec;
+    std::filesystem::create_directories(paths::stateDir(), ec);
+    std::ofstream(slideshowFile()) << std::time(nullptr) << "\n";
+}
+} // namespace
+
 Wallpaper::Wallpaper() {
     m_last = path();
     Config::get().changed.connectForever([this] {
         if (path() != m_last) {
+            markChanged();
             m_last = path();
             changed.emit();
         }
@@ -254,6 +270,40 @@ void Wallpaper::swatch(const std::string& seed, const std::string& scheme, std::
         waiting.erase(key);
         for (auto& cb : callbacks) cb(colours);
     });
+}
+
+void Wallpaper::startSlideshow() {
+    if (m_slideshow) return;
+    m_slideshow = true;
+    EventLoop::get().addTimer(60 * 1000, [this] { slideshowTick(); }, true);
+    slideshowTick(); // one due while the shell was off
+}
+
+void Wallpaper::slideshowTick() {
+    const auto& c = Config::get();
+    const int every = c.value<int>("/background/slideshow/every", 0);
+    if (every <= 0) return;
+    std::time_t last = 0;
+    std::ifstream(slideshowFile()) >> last;
+    if (!last) {
+        markChanged(); // counting from now
+        return;
+    }
+    if (std::time(nullptr) - last < static_cast<std::time_t>(every) * 60) return;
+    const auto all = list();
+    if (all.size() < 2) return;
+    if (c.value<bool>("/background/slideshow/shuffle", false)) {
+        // Any other one
+        auto it = std::ranges::find(all, path());
+        const size_t here = it == all.end() ? all.size() : static_cast<size_t>(it - all.begin());
+        static std::mt19937 rng{std::random_device{}()};
+        size_t pick = std::uniform_int_distribution<size_t>(0, (here < all.size() ? all.size() - 1 : all.size()) - 1)(rng);
+        if (here < all.size() && pick >= here) ++pick;
+        set(all[pick]);
+    } else {
+        next(1);
+    }
+    markChanged();
 }
 
 void Wallpaper::next(int step) {

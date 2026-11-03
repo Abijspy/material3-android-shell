@@ -42,6 +42,11 @@ public:
     // records: never switched off
     static bool templateRequired(const std::string& name) { return name == "m3colors" || name == "wallpaper"; }
     void next(int step = 1);
+    // A slideshow (Wallpaper & style → Change automatically): another one
+    // from the folder every /background/slideshow/every minutes (0: never),
+    // in order or, with /background/slideshow/shuffle, any. Counted from the
+    // last change, yours included, across restarts
+    void startSlideshow();
 
     Signal<> changed;
 
@@ -50,7 +55,9 @@ private:
     // none are off, so its own config runs)
     std::string filteredConfig() const;
     Wallpaper();
+    void slideshowTick();
     std::string m_last;
+    bool m_slideshow = false;
 };
 
 } // namespace m3

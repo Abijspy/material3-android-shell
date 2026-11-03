@@ -806,6 +806,27 @@ void appearancePage(Flex* page, Popup& popup) {
             if (open) open("wallpapers");
         }, "wallpaper");
     }
+    // A slideshow from the folder: how often, and in order or shuffled
+    {
+        const int every = Config::get().value<int>("/background/slideshow/every", 0);
+        const std::vector<std::pair<std::string, std::string>> often = {{"0", "Never"},          {"15", "Every 15 minutes"},
+                                                                        {"30", "Every 30 minutes"}, {"60", "Every hour"},
+                                                                        {"180", "Every 3 hours"},  {"1440", "Every day"}};
+        auto* item = wp->add<Flex>(Flex::Direction::Column);
+        item->setAlignItems(Align::Stretch);
+        auto change = row(item, "slideshow", "Change automatically", "Another wallpaper from this folder");
+        std::string shown = "Never";
+        for (const auto& [v, label] : often)
+            if (std::to_string(every) == v) shown = label;
+        auto* shuffleItem = wp->add<Flex>(Flex::Direction::Column);
+        shuffleItem->setAlignItems(Align::Stretch);
+        switchRow(shuffleItem, "shuffle", "Shuffle", "Any of them, not the next in order", "/background/slideshow/shuffle", false);
+        shuffleItem->setVisible(every > 0);
+        dropdown(change.row, item, shown, often, [shuffleItem](const std::string& v) {
+            Config::get().set("/background/slideshow/every", std::stoi(v));
+            shuffleItem->setVisible(v != "0");
+        });
+    }
     choiceRow<std::string>(wp, "animation", "Transition", "", "/background/wallpaperTransition", "random",
                            {{"random", "Random"}, {"fade", "Fade"}, {"wipe", "Wipe"}, {"grow", "Grow"}});
     switchRow(wp, "schedule", "Desktop clock", "A large clock on the wallpaper", "/desktop/clock", true);

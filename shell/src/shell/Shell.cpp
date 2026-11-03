@@ -144,6 +144,7 @@ bool Shell::start() {
     Idle::get().start();
     NightLight::get().start(); // as Settings left it, the screens up now
     DarkSchedule::get().start();
+    Wallpaper::get().startSlideshow();
     // Updates: checked in the background (Settings → Software & updates); a
     // notification's Review opens the page
     Packages::get().openSettings = [this](const std::string& page) { EventLoop::get().defer([this, page] { openSettings(page); }); };
