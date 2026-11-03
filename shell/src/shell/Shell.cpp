@@ -38,6 +38,7 @@
 #include "services/DataUsage.h"
 #include "services/KdeConnect.h"
 #include "services/Notes.h"
+#include "services/Pomodoro.h"
 #include "services/Privacy.h"
 #include "services/Sounds.h"
 #include "services/Notifications.h"
@@ -627,6 +628,23 @@ void Shell::registerIpc() {
     ipc.add("clipboard", "clipboard: toggle the clipboard history", [this](const auto&) {
         togglePopup("clipboard", focusedOutput(), -1);
         return std::string(m_popup && !m_popup->closing() ? "open" : "closed");
+    });
+    ipc.add("pomodoro", "pomodoro [start|pause|resume|skip|stop|status]: the focus timer; no argument opens it",
+            [this](const IpcServer::Args& a) {
+        auto& p = Pomodoro::get();
+        if (a.empty()) {
+            togglePopup("clock", focusedOutput(), -1, "focus");
+            return std::string("open");
+        }
+        if (a[0] == "start") p.start();
+        else if (a[0] == "pause") p.pause();
+        else if (a[0] == "resume") p.resume();
+        else if (a[0] == "skip") p.skip();
+        else if (a[0] == "stop") p.stop();
+        else if (a[0] != "status") return std::string("error: pomodoro [start|pause|resume|skip|stop|status]");
+        if (p.phase() == Pomodoro::Phase::Idle) return std::string("idle");
+        return std::format("{} {}/{} {:02}:{:02}{}", p.phaseName(), p.round(), p.rounds(), p.remaining() / 60, p.remaining() % 60,
+                           p.paused() ? " paused" : "");
     });
     ipc.add("notes", "notes [list|add <text>|done <n>|remove <n>|clear]: the to-do list (n from 1, as listed); no argument opens it",
             [this](const IpcServer::Args& a) {

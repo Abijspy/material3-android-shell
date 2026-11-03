@@ -7,6 +7,7 @@
 #include "core/EventLoop.h"
 #include "render/Renderer.h"
 #include "services/Alarms.h"
+#include "services/Pomodoro.h"
 #include "shell/ClockFaces.h"
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
@@ -371,6 +372,83 @@ private:
     std::unique_ptr<SecondTicker> m_ticker;
 };
 
+// The focus timer (Pomodoro): the part and its countdown, a bar for it,
+// and start, pause, skip and stop; its lengths while it's idle
+void focusTimer(Flex* body) {
+    auto* card = body->add<Flex>(Flex::Direction::Column);
+    card->setSpacing(10)->setPadding({18, 16})->setRadius(Radii(24))->setAlignItems(Align::Stretch);
+    card->setBackground(ColorRef("surface_container_highest", 0.4f), false);
+    auto* phase = card->add<Label>();
+    phase->setSize(14)->setWeight(600)->setColor("primary", false);
+    auto* clock = card->add<Label>();
+    clock->setSize(56)->setWeight(400)->setFamily(Theme::get().monoFamily());
+    clock->alignSelf = Align::Center;
+    auto* meter = card->add<Flex>(Flex::Direction::Column);
+    meter->setAlignItems(Align::Stretch);
+    auto* buttons = card->add<Flex>(Flex::Direction::Row);
+    buttons->setSpacing(8)->setJustify(Align::Center);
+    auto* settings = body->add<Flex>(Flex::Direction::Column);
+    settings->setSpacing(8)->setPadding({14, 12})->setRadius(Radii(24))->setAlignItems(Align::Stretch);
+    settings->setBackground(ColorRef("surface_container_highest", 0.4f), false);
+
+    auto state = std::make_shared<std::string>("-");
+    auto* live = body->add<Live>();
+    live->setVisible(false);
+    live->sync = [=] {
+        auto& p = Pomodoro::get();
+        using P = Pomodoro::Phase;
+        const bool idle = p.phase() == P::Idle;
+        phase->setText(idle ? std::string("Work in focused stretches, with breaks between")
+                            : std::format("{} · round {} of {}{}", p.phaseName(), p.round(), p.rounds(), p.paused() ? " · paused" : ""));
+        const int left = idle ? Config::get().value<int>("/pomodoro/work", 25) * 60 : p.remaining();
+        clock->setText(std::format("{:02}:{:02}", left / 60, left % 60));
+        meter->clearChildren();
+        const float done = idle || p.length() <= 0 ? 0 : 1 - static_cast<float>(left) / static_cast<float>(p.length());
+        meter->add<Meter>(done, ColorRef(p.phase() == P::Work || idle ? "primary" : "tertiary"), 8);
+        // The buttons and the lengths: only when what can be done changes
+        const std::string now = std::format("{}{}", static_cast<int>(p.phase()), p.paused());
+        if (now == *state) return;
+        *state = now;
+        buttons->clearChildren();
+        if (idle) {
+            pillButton(buttons, "Start", true, [] { Pomodoro::get().start(); }, "play_arrow");
+        } else {
+            if (p.paused()) pillButton(buttons, "Resume", true, [] { Pomodoro::get().resume(); }, "play_arrow");
+            else pillButton(buttons, "Pause", false, [] { Pomodoro::get().pause(); }, "pause");
+            pillButton(buttons, "Skip", false, [] { Pomodoro::get().skip(); }, "skip_next");
+            pillButton(buttons, "Stop", false, [] { Pomodoro::get().stop(); }, "stop");
+        }
+        settings->clearChildren();
+        settings->setVisible(idle);
+        if (!idle) return;
+        auto lengths = [&](const char* title, const char* key, int fallback, std::vector<int> options) {
+            auto* r = settings->add<Flex>(Flex::Direction::Row);
+            r->setSpacing(10);
+            auto* t = r->add<Label>(title);
+            t->setSize(13)->setColor("on_surface_variant", false);
+            t->grow = true;
+            std::vector<std::pair<int, std::string>> opts;
+            for (int m : options) opts.push_back({m, std::format("{}", m)});
+            const std::string pointer = std::string("/pomodoro/") + key;
+            connectedGroup<int>(r, Config::get().value<int>(pointer, fallback), opts, [pointer](int v) { Config::get().set(pointer, v); });
+        };
+        lengths("Focus, minutes", "work", 25, {25, 45, 50});
+        lengths("Break, minutes", "shortBreak", 5, {5, 10});
+        lengths("Long break, minutes", "longBreak", 15, {15, 30});
+        auto* quiet = settings->add<Flex>(Flex::Direction::Row);
+        quiet->setSpacing(10);
+        auto* qt = quiet->add<Label>("Focus mode and Do not disturb while focusing");
+        qt->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(260)->setMaxLines(2);
+        qt->grow = true;
+        auto* sw = quiet->add<Switch>();
+        sw->setChecked(Config::get().value<bool>("/pomodoro/quiet", true), false);
+        sw->onToggled = [](bool on) { Config::get().set("/pomodoro/quiet", on); };
+    };
+    live->watch(Pomodoro::get().changed);
+    live->watch(Config::get().changed);
+    live->sync();
+}
+
 void timers(Flex* body) {
     body->add<TimerList>();
 
@@ -423,6 +501,7 @@ void clock(Flex* card, Popup& popup, const std::string& arg) {
     int start = Config::get().value<int>("/clock/tab", 0);
     if (arg == "alarms" || arg == "new" || arg.starts_with("edit:")) start = 0;
     else if (arg == "timers" || al.anyRunning() || std::ranges::any_of(al.ringing(), [](const auto& r) { return r.timer; })) start = 1;
+    if (arg == "focus" || (arg.empty() && Pomodoro::get().phase() != Pomodoro::Phase::Idle)) start = 2;
     auto tab = std::make_shared<int>(start);
 
     auto* tabs = card->add<Flex>(Flex::Direction::Row);
@@ -440,10 +519,11 @@ void clock(Flex* card, Popup& popup, const std::string& arg) {
         };
         if (!editing.empty()) alarmEditor(holder, popup, editing == "new" ? "" : editing, focus, [again] { again(""); });
         else if (*tab == 0) alarmList(holder, [again](const std::string& id) { again(id.empty() ? "new" : id); });
-        else timers(holder);
+        else if (*tab == 1) timers(holder);
+        else focusTimer(holder);
         holder->requestLayout();
     };
-    connectedGroup<int>(tabs, *tab, {{0, "Alarms"}, {1, "Timers"}}, [tab, fill](int v) {
+    connectedGroup<int>(tabs, *tab, {{0, "Alarms"}, {1, "Timers"}, {2, "Focus"}}, [tab, fill](int v) {
         *tab = v;
         Config::get().set("/clock/tab", v);
         EventLoop::get().defer([fill] { (*fill)("", false); });
