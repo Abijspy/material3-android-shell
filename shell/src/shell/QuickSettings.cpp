@@ -1,4 +1,5 @@
 #include "services/Audio.h"
+#include "services/Hotspot.h"
 #include "services/Idle.h"
 #include "services/Mpris.h"
 #include "services/Network.h"
@@ -360,6 +361,13 @@ const std::vector<TileDef>& tileDefs() {
                  if (open) open("printers");
              });
          }},
+        // This computer's connection shared over Wi-Fi
+        {"hotspot", "wifi_tethering", "Hotspot", [] { return Hotspot::get().on(); },
+         [] {
+             auto& h = Hotspot::get();
+             return h.busy() ? std::string(h.on() ? "Stopping…" : "Starting…") : h.on() ? h.name() : std::string("Off");
+         },
+         {}, [](Popup&) { Hotspot::get().set(!Hotspot::get().on()); }},
         // Every radio blocked; off again, Wi-Fi and Bluetooth as they were
         {"airplane", "flight", "Airplane mode", [] { return Airplane::get().on(); },
          [] {
@@ -847,6 +855,7 @@ void mainView(Flex* body, Popup& popup, const std::function<void()>& showWifi, c
     live->watch(Network::get().changed);
     live->watch(Bluetooth::get().changed);
     live->watch(Airplane::get().changed);
+    live->watch(Hotspot::get().changed);
     live->watch(Notifications::get().changed);
     live->watch(Idle::get().changed);
     live->watch(NightLight::get().changed);

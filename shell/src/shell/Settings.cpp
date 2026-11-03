@@ -27,6 +27,7 @@
 #include "services/DarkSchedule.h"
 #include "services/Currency.h"
 #include "services/DataUsage.h"
+#include "services/Hotspot.h"
 #include "services/Sounds.h"
 #include "services/Firewall.h"
 #include "services/KdeConnect.h"
@@ -343,6 +344,32 @@ void networkPage(Flex* page, Popup&) {
             r.subtitle->setVisible(true);
         };
         live->watch(Airplane::get().changed);
+        live->sync();
+    }
+    // A hotspot: this computer's connection shared over Wi-Fi
+    {
+        auto* live = page->add<Live>();
+        live->setSpacing(6);
+        live->sync = [live] {
+            live->clearChildren();
+            auto& h = Hotspot::get();
+            auto* g = group(live, "Hotspot", "Share this computer's connection with your phone or another computer");
+            auto top = row(g, "wifi_tethering", "Wi-Fi hotspot",
+                           h.busy() ? (h.on() ? "Stopping…" : "Starting…") : h.on() ? "On: “" + h.name() + "”" : "Off");
+            auto* sw = top.row->add<Switch>();
+            sw->setChecked(h.on(), false);
+            sw->onToggled = [](bool on) { Hotspot::get().set(on); };
+            if (!h.error().empty()) {
+                auto r = row(g, "error", "It didn't work", h.error());
+                r.subtitle->setColor("error", false);
+            }
+            textRow(g, "badge", "Name", "/hotspot/name", h.name());
+            auto pw = row(g, "password", "Password", h.password());
+            pw.subtitle->setFamily(Theme::get().monoFamily());
+            pillButton(pw.row, "New", false, [] { Hotspot::get().newPassword(); }, "refresh");
+            row(g, "info", "Your Wi-Fi pauses while it's on", "Most Wi-Fi cards can't join a network and offer one at once: share Ethernet or a phone's USB connection");
+        };
+        live->watch(Hotspot::get().changed);
         live->sync();
     }
     // Wi-Fi first, then wired adapters; the connection in use carries its

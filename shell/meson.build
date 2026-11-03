@@ -96,6 +96,7 @@ sources = files(
   'src/services/RainParse.cpp',
   'src/services/Sounds.cpp',
   'src/services/Pomodoro.cpp',
+  'src/services/Hotspot.cpp',
   'src/services/Privacy.cpp',
   'src/services/DataUsage.cpp',
   'src/services/Notes.cpp',
