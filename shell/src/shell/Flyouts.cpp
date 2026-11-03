@@ -13,6 +13,7 @@
 #include "services/Packages.h"
 #include "services/Printers.h"
 #include "services/Vpn.h"
+#include "services/Weather.h"
 #include "services/Wellbeing.h"
 #include "shell/PanelKit.h"
 #include "shell/Popup.h"
@@ -235,6 +236,22 @@ void updates(Flex* card, Popup& popup) {
 
 void weather(Flex* card, Popup& popup) {
     dashboardWidget(card, "weather");
+    // Rain on the way (or here), from the 15-minute forecast
+    auto* rain = card->add<Live>();
+    rain->sync = [rain] {
+        rain->clearChildren();
+        const int in = Weather::get().rainIn();
+        if (in < 0) return;
+        auto* r = rain->add<Flex>(Flex::Direction::Row);
+        r->setPadding({14, 10})->setSpacing(10)->setRadius(Radii(18))->setBackground("secondary_container", false);
+        r->add<Icon>("umbrella", 20)->setColor("on_secondary_container", false);
+        r->add<Label>(in == 0 ? std::string("Raining now") : std::format("Rain in about {} minutes", std::max(5, (in + 4) / 5 * 5)))
+            ->setSize(14)
+            ->setWeight(500)
+            ->setColor("on_secondary_container", false);
+    };
+    rain->watch(Weather::get().changed);
+    rain->sync();
     settingsLink(card, popup, "Weather settings", "weather");
 }
 

@@ -4,7 +4,9 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Process.h"
+#include "services/RainParse.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <ctime>
@@ -12,6 +14,7 @@
 #include <format>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <vector>
 #include <sstream>
 
 namespace fs = std::filesystem;
@@ -93,7 +96,8 @@ void Weather::refresh() {
     std::string url = std::format(
         "https://api.open-meteo.com/v1/forecast?latitude={:.4f}&longitude={:.4f}"
         "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day"
-        "&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=7",
+        "&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=7"
+        "&minutely_15=precipitation&forecast_minutely_15=8",
         lat, lon);
     if (imperial()) url += "&temperature_unit=fahrenheit&wind_speed_unit=mph";
     m_fetching = true;
@@ -150,6 +154,29 @@ void Weather::load(const std::string& text, bool fromCache) {
             for (size_t i = 0; i < dates.size(); ++i)
                 m_days.push_back({dates[i].get<std::string>(), d["temperature_2m_max"][i].get<double>(),
                                   d["temperature_2m_min"][i].get<double>(), d["weather_code"][i].get<int>()});
+        }
+        // Rain within the hour, from the 15-minute steps
+        m_rainIn = -1;
+        if (j.contains("minutely_15")) {
+            const auto& m = j["minutely_15"];
+            std::vector<std::string> times;
+            std::vector<double> mm;
+            for (const auto& t : m.value("time", nlohmann::json::array())) times.push_back(t.get<std::string>());
+            for (const auto& v : m.value("precipitation", nlohmann::json::array())) mm.push_back(v.is_number() ? v.get<double>() : 0.0);
+            m_rainIn = rain::minutesUntil(times, mm, j.value("utc_offset_seconds", 0L), std::time(nullptr));
+        }
+        // Told once: dry now and rain on the way; again only after it's dry
+        if (!fromCache) {
+            if (m_rainIn < 0) m_rainTold = false;
+            else if (m_rainIn > 0 && !m_rainTold && Config::get().value<bool>("/weather/rainAlerts", true)) {
+                m_rainTold = true;
+                const int in = std::max(5, (m_rainIn + 4) / 5 * 5);
+                run({"notify-send", "-a", "Weather", "-i", "weather-showers", std::format("Rain in about {} minutes", in),
+                     m_place.empty() ? std::string("Take an umbrella") : m_place + ": take an umbrella"},
+                    nullptr);
+            } else if (m_rainIn == 0) {
+                m_rainTold = true; // already raining: no "about to"
+            }
         }
         m_ready = true;
         if (!fromCache) m_error.clear();

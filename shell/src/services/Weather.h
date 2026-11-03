@@ -46,6 +46,10 @@ public:
     static std::string icon(int code, bool day);  // Material Symbol
     static std::string describe(int code);        // "Partly cloudy"
     std::string icon() const { return icon(m_code, m_isDay); }
+    // Minutes until it rains, within the hour (0: raining now), from the
+    // 15-minute forecast; -1 when it stays dry. Settings → Weather → Rain
+    // alerts tells you once when it's dry now and about to rain
+    int rainIn() const { return m_rainIn; }
 
     void refresh();
     // Places matching a name (Open-Meteo geocoding)
@@ -67,6 +71,8 @@ private:
     double m_temp = 0, m_feels = 0, m_wind = 0;
     int m_humidity = 0, m_code = 0;
     long long m_updated = 0;
+    int m_rainIn = -1;
+    bool m_rainTold = false; // told of this shower: not again until it's dry
     std::vector<Day> m_days;
     EventLoop::TimerId m_timer = 0;
     std::string m_lastQuery; // the location the data is for

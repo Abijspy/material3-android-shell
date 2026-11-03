@@ -3312,6 +3312,7 @@ void weatherPage(Flex* page, Popup&) {
                   if (on) Weather::get().refresh();
               });
     choiceRow<std::string>(g, "thermostat", "Units", "", "/weather/units", "metric", {{"metric", "°C · km/h"}, {"imperial", "°F · mph"}});
+    switchRow(g, "umbrella", "Rain alerts", "Told once when it's dry and rain is due within the hour", "/weather/rainAlerts", true);
 
     // Location: detected, or searched for
     auto* loc = page->add<Live>();

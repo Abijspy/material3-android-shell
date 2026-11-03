@@ -93,6 +93,7 @@ sources = files(
   'src/services/Units.cpp',
   'src/services/Currency.cpp',
   'src/services/CurrencyParse.cpp',
+  'src/services/RainParse.cpp',
   'src/services/Privacy.cpp',
   'src/services/DataUsage.cpp',
   'src/services/Notes.cpp',
@@ -256,6 +257,8 @@ test('timezones', executable('timezones_test', 'tests/timezones_test.cpp', 'src/
 test('sun', executable('sun_test', 'tests/sun_test.cpp', 'src/services/Sun.cpp',
   include_directories: include_directories('src')))
 test('units', executable('units_test', 'tests/units_test.cpp', 'src/services/Units.cpp',
+  include_directories: include_directories('src')))
+test('rain', executable('rain_test', 'tests/rain_test.cpp', 'src/services/RainParse.cpp',
   include_directories: include_directories('src')))
 test('currency', executable('currency_test', 'tests/currency_test.cpp', 'src/services/CurrencyParse.cpp',
   include_directories: include_directories('src')))
