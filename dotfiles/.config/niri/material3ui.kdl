@@ -41,6 +41,7 @@ binds {
     Ctrl+Alt+Delete hotkey-overlay-title="System monitor" { spawn "material3ui" "msg" "settings" "monitor"; }
     Mod+Shift+S hotkey-overlay-title="Screenshot a region" { spawn "material3ui" "msg" "screenshot" "region"; }
     Mod+Shift+X hotkey-overlay-title="Copy text from the screen" { spawn "material3ui" "msg" "screenshot" "ocr"; }
+    Mod+Shift+C hotkey-overlay-title="Pick a colour" { spawn "material3ui" "msg" "colorpicker"; }
     Mod+Shift+R hotkey-overlay-title="Record a region" { spawn "material3ui" "msg" "record" "region"; }
     XF86MonBrightnessUp allow-when-locked=true { spawn "material3ui" "msg" "brightness" "up"; }
     XF86MonBrightnessDown allow-when-locked=true { spawn "material3ui" "msg" "brightness" "down"; }

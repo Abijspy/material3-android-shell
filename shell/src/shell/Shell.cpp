@@ -45,6 +45,7 @@
 #include "services/Session.h"
 #include "services/Wallpaper.h"
 #include "shell/ClockPanel.h"
+#include "shell/ColorPicker.h"
 #include "shell/Desktop.h"
 #include "shell/Dock.h"
 #include "shell/LockScreen.h"
@@ -604,6 +605,16 @@ void Shell::registerIpc() {
     ipc.add("clipboard", "clipboard: toggle the clipboard history", [this](const auto&) {
         togglePopup("clipboard", focusedOutput(), -1);
         return std::string(m_popup && !m_popup->closing() ? "open" : "closed");
+    });
+    ipc.add("colorpicker", "colorpicker: pick a colour from the screen (copied as #rrggbb); colorpicker recent: the last ones",
+            [this](const IpcServer::Args& a) {
+        if (!a.empty() && a[0] == "recent") {
+            std::string out;
+            for (const auto& c : colorpicker::recent()) out += c + "\n";
+            return out.empty() ? std::string("none yet") : out;
+        }
+        EventLoop::get().defer([this] { colorpicker::start(focusedOutput()); });
+        return std::string("picking");
     });
     ipc.add("screenshot", "screenshot [region|window|screen [delay s]|ocr]: the tool, or capture at once",
             [this](const IpcServer::Args& a) {

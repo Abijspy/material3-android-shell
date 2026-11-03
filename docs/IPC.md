@@ -41,6 +41,7 @@ Running a panel command again closes the panel.
 | :--- | :--- |
 | `screenshot region\|window\|screen [delay]` | Captures at once (delay in seconds). It saves to `~/Pictures/Screenshots`, and copies to the clipboard, opens an editor or notifies, depending on Settings → Tools. |
 | `screenshot ocr` | Copies the text in a picked region (tesseract) |
+| `colorpicker [recent]` | Picks a colour from the screen, copied as `#rrggbb` (Super+Shift+C); `recent` lists the last ones |
 | `record [region\|screen]` | Starts a screen recording to `~/Videos/Recordings` (wf-recorder); runs again to stop |
 | `volume up\|down\|mute\|set <0-150>\|balance <-100..100>` | Output volume, with the OSD |
 | `brightness up\|down\|set <0-100>` | Backlight, with the OSD |

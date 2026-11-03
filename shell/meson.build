@@ -137,6 +137,7 @@ sources = files(
   'src/shell/Menus.cpp',
   'src/shell/Notify.cpp',
   'src/shell/Osd.cpp',
+  'src/shell/ColorPicker.cpp',
   'src/shell/Ringer.cpp',
   'src/shell/PanelKit.cpp',
   'src/shell/Panels.cpp',

@@ -26,6 +26,7 @@
 #include "services/SystemStats.h"
 #include "services/DarkSchedule.h"
 #include "services/DataUsage.h"
+#include "shell/ColorPicker.h"
 #include "services/Wallpaper.h"
 #include "services/Weather.h"
 #include "shell/ClockPanel.h"
@@ -3147,6 +3148,29 @@ void toolsPage(Flex* page, Popup& popup) {
     switchRow(share, "history", "Remember apps by default", "Apps may share again without asking (each time, the picker can change it)",
               "/share/remember", false);
     choiceRow<int>(share, "speed", "Frame rate", "At most", "/share/maxFps", 60, {{30, "30"}, {60, "60"}, {120, "120"}});
+
+    // The colour picker, and the colours picked lately (a tap copies one)
+    auto* colours = group(page, "Colour picker", "Any colour on screen, copied as #rrggbb (Super+Shift+C)");
+    auto pick = row(colours, "colorize", "Pick a colour", "A loupe follows the pointer; click to copy, Escape to stop");
+    pillButton(pick.row, "Pick", true, [] { spawn("sh -c 'sleep 0.4; material3ui msg colorpicker'"); }, "colorize");
+    if (const auto recent = colorpicker::recent(); !recent.empty()) {
+        auto* box = colours->add<Flex>(Flex::Direction::Column);
+        box->setPadding({20, 12})->setSpacing(8)->setAlignItems(Align::Stretch);
+        box->add<Label>("Recent: tap to copy")->setSize(13)->setColor("on_surface_variant", false);
+        auto* swatches = box->add<Flow>();
+        swatches->spacing = 8;
+        for (const auto& c : recent) {
+            const auto colour = Color::fromHex(c);
+            if (!colour) continue;
+            auto* chip = swatches->add<Button>();
+            pill(chip->setBackground("surface_container_highest", false))->setPadding({6, 4, 12, 4})->setSpacing(8);
+            auto* dot = chip->add<Flex>(Flex::Direction::Row);
+            pill(dot->setBackground(ColorRef(*colour), false));
+            dot->fixedWidth = dot->fixedHeight = 22;
+            chip->add<Label>(c)->setSize(13)->setFamily(Theme::get().monoFamily());
+            chip->onClicked = [c](uint32_t) { m3::run({"wl-copy", "--", c}, nullptr); };
+        }
+    }
 
     auto* clip = group(page, "Clipboard", "History through cliphist (and wl-clipboard)");
     missingTool(clip, "content_paste_off", "Clipboard history needs cliphist", "Keeps what you copy, pictures too, for Super+V",

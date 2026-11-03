@@ -47,6 +47,7 @@ run(mod .. " + Period", m3 .. " launcher :", "Shell: Emoji picker")
 -- Region tools
 run(mod .. " + SHIFT + S", m3 .. " screenshot region", "Tools: Region screenshot")
 run(mod .. " + SHIFT + X", m3 .. " screenshot ocr", "Tools: Copy text (OCR)")
+run(mod .. " + SHIFT + C", m3 .. " colorpicker", "Tools: Pick a colour")
 run(mod .. " + SHIFT + R", m3 .. " record region", "Tools: Record region", { locked = true })
 run("Print", m3 .. " screenshot region", "Tools: Screenshot (Print)")
 
