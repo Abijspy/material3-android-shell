@@ -39,6 +39,7 @@
 #include "services/KdeConnect.h"
 #include "services/Notes.h"
 #include "services/Privacy.h"
+#include "services/Sounds.h"
 #include "services/Notifications.h"
 #include "services/Tray.h"
 #include "services/Idle.h"
@@ -153,6 +154,7 @@ bool Shell::start() {
     Privacy::get().start();
     DataUsage::get().start();
     KdeConnect::get().start();
+    Sounds::get().start();
     // Updates: checked in the background (Settings → Software & updates); a
     // notification's Review opens the page
     Packages::get().openSettings = [this](const std::string& page) { EventLoop::get().defer([this, page] { openSettings(page); }); };

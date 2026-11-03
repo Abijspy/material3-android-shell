@@ -2,6 +2,7 @@
 
 #include "services/Audio.h"
 #include "services/Network.h"
+#include "services/Sounds.h"
 #include "ui/Theme.h"
 
 #include <cmath>
@@ -36,11 +37,13 @@ Osd::Osd(std::function<wl::Output*()> output) : m_output(std::move(output)) {
         const float v = s->volume();
         // The first snapshot (and switching devices) is not a user change
         const bool change = m_audioSeen && s->name == m_sink && (std::abs(v - m_volume) > 0.004f || s->muted != m_muted);
+        const bool stepped = change && s->muted == m_muted && !s->muted; // a volume step (a tick), not muting
         m_audioSeen = true;
         m_sink = s->name;
         m_volume = v;
         m_muted = s->muted;
         if (!change) return;
+        if (stepped) Sounds::get().play(Sounds::Event::Volume);
         const std::string icon = s->muted ? "volume_off" : v < 0.34f ? "volume_mute" : v < 0.67f ? "volume_down" : "volume_up";
         show(icon, s->muted ? 0 : v, s->muted ? "Muted" : std::format("{}%", std::lround(v * 100)));
     });

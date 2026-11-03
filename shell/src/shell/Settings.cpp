@@ -27,6 +27,7 @@
 #include "services/DarkSchedule.h"
 #include "services/Currency.h"
 #include "services/DataUsage.h"
+#include "services/Sounds.h"
 #include "services/Firewall.h"
 #include "services/KdeConnect.h"
 #include "shell/ColorPicker.h"
@@ -652,6 +653,24 @@ void phoneRows(Node* page) {
 
 void soundPage(Flex* page, Popup& popup) {
     audio(panelGroup(page, "Output and input", "Volume, balance, channels and devices"), popup);
+    // Sound effects: off until switched on, then each one its own
+    auto* fx = group(page, "Sound effects", "Gentle sounds from your sound theme");
+    switchRow(fx, "music_note", "Sound effects", "", "/sounds/enabled", false, [](bool) { reshowPage("sound"); });
+    if (Config::get().value<bool>("/sounds/enabled", false)) {
+        for (const auto& [glyph, title, sub, pointer, sample] : {
+                 std::tuple{"power", "Charger", "Plugged in or out", "/sounds/charger", Sounds::Event::Plugged},
+                 std::tuple{"notifications", "Notifications", "A new one arriving (not in Do not disturb)", "/sounds/notifications",
+                            Sounds::Event::Notification},
+                 std::tuple{"volume_up", "Volume", "A tick as it steps", "/sounds/volume", Sounds::Event::Volume},
+                 std::tuple{"screenshot_region", "Screenshots", "A shutter", "/sounds/screenshots", Sounds::Event::Screenshot},
+             }) {
+            auto r = row(fx, glyph, title, sub);
+            kit::iconButton(r.row, "play_arrow", [sample] { Sounds::preview(sample); }, 20);
+            auto* sw = r.row->add<Switch>();
+            sw->setChecked(Config::get().value<bool>(pointer, true), false);
+            sw->onToggled = [pointer](bool on) { Config::get().set(pointer, on); };
+        }
+    }
     auto* media = group(page, "Music");
     switchRow(media, "lyrics", "Synced lyrics", "The line being sung, in the media player. Looks the song up on lrclib.net, a free lyrics library",
               "/media/lyrics", true);
