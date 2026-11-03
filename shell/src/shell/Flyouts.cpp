@@ -159,6 +159,9 @@ void phone(Flex* card, Popup& popup) {
             if (d.has("share")) action(actions, "upload_file", "Send files", [id] {
                 if (open) open("files phone " + id);
             });
+            if (d.has("sms")) action(actions, "sms", "Messages", [] {
+                if (open) open("messages");
+            });
         }
         if (!any) note(live, "No phone nearby. Open KDE Connect on your phone, on the same network as this computer.");
     };

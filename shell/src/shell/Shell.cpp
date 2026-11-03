@@ -465,6 +465,11 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
               : name == "printers"  ? panels::printers
               : name == "firewall"  ? panels::firewall
                                     : panels::vpn;
+    } else if (name == "messages") {
+        opts.width = 460;
+        opts.anchor = -1;
+        opts.centredVertically = true;
+        build = panels::messages;
     } else if (name == "notes") {
         opts.width = 440;
         opts.anchor = -1;
@@ -645,6 +650,10 @@ void Shell::registerIpc() {
         if (p.phase() == Pomodoro::Phase::Idle) return std::string("idle");
         return std::format("{} {}/{} {:02}:{:02}{}", p.phaseName(), p.round(), p.rounds(), p.remaining() / 60, p.remaining() % 60,
                            p.paused() ? " paused" : "");
+    });
+    ipc.add("messages", "messages: your phone's text messages (KDE Connect)", [this](const IpcServer::Args&) {
+        togglePopup("messages", focusedOutput(), -1);
+        return std::string(m_popup && !m_popup->closing() ? "open" : "closed");
     });
     ipc.add("notes", "notes [list|add <text>|done <n>|remove <n>|clear]: the to-do list (n from 1, as listed); no argument opens it",
             [this](const IpcServer::Args& a) {

@@ -61,6 +61,8 @@ void wellbeing(ui::Flex* card, Popup& popup);
 void printers(ui::Flex* card, Popup& popup);
 void firewall(ui::Flex* card, Popup& popup);
 void vpn(ui::Flex* card, Popup& popup);
+// Text messages from your phone (KDE Connect), MessagesPanel.cpp
+void messages(ui::Flex* card, Popup& popup);
 ui::Node* notesCard(ui::Node* parent);
 void screenshot(ui::Flex* card, Popup& popup);
 // The Wi-Fi network list (Quick Settings and Settings); back may be empty.

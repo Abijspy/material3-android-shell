@@ -5,7 +5,12 @@
 #include "core/Process.h"
 
 #include <algorithm>
+#include <cctype>
+#include <filesystem>
+#include <fstream>
+#include <map>
 #include <memory>
+#include <systemd/sd-bus.h>
 
 namespace m3 {
 
@@ -184,6 +189,146 @@ void KdeConnect::ping(const std::string& id) {
 void KdeConnect::sendClipboard(const std::string& id) {
     act(id, "clipboard", "sendClipboard");
 }
+// ── Text messages ──
+
+namespace {
+// A ConversationMessage as kdeconnect marshals it: (event i, body s,
+// addresses a(s), date x, type i, read i, threadID x, uID i, subID x,
+// attachments a(xsss)); a variant's contents, read leniently
+bool parseMessage(const dbus::Value& v, KdeConnect::Message& m) {
+    const dbus::Value* s = &v;
+    while (s->is_array() && s->size() == 1 && (*s)[0].is_array()) s = &(*s)[0]; // a variant's wrapping
+    if (!s->is_array() || s->size() < 7) return false;
+    const auto& f = *s;
+    if (!f[1].is_string() || !f[3].is_number() || !f[4].is_number() || !f[6].is_number()) return false;
+    m.body = f[1].get<std::string>();
+    m.addresses.clear();
+    if (f[2].is_array())
+        for (const auto& a : f[2]) {
+            if (a.is_array() && !a.empty() && a[0].is_string()) m.addresses.push_back(a[0].get<std::string>());
+            else if (a.is_string()) m.addresses.push_back(a.get<std::string>());
+        }
+    m.date = f[3].get<int64_t>();
+    m.sent = f[4].get<int>() == 2; // Android's: 1 received, 2 sent
+    m.read = !f[5].is_number() || f[5].get<int>() != 0;
+    m.thread = f[6].get<int64_t>();
+    return true;
+}
+std::string digits(const std::string& number) {
+    std::string d;
+    for (char c : number)
+        if (std::isdigit(static_cast<unsigned char>(c))) d += c;
+    return d.size() > 10 ? d.substr(d.size() - 10) : d; // country codes aside
+}
+} // namespace
+
+void KdeConnect::loadConversations(const std::string& id) {
+    if (m_smsDevice != id) {
+        m_smsDevice = id;
+        m_conversations.clear();
+        m_messages.clear();
+        // New and updated messages, as the phone sends them
+        m_sms = dbus::Bus::session().subscribe(kService, path(id), "org.kde.kdeconnect.device.conversations", "",
+                                               [this, id](const dbus::Value& a, sd_bus_message*) {
+            if (a.is_array() && !a.empty() && !a[0].is_number()) addMessage(a[0]);
+            EventLoop::get().debounce(m_soon, 300, [this, id] { readConversations(id); });
+        });
+    }
+    dbus::Bus::session().call(kService, path(id), "org.kde.kdeconnect.device.conversations", "requestAllConversationThreads");
+    readConversations(id);
+}
+
+void KdeConnect::readConversations(const std::string& id) {
+    dbus::Bus::session().call(kService, path(id), "org.kde.kdeconnect.device.conversations", "activeConversations", {},
+                              [this](const dbus::Value& a, const std::string& err) {
+        if (!err.empty() || !a.is_array() || a.empty() || !a[0].is_array()) return;
+        std::vector<Message> out;
+        for (const auto& v : a[0]) {
+            Message m;
+            if (parseMessage(v, m)) out.push_back(std::move(m));
+        }
+        std::ranges::sort(out, std::greater{}, &Message::date);
+        m_conversations = std::move(out);
+        messagesChanged.emit();
+    });
+}
+
+void KdeConnect::addMessage(const dbus::Value& v) {
+    Message m;
+    if (!parseMessage(v, m)) return;
+    // Once each (an update replaces the same date and thread)
+    std::erase_if(m_messages, [&](const Message& x) { return x.thread == m.thread && x.date == m.date && x.sent == m.sent; });
+    m_messages.push_back(std::move(m));
+    messagesChanged.emit();
+}
+
+void KdeConnect::loadThread(const std::string& id, int64_t thread) {
+    dbus::Bus::session().call(kService, path(id), "org.kde.kdeconnect.device.conversations", "requestConversation",
+                              [thread](sd_bus_message* m) {
+                                  sd_bus_message_append(m, "xii", thread, static_cast<int32_t>(0), static_cast<int32_t>(60));
+                              });
+}
+
+std::vector<KdeConnect::Message> KdeConnect::thread(int64_t thread) const {
+    std::vector<Message> out;
+    for (const auto& m : m_messages)
+        if (m.thread == thread) out.push_back(m);
+    // The conversation's latest, if its messages haven't come yet
+    if (out.empty())
+        for (const auto& m : m_conversations)
+            if (m.thread == thread) out.push_back(m);
+    std::ranges::sort(out, {}, &Message::date);
+    return out;
+}
+
+void KdeConnect::reply(const std::string& id, int64_t thread, const std::string& text) {
+    if (text.empty()) return;
+    dbus::Bus::session().call(kService, path(id), "org.kde.kdeconnect.device.conversations", "replyToConversation",
+                              [thread, text](sd_bus_message* m) {
+                                  sd_bus_message_append(m, "xs", thread, text.c_str());
+                                  sd_bus_message_open_container(m, 'a', "v"); // no attachments
+                                  sd_bus_message_close_container(m);
+                              },
+                              [](const dbus::Value&, const std::string& err) {
+                                  if (!err.empty()) log::warn("KDE Connect reply: {}", err);
+                              });
+}
+
+void KdeConnect::sendNew(const std::string& id, const std::string& number, const std::string& text) {
+    if (number.empty() || text.empty()) return;
+    run({"kdeconnect-cli", "-d", id, "--send-sms", text, "--destination", number}, nullptr);
+}
+
+std::string KdeConnect::contactName(const std::string& id, const std::string& number) const {
+    // The contacts the phone shares, as vCards: read once per device
+    static std::string loadedFor;
+    static std::map<std::string, std::string> names;
+    if (loadedFor != id) {
+        loadedFor = id;
+        names.clear();
+        const char* xdg = std::getenv("XDG_DATA_HOME");
+        const std::string dir = (xdg && *xdg ? std::string(xdg) : std::string(std::getenv("HOME") ? std::getenv("HOME") : "") + "/.local/share") +
+                                "/kpeoplevcard/kdeconnect-" + id;
+        std::error_code ec;
+        for (const auto& f : std::filesystem::directory_iterator(dir, ec)) {
+            std::ifstream in(f.path());
+            std::string name;
+            std::vector<std::string> tels;
+            for (std::string line; std::getline(in, line);) {
+                if (!line.empty() && line.back() == '\r') line.pop_back();
+                if (line.starts_with("FN:")) name = line.substr(3);
+                else if (line.starts_with("TEL")) {
+                    if (const auto c = line.find(':'); c != std::string::npos) tels.push_back(line.substr(c + 1));
+                }
+            }
+            if (!name.empty())
+                for (const auto& t : tels) names[digits(t)] = name;
+        }
+    }
+    auto it = names.find(digits(number));
+    return it != names.end() ? it->second : number;
+}
+
 void KdeConnect::share(const std::string& id, const std::vector<std::string>& files) {
     for (const auto& f : files) act(id, "share", "shareUrl", dbus::args(std::string("file://") + f));
 }
