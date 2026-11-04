@@ -27,6 +27,7 @@
 #include "services/DarkSchedule.h"
 #include "services/Currency.h"
 #include "services/DataUsage.h"
+#include "services/Equalizer.h"
 #include "shell/LiveWallpaper.h"
 #include "services/SessionApps.h"
 #include "services/Hotspot.h"
@@ -699,6 +700,31 @@ void soundPage(Flex* page, Popup& popup) {
             sw->setChecked(Config::get().value<bool>(pointer, true), false);
             sw->onToggled = [pointer](bool on) { Config::get().set(pointer, on); };
         }
+    }
+    // The equaliser: its switch, presets, and each band
+    auto* eq = group(page, "Equaliser", "Shapes what you hear on every output, through PipeWire");
+    switchRow(eq, "equalizer", "Equaliser", "", "/equalizer/enabled", false, [](bool) { reshowPage("sound"); });
+    if (Equalizer::get().on()) {
+        auto* box = eq->add<Flex>(Flex::Direction::Column);
+        box->setPadding({20, 12})->setSpacing(8)->setAlignItems(Align::Stretch);
+        box->add<Label>("Presets")->setSize(13)->setColor("on_surface_variant", false);
+        auto* chips = box->add<Flow>();
+        chips->spacing = 8;
+        const auto now = Equalizer::get().gains();
+        for (const auto& [name, gains] : Equalizer::presets()) {
+            auto* b = chips->add<Button>();
+            const bool current = gains == now;
+            pill(b->setBackground(current ? "secondary_container" : "surface_container_highest", false))->setPadding({14, 6});
+            b->add<Label>(name)->setSize(13)->setWeight(500)->setColor(current ? "on_secondary_container" : "on_surface", false);
+            b->onClicked = [g = gains](uint32_t) {
+                Equalizer::get().setPreset(g);
+                EventLoop::get().defer([] { reshowPage("sound"); });
+            };
+        }
+        for (int hz : Equalizer::frequencies())
+            sliderRow(eq, "graphic_eq", Equalizer::label(hz) + " Hz", Equalizer::key(hz), 0, -12, 12, 1, [](double v) {
+                return v > 0.05 ? std::format("+{:.0f} dB", v) : v < -0.05 ? std::format("{:.0f} dB", v) : std::string("0 dB");
+            });
     }
     auto* media = group(page, "Music");
     switchRow(media, "lyrics", "Synced lyrics", "The line being sung, in the media player. Looks the song up on lrclib.net, a free lyrics library",
