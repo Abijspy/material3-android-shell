@@ -8,6 +8,8 @@
 #include "render/Renderer.h"
 #include "services/Alarms.h"
 #include "services/Pomodoro.h"
+#include "services/TimeZones.h"
+#include "services/WorldClock.h"
 #include "shell/ClockFaces.h"
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
@@ -449,6 +451,75 @@ void focusTimer(Flex* body) {
     live->sync();
 }
 
+// World clocks: the cities chosen, each its time, day and offset; a search
+// to add one (any city in the time zone list, or its country)
+void worldClocks(Flex* body) {
+    auto* list = body->add<Live>();
+    list->setSpacing(6)->setAlignItems(Align::Stretch);
+    list->sync = [list] {
+        list->clearChildren();
+        const auto places = WorldClock::get().places();
+        if (places.empty()) {
+            auto* l = list->add<Label>("Add a city below to see its time here, and on the World clock desktop widget");
+            l->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(380)->setMaxLines(3);
+        }
+        for (const auto& p : places) {
+            auto* r = list->add<Flex>(Flex::Direction::Row);
+            r->setPadding({16, 12})->setSpacing(12)->setRadius(Radii(20))->setBackground(ColorRef("surface_container_highest", 0.4f), false);
+            auto* texts = r->add<Flex>(Flex::Direction::Column);
+            texts->setAlignItems(Align::Start)->setSpacing(1);
+            texts->grow = true;
+            texts->add<Label>(p.city)->setSize(15)->setWeight(600)->setMaxWidth(220);
+            texts->add<Label>(p.day + " · " + p.offset)->setSize(12)->setColor("on_surface_variant", false);
+            r->add<Label>(p.time)->setSize(28)->setWeight(400);
+            const std::string id = p.id;
+            iconButton(r, "close", [id] { WorldClock::get().remove(id); }, 18);
+        }
+    };
+    list->watch(WorldClock::get().changed);
+    list->sync();
+
+    auto* add = body->add<Flex>(Flex::Direction::Column);
+    add->setSpacing(8)->setPadding({14, 12})->setRadius(Radii(24))->setAlignItems(Align::Stretch);
+    add->setBackground(ColorRef("surface_container_highest", 0.4f), false);
+    auto* field = add->add<TextField>();
+    field->setPlaceholder("Add a city or a country");
+    auto* matches = add->add<Flex>(Flex::Direction::Column);
+    matches->setSpacing(2)->setAlignItems(Align::Stretch);
+    field->onChanged = [matches, field](const std::string& raw) {
+        matches->clearChildren();
+        std::string q = raw;
+        for (auto& ch : q) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        if (q.size() < 2) return;
+        const auto have = WorldClock::get().zones();
+        int shown = 0;
+        for (const auto& z : tz::system()) {
+            std::string city = z.city, country = z.country;
+            for (auto& ch : city) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            for (auto& ch : country) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            if (city.find(q) == std::string::npos && country.find(q) == std::string::npos) continue;
+            if (std::ranges::find(have, z.id) != have.end()) continue;
+            auto* b = matches->add<Button>(Flex::Direction::Row);
+            b->setPadding({12, 8})->setSpacing(10)->setRadius(Radii(14));
+            b->add<Icon>("add", 18)->setColor("primary", false);
+            auto* l = b->add<Label>(z.country.empty() ? z.city : z.city + ", " + z.country);
+            l->setSize(14)->setMaxWidth(320);
+            l->grow = true;
+            const std::string id = z.id;
+            b->onClicked = [id, field](uint32_t button) {
+                if (button != BTN_LEFT) return;
+                WorldClock::get().add(id);
+                EventLoop::get().defer([field] {
+                    field->setText("");
+                    if (field->onChanged) field->onChanged("");
+                });
+            };
+            if (++shown >= 6) break;
+        }
+        if (!shown) matches->add<Label>("No city by that name")->setSize(13)->setColor("on_surface_variant", false);
+    };
+}
+
 void timers(Flex* body) {
     body->add<TimerList>();
 
@@ -502,6 +573,7 @@ void clock(Flex* card, Popup& popup, const std::string& arg) {
     if (arg == "alarms" || arg == "new" || arg.starts_with("edit:")) start = 0;
     else if (arg == "timers" || al.anyRunning() || std::ranges::any_of(al.ringing(), [](const auto& r) { return r.timer; })) start = 1;
     if (arg == "focus" || (arg.empty() && Pomodoro::get().phase() != Pomodoro::Phase::Idle)) start = 2;
+    if (arg == "world") start = 3;
     auto tab = std::make_shared<int>(start);
 
     auto* tabs = card->add<Flex>(Flex::Direction::Row);
@@ -520,10 +592,11 @@ void clock(Flex* card, Popup& popup, const std::string& arg) {
         if (!editing.empty()) alarmEditor(holder, popup, editing == "new" ? "" : editing, focus, [again] { again(""); });
         else if (*tab == 0) alarmList(holder, [again](const std::string& id) { again(id.empty() ? "new" : id); });
         else if (*tab == 1) timers(holder);
-        else focusTimer(holder);
+        else if (*tab == 2) focusTimer(holder);
+        else worldClocks(holder);
         holder->requestLayout();
     };
-    connectedGroup<int>(tabs, *tab, {{0, "Alarms"}, {1, "Timers"}, {2, "Focus"}}, [tab, fill](int v) {
+    connectedGroup<int>(tabs, *tab, {{0, "Alarms"}, {1, "Timers"}, {2, "Focus"}, {3, "World"}}, [tab, fill](int v) {
         *tab = v;
         Config::get().set("/clock/tab", v);
         EventLoop::get().defer([fill] { (*fill)("", false); });

@@ -6,6 +6,7 @@
 #include "services/Search.h"
 #include "services/SystemStats.h"
 #include "services/Weather.h"
+#include "services/WorldClock.h"
 #include "services/Wallpaper.h"
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
@@ -365,11 +366,44 @@ Node* systemCard(Node* parent) {
 
 // ── Dashboard ──
 
+// World clocks: up to five cities, their time large (the clock panel's World tab adds them)
+ui::Node* worldClockCard(ui::Node* parent) {
+    auto* live = parent->add<Live>();
+    auto* c = card(live);
+    live->sync = [c] {
+        c->clearChildren();
+        auto* head = c->add<Flex>(Flex::Direction::Row);
+        head->setSpacing(8);
+        head->add<Icon>("public", 20)->setColor("primary", false);
+        head->add<Label>("World clock")->setSize(15)->setWeight(600);
+        const auto places = WorldClock::get().places();
+        if (places.empty()) {
+            c->add<Label>("Add cities in the clock panel's World tab")->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(280)->setMaxLines(2);
+            return;
+        }
+        for (size_t i = 0; i < places.size() && i < 5; ++i) {
+            const auto& p = places[i];
+            auto* r = c->add<Flex>(Flex::Direction::Row);
+            r->setSpacing(10);
+            auto* t = r->add<Flex>(Flex::Direction::Column);
+            t->setAlignItems(Align::Start)->setSpacing(0);
+            t->grow = true;
+            t->add<Label>(p.city)->setSize(14)->setWeight(500)->setMaxWidth(180);
+            t->add<Label>(p.day + " · " + p.offset)->setSize(11)->setColor("on_surface_variant", false);
+            r->add<Label>(p.time)->setSize(22);
+        }
+    };
+    live->watch(WorldClock::get().changed);
+    live->sync();
+    return c;
+}
+
 ui::Node* dashboardWidget(ui::Node* parent, const std::string& id) {
     if (id == "calendar") return card(parent)->add<MonthView>()->parentNode();
     if (id == "weather") return weatherCard(parent);
     if (id == "system") return systemCard(parent);
     if (id == "notes") return notesCard(parent);
+    if (id == "worldclock") return worldClockCard(parent);
     return nullptr;
 }
 

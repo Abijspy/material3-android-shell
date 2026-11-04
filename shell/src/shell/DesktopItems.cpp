@@ -205,6 +205,7 @@ const std::vector<WidgetDef>& widgets() {
         {"weather-card", "partly_cloudy_day", "Weather card", "Now and the next four days"},
         {"system", "monitoring", "System", "CPU, memory, disk and uptime"},
         {"notes", "checklist", "Notes", "Your to-do list; tap to add or tick off"},
+        {"worldclock", "public", "World clock", "The time in other cities"},
         {"battery", "battery_full", "Battery", "Charge and status"},
         {"notifications", "notifications", "Notifications", "How many are waiting"},
         {"screentime", "digital_wellbeing", "Screen time", "Today's time, by app"},
@@ -276,7 +277,7 @@ Node* buildItem(Node* parent, const Item& item, bool editing) {
     if (item.id == "clock-stacked") return parent->add<StackedClock>();
     if (item.id == "clock-analog") return parent->add<AnalogClock>(kit::AnalogFace::Style::Cookie);
     if (item.id == "clock-dots") return parent->add<AnalogClock>(kit::AnalogFace::Style::Dots);
-    if (item.id == "calendar" || item.id == "weather" || item.id == "system" || item.id == "notes" || item.id == "player")
+    if (item.id == "calendar" || item.id == "weather" || item.id == "system" || item.id == "notes" || item.id == "worldclock" || item.id == "player")
         return cardWidget(parent, item.id);
     // The lock screen's widgets: date, forecast, battery, notifications
     return addLockWidget(parent, item.id, false, 0);
