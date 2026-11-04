@@ -42,48 +42,6 @@ std::string fileIcon(const std::string& mime) {
     return "draft";
 }
 
-// A QR code on a white card (cameras want the contrast), its eyes rounded
-class QrView : public Node {
-public:
-    QrView(const std::string& text, float side) : m_modules(quickshare::qr::encode(text)), m_side(side) {}
-
-protected:
-    SizeF doMeasure(SizeF) override { return {m_side, m_side}; }
-    void doPaint(Renderer& r) override {
-        const RectF b = rect();
-        r.rect(b, Color{1, 1, 1, 1}, Radii(24));
-        const int n = static_cast<int>(m_modules.size());
-        if (n == 0) return;
-        // Whole device pixels per module, centred, a quiet zone around
-        const float s = r.scale();
-        const float m = std::floor(b.w * s / static_cast<float>(n + 6)) / s;
-        const float x0 = std::round((b.x + (b.w - m * static_cast<float>(n)) / 2) * s) / s;
-        const float y0 = std::round((b.y + (b.h - m * static_cast<float>(n)) / 2) * s) / s;
-        const Color ink{0.11f, 0.11f, 0.13f, 1};
-        const auto inEye = [n](int x, int y) { return (x < 7 && y < 7) || (x >= n - 7 && y < 7) || (x < 7 && y >= n - 7); };
-        // Runs of dark modules along each row, one rect each
-        for (int y = 0; y < n; ++y)
-            for (int x = 0; x < n;) {
-                if (!m_modules[static_cast<size_t>(y)][static_cast<size_t>(x)] || inEye(x, y)) {
-                    ++x;
-                    continue;
-                }
-                int end = x;
-                while (end < n && m_modules[static_cast<size_t>(y)][static_cast<size_t>(end)] && !inEye(end, y)) ++end;
-                r.rect({x0 + m * static_cast<float>(x), y0 + m * static_cast<float>(y), m * static_cast<float>(end - x), m}, ink);
-                x = end;
-            }
-        for (const auto& [ex, ey] : {std::pair{0, 0}, std::pair{n - 7, 0}, std::pair{0, n - 7}}) {
-            const float x = x0 + m * static_cast<float>(ex), y = y0 + m * static_cast<float>(ey);
-            r.rect({x, y, m * 7, m * 7}, Color{1, 1, 1, 1}, Radii(m * 2.2f), m, ink);
-            r.rect({x + m * 2, y + m * 2, m * 3, m * 3}, ink, Radii(m * 1.1f));
-        }
-    }
-
-private:
-    std::vector<std::vector<bool>> m_modules;
-    float m_side;
-};
 
 } // namespace
 

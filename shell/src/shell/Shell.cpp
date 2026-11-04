@@ -475,6 +475,11 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
               : name == "printers"  ? panels::printers
               : name == "firewall"  ? panels::firewall
                                     : panels::vpn;
+    } else if (name == "wifiqr") {
+        opts.width = 380;
+        opts.anchor = -1;
+        opts.centredVertically = true;
+        build = [arg](ui::Flex* card, Popup& p) { panels::shareWifi(card, p, arg); };
     } else if (name == "messages") {
         opts.width = 460;
         opts.anchor = -1;

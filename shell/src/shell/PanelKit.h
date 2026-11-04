@@ -56,6 +56,20 @@ private:
     ColorRef m_color;
 };
 
+// A QR code on a white card (cameras want the contrast), its eyes rounded
+class QrView : public ui::Node {
+public:
+    QrView(const std::string& text, float side);
+
+protected:
+    SizeF doMeasure(SizeF) override { return {m_side, m_side}; }
+    void doPaint(Renderer& r) override;
+
+private:
+    std::vector<std::vector<bool>> m_modules;
+    float m_side;
+};
+
 // Children left to right, wrapping onto new lines (chips)
 class Flow : public ui::Node {
 public:

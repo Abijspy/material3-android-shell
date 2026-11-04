@@ -8,6 +8,7 @@
 #include "core/Process.h"
 #include "render/Images.h"
 #include "services/Firewall.h"
+#include "services/Hotspot.h"
 #include "services/Firmware.h"
 #include "services/KdeConnect.h"
 #include "services/Packages.h"
@@ -25,6 +26,7 @@
 #include <cmath>
 #include <ctime>
 #include <format>
+#include <sstream>
 #include <linux/input-event-codes.h>
 
 namespace m3::shell::panels {
@@ -435,6 +437,90 @@ void vpn(Flex* card, Popup& popup) {
     live->watch(Vpn::get().changed);
     live->sync();
     settingsLink(card, popup, "VPN settings", "vpn");
+}
+
+// ── Share Wi-Fi ──
+
+namespace {
+// WIFI:T:WPA;S:name;P:password;; with \ ; , : " escaped, as phones read it
+std::string wifiCode(const std::string& ssid, const std::string& password, const std::string& security) {
+    auto esc = [](const std::string& t) {
+        std::string out;
+        for (char ch : t) {
+            if (ch == '\\' || ch == ';' || ch == ',' || ch == ':' || ch == '"') out += '\\';
+            out += ch;
+        }
+        return out;
+    };
+    return "WIFI:T:" + security + ";S:" + esc(ssid) + ";P:" + esc(password) + ";;";
+}
+} // namespace
+
+void shareWifi(Flex* card, Popup& popup, const std::string& arg) {
+    struct State {
+        std::string ssid, password, security = "WPA", error;
+        bool ready = false, show = false;
+    };
+    auto st = std::make_shared<State>();
+    auto* live = card->add<Live>();
+    live->setSpacing(12)->setAlignItems(Align::Center);
+    live->sync = [live, st] {
+        live->clearChildren();
+        auto* head = live->add<Flex>(Flex::Direction::Row);
+        head->setSpacing(10);
+        head->alignSelf = Align::Stretch;
+        head->add<Icon>("qr_code_2", 24)->setColor("primary", false);
+        head->add<Label>("Share Wi-Fi")->setSize(20)->setWeight(500);
+        if (!st->ready) {
+            note(live, st->error.empty() ? "Getting the network's details…" : st->error);
+            return;
+        }
+        live->add<Label>(st->ssid)->setSize(16)->setWeight(600)->setMaxWidth(320);
+        live->add<kit::QrView>(wifiCode(st->ssid, st->password, st->security), 240);
+        note(live, "Point your phone's camera at it to join");
+        if (st->security == "nopass") return;
+        auto* pw = live->add<Flex>(Flex::Direction::Row);
+        pw->setSpacing(8);
+        std::string dots;
+        for (size_t i = 0; i < st->password.size(); ++i) dots += "•";
+        auto* text = pw->add<Label>(st->show ? st->password : dots);
+        text->setSize(14)->setFamily(Theme::get().monoFamily())->setMaxWidth(260);
+        kit::iconButton(pw, st->show ? "visibility_off" : "visibility", [live, st] {
+            st->show = !st->show;
+            live->syncSoon();
+        }, 18);
+        kit::iconButton(pw, "content_copy", [st] { m3::run({"wl-copy", "--", st->password}, nullptr); }, 18);
+    };
+    live->sync();
+    if (arg == "hotspot") {
+        auto& h = Hotspot::get();
+        st->ssid = h.name();
+        st->password = h.password();
+        st->ready = true;
+        live->syncSoon();
+    } else {
+        // The Wi-Fi in use: its name, password and security, from NetworkManager
+        m3::run({"sh", "-c",
+                 "c=$(nmcli -t -f NAME,TYPE connection show --active | grep ':802-11-wireless$' | grep -v '^Material3UI Hotspot:' | head -1 | sed 's/:802-11-wireless$//'); "
+                 "[ -n \"$c\" ] && nmcli -s -g 802-11-wireless.ssid,802-11-wireless-security.key-mgmt,802-11-wireless-security.psk connection show \"$c\""},
+                [live, st, alive = live->alive()](int code, const std::string& out) {
+                    if (!*alive) return;
+                    std::vector<std::string> lines;
+                    std::stringstream ss(out);
+                    for (std::string l; std::getline(ss, l);) lines.push_back(l);
+                    if (code != 0 || lines.empty() || lines[0].empty()) {
+                        st->error = "Not connected to a Wi-Fi network";
+                    } else {
+                        st->ssid = lines[0];
+                        const std::string mgmt = lines.size() > 1 ? lines[1] : "";
+                        st->password = lines.size() > 2 ? lines[2] : "";
+                        st->security = mgmt == "sae" ? "SAE" : mgmt.empty() || mgmt == "none" || st->password.empty() ? "nopass" : "WPA";
+                        st->ready = true;
+                    }
+                    live->syncSoon();
+                });
+    }
+    (void)popup;
 }
 
 } // namespace m3::shell::panels

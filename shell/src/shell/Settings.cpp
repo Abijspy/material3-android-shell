@@ -308,7 +308,12 @@ void connectionDetails(Flex* parent, const char* fg, std::function<void()> disco
 
     if (disconnect) {
         auto* actions = live->add<Flex>(Flex::Direction::Row);
-        actions->setJustify(Align::End);
+        actions->setJustify(Align::End)->setSpacing(8);
+        // The Wi-Fi as a QR code for a phone to join
+        if (Network::get().kind() == Network::Kind::Wifi)
+            pillButton(actions, "Share", false, [] {
+                if (open) open("wifiqr");
+            }, "qr_code_2");
         pillButton(actions, "Disconnect", false, disconnect, "link_off");
     }
 
@@ -379,6 +384,9 @@ void networkPage(Flex* page, Popup&) {
             auto pw = row(g, "password", "Password", h.password());
             pw.subtitle->setFamily(Theme::get().monoFamily());
             pillButton(pw.row, "New", false, [] { Hotspot::get().newPassword(); }, "refresh");
+            pillButton(pw.row, "QR code", false, [] {
+                if (open) open("wifiqr hotspot");
+            }, "qr_code_2");
             row(g, "info", "Your Wi-Fi pauses while it's on", "Most Wi-Fi cards can't join a network and offer one at once: share Ethernet or a phone's USB connection");
         };
         live->watch(Hotspot::get().changed);
