@@ -42,6 +42,7 @@
 #include "services/Privacy.h"
 #include "services/SessionApps.h"
 #include "services/Equalizer.h"
+#include "services/AutoSaver.h"
 #include "shell/LiveWallpaper.h"
 #include "services/Sounds.h"
 #include "services/Notifications.h"
@@ -162,6 +163,7 @@ bool Shell::start() {
     SessionApps::get().start();
     LiveWallpaper::get().start();
     Equalizer::get().start();
+    AutoSaver::get().start();
     // Updates: checked in the background (Settings → Software & updates); a
     // notification's Review opens the page
     Packages::get().openSettings = [this](const std::string& page) { EventLoop::get().defer([this, page] { openSettings(page); }); };

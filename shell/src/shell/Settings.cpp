@@ -26,6 +26,7 @@
 #include "services/SystemStats.h"
 #include "services/DarkSchedule.h"
 #include "services/Currency.h"
+#include "services/AutoSaver.h"
 #include "services/DataUsage.h"
 #include "services/Equalizer.h"
 #include "shell/LiveWallpaper.h"
@@ -1867,7 +1868,14 @@ void batteryPage(Flex* page, Popup&) {
                                             : p.profile() == "performance" ? "Fastest, drains the battery sooner"
                                                                            : "Speed when needed, saving otherwise");
         connectedGroup<std::string>(r.row, p.profile(), options, [](std::string v) { Power::get().setProfile(v); });
+        // Power saver on its own when the battery runs low
+        if (p.hasBattery() && std::ranges::find(p.profiles(), std::string("power-saver")) != p.profiles().end()) {
+            switchRow(modes, "battery_saver", "Power saver at low battery", "Back to the usual mode once you plug in", "/battery/autoSaver", true);
+            if (AutoSaver::enabled())
+                choiceRow<int>(modes, "battery_alert", "Turn on at", "", "/battery/autoSaverAt", 20, {{15, "15%"}, {20, "20%"}, {30, "30%"}});
+        }
     };
+    live->watch(Config::get().changed);
     live->sync();
 
     // The charge over the last day or week, and how long since unplugging

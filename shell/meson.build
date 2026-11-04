@@ -99,6 +99,7 @@ sources = files(
   'src/services/Hotspot.cpp',
   'src/services/SessionApps.cpp',
   'src/services/Equalizer.cpp',
+  'src/services/AutoSaver.cpp',
   'src/services/Privacy.cpp',
   'src/services/DataUsage.cpp',
   'src/services/Notes.cpp',
