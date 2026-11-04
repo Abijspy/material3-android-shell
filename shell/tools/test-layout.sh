@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Every Settings page, Niri Settings page (on niri) and popup through
 # `material3ui msg layout check`: anything spilling out of its row or card,
-# overlapping a sibling, squeezed to nothing, or off its surface. Exits 1 if
+# overlapping a sibling, squeezed to nothing, a word cut short ("R…"), or
+# off its surface. Exits 1 if
 # anything is found.
 #
 # Run it against a shell already running (M3_INSTANCE picks a second one),
@@ -42,7 +43,8 @@ if [[ -n "${NIRI_SOCKET:-}" ]]; then
 fi
 
 # The popups, each opened, checked and closed again
-for popup in quicksettings notifications dashboard audio network bluetooth battery power clipboard clock timezone; do
+for popup in quicksettings notifications dashboard audio network bluetooth battery power clipboard clock timezone \
+             phone updates weather wellbeing printers firewall vpn messages notes; do
     "$BIN" msg popup "$popup" >/dev/null
     sleep "$WAIT"
     check "[popup $popup]"

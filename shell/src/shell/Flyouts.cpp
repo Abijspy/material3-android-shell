@@ -57,12 +57,13 @@ Label* note(Node* parent, const std::string& text) {
     return l;
 }
 
-// A tonal button with an icon over a word (the phone's actions)
-void action(Flex* row, const char* glyph, const std::string& label, std::function<void()> fn) {
+// A tonal tile with an icon over a word (the phone's actions): at least a
+// third of the row, wider for a longer word (never cut short), wrapping
+void action(Node* row, const char* glyph, const std::string& label, std::function<void()> fn) {
     auto* b = row->add<Button>(Flex::Direction::Column);
-    b->setPadding({8, 10})->setSpacing(4)->setRadius(Radii(18))->setBackground("secondary_container", false);
+    b->setPadding({8, 12})->setSpacing(6)->setRadius(Radii(18))->setBackground("secondary_container", false);
     b->pressedRadius = 10;
-    b->grow = true;
+    b->minWidth = 96;
     b->setAlignItems(Align::Center);
     b->add<Icon>(glyph, 22)->setColor("on_secondary_container", false);
     b->add<Label>(label)->setSize(12)->setWeight(500)->setColor("on_secondary_container", false);
@@ -151,8 +152,8 @@ void phone(Flex* card, Popup& popup) {
                 continue;
             }
             if (!d.reachable) continue;
-            auto* actions = box->add<Flex>(Flex::Direction::Row);
-            actions->setSpacing(8)->setAlignItems(Align::Stretch);
+            auto* actions = box->add<kit::Flow>();
+            actions->spacing = 8;
             if (d.has("findmyphone")) action(actions, "ring_volume", "Ring", [id] { KdeConnect::get().ring(id); });
             if (d.has("ping")) action(actions, "notifications_active", "Ping", [id] { KdeConnect::get().ping(id); });
             if (d.has("clipboard")) action(actions, "content_paste_go", "Clipboard", [id] { KdeConnect::get().sendClipboard(id); });

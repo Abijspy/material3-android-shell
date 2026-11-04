@@ -22,6 +22,11 @@ BarEdge barEdge() {
     return p == "bottom" ? BarEdge::Bottom : p == "left" ? BarEdge::Left : p == "right" ? BarEdge::Right : BarEdge::Top;
 }
 
+float barTextScale() {
+    const auto& t = Theme::get();
+    return std::clamp(t.textScale() * t.areaScale(Theme::AreaBar), 1.0f, 2.0f);
+}
+
 bool barVertical() {
     const auto e = barEdge();
     return e == BarEdge::Left || e == BarEdge::Right;
@@ -115,10 +120,10 @@ Flex* capsule(Node* parent, bool filled) {
     auto* f = parent->add<Flex>(vertical ? Flex::Direction::Column : Flex::Direction::Row);
     if (vertical) {
         f->setPadding({0, 10})->setSpacing(6);
-        f->fixedWidth = 32;
+        f->fixedWidth = 32 * barTextScale();
     } else {
         f->setPadding({12, 0})->setSpacing(8);
-        f->fixedHeight = 32;
+        f->fixedHeight = 32 * barTextScale();
     }
     f->collapseWhenEmpty = true;
     if (const auto colour = filled ? pillColour() : std::nullopt) {
@@ -156,10 +161,10 @@ Workspaces::Workspaces(std::string monitor, bool vertical)
     : Flex(vertical ? Direction::Column : Direction::Row), m_monitor(std::move(monitor)), m_vertical(vertical) {
     if (vertical) {
         setPadding({0, 10})->setSpacing(2);
-        fixedWidth = 32;
+        fixedWidth = 32 * barTextScale();
     } else {
         setPadding({10, 0})->setSpacing(2);
-        fixedHeight = 32;
+        fixedHeight = 32 * barTextScale();
     }
     m_conn = Compositor::get().workspacesChanged.connect([this] { sync(); });
     sync();

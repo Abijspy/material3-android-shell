@@ -56,7 +56,9 @@ uint32_t Bar::anchor() {
 }
 
 int Bar::thickness() {
-    return static_cast<int>(Config::get().value<double>("/statusBar/height", 40));
+    // As set, and taller with larger text (Accessibility → Text size, the
+    // bar's own text size), so what's in it never spills out; never shorter
+    return static_cast<int>(std::lround(Config::get().value<double>("/statusBar/height", 40) * barTextScale()));
 }
 
 bool Bar::framed() {

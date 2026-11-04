@@ -441,7 +441,7 @@ Button* togglePill(Node* parent, const std::string& icon, const std::string& lab
     pill(b)->setPadding({14 * k, 10 * k})->setSpacing(8 * k);
     b->setBackground(on ? ColorRef("primary") : ColorRef("surface_container_highest", 0.8f), false);
     b->pressedRadius = 10;
-    b->grow = true;
+    // Its own size: stretched to share a row, its word was cut short
     b->add<Icon>(icon, 20 * k)->setFill(on)->setColor(on ? "on_primary" : "on_surface", false);
     b->add<Label>(label)->setSize(14 * k)->setWeight(600)->setColor(on ? "on_primary" : "on_surface", false);
     b->onClicked = [flip = std::move(flip)](uint32_t button) {

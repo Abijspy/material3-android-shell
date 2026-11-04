@@ -115,39 +115,40 @@ namespace {
 // width demands, each at most the line's width. So a narrow window, a
 // long name or a wide control (fields, button groups) never puts a
 // control over the title or past the edge
-class SettingsRow : public Flex {
+template <typename Base>
+class ResponsiveRow : public Base {
 public:
-    SettingsRow() : Flex(Direction::Row) {}
+    ResponsiveRow() : Base(Flex::Direction::Row) {}
 
 protected:
     SizeF doMeasure(SizeF available) override {
         Split sp;
-        if (!split(available.w, sp)) return Flex::doMeasure(available);
-        return {available.w, std::max(minHeight, sp.height)};
+        if (!split(available.w, sp)) return Base::doMeasure(available);
+        return {available.w, std::max(this->minHeight, sp.height)};
     }
     void doArrange() override {
         Split sp;
-        if (!split(rect().w, sp)) return Flex::doArrange();
-        const RectF& r = rect();
-        const float left = r.x + m_padding.left;
+        if (!split(this->rect().w, sp)) return Base::doArrange();
+        const RectF& r = this->rect();
+        const float left = r.x + this->m_padding.left;
         float x = left;
         // The first line: what leads (the icon, an avatar) and the title
         for (auto* c : sp.lead) {
             const SizeF s = c->measure({sp.inner, 1e6f});
-            c->arrange({x, r.y + m_padding.top + (sp.first - s.h) / 2, s.w, s.h});
-            x += s.w + m_spacing;
+            c->arrange({x, r.y + this->m_padding.top + (sp.first - s.h) / 2, s.w, s.h});
+            x += s.w + this->m_spacing;
         }
         const SizeF t = sp.title->measure({sp.inner - (x - left), 1e6f});
-        sp.title->arrange({x, r.y + m_padding.top + (sp.first - t.h) / 2, sp.inner - (x - left), t.h});
+        sp.title->arrange({x, r.y + this->m_padding.top + (sp.first - t.h) / 2, sp.inner - (x - left), t.h});
         // The controls under the title, line by line
-        float y = r.y + m_padding.top + sp.first + kGap;
+        float y = r.y + this->m_padding.top + sp.first + kGap;
         for (const auto& line : sp.lines) {
             float cx = x;
             for (auto* c : line.nodes) {
                 SizeF s = c->measure({sp.room, 1e6f});
                 s.w = std::min(s.w, sp.room);
                 c->arrange({cx, y + (line.height - s.h) / 2, s.w, s.h});
-                cx += s.w + m_spacing;
+                cx += s.w + this->m_spacing;
             }
             y += line.height + kGap;
         }
@@ -167,9 +168,9 @@ private:
     };
     // Whether the controls go under the title at `width`, and how
     bool split(float width, Split& sp) {
-        sp.inner = std::max(0.0f, width - m_padding.left - m_padding.right);
+        sp.inner = std::max(0.0f, width - this->m_padding.left - this->m_padding.right);
         std::vector<Node*> controls;
-        for (auto& c : children()) {
+        for (auto& c : this->children()) {
             if (!c->shown() || c->floating) continue;
             if (!sp.title && c->grow) sp.title = c.get();
             else if (!sp.title) sp.lead.push_back(c.get());
@@ -177,10 +178,10 @@ private:
         }
         if (!sp.title || controls.empty() || sp.inner <= 0) return false;
         float lead = 0;
-        for (auto* c : sp.lead) lead += c->measure({sp.inner, 1e6f}).w + m_spacing;
+        for (auto* c : sp.lead) lead += c->measure({sp.inner, 1e6f}).w + this->m_spacing;
         float wanted = 0;
-        for (auto* c : controls) wanted += c->measure({sp.inner, 1e6f}).w + m_spacing;
-        const float need = std::min(kTitleRoom, sp.title->measure({sp.inner, 1e6f}).w);
+        for (auto* c : controls) wanted += c->measure({sp.inner, 1e6f}).w + this->m_spacing;
+        const float need = std::min(kTitleRoom * Theme::get().textScale(), sp.title->measure({sp.inner, 1e6f}).w);
         if (sp.inner - lead - wanted >= need) return false;
         // The first line's height, then the controls flowed under the title
         sp.room = std::max(0.0f, sp.inner - lead);
@@ -190,21 +191,28 @@ private:
         for (auto* c : controls) {
             const SizeF s = c->measure({sp.room, 1e6f});
             const float w = std::min(s.w, sp.room);
-            if (sp.lines.empty() || (used > 0 && used + m_spacing + w > sp.room)) {
+            if (sp.lines.empty() || (used > 0 && used + this->m_spacing + w > sp.room)) {
                 sp.lines.push_back({});
                 used = 0;
             }
-            used += (used > 0 ? m_spacing : 0) + w;
+            used += (used > 0 ? this->m_spacing : 0) + w;
             sp.lines.back().nodes.push_back(c);
             sp.lines.back().height = std::max(sp.lines.back().height, s.h);
         }
-        sp.height = m_padding.top + sp.first + m_padding.bottom;
+        sp.height = this->m_padding.top + sp.first + this->m_padding.bottom;
         for (const auto& line : sp.lines) sp.height += kGap + line.height;
         return true;
     }
 };
 
 } // namespace
+
+using SettingsRow = ResponsiveRow<Flex>;
+
+Button* responsiveButton(Node* parent) {
+    return parent->add<ResponsiveRow<Button>>();
+}
+
 
 Row row(Node* group, const std::string& icon, const std::string& title, const std::string& subtitle) {
     auto* r = group->add<SettingsRow>();

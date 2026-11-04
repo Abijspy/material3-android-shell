@@ -162,6 +162,13 @@ public:
 
     // Sizing constraints honoured by parents
     std::optional<float> fixedWidth, fixedHeight;
+    // What fixedWidth and minWidth are multiplied by: 1, or for text the
+    // size it's drawn at over the size set (Accessibility → Text size), so
+    // a set width grows with its text rather than cutting it short
+    virtual float sizeScale() const;
+    // A box whose set width holds text (a tile, a button of a set width):
+    // that width grows with the text size too
+    bool widthFollowsText = false;
     float minWidth = 0, minHeight = 0;
     bool grow = false; // takes leftover main-axis space in a Flex
     // Cross-axis alignment within a Flex; unset follows the parent's alignItems
@@ -330,6 +337,7 @@ public:
     float size() const { return m_size; }
     // The size it's drawn at: after the text sizes of the parts it's in
     float shownSize() const { return style().size; }
+    float sizeScale() const override { return m_size > 0 ? std::max(1.0f, shownSize() / m_size) : 1; }
     // How it's drawn (for drawing it ahead: a scroll view warms the cache)
     TextStyle textStyle() const { return style(); }
     int weight() const { return m_weight; }

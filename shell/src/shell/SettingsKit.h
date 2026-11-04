@@ -85,6 +85,9 @@ Row row(Node* group, const std::string& icon, const std::string& title, const st
 // in a ring
 void accentRows(Node* group);
 Button* pillButton(Node* parent, const std::string& label, bool primary, std::function<void()> fn, const std::string& icon = {});
+// A clickable row that behaves as row()'s: the controls after its growing
+// child go under it when they'd leave it too little room
+Button* responsiveButton(Node* parent);
 // A system service a feature needs, when it isn't running: a row saying so,
 // with Turn on (Install when its package isn't here; Switch when iwd or
 // systemd-networkd runs the network), "Starting…" while it does; the

@@ -138,6 +138,17 @@ std::string Surface::overflow(int& checked) const {
         }
         if (r.w <= 0.5f || r.h <= 0.5f) return;
         ++checked;
+        // A word or two cut short at all ("Ring" as "R…", a button's label):
+        // its row is too tight. Long names ending in "…" are fine
+        if (const auto* l = dynamic_cast<const ui::Label*>(n); l && !dynamic_cast<const ui::Icon*>(n) && !l->text().empty() &&
+                                                               l->text().size() <= 14 && r.w > 4) {
+            auto style = l->textStyle();
+            style.maxWidth = 0;
+            style.maxLines = 1;
+            const float natural = TextEngine::get().measure(l->text(), style).width;
+            if (natural > 0 && r.w < natural - 2)
+                out += std::format("{}: {} at {:.0f},{:.0f} is cut short ({:.0f} of its {:.0f}px)\n", m_tag, typeOf(n), r.x, r.y, r.w, natural);
+        }
         if (const auto s = onScreen ? outside(r, screen) : std::string(); !s.empty())
             out += std::format("{}: {} at {:.0f},{:.0f} {:.0f}x{:.0f} is off the surface ({})\n", m_tag, typeOf(n), r.x, r.y, r.w, r.h, s);
         else if (box)

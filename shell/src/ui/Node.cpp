@@ -76,10 +76,17 @@ SizeF Node::measure(SizeF available) {
     for (const auto& m : m_measured)
         if (m.generation == g_generation && m.available.w == available.w && m.available.h == available.h) return m.size;
     ++g_measures;
-    SizeF s = doMeasure(available);
-    if (fixedWidth) s.w = *fixedWidth;
+    // A set size: what's inside is measured within it (a popup's card), not
+    // within all the room offered, or text and rows that wrap would measure
+    // as one wide line and spill out once laid out narrower
+    const float k = fixedWidth || minWidth > 0 ? sizeScale() : 1;
+    SizeF inside = available;
+    if (fixedWidth) inside.w = *fixedWidth * k;
+    if (fixedHeight) inside.h = *fixedHeight;
+    SizeF s = doMeasure(inside);
+    if (fixedWidth) s.w = *fixedWidth * k;
     if (fixedHeight) s.h = *fixedHeight;
-    s.w = std::max(s.w, minWidth);
+    s.w = std::max(s.w, minWidth * k);
     s.h = std::max(s.h, minHeight);
     // Keep the newest two: overwrite the older slot
     m_measured[m_nextMeasured] = {g_generation, available, s};
@@ -199,6 +206,10 @@ Host* Node::host() const {
     const Node* n = this;
     while (n->m_parent) n = n->m_parent;
     return n->m_host;
+}
+
+float Node::sizeScale() const {
+    return widthFollowsText ? std::max(1.0f, Theme::get().textScale()) : 1;
 }
 
 void Node::requestLayout() {
@@ -613,8 +624,10 @@ TextStyle Label::style() const {
 }
 
 float Label::fitWidth(float room) const {
-    if (m_maxWidth <= 0 || room <= 0) return m_maxWidth; // 0: room unknown
-    return std::min(m_maxWidth, std::ceil(room));
+    // The most it may take grows with its text, as a set width does
+    const float most = m_maxWidth * sizeScale();
+    if (m_maxWidth <= 0 || room <= 0) return most; // 0: room unknown
+    return std::min(most, std::ceil(room));
 }
 
 // Text that wraps or ellipsizes (it has a maxWidth) keeps to the room it's

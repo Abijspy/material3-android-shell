@@ -46,8 +46,8 @@ Island::Island(OpenPopup open) : Button(Direction::Row), m_open(std::move(open))
         shapePill(setBackground(*colour, false));
         blurBehind = barBlur();
     }
-    if (m_vertical) fixedWidth = 32;
-    else fixedHeight = 32;
+    if (m_vertical) fixedWidth = 32 * barTextScale();
+    else fixedHeight = 32 * barTextScale();
     onClicked = [this](uint32_t button) {
         // The dashboard (calendar, weather) also while music plays: the media
         // buttons take their own clicks, the rest of the island opens it

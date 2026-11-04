@@ -1596,6 +1596,7 @@ void barPage(Flex* page, Popup&) {
             item->setPadding({4, 8})->setSpacing(6)->setRadius(Radii(20));
             item->pressedRadius = 12;
             item->fixedWidth = 104;
+            item->widthFollowsText = true;
             auto* icon = item->add<Flex>(Flex::Direction::Row);
             pill(icon->setBackground(ColorRef("on_surface", 0.1f), false))->setJustify(Align::Center);
             icon->fixedWidth = 64;
@@ -2144,7 +2145,7 @@ void monitorPage(Flex* page, Popup&) {
             if (++shown > 60) break; // search finds the rest
             const bool stopped = p.state == 'T' || p.state == 't';
             const bool open = state->open == p.pid;
-            auto* b = g->add<Button>(Flex::Direction::Row);
+            auto* b = responsiveButton(g); // its figures under the name when narrow
             b->setPadding({20, 10})->setSpacing(14);
             b->pressedRadius = 10;
             b->add<Icon>(stopped ? "pause_circle" : p.mine ? "terminal" : "admin_panel_settings", 20)
@@ -2881,7 +2882,7 @@ void installedApps(Flex* page) {
             ++shown;
             // The row itself opens the app's details (its buttons act alone)
             const bool expanded = state->open == app.path;
-            auto* rowButton = g->add<Button>(Flex::Direction::Row);
+            auto* rowButton = responsiveButton(g); // its buttons under the name when narrow
             rowButton->setPadding({20, 12})->setSpacing(16);
             rowButton->minHeight = 60;
             rowButton->pressedRadius = 10;
@@ -3585,6 +3586,7 @@ void weatherPage(Flex* page, Popup&) {
         }
         auto* head = card->add<Flex>(Flex::Direction::Row);
         head->setSpacing(18);
+        head->wrap = true; // the place and humidity onto a line of their own when the text is large
         head->add<Icon>(w.icon(), 64)->setFill(true)->setColor("on_primary_container", false);
         auto* texts = head->add<Flex>(Flex::Direction::Column);
         texts->setAlignItems(Align::Start)->setSpacing(2);
@@ -3713,6 +3715,7 @@ void lockScreenPage(Flex* page, Popup& popup) {
                 b->setAlignItems(Align::Start);
                 b->pressedRadius = 10;
                 b->fixedWidth = 160;
+                b->widthFollowsText = true;
                 auto* top = b->add<Flex>(Flex::Direction::Row);
                 top->setSpacing(6);
                 top->add<Icon>(d.icon, 18)->setColor("on_tertiary_container", false);

@@ -16,6 +16,9 @@ enum class BarEdge { Top, Bottom, Left, Right };
 BarEdge barEdge();
 // On the left or right edge: its widgets stack, top to bottom
 bool barVertical();
+// What the bar's set sizes (its height, its capsules) are multiplied by:
+// its text's size over the usual (never below 1), so text never spills out
+float barTextScale();
 // Where along the bar a widget sits, for the popup it opens: its centre's
 // x on a top or bottom bar, its y on a side one
 float alongBar(const ui::Node* n);

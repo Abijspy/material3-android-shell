@@ -55,7 +55,8 @@ protected:
             card->scaleOriginX = std::clamp(fx, 0.0f, 1.0f);
             card->scaleOriginY = std::clamp(fy, 0.0f, 1.0f);
         };
-        if (width > 0) card->fixedWidth = std::min(width, std::max(0.0f, r.w - margin * 2));
+        // Wider with larger text (Accessibility → Text size), as far as the screen allows
+        if (width > 0) card->fixedWidth = std::min(width * Theme::get().textScale(), std::max(0.0f, r.w - margin * 2));
         const SizeF s = card->measure({r.w - margin * 2, r.h - margin * 2});
         if (anchor >= 0 && !centreV && besideBar && (edge == BarEdge::Left || edge == BarEdge::Right)) {
             const float h = std::min(s.h, r.h - margin * 2);
