@@ -179,6 +179,13 @@ void Hyprland::closeWindow(const std::string& address) {
     dispatch("hl.dsp.window.close({ window = \"address:" + address + "\" })", "closewindow address:" + address);
 }
 
+void Hyprland::moveWindow(const std::string& address, int workspace) {
+    // Without following it (the workspace in front stays)
+    if (workspace <= 0) return;
+    dispatch(std::format("hl.dsp.window.move({{ workspace = \"{}\", window = \"address:{}\", silent = true }})", workspace, address),
+             std::format("movetoworkspacesilent {},address:{}", workspace, address));
+}
+
 void Hyprland::minimise(const std::string& appId) {
     // Hyprland has no minimised state: the windows go to a hidden special
     // workspace; opening the app or its dock icon brings them back

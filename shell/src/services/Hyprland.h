@@ -40,6 +40,7 @@ public:
     void focusWorkspaceRelative(int delta) override; // on the focused monitor, wrapping over existing ones
     void focusWindow(const std::string& address) override;
     void closeWindow(const std::string& address) override;
+    void moveWindow(const std::string& address, int workspace) override;
     void minimise(const std::string& appId) override;
     void grabKeys(bool grab) override;
     void setScreens(bool on) override;
