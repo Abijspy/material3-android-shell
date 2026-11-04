@@ -7,6 +7,7 @@
 #include "render/Images.h"
 #include "services/Backups.h"
 #include "services/KdeConnect.h"
+#include "shell/LiveWallpaper.h"
 #include "services/Vpn.h"
 #include "services/Wallpaper.h"
 #include "shell/PanelKit.h"
@@ -74,11 +75,12 @@ std::string fileIcon(const fs::path& p) {
 // the new ones)
 void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
     const bool avatar = purpose == "avatar";
-    const bool vpn = purpose == "vpn", settingsFile = purpose == "settings";
+    const bool vpn = purpose == "vpn", settingsFile = purpose == "settings", liveVideo = purpose == "live";
     // One file of these types to import
-    const bool importing = vpn || settingsFile;
+    const bool importing = vpn || settingsFile || liveVideo;
     const std::vector<std::string> types = vpn ? std::vector<std::string>{".conf", ".ovpn"}
                                          : settingsFile ? std::vector<std::string>{".json"}
+                                         : liveVideo ? std::vector<std::string>{".mp4", ".webm", ".mkv", ".mov", ".m4v", ".avi"}
                                                         : std::vector<std::string>{};
     // Files of any kind, picked (several, when sending) by tapping
     // "phone <id>": files for a phone (KDE Connect), sent when chosen
@@ -104,7 +106,9 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
     const std::string shipped = paths::dataFile("wallpapers");
     // Where it opens: the default pictures for a profile picture, the
     // wallpaper's folder for a wallpaper
-    st->dir = importing ? fs::path(paths::home() + "/Downloads") : sending ? fs::path(paths::home()) : avatar && !avatars.empty() ? fs::path(avatars) : fs::path(Wallpaper::get().directory());
+    std::error_code videos;
+    st->dir = liveVideo && fs::is_directory(paths::home() + "/Videos", videos) ? fs::path(paths::home() + "/Videos")
+            : importing ? fs::path(paths::home() + "/Downloads") : sending ? fs::path(paths::home()) : avatar && !avatars.empty() ? fs::path(avatars) : fs::path(Wallpaper::get().directory());
     std::error_code ec;
     // No wallpaper folder yet: the ones the shell ships
     if (!fs::is_directory(st->dir, ec) && !avatar && !shipped.empty()) st->dir = shipped;
@@ -114,9 +118,10 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
     // Title
     auto* head = card->add<Flex>(Flex::Direction::Row);
     head->setSpacing(12)->setAlignItems(Align::Center);
-    head->add<Icon>(vpn ? "vpn_key" : settingsFile ? "settings_backup_restore" : sending ? "send" : avatar ? "account_circle" : "wallpaper", 26)->setColor("primary", false);
+    head->add<Icon>(vpn ? "vpn_key" : settingsFile ? "settings_backup_restore" : liveVideo ? "movie" : sending ? "send" : avatar ? "account_circle" : "wallpaper", 26)->setColor("primary", false);
     auto* title = head->add<Label>(vpn            ? "Choose a VPN file"
                                    : settingsFile ? "Choose a settings file"
+                                   : liveVideo    ? "Choose a video"
                                    : sending ? "Choose files to send"
                                    : avatar  ? "Choose your picture"
                                              : "Choose a wallpaper");
@@ -354,6 +359,16 @@ void filePicker(Flex* card, Popup& popup, const std::string& purpose) {
                         nullptr);
                 settingsPage("system");
             });
+        }, "check");
+        st->fill();
+        return;
+    }
+    if (liveVideo) {
+        st->choose = pillButton(foot, "Use as live wallpaper", true, [st, &popup] {
+            if (st->picked.empty()) return;
+            LiveWallpaper::get().setVideo(st->picked.front());
+            popup.close();
+            settingsPage("appearance");
         }, "check");
         st->fill();
         return;

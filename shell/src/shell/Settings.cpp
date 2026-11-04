@@ -27,6 +27,7 @@
 #include "services/DarkSchedule.h"
 #include "services/Currency.h"
 #include "services/DataUsage.h"
+#include "shell/LiveWallpaper.h"
 #include "services/SessionApps.h"
 #include "services/Hotspot.h"
 #include "services/Sounds.h"
@@ -1003,6 +1004,27 @@ void appearancePage(Flex* page, Popup& popup) {
             Config::get().set("/background/slideshow/every", std::stoi(v));
             shuffleItem->setVisible(v != "0");
         });
+    }
+    // A live wallpaper: a video, drawn by the shell as the wallpaper
+    {
+        auto& live = LiveWallpaper::get();
+        const std::string video = live.video();
+        auto top = row(wp, "movie", "Live wallpaper",
+                       video.empty() ? "A video as the wallpaper, looping; paused while locked" : std::filesystem::path(video).filename().string());
+        pillButton(top.row, video.empty() ? "Choose…" : "Change…", false, [] {
+            if (open) open("files live");
+        }, "video_library");
+        if (!video.empty()) {
+            auto* sw = top.row->add<Switch>();
+            sw->setChecked(live.on(), false);
+            sw->onToggled = [](bool on) {
+                LiveWallpaper::get().setOn(on);
+                EventLoop::get().defer([] { reshowPage("appearance"); });
+            };
+            if (live.on())
+                switchRow(wp, "battery_saver", "Pause on battery", "The video stops while unplugged; its frame stays", "/background/live/pauseOnBattery",
+                          true);
+        }
     }
     // Day and night: a wallpaper for each, swapped as the theme turns
     {

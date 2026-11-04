@@ -150,6 +150,7 @@ sources = files(
   'src/shell/NotesPanel.cpp',
   'src/shell/Flyouts.cpp',
   'src/shell/MessagesPanel.cpp',
+  'src/shell/LiveWallpaper.cpp',
   'src/shell/Ringer.cpp',
   'src/shell/PanelKit.cpp',
   'src/shell/Panels.cpp',

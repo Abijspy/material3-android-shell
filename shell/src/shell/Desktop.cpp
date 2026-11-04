@@ -10,9 +10,12 @@
 #include "services/Niri.h"
 #include "services/NiriConfig.h"
 #include "services/Wallpaper.h"
+#include "shell/LiveWallpaper.h"
 #include "ui/Theme.h"
 
+#include <GLES2/gl2.h>
 #include <cmath>
+#include <memory>
 #include <functional>
 #include <linux/input-event-codes.h>
 #include <ctime>
@@ -31,12 +34,22 @@ public:
     WallpaperNode() {
         m_current = Wallpaper::get().path();
         m_conn = Wallpaper::get().changed.connect([this] { change(Wallpaper::get().path()); });
+        // A live wallpaper switched, changed or paused
+        m_live = LiveWallpaper::get().changed.connect([this] {
+            if (!LiveWallpaper::get().on() || (m_video && m_videoPath != LiveWallpaper::get().video())) m_video.reset();
+            if (m_video) m_video->pause(LiveWallpaper::get().paused());
+            requestRedraw();
+        });
+    }
+    ~WallpaperNode() override {
+        if (m_tex) glDeleteTextures(1, &m_tex);
     }
 
 protected:
     void doPaint(Renderer& r) override {
         const auto& b = rect();
         const int w = static_cast<int>(std::lround(b.w * r.scale())), h = static_cast<int>(std::lround(b.h * r.scale()));
+        if (paintLive(r, w, h)) return;
         r.rect(b, Theme::get().color("surface_container_lowest"));
         const auto* next = m_next.empty() ? nullptr : Images::get().picture(m_next, w, h, true, [this] { started(); });
         const auto* cur = m_current.empty() ? nullptr : Images::get().picture(m_current, w, h, true, [this] { requestRedraw(); });
@@ -70,6 +83,44 @@ protected:
     bool doAnimating() const override { return m_t.running(); }
 
 private:
+    // The live wallpaper, at this screen's size in device pixels: its newest
+    // frame, uploaded as it comes. False when off (the still one then)
+    bool paintLive(Renderer& r, int w, int h) {
+        auto& live = LiveWallpaper::get();
+        if (!live.on() || w <= 0 || h <= 0) return false;
+        if (!m_video || m_video->width() != w || m_video->height() != h) {
+            m_video = std::make_unique<VideoStream>(live.video(), w, h);
+            m_videoPath = live.video();
+            m_video->pause(live.paused());
+            m_video->onFrame = [this] { requestRedraw(); };
+        }
+        if (m_video->fresh()) {
+            const auto& f = m_video->frame();
+            if (!m_tex) {
+                glGenTextures(1, &m_tex);
+                glBindTexture(GL_TEXTURE_2D, m_tex);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            }
+            glBindTexture(GL_TEXTURE_2D, m_tex);
+            if (m_texW != w || m_texH != h) {
+                // BGRA, as the image program takes Cairo's
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, f.data());
+                m_texW = w;
+                m_texH = h;
+            } else {
+                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, f.data());
+            }
+            m_video->drawn();
+        }
+        // Until the first frame: the still one under it (a frame of it)
+        if (!m_tex || m_texW != w) return false;
+        r.image(m_tex, rect());
+        return true;
+    }
+
     void draw(Renderer& r, const Images::Texture* t) {
         const auto& b = rect();
         const float s = std::max(b.w / static_cast<float>(t->width), b.h / static_cast<float>(t->height));
@@ -99,7 +150,11 @@ private:
     bool m_started = false;
     int m_style = 0;
     Tween m_t{0, motion::longMs, Easing::emphasizedDecelerate()};
-    Connection m_conn;
+    Connection m_conn, m_live;
+    std::unique_ptr<VideoStream> m_video;
+    std::string m_videoPath;
+    GLuint m_tex = 0;
+    int m_texW = 0, m_texH = 0;
 };
 
 // The desktop's empty space: a right click opens its menu
