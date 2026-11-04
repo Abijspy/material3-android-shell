@@ -1,5 +1,19 @@
 # Changelog
 
+## v6.3.2 — 2026-11-04
+
+- **Live wallpapers.** Wallpaper & style → Live wallpaper: a video plays as your wallpaper, looping, with desktop widgets and their blur over it as usual. It's decoded on the graphics card where possible and pauses while the screen is locked and, if you like, on battery. A frame of it sets your colours and the lock screen. Switch it off and your previous wallpaper comes back.
+- **Sound equaliser.** Settings → Sound → Equaliser: ten bands from 31 Hz to 16 kHz with presets (Flat, Bass, Treble, Vocal, Rock, Classical), applied to every output through PipeWire, so the output you choose stays the default.
+- **Reopen apps after login.** Settings → Apps → Reopen apps after login: the apps open when you log out open again at the next login, on their workspaces, on niri and Hyprland. Settings lists what will reopen.
+- **Night light and Do not disturb on a schedule.** Night light can follow sunset and sunrise where you are, or set times, like the dark theme. Do not disturb can turn on between two times every day. Switching either by hand holds until the next scheduled change.
+- **Power saver at low battery.** On battery at 20% (or 15%, 30%), the power-saver mode turns on and tells you. On the charger, your usual mode comes back. It's in Settings → Battery.
+- **Pinned clipboard items.** Pin text in the clipboard history (Super+V) to keep it at the top. Clear all doesn't remove it.
+- **Share Wi-Fi as a QR code.** A Share button by your Wi-Fi in Settings → Network, and a QR code button for the hotspot, show a code your phone's camera can scan to join. The password is hidden until you choose to show or copy it.
+- **World clocks.** The clock panel's new World tab shows the time in the cities you add, with today, tomorrow or yesterday and the offset from you. A World clock desktop widget shows them too.
+- **Keyboard layout indicator.** With more than one layout on niri, a bar widget shows the one in use ("US", "DE") and switches on click. Switching layouts shows the new one on screen.
+- **Everything fits its text.** Panels, cards, widgets and the bar size themselves to their text and controls, at any text size. Rows put their buttons under a long name instead of cutting it short, and the Phone panel's buttons no longer cut their labels off.
+- **The desktop menu on niri** offers Niri Settings instead of Hyprland Settings.
+
 ## v6.3.1 — 2026-11-03
 
 - **Panels beside the bar, instead of Settings.** The bar's chips open a small panel beside themselves, with what you'd go to Settings for, and Settings a tap away. **Phone** has your phone's battery and Ring, Ping, Clipboard, Send files and Messages. **Updates** lists what's waiting, with Update now. Also **Weather**, **Screen time** (with Focus and Bedtime), **Printers** (the queue), **Firewall** and **VPN** (each connection with a switch).
