@@ -187,10 +187,12 @@ void timeDateRows(Node* g, const std::vector<ClockKeys>& targets) {
 // are, or your own times. The switch follows the schedule when it flips
 // "Automatically": off, sunset to sunrise or set times, and those times;
 // what follows the schedule (a switch, a summary) refreshed by `follow`
-Flex* scheduleRows(Node* g, SunSchedule& s, const char* fromTitle, const char* toTitle) {
+Flex* scheduleRows(Node* g, SunSchedule& s, const char* fromTitle, const char* toTitle, bool sun = true) {
     auto& c = Config::get();
-    choiceRow<std::string>(g, "brightness_auto", "Automatically", "", s.key() + "Auto", "off",
-                           {{"off", "Off"}, {"sun", "Sunset to sunrise"}, {"custom", "Set times"}});
+    std::vector<std::pair<std::string, std::string>> modes = {{"off", "Off"}};
+    if (sun) modes.push_back({"sun", "Sunset to sunrise"});
+    modes.push_back({"custom", "Set times"});
+    choiceRow<std::string>(g, "brightness_auto", sun ? "Automatically" : "On a schedule", "", s.key() + "Auto", "off", modes);
     std::vector<std::pair<std::string, std::string>> halfHours;
     for (int m = 0; m < 24 * 60; m += 30) {
         const std::string t = std::format("{:02}:{:02}", m / 60, m % 60);
@@ -3880,6 +3882,22 @@ void notificationsPage(Flex* page, Popup&) {
     auto* sw = dnd.row->add<Switch>();
     sw->setChecked(Notifications::get().doNotDisturb(), false);
     sw->onToggled = [](bool on) { Notifications::get().setDoNotDisturb(on); };
+    // On a schedule: every day between two times (a turn by hand holds until the next)
+    {
+        auto* times = scheduleRows(g, dndSchedule(), "On from", "Off from", false);
+        auto* follow = page->add<Live>();
+        follow->setVisible(false);
+        follow->sync = [=] {
+            auto& s = dndSchedule();
+            sw->setChecked(Notifications::get().doNotDisturb());
+            const std::string summary = s.summary();
+            dnd.subtitle->setText(summary.empty() ? std::string("Only critical notifications show while this is on") : summary + " every day");
+            times->setVisible(s.mode() == "custom");
+        };
+        follow->watch(Config::get().changed);
+        follow->watch(Notifications::get().changed);
+        follow->sync();
+    }
     choiceRow<int>(g, "timer", "Pop-ups stay for", "", "/notifications/timeout", 6, {{3, "3 s"}, {6, "6 s"}, {10, "10 s"}, {0, "Until closed"}});
     // The history: dismissed notifications, by day, in the notification centre
     auto* h = group(page, "Notification history", "Dismissed notifications, kept for 30 days, under the centre's History tab");

@@ -3,6 +3,7 @@
 #include "core/Config.h"
 #include "core/Log.h"
 #include "services/NightLight.h"
+#include "services/Notifications.h"
 #include "services/Sun.h"
 #include "services/TimeZones.h"
 #include "services/Wallpaper.h"
@@ -75,6 +76,12 @@ SunSchedule& darkSchedule() {
 SunSchedule& nightSchedule() {
     static SunSchedule s({"/nightLight/schedule", "21:00", "07:00", "On", [] { return NightLight::get().on(); },
                           [](bool on) { NightLight::get().set(on); }, "night light"});
+    return s;
+}
+
+SunSchedule& dndSchedule() {
+    static SunSchedule s({"/notifications/dnd", "22:00", "07:00", "On", [] { return Notifications::get().doNotDisturb(); },
+                          [](bool on) { Notifications::get().setDoNotDisturb(on); }, "do not disturb"});
     return s;
 }
 

@@ -156,6 +156,7 @@ bool Shell::start() {
     NightLight::get().start(); // as Settings left it, the screens up now
     darkSchedule().start();
     nightSchedule().start();
+    dndSchedule().start();
     Wallpaper::get().startSlideshow();
     Privacy::get().start();
     DataUsage::get().start();

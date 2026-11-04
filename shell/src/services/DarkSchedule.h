@@ -46,6 +46,7 @@ private:
 
 SunSchedule& darkSchedule();
 SunSchedule& nightSchedule();
+SunSchedule& dndSchedule(); // Do not disturb (set times: /notifications/dndAuto "custom")
 
 // Where the schedules find the sun: the weather's place, else the time
 // zone's city; false when neither is known
