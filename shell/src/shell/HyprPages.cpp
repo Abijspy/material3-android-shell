@@ -1668,7 +1668,7 @@ void profileSections(Flex* page) {
 
 // A command in a terminal, kept open to read its output
 void inTerminal(const std::string& command) {
-    spawn("${TERMINAL:-kitty} -e sh -c '" + command + "; echo; read -p \"Press Enter to close\" _'");
+    spawn("${TERMINAL:-alacritty} -e sh -c '" + command + "; echo; read -p \"Press Enter to close\" _'");
 }
 
 void pluginSections(Flex* page) {

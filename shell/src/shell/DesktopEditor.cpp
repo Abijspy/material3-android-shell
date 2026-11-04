@@ -4,6 +4,8 @@
 #include "core/Process.h"
 #include "render/Images.h"
 #include "render/Renderer.h"
+#include "services/Hyprland.h"
+#include "services/Niri.h"
 #include "services/Search.h"
 #include "services/Wallpaper.h"
 #include "shell/Panels.h"
@@ -322,10 +324,12 @@ public:
         });
         entry("skip_next", "Next wallpaper", [] { Wallpaper::get().next(1); });
         line();
-        entry("terminal", "Open a terminal", [] { spawn("${TERMINAL:-kitty}"); });
+        entry("terminal", "Open a terminal", [] { spawn("${TERMINAL:-alacritty}"); });
         line();
-        entry("desktop_windows", "Display settings", [] {
-            if (panels::open) panels::open("hyprsettings hypr-monitors");
+        // The compositor's own: niri's in a niri session, Hyprland's in Hyprland's
+        const bool niri = !Hyprland::get().available() && Niri::get().available();
+        entry("desktop_windows", "Display settings", [niri] {
+            if (panels::open) panels::open(niri ? "settings display" : "hyprsettings hypr-monitors");
         });
         entry("palette", "Personalise", [] {
             if (panels::open) panels::open("settings appearance");
@@ -333,8 +337,8 @@ public:
         entry("settings", "Material3UI Settings", [] {
             if (panels::open) panels::open("settings");
         });
-        entry("tune", "Hyprland Settings", [] {
-            if (panels::open) panels::open("hyprsettings");
+        entry("tune", niri ? "Niri Settings" : "Hyprland Settings", [niri] {
+            if (panels::open) panels::open(niri ? "nirisettings" : "hyprsettings");
         });
     }
 
