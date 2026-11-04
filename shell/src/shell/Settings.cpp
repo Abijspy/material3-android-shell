@@ -25,6 +25,7 @@
 #include "services/Session.h"
 #include "services/SystemStats.h"
 #include "services/DarkSchedule.h"
+#include "services/NightLight.h"
 #include "services/Currency.h"
 #include "services/AutoSaver.h"
 #include "services/DataUsage.h"
@@ -184,46 +185,51 @@ void timeDateRows(Node* g, const std::vector<ClockKeys>& targets) {
 
 // The dark theme, by hand or on a schedule: sunset to sunrise where you
 // are, or your own times. The switch follows the schedule when it flips
-void darkThemeRows(Node* page, Node* g) {
+// "Automatically": off, sunset to sunrise or set times, and those times;
+// what follows the schedule (a switch, a summary) refreshed by `follow`
+Flex* scheduleRows(Node* g, SunSchedule& s, const char* fromTitle, const char* toTitle) {
     auto& c = Config::get();
+    choiceRow<std::string>(g, "brightness_auto", "Automatically", "", s.key() + "Auto", "off",
+                           {{"off", "Off"}, {"sun", "Sunset to sunrise"}, {"custom", "Set times"}});
+    std::vector<std::pair<std::string, std::string>> halfHours;
+    for (int m = 0; m < 24 * 60; m += 30) {
+        const std::string t = std::format("{:02}:{:02}", m / 60, m % 60);
+        halfHours.push_back({t, t});
+    }
+    auto* times = g->add<Flex>(Flex::Direction::Column);
+    times->setAlignItems(Align::Stretch);
+    for (const auto& [suffix, title, glyph, fallback] : {std::tuple{"From", fromTitle, "bedtime", s.defaultFrom()},
+                                                         std::tuple{"To", toTitle, "wb_twilight", s.defaultTo()}}) {
+        auto* item = times->add<Flex>(Flex::Direction::Column);
+        item->setAlignItems(Align::Stretch);
+        auto r = row(item, glyph, title);
+        const std::string pointer = s.key() + suffix;
+        dropdown(r.row, item, c.value<std::string>(pointer, fallback), halfHours, [pointer](const std::string& v) { Config::get().set(pointer, v); });
+    }
+    return times;
+}
+
+// The dark theme, by hand or on a schedule: sunset to sunrise where you
+// are, or your own times. The switch follows the schedule when it flips
+void darkThemeRows(Node* page, Node* g) {
     auto dark = row(g, "dark_mode", "Dark theme");
     auto* sw = dark.row->add<Switch>();
-    sw->setChecked(c.value<bool>("/background/darkmode", true), false);
+    sw->setChecked(Config::get().value<bool>("/background/darkmode", true), false);
     sw->onToggled = [](bool on) {
         Config::get().set("/background/darkmode", on);
         Wallpaper::get().recolour();
     };
-    choiceRow<std::string>(g, "brightness_auto", "Automatically", "", "/background/darkAuto", "off",
-                           {{"off", "Off"}, {"sun", "Sunset to sunrise"}, {"custom", "Set times"}});
-    auto halfHours = [] {
-        std::vector<std::pair<std::string, std::string>> out;
-        for (int m = 0; m < 24 * 60; m += 30) {
-            const std::string t = std::format("{:02}:{:02}", m / 60, m % 60);
-            out.push_back({t, t});
-        }
-        return out;
-    }();
-    auto* fromItem = g->add<Flex>(Flex::Direction::Column);
-    fromItem->setAlignItems(Align::Stretch);
-    auto from = row(fromItem, "bedtime", "Dark from");
-    dropdown(from.row, fromItem, c.value<std::string>("/background/darkFrom", "19:00"), halfHours,
-             [](const std::string& v) { Config::get().set("/background/darkFrom", v); });
-    auto* toItem = g->add<Flex>(Flex::Direction::Column);
-    toItem->setAlignItems(Align::Stretch);
-    auto to = row(toItem, "wb_twilight", "Light from");
-    dropdown(to.row, toItem, c.value<std::string>("/background/darkTo", "07:00"), halfHours,
-             [](const std::string& v) { Config::get().set("/background/darkTo", v); });
+    auto* times = scheduleRows(g, darkSchedule(), "Dark from", "Light from");
     // Follows the theme and the schedule (an unseen node: it lays out nothing)
     auto* follow = page->add<Live>();
     follow->setVisible(false);
     follow->sync = [=] {
-        auto& s = DarkSchedule::get();
+        auto& s = darkSchedule();
         sw->setChecked(Config::get().value<bool>("/background/darkmode", true));
         const std::string summary = s.summary();
         dark.subtitle->setText(summary);
         dark.subtitle->setVisible(!summary.empty());
-        fromItem->setVisible(s.mode() == "custom");
-        toItem->setVisible(s.mode() == "custom");
+        times->setVisible(s.mode() == "custom");
     };
     follow->watch(Config::get().changed);
     follow->sync();
@@ -747,7 +753,25 @@ void displayPage(Flex* page, Popup&) {
     // NightLight follows the config: hyprsunset on Hyprland, the screens'
     // gamma itself elsewhere
     auto* night = group(page, "Night light", "Warmer colours in the evening");
-    switchRow(night, "nightlight", "Night light", "", "/nightLight/enabled", false);
+    {
+        auto r = row(night, "nightlight", "Night light");
+        auto* sw = r.row->add<Switch>();
+        sw->setChecked(NightLight::get().on(), false);
+        sw->onToggled = [](bool on) { NightLight::get().set(on); };
+        auto* times = scheduleRows(night, nightSchedule(), "On from", "Off from");
+        auto* follow = page->add<Live>();
+        follow->setVisible(false);
+        follow->sync = [=] {
+            auto& s = nightSchedule();
+            sw->setChecked(NightLight::get().on());
+            const std::string summary = s.summary();
+            r.subtitle->setText(summary);
+            r.subtitle->setVisible(!summary.empty());
+            times->setVisible(s.mode() == "custom");
+        };
+        follow->watch(Config::get().changed);
+        follow->sync();
+    }
     sliderRow(night, "thermostat", "Colour temperature", "/nightLight/temperature", 4500, 2500, 6500, 100,
               [](double v) { return std::format("{:.0f} K", v); });
 

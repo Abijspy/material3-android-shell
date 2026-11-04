@@ -154,7 +154,8 @@ bool Shell::start() {
     Idle::get().lockRequested.connectForever([] { LockScreen::get().lock(); });
     Idle::get().start();
     NightLight::get().start(); // as Settings left it, the screens up now
-    DarkSchedule::get().start();
+    darkSchedule().start();
+    nightSchedule().start();
     Wallpaper::get().startSlideshow();
     Privacy::get().start();
     DataUsage::get().start();
