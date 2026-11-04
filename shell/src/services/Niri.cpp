@@ -274,6 +274,11 @@ void Niri::closeWindow(const std::string& id) {
     if (const auto w = windowId(id)) action({{"CloseWindow", {{"id", *w}}}});
 }
 
+void Niri::moveWindow(const std::string& id, int workspace) {
+    if (const auto w = windowId(id); w && workspace > 0)
+        action({{"MoveWindowToWorkspace", {{"window_id", *w}, {"reference", {{"Index", workspace}}}, {"focus", false}}}});
+}
+
 void Niri::setScreens(bool on) {
     action({{on ? "PowerOnMonitors" : "PowerOffMonitors", nlohmann::json::object()}});
 }

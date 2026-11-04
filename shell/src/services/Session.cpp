@@ -76,14 +76,17 @@ void Session::suspend() { manager("Suspend"); }
 void Session::hibernate() { manager("Hibernate"); }
 // Their hooks first (5 seconds at most), then the deed
 void Session::reboot() {
+    ending.emit();
     Hooks::get().fireThen("rebooting", {}, [this] { manager("Reboot"); });
 }
 
 void Session::powerOff() {
+    ending.emit();
     Hooks::get().fireThen("shutting_down", {}, [this] { manager("PowerOff"); });
 }
 
 void Session::logout() {
+    ending.emit();
     Hooks::get().fireThen("logging_out", {}, [this] { endSession(); });
 }
 

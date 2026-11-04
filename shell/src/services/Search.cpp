@@ -188,6 +188,18 @@ int Apps::launches(const std::string& id) const {
     return it != m_counts.end() ? it->second : 0;
 }
 
+const Apps::App* Apps::forClass(const std::string& cls) const {
+    const std::string c = lower(cls);
+    for (const auto& a : m_apps)
+        if (!a.wmClass.empty() && lower(a.wmClass) == c) return &a;
+    for (const auto& a : m_apps) {
+        std::string id = lower(a.id);
+        if (id.ends_with(".desktop")) id.resize(id.size() - 8);
+        if (id == c || id.ends_with("." + c)) return &a;
+    }
+    return nullptr;
+}
+
 std::string Apps::iconForClass(const std::string& cls) const {
     const std::string c = lower(cls);
     for (const auto& a : m_apps)

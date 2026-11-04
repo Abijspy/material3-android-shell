@@ -23,6 +23,7 @@ public:
     // The lock screen is up: let a pending suspend proceed
     void lockReady();
 
+    Signal<> ending;          // logging out, rebooting or shutting down, from the shell: first
     Signal<> lockRequested;   // loginctl lock-session, or before sleep
     Signal<> unlockRequested; // loginctl unlock-session
 

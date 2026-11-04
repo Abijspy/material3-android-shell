@@ -27,6 +27,7 @@
 #include "services/DarkSchedule.h"
 #include "services/Currency.h"
 #include "services/DataUsage.h"
+#include "services/SessionApps.h"
 #include "services/Hotspot.h"
 #include "services/Sounds.h"
 #include "services/Firewall.h"
@@ -3075,6 +3076,28 @@ void defaultAppsPage(Flex* page, Popup&) {
     };
     live->sync();
     installedApps(page);
+
+    // Apps open at the end of a session, open again at the next login
+    auto* after = group(page, "After login");
+    std::string sub = "The apps open when you log out, open again, on their workspaces";
+    if (Config::get().value<bool>("/session/reopenApps", false)) {
+        const auto saved = SessionApps::get().saved();
+        if (!saved.empty()) {
+            std::string names;
+            for (size_t i = 0; i < saved.size() && i < 4; ++i) {
+                std::string n = saved[i].app;
+                for (const auto& a : Apps::get().all())
+                    if (a.id == saved[i].app) n = a.name;
+                names += (i ? ", " : "") + n;
+            }
+            if (saved.size() > 4) names += std::format(" and {} more", saved.size() - 4);
+            sub = "Next time: " + names;
+        }
+    }
+    switchRow(after, "restore_page", "Reopen apps after login", sub, "/session/reopenApps", false, [](bool on) {
+        if (on) SessionApps::get().save(); // what's open now, at once
+        EventLoop::get().defer([] { reshowPage("defaults"); });
+    });
 }
 
 // Calendar: your own events, calendars subscribed to by their ICS link,

@@ -47,6 +47,8 @@ public:
     int launches(const std::string& id) const;
     // Icon for a window class (Hyprland's "class"), via StartupWMClass or the desktop id
     std::string iconForClass(const std::string& cls) const;
+    // The app a window class belongs to (StartupWMClass, else the desktop id); null when none
+    const App* forClass(const std::string& cls) const;
 
 private:
     Apps();

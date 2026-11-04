@@ -39,6 +39,7 @@ public:
     void focusWorkspaceRelative(int delta) override;
     void focusWindow(const std::string& id) override;
     void closeWindow(const std::string& id) override;
+    void moveWindow(const std::string& id, int workspace) override;
     void minimise(const std::string&) override {}
     void grabKeys(bool) override {} // a layer surface with the keyboard has it, but for niri's binds
     void setScreens(bool on) override;

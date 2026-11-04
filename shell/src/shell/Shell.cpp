@@ -40,6 +40,7 @@
 #include "services/Notes.h"
 #include "services/Pomodoro.h"
 #include "services/Privacy.h"
+#include "services/SessionApps.h"
 #include "services/Sounds.h"
 #include "services/Notifications.h"
 #include "services/Tray.h"
@@ -156,6 +157,7 @@ bool Shell::start() {
     DataUsage::get().start();
     KdeConnect::get().start();
     Sounds::get().start();
+    SessionApps::get().start();
     // Updates: checked in the background (Settings → Software & updates); a
     // notification's Review opens the page
     Packages::get().openSettings = [this](const std::string& page) { EventLoop::get().defer([this, page] { openSettings(page); }); };

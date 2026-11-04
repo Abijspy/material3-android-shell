@@ -82,6 +82,9 @@ public:
     virtual void focusWorkspaceRelative(int delta) = 0; // on the focused output, wrapping round
     virtual void focusWindow(const std::string& id) = 0; // a minimised one comes back
     virtual void closeWindow(const std::string& id) = 0;
+    // To the workspace numbered `workspace` on its output, without
+    // following it (apps reopened after login); not every compositor
+    virtual void moveWindow(const std::string& /*id*/, int /*workspace*/) {}
     virtual void minimise(const std::string& appId) = 0; // with Minimise: its windows
     virtual void grabKeys(bool grab) = 0;                // with KeyGrab
     virtual void setScreens(bool on) = 0;

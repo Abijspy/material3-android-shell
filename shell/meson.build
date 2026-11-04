@@ -97,6 +97,7 @@ sources = files(
   'src/services/Sounds.cpp',
   'src/services/Pomodoro.cpp',
   'src/services/Hotspot.cpp',
+  'src/services/SessionApps.cpp',
   'src/services/Privacy.cpp',
   'src/services/DataUsage.cpp',
   'src/services/Notes.cpp',
