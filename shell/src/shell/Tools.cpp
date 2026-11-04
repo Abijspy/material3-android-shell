@@ -100,8 +100,29 @@ void clipboard(Flex* card, Popup& popup) {
         first->line.clear();
         // Clearing and searching only once there's something to clear or find
         const bool any = c.available() && !c.entries().empty();
+        const auto pins = c.pinned();
         clear->setVisible(any);
-        field->setVisible(any);
+        field->setVisible(any || !pins.empty());
+        // Pinned first: kept whatever is cleared, a tap copies one
+        size_t pinShown = 0;
+        for (const auto& t : pins) {
+            if (!query->empty() && fuzzyScore(*query, t) <= 0) continue;
+            if (pinShown++ == 0) caption(live, "Pinned");
+            auto* row = live->add<Button>(Flex::Direction::Row);
+            row->setPadding({14, 10})->setSpacing(12)->setRadius(Radii(16))->setBackground("secondary_container", false);
+            row->pressedRadius = 8;
+            row->add<Icon>("keep", 20)->setFill(true)->setColor("on_secondary_container", false);
+            auto* l = row->add<Label>(t);
+            l->setSize(14)->setMaxWidth(380)->setMaxLines(2)->setColor("on_secondary_container", false);
+            l->grow = true;
+            iconButton(row, "keep_off", [t] { Clipboard::get().unpin(t); }, 18);
+            row->onClicked = [t, &popup](uint32_t button) {
+                if (button != BTN_LEFT) return;
+                Clipboard::get().copyText(t);
+                popup.close();
+            };
+        }
+        if (pinShown && any) caption(live, "Recent");
         if (!c.available()) {
             // cliphist to install, with Install right here; else nothing yet
             missingTool(live, "content_paste_off", "Clipboard history needs cliphist", "Keeps what you copy, pictures too",
@@ -132,6 +153,8 @@ void clipboard(Flex* card, Popup& popup) {
                 l->setSize(14)->setMaxWidth(380)->setMaxLines(2);
                 l->grow = true;
             }
+            // Text can be pinned (once): kept above the rest
+            if (!e.image && e.file.empty() && !c.isPinned(e)) iconButton(row, "keep", [e] { Clipboard::get().pin(e); }, 18);
             iconButton(row, "close", [e] { Clipboard::get().remove(e); }, 18);
             row->onClicked = [e, &popup](uint32_t button) {
                 if (button != BTN_LEFT) return;
@@ -140,7 +163,7 @@ void clipboard(Flex* card, Popup& popup) {
             };
             if (shown >= 60) break;
         }
-        if (shown == 0) caption(live, query->empty() ? "Nothing copied yet" : "No matches");
+        if (shown == 0 && pinShown == 0) caption(live, query->empty() ? "Nothing copied yet" : "No matches");
     };
     field->onChanged = [query, live](const std::string& t) {
         *query = t;
@@ -152,6 +175,7 @@ void clipboard(Flex* card, Popup& popup) {
         popup.close();
     };
     live->watch(clip.changed);
+    live->watch(Config::get().changed); // pinned ones
     live->sync();
     clip.refresh();
 }

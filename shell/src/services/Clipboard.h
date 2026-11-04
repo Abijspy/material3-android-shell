@@ -33,7 +33,15 @@ public:
     void refresh(std::function<void()> done = {});
     void copy(const Entry& e);
     void remove(const Entry& e);
-    void wipe();
+    void wipe(); // the history; pinned ones stay
+
+    // Pinned text, kept out of the history (Clear all and cliphist's
+    // limit leave it) in /clipboard/pinned, newest first, at most 20
+    std::vector<std::string> pinned() const;
+    void pin(const Entry& e); // its whole text (the preview is cut short)
+    void unpin(const std::string& text);
+    bool isPinned(const Entry& e) const; // by its preview
+    void copyText(const std::string& text);
     void ensureWatchers();
 
     Signal<> changed;

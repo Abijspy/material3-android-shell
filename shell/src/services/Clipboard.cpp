@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <format>
+#include <nlohmann/json.hpp>
 #include <sstream>
 
 namespace fs = std::filesystem;
@@ -167,6 +168,53 @@ void Clipboard::copy(const Entry& e) {
 
 void Clipboard::remove(const Entry& e) {
     run({"cliphist", "delete"}, [this](int, const std::string&) { refresh(); }, e.line);
+}
+
+std::vector<std::string> Clipboard::pinned() const {
+    std::vector<std::string> out;
+    for (const auto& p : Config::get().value<nlohmann::json>("/clipboard/pinned", nlohmann::json::array()))
+        if (p.is_string()) out.push_back(p.get<std::string>());
+    return out;
+}
+
+void Clipboard::pin(const Entry& e) {
+    if (e.image) return;
+    run({"cliphist", "decode"}, [](int code, const std::string& text) {
+        if (code != 0 || text.empty()) return;
+        auto now = Clipboard::get().pinned();
+        std::erase(now, text);
+        now.insert(now.begin(), text);
+        if (now.size() > 20) now.resize(20);
+        Config::get().set("/clipboard/pinned", now);
+    }, e.line);
+}
+
+void Clipboard::unpin(const std::string& text) {
+    auto now = pinned();
+    if (std::erase(now, text) == 0) return;
+    Config::get().set("/clipboard/pinned", now);
+}
+
+bool Clipboard::isPinned(const Entry& e) const {
+    if (e.image || e.preview.empty()) return false;
+    // cliphist's preview: the text's start, its whitespace runs made single spaces
+    auto squash = [](const std::string& t) {
+        std::string out;
+        for (char c : t) {
+            const bool space = std::isspace(static_cast<unsigned char>(c));
+            if (space && (out.empty() || out.back() == ' ')) continue;
+            out += space ? ' ' : c;
+        }
+        return out;
+    };
+    const std::string p = squash(e.preview);
+    for (const auto& t : pinned())
+        if (squash(t).starts_with(p.ends_with("…") ? p.substr(0, p.size() - 3) : p)) return true;
+    return false;
+}
+
+void Clipboard::copyText(const std::string& text) {
+    run({"wl-copy", "--", text}, nullptr);
 }
 
 void Clipboard::wipe() {
