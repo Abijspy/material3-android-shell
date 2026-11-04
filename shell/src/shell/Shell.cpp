@@ -133,6 +133,15 @@ bool Shell::start() {
     auto focused = [this] { return focusedOutput(); };
     m_toasts = std::make_unique<Toasts>(focused);
     m_osd = std::make_unique<Osd>(focused);
+    // A keyboard layout switched (by its keys, or the bar): its name, briefly
+    Niri::get().layoutsChanged.connectForever([this, last = std::make_shared<std::string>()] {
+        const auto& m = Niri::get().model();
+        if (m.layouts.size() < 2 || m.layout < 0 || m.layout >= static_cast<int>(m.layouts.size())) return;
+        const std::string now = m.layouts[static_cast<size_t>(m.layout)];
+        const bool changed = !last->empty() && *last != now;
+        *last = now;
+        if (changed && m_osd) m_osd->show("keyboard", -1, now);
+    });
     // The airplane key: the shell's where the compositor's config sends it
     // here (material3ui.kdl, keybinds.lua), else the kernel's toggle stays
     {
@@ -671,6 +680,19 @@ void Shell::registerIpc() {
     ipc.add("messages", "messages: your phone's text messages (KDE Connect)", [this](const IpcServer::Args&) {
         togglePopup("messages", focusedOutput(), -1);
         return std::string(m_popup && !m_popup->closing() ? "open" : "closed");
+    });
+    ipc.add("keyboard", "keyboard [next|list]: the keyboard layout in use, or the next (niri)", [](const IpcServer::Args& a) {
+        auto& n = Niri::get();
+        if (!n.available()) return std::string("error: keyboard layouts are niri's");
+        if (!a.empty() && a[0] == "next") {
+            n.nextLayout(); // niri says so in a moment: the list would still show the old one
+            return std::string("switching to the next layout");
+        }
+        const auto& m = n.model();
+        std::string out;
+        for (size_t i = 0; i < m.layouts.size(); ++i)
+            out += std::format("{} {} ({})\n", static_cast<int>(i) == m.layout ? "*" : " ", m.layouts[i], Niri::shortName(m.layouts[i]));
+        return out.empty() ? std::string("no layouts") : out;
     });
     ipc.add("notes", "notes [list|add <text>|done <n>|remove <n>|clear]: the to-do list (n from 1, as listed); no argument opens it",
             [this](const IpcServer::Args& a) {

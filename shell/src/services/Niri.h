@@ -52,6 +52,10 @@ public:
     // A request ("Outputs", {"Action": …}): the reply's Ok value, or nothing
     std::optional<nlohmann::json> request(const nlohmann::json& request) const;
     void action(const nlohmann::json& action);
+    // The keyboard layout in use, short ("US", "DE", "FR"), and the next one
+    std::string layoutShort() const;
+    static std::string shortName(const std::string& layout); // "English (US)" → "US", "German" → "DE"
+    void nextLayout();
     const niri::Model& model() const { return m_model; }
     Signal<> layoutsChanged; // the keyboard layouts, or the one in use
     Signal<> outputsChanged; // modes, scale, rotation, on or off
