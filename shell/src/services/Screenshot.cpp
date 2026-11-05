@@ -294,14 +294,20 @@ void Screenshot::saved(const std::string& file) {
     // Copied, opened in the editor or announced, as Settings → Tools says
     const auto& c = Config::get();
     if (c.value<bool>("/screenshot/copy", true)) run({"sh", "-c", "wl-copy --type image/png < \"$1\"", "sh", file}, nullptr);
-    const bool editor = haveCommand("satty") || haveCommand("swappy");
-    if (c.value<bool>("/screenshot/edit", false) && !editor) needs("swappy", "Editing screenshots needs swappy (saved without it)");
-    if (c.value<bool>("/screenshot/edit", false) && editor)
-        spawn(std::format("command -v satty >/dev/null && satty --filename '{0}' --output-filename '{0}' || swappy -f '{0}'", file));
+    // The editor: the shell's own, or satty or swappy where chosen (and there)
+    const std::string editor = c.value<std::string>("/screenshot/editor", "shell");
+    const bool external = (editor == "satty" && haveCommand("satty")) || (editor == "swappy" && haveCommand("swappy"));
+    if (c.value<bool>("/screenshot/edit", false) && external)
+        spawn(editor == "satty" ? std::format("satty --filename '{0}' --output-filename '{0}'", file) : std::format("swappy -f '{0}'", file));
+    else if (c.value<bool>("/screenshot/edit", false) && openEditor)
+        openEditor(file);
     else if (c.value<bool>("/screenshot/notify", true))
-        run({"notify-send", "-a", "Screenshot", "-i", file, "Screenshot saved",
+        // Edit: the shell's editor, from the notification
+        run({"notify-send", "-a", "Screenshot", "-i", file, "-A", "edit=Edit", "Screenshot saved",
              fs::path(file).filename().string() + (c.value<bool>("/screenshot/copy", true) ? " · copied to the clipboard" : "")},
-            nullptr);
+            [this, file](int, const std::string& out) {
+                if (out.starts_with("edit") && openEditor) openEditor(file);
+            });
     taken.emit(file);
 }
 

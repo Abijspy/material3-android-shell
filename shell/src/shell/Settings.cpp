@@ -3558,7 +3558,7 @@ void toolsPage(Flex* page, Popup& popup) {
         if (open) open("clipboard");
     });
 
-    auto* shots = group(page, "Screenshots", "grim and slurp; edited in satty or swappy");
+    auto* shots = group(page, "Screenshots", "Taken with grim and slurp; edited in the shell's editor");
     // What each tool brings, offered only while it's missing
     missingTool(shots, "screenshot_region", "Screenshots need grim and slurp", "Taking the screen, a window or a region",
                 {"grim", "slurp"}, {"grim", "slurp"});
@@ -3566,12 +3566,17 @@ void toolsPage(Flex* page, Popup& popup) {
                 {"tesseract"}, {"tesseract", "tesseract-data-eng"});
     missingTool(shots, "videocam", "Recording needs wf-recorder", "Super+Shift+R records a region, a window or a screen",
                 {"wf-recorder"}, {"wf-recorder"});
-    if (!haveCommand("satty"))
-        missingTool(shots, "edit", "Editing needs swappy", "Draw on, crop and annotate a screenshot before saving it",
-                    {"swappy"}, {"swappy"});
     textRow(shots, "folder", "Save to", "/screenshot/directory", "~/Pictures/Screenshots");
     switchRow(shots, "content_copy", "Copy to the clipboard", "", "/screenshot/copy", true);
-    switchRow(shots, "edit", "Open in the editor", "", "/screenshot/edit", false);
+    switchRow(shots, "edit", "Open in the editor", "Draw, add arrows and text, highlight, hide details and crop before saving; else the notification's Edit",
+              "/screenshot/edit", false, [](bool) { reshowPage("tools"); });
+    // satty or swappy instead, where installed
+    if (Config::get().value<bool>("/screenshot/edit", false) && (haveCommand("satty") || haveCommand("swappy"))) {
+        std::vector<std::pair<std::string, std::string>> editors = {{"shell", "Material3UI"}};
+        if (haveCommand("satty")) editors.push_back({"satty", "satty"});
+        if (haveCommand("swappy")) editors.push_back({"swappy", "swappy"});
+        choiceRow<std::string>(shots, "palette", "Editor", "", "/screenshot/editor", "shell", editors);
+    }
     switchRow(shots, "notifications", "Notify when saved", "", "/screenshot/notify", true);
     auto take = row(shots, "screenshot_region", "Take a screenshot", "Also: material3ui msg screenshot region|window|screen");
     pillButton(take.row, "Open tool", true, [&popup] {

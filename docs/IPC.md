@@ -40,6 +40,7 @@ Running a panel command again closes the panel.
 | Command | Does |
 | :--- | :--- |
 | `screenshot region\|window\|screen [delay]` | Captures at once (delay in seconds). It saves to `~/Pictures/Screenshots`, and copies to the clipboard, opens an editor or notifies, depending on Settings → Tools. |
+| `edit <file>` | A picture in the image editor: draw, arrows, boxes, highlight, text, pixelate, crop; then copy or save |
 | `screenshot ocr` | Copies the text in a picked region (tesseract) |
 | `keyboard [next\|list]` | The keyboard layouts (niri), or the next one |
 | `pomodoro [start\|pause\|resume\|skip\|stop\|status]` | The focus timer (the clock panel's Focus tab); with nothing after it, opens the tab |

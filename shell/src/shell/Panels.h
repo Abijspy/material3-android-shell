@@ -65,6 +65,9 @@ void vpn(ui::Flex* card, Popup& popup);
 void messages(ui::Flex* card, Popup& popup);
 // The Wi-Fi in use (or with "hotspot", the hotspot) as a QR code to join it
 void shareWifi(ui::Flex* card, Popup& popup, const std::string& arg);
+// The image editor (ImageEditor.cpp): draw on, highlight, pixelate, add
+// text to and crop a picture, then copy or save it
+void imageEditor(ui::Flex* card, Popup& popup, const std::string& path);
 ui::Node* notesCard(ui::Node* parent);
 void screenshot(ui::Flex* card, Popup& popup);
 // The Wi-Fi network list (Quick Settings and Settings); back may be empty.

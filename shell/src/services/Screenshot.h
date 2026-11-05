@@ -3,6 +3,7 @@
 #include "core/Signal.h"
 
 #include <ctime>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -50,6 +51,9 @@ public:
     std::vector<std::string> recent(size_t count) const; // newest first
 
     Signal<const std::string&> taken;    // the saved file
+    // Set by the shell: its own image editor, for a file (after a capture,
+    // or the notification's Edit)
+    std::function<void(const std::string& file)> openEditor;
     Signal<const std::string&> recorded; // a recording's file, saved
     Signal<> recordingChanged;
 

@@ -134,6 +134,10 @@ bool Shell::start() {
     auto focused = [this] { return focusedOutput(); };
     m_toasts = std::make_unique<Toasts>(focused);
     m_osd = std::make_unique<Osd>(focused);
+    // Screenshots edited in the shell's own editor
+    Screenshot::get().openEditor = [this](const std::string& file) {
+        EventLoop::get().defer([this, file] { togglePopup("imageeditor", focusedOutput(), -1, file); });
+    };
     // A keyboard layout switched (by its keys, or the bar): its name, briefly
     Niri::get().layoutsChanged.connectForever([this, last = std::make_shared<std::string>()] {
         const auto& m = Niri::get().model();
@@ -471,6 +475,9 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         opts.anchor = -1;
         opts.centredVertically = true;
         build = panels::wallpapers;
+    } else if (name == "imageeditor") {
+        opts.fill = true;
+        build = [arg](ui::Flex* card, Popup& p) { panels::imageEditor(card, p, arg); };
     } else if (name == "lockeditor") {
         opts.fill = true;
         build = panels::lockEditor;
@@ -682,6 +689,17 @@ void Shell::registerIpc() {
     ipc.add("messages", "messages: your phone's text messages (KDE Connect)", [this](const IpcServer::Args&) {
         togglePopup("messages", focusedOutput(), -1);
         return std::string(m_popup && !m_popup->closing() ? "open" : "closed");
+    });
+    ipc.add("edit", "edit <file>: a picture in the image editor (draw, highlight, pixelate, text, crop)", [this](const IpcServer::Args& a) {
+        std::string file;
+        for (const auto& w : a) file += (file.empty() ? "" : " ") + w;
+        if (file.empty()) return std::string("error: edit <file>");
+        if (file.starts_with("file://")) file = file.substr(7);
+        std::error_code ec;
+        if (!std::filesystem::exists(file, ec)) return std::string("error: no such file");
+        file = std::filesystem::absolute(file, ec).string();
+        EventLoop::get().defer([this, file] { togglePopup("imageeditor", focusedOutput(), -1, file); });
+        return std::string("editing");
     });
     ipc.add("keyboard", "keyboard [next|list]: the keyboard layout in use, or the next (niri)", [](const IpcServer::Args& a) {
         auto& n = Niri::get();
