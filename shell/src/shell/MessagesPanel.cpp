@@ -10,6 +10,7 @@
 #include "ui/Controls.h"
 #include "ui/Theme.h"
 
+#include <cctype>
 #include <ctime>
 #include <format>
 #include <linux/input-event-codes.h>
@@ -90,7 +91,7 @@ void messages(Flex* card, Popup& popup) {
         if (phone.empty()) {
             auto* l = live->add<Label>("No phone that can send texts is paired. Pair one in Settings → Connected devices, and allow "
                                        "KDE Connect's SMS on it.");
-            l->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(400)->setMaxLines(4);
+            l->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(460)->setMaxLines(ui::kAllLines);
             return;
         }
         // Away: what's here can be read, not answered
@@ -100,8 +101,8 @@ void messages(Flex* card, Popup& popup) {
             away->add<Icon>("phonelink_off", 20)->setColor("on_tertiary_container", false);
             away->add<Label>("Your phone isn't connected: open KDE Connect on it, on the same network, to text")
                 ->setSize(13)
-                ->setMaxWidth(340)
-                ->setMaxLines(2)
+                ->setMaxWidth(400)
+                ->setMaxLines(ui::kAllLines)
                 ->setColor("on_tertiary_container", false);
         }
         if (view->kind == View::List) {
@@ -113,7 +114,7 @@ void messages(Flex* card, Popup& popup) {
             if (all.empty()) {
                 auto* l = live->add<Label>("No messages yet. If your phone has some, allow KDE Connect to read them: on the phone, KDE "
                                            "Connect → this computer → plugin settings → SMS, and give it the SMS permission.");
-                l->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(400)->setMaxLines(5);
+                l->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(460)->setMaxLines(ui::kAllLines);
                 return;
             }
             auto* scroll = live->add<ScrollView>();
@@ -123,22 +124,28 @@ void messages(Flex* card, Popup& popup) {
             for (const auto& m : all) {
                 const std::string who = m.addresses.empty() ? std::string("Unknown") : k.contactName(phone, m.addresses.front());
                 auto* r = list->add<Button>(Flex::Direction::Row);
-                r->setPadding({10, 10})->setSpacing(12)->setRadius(Radii(18));
+                r->setPadding({10, 10})->setSpacing(12)->setRadius(Radii(18))->setAlignItems(Align::Start); // the avatar at the top of a long one
                 auto* avatar = r->add<Flex>(Flex::Direction::Row);
                 pill(avatar->setBackground("primary_container", false))->setJustify(Align::Center);
                 avatar->fixedWidth = avatar->fixedHeight = 38;
-                avatar->add<Label>(who.empty() ? "?" : who.substr(0, 1))->setSize(16)->setWeight(600)->setColor("on_primary_container", false);
+                // The name's first letter; a person for a number not in the phone's contacts
+                if (!who.empty() && std::isalpha(static_cast<unsigned char>(who[0])))
+                    avatar->add<Label>(who.substr(0, 1))->setSize(16)->setWeight(600)->setColor("on_primary_container", false);
+                else
+                    avatar->add<Icon>("person", 20)->setColor("on_primary_container", false);
                 auto* texts = r->add<Flex>(Flex::Direction::Column);
                 texts->setAlignItems(Align::Stretch)->setSpacing(1);
                 texts->grow = true;
                 auto* line = texts->add<Flex>(Flex::Direction::Row);
                 auto* name = line->add<Label>(who);
-                name->setSize(14)->setWeight(m.read ? 500 : 700)->setMaxWidth(230);
+                name->setSize(14)->setWeight(m.read ? 500 : 700)->setMaxWidth(300)->setMaxLines(ui::kAllLines);
                 name->grow = true;
                 line->add<Label>(when(m.date))->setSize(11)->setColor("on_surface_variant", false);
+                // The whole message, as many lines as it takes
                 texts->add<Label>((m.sent ? "You: " : "") + m.body)
-                    ->setSize(12)
-                    ->setMaxWidth(320)
+                    ->setSize(13)
+                    ->setMaxWidth(380)
+                    ->setMaxLines(ui::kAllLines)
                     ->setColor(m.read ? "on_surface_variant" : "on_surface", false);
                 const int64_t thread = m.thread;
                 r->onClicked = [live, view, thread, who, phone](uint32_t button) {
@@ -182,7 +189,7 @@ void messages(Flex* card, Popup& popup) {
             bubble->setPadding({14, 9})->setSpacing(3)->setRadius(Radii(18));
             bubble->setBackground(m.sent ? "primary_container" : "surface_container_highest", false);
             bubble->setAlignItems(m.sent ? Align::End : Align::Start);
-            bubble->add<Label>(m.body)->setSize(14)->setMaxWidth(290)->setMaxLines(30)->setColor(m.sent ? "on_primary_container" : "on_surface",
+            bubble->add<Label>(m.body)->setSize(14)->setMaxWidth(360)->setMaxLines(ui::kAllLines)->setColor(m.sent ? "on_primary_container" : "on_surface",
                                                                                                     false);
             bubble->add<Label>(when(m.date))->setSize(10)->setColor(m.sent ? "on_primary_container" : "on_surface_variant", false);
         }

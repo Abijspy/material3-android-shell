@@ -510,7 +510,7 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         opts.centredVertically = true;
         build = [arg](ui::Flex* card, Popup& p) { panels::shareWifi(card, p, arg); };
     } else if (name == "messages") {
-        opts.width = 460;
+        opts.width = 520;
         opts.anchor = -1;
         opts.centredVertically = true;
         build = panels::messages;
