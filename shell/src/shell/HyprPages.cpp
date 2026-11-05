@@ -321,7 +321,7 @@ void optionRow(Node* g, const Option& opt) {
     auto r = row(g, "", nameOf(opt), description);
     // Narrower than other rows: the controls here are wider
     r.title->setMaxWidth(320);
-    r.subtitle->setMaxWidth(320)->setMaxLines(3);
+    r.subtitle->setMaxWidth(320)->setMaxLines(ui::kAllLines);
     auto* tail = r.row->add<Flex>(Flex::Direction::Row);
     tail->setSpacing(8);
     auto* error = r.subtitle;
@@ -1485,7 +1485,7 @@ void ruleSections(Flex* page, HyprOptions::RuleKind kind) {
             texts->setAlignItems(Align::Start)->setSpacing(1);
             texts->grow = true;
             texts->add<Label>(ws ? "Workspace " + r.value("workspace", "") : r.value("name", "Rule"))->setSize(15)->setWeight(500);
-            texts->add<Label>(summary(r, ws))->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(420)->setMaxLines(2);
+            texts->add<Label>(summary(r, ws))->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(420)->setMaxLines(ui::kAllLines);
             auto* sw = b->add<Switch>();
             sw->setChecked(r.value("enabled", true), false);
             sw->onToggled = [kind, i](bool on) {

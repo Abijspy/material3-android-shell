@@ -440,7 +440,7 @@ void focusTimer(Flex* body) {
         auto* quiet = settings->add<Flex>(Flex::Direction::Row);
         quiet->setSpacing(10);
         auto* qt = quiet->add<Label>("Focus mode and Do not disturb while focusing");
-        qt->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(260)->setMaxLines(2);
+        qt->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(260)->setMaxLines(ui::kAllLines);
         qt->grow = true;
         auto* sw = quiet->add<Switch>();
         sw->setChecked(Config::get().value<bool>("/pomodoro/quiet", true), false);
@@ -461,7 +461,7 @@ void worldClocks(Flex* body) {
         const auto places = WorldClock::get().places();
         if (places.empty()) {
             auto* l = list->add<Label>("Add a city below to see its time here, and on the World clock desktop widget");
-            l->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(380)->setMaxLines(3);
+            l->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(380)->setMaxLines(ui::kAllLines);
         }
         for (const auto& p : places) {
             auto* r = list->add<Flex>(Flex::Direction::Row);

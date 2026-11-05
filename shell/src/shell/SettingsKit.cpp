@@ -21,7 +21,7 @@ Flex* group(Node* page, const std::string& title, const std::string& subtitle) {
     auto* head = page->add<Flex>(Flex::Direction::Column);
     head->setAlignItems(Align::Start)->setSpacing(2)->setPadding({8, 10, 8, 2});
     head->add<Label>(title)->setSize(14)->setWeight(600)->setColor("primary", false);
-    if (!subtitle.empty()) head->add<Label>(subtitle)->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(640)->setMaxLines(2);
+    if (!subtitle.empty()) head->add<Label>(subtitle)->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(640)->setMaxLines(ui::kAllLines);
     return page->add<Segments>();
 }
 
@@ -59,8 +59,8 @@ bool serviceOff(Node* parent, const std::string& which, bool compact) {
         auto* top = card->add<Flex>(Flex::Direction::Row);
         top->setSpacing(12);
         top->add<Icon>(net ? "wifi_off" : "bluetooth_disabled", 22)->setColor("on_surface_variant", false);
-        top->add<Label>(title)->setSize(15)->setWeight(500)->setMaxWidth(250)->setMaxLines(2);
-        card->add<Label>(why)->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(290)->setMaxLines(3);
+        top->add<Label>(title)->setSize(15)->setWeight(500)->setMaxWidth(250)->setMaxLines(ui::kAllLines);
+        card->add<Label>(why)->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(290)->setMaxLines(ui::kAllLines);
         auto* bar = card->add<Flex>(Flex::Direction::Row);
         bar->setJustify(Align::End)->setPadding({0, 4, 0, 0});
         actions = bar;
@@ -225,7 +225,7 @@ Row row(Node* group, const std::string& icon, const std::string& title, const st
     auto* t = texts->add<Label>(title);
     t->setSize(15)->setWeight(500)->setMaxWidth(420);
     auto* s = texts->add<Label>(subtitle);
-    s->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(440)->setMaxLines(2);
+    s->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(440)->setMaxLines(ui::kAllLines);
     s->setVisible(!subtitle.empty());
     return {r, t, s};
 }

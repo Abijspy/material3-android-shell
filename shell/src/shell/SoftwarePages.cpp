@@ -60,7 +60,7 @@ void taskStatus(Node* body, const std::string& error) {
     if (text.empty()) return;
     const bool bad = !error.empty() || text.starts_with("Didn't") || text.starts_with("Cancelled");
     auto* l = body->add<Label>(text);
-    l->setSize(13)->setWeight(500)->setMaxWidth(600)->setMaxLines(3)->setColor(bad ? "error" : "primary", false);
+    l->setSize(13)->setWeight(500)->setMaxWidth(600)->setMaxLines(ui::kAllLines)->setColor(bad ? "error" : "primary", false);
     l->alignSelf = Align::Start;
 }
 
@@ -388,7 +388,7 @@ void firmwarePage(Flex* page, Popup&) {
                 hero->add<WavyBar>();
             } else {
                 if (!p.status().empty() && (p.status().starts_with("Didn't") || p.status().starts_with("Cancelled")))
-                    hero->add<Label>(p.status())->setSize(13)->setColor("error", false)->setMaxWidth(560)->setMaxLines(2);
+                    hero->add<Label>(p.status())->setSize(13)->setColor("error", false)->setMaxWidth(560)->setMaxLines(ui::kAllLines);
                 auto* actions = hero->add<Flex>(Flex::Direction::Row);
                 actions->setJustify(Align::End);
                 pillButton(actions, "Install fwupd", true, [] {
@@ -413,7 +413,7 @@ void firmwarePage(Flex* page, Popup&) {
             texts->add<Label>(names + " install as the computer starts")
                 ->setSize(13)
                 ->setMaxWidth(440)
-                ->setMaxLines(2)
+                ->setMaxLines(ui::kAllLines)
                 ->setColor("on_tertiary_container", false);
             pillButton(banner, "Restart now", true, [] { spawn("systemctl reboot"); }, "restart_alt");
             live->add<Node>()->minHeight = 12;
@@ -438,17 +438,17 @@ void firmwarePage(Flex* page, Popup&) {
                                  : fw.lastChecked() == 0 ? "Not checked yet"
                                  : n == 0 ? "Your firmware is up to date"
                                  : std::format("{} firmware update{}", n, n == 1 ? "" : "s");
-        texts->add<Label>(status)->setSize(18)->setWeight(600)->setMaxWidth(560)->setMaxLines(2);
+        texts->add<Label>(status)->setSize(18)->setWeight(600)->setMaxWidth(560)->setMaxLines(ui::kAllLines);
         std::time_t listed = 0;
         for (const auto& r : fw.remotes())
             if (r.enabled && r.kind == "download") listed = std::max(listed, r.modified);
         std::string detail = std::format("{} device{}", fw.devices().size(), fw.devices().size() == 1 ? "" : "s");
         if (listed) detail += " · the LVFS's list from " + ago(listed);
         if (!fw.error().empty() && !fw.devices().empty()) detail += " · " + fw.error();
-        texts->add<Label>(detail)->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(560)->setMaxLines(2);
+        texts->add<Label>(detail)->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(560)->setMaxLines(ui::kAllLines);
         if (!fw.updating() && !fw.status().empty()) {
             const bool bad = fw.status().starts_with("Didn't") || fw.status().starts_with("Cancelled");
-            texts->add<Label>(fw.status())->setSize(13)->setColor(bad ? "error" : "primary", false)->setMaxWidth(560)->setMaxLines(3);
+            texts->add<Label>(fw.status())->setSize(13)->setColor(bad ? "error" : "primary", false)->setMaxWidth(560)->setMaxLines(ui::kAllLines);
         }
         if (working) hero->add<WavyBar>();
         auto* actions = hero->add<Flex>(Flex::Direction::Row);

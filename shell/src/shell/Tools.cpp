@@ -315,7 +315,7 @@ void barWidgets(Flex* card, Popup& popup, const std::string& zone) {
         top->setSpacing(8);
         top->add<Icon>(m.icon, 20)->setColor("on_secondary_container", false);
         top->add<Label>(m.name)->setSize(14)->setWeight(600)->setColor("on_secondary_container", false);
-        b->add<Label>(m.about)->setSize(12)->setMaxWidth(184)->setMaxLines(2)->setColor("on_secondary_container", false);
+        b->add<Label>(m.about)->setSize(12)->setMaxWidth(184)->setMaxLines(ui::kAllLines)->setColor("on_secondary_container", false);
         const std::string id = m.id;
         b->onClicked = [id, z, &popup](uint32_t) {
             auto l = Bar::layout();

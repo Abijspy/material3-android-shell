@@ -369,6 +369,10 @@ protected:
     ColorTween m_color{ColorRef("on_surface")};
 };
 
+// As many lines as the text takes: a description, a note or an error
+// shown whole (setMaxLines), never cut off with "…"
+inline constexpr int kAllLines = 64;
+
 // A Material Symbols glyph by ligature name ("wifi", "volume_up"), or an
 // SVG file by its path, drawn as a shape in the icon's colour (symbols the
 // font lacks: Quick Share's)

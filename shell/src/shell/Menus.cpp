@@ -67,7 +67,7 @@ void notifications(Flex* card, Popup&) {
         auto* e = parent->add<Flex>(Flex::Direction::Column);
         e->setPadding({0, 32})->setSpacing(8);
         e->add<Icon>(icon, 40)->setColor("outline_variant", false);
-        e->add<Label>(text)->setSize(14)->setColor("on_surface_variant", false)->setMaxWidth(360)->setMaxLines(2)->setCentered(true);
+        e->add<Label>(text)->setSize(14)->setColor("on_surface_variant", false)->setMaxWidth(360)->setMaxLines(ui::kAllLines)->setCentered(true);
     };
 
     live->sync = [=] {

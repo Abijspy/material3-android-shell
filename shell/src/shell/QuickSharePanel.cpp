@@ -53,7 +53,7 @@ void quickSharePanel(Flex* card, Popup& popup, const std::string& arg) {
         live->clearChildren();
         const auto* t = QuickShare::get().transfer(id);
         if (!t) {
-            caption(live, "That transfer is over")->setMaxWidth(480)->setMaxLines(3);
+            caption(live, "That transfer is over")->setMaxWidth(480)->setMaxLines(ui::kAllLines);
             return;
         }
         // Who, and the PIN to check against the phone's
@@ -97,14 +97,14 @@ void quickSharePanel(Flex* card, Popup& popup, const std::string& arg) {
             row(list, x.type == 2 ? "link" : "notes", x.title.empty() ? "Text" : x.title, x.type == 2 ? "A link" : "Text");
 
         if (t->outgoing && (t->state == QuickShare::State::Connecting || t->state == QuickShare::State::Asking)) {
-            if (!t->pin.empty()) caption(live, "Check the PIN matches the one on the other device")->setMaxWidth(480)->setMaxLines(3);
+            if (!t->pin.empty()) caption(live, "Check the PIN matches the one on the other device")->setMaxWidth(480)->setMaxLines(ui::kAllLines);
             auto* foot = live->add<Flex>(Flex::Direction::Row);
             foot->setSpacing(8)->setJustify(Align::End);
             pillButton(foot, "Cancel", false, [id] { QuickShare::get().cancel(id); }, "close");
             return;
         }
         if (t->state == QuickShare::State::Asking) {
-            caption(live, "Check the PIN matches the one on the other device. Files go to Downloads; links and text to the clipboard")->setMaxWidth(480)->setMaxLines(3);
+            caption(live, "Check the PIN matches the one on the other device. Files go to Downloads; links and text to the clipboard")->setMaxWidth(480)->setMaxLines(ui::kAllLines);
             auto* foot = live->add<Flex>(Flex::Direction::Row);
             foot->setSpacing(8)->setJustify(Align::End);
             pillButton(foot, "Decline", false, [id, &popup] {
@@ -117,9 +117,9 @@ void quickSharePanel(Flex* card, Popup& popup, const std::string& arg) {
         if (t->state == QuickShare::State::Receiving && t->total > 0) {
             const float done = static_cast<float>(t->received) / static_cast<float>(t->total);
             live->add<Meter>(done, ColorRef("primary"), 10);
-            caption(live, std::format("{} of {} · {:.0f}%", size(t->received), size(t->total), done * 100))->setMaxWidth(480)->setMaxLines(3);
+            caption(live, std::format("{} of {} · {:.0f}%", size(t->received), size(t->total), done * 100))->setMaxWidth(480)->setMaxLines(ui::kAllLines);
         }
-        if (t->state == QuickShare::State::Failed && !t->error.empty()) caption(live, t->error)->setMaxWidth(480)->setMaxLines(3);
+        if (t->state == QuickShare::State::Failed && !t->error.empty()) caption(live, t->error)->setMaxWidth(480)->setMaxLines(ui::kAllLines);
         auto* foot = live->add<Flex>(Flex::Direction::Row);
         foot->setSpacing(8)->setJustify(Align::End);
         if (t->outgoing && t->state == QuickShare::State::Receiving)
@@ -210,13 +210,13 @@ void quickShareSend(Flex* card, Popup& popup, const std::string& arg) {
             auto* side = box->add<Flex>(Flex::Direction::Column);
             side->setSpacing(8)->setAlignItems(Align::Start);
             side->grow = true;
-            side->add<Label>("Scan with the phone's camera")->setSize(17)->setWeight(600)->setMaxWidth(270)->setMaxLines(2);
+            side->add<Label>("Scan with the phone's camera")->setSize(17)->setWeight(600)->setMaxWidth(270)->setMaxLines(ui::kAllLines);
             side->add<Label>(st->paths.empty() ? "Choose files first: they go as soon as the phone connects"
                                                : "The files go as soon as the phone connects. No Bluetooth needed")
                 ->setSize(13)
                 ->setColor("on_surface_variant", false)
                 ->setMaxWidth(270)
-                ->setMaxLines(3);
+                ->setMaxLines(ui::kAllLines);
             pillButton(side, "Hide", false, [st, live] {
                 st->qr = false;
                 live->syncSoon();
@@ -259,7 +259,7 @@ void quickShareSend(Flex* card, Popup& popup, const std::string& arg) {
                       : note.empty() ? "The phone needs to be on this Wi-Fi network. Not listed? Use a QR code, or set the phone's Quick Share to receive from everyone"
                                      : note + ". Or use a QR code")
             ->setMaxWidth(500)
-            ->setMaxLines(3);
+            ->setMaxLines(ui::kAllLines);
     };
     live->watch(QuickShare::get().changed);
     live->sync();

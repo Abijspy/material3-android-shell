@@ -24,7 +24,7 @@ void itemRow(Node* list, size_t i, const Notes::Item& item, bool removable) {
         ->setFill(item.done)
         ->setColor(item.done ? "primary" : "on_surface_variant", false);
     auto* text = r->add<Label>(item.text);
-    text->setSize(14)->setMaxWidth(300)->setMaxLines(3)->setColor(item.done ? "on_surface_variant" : "on_surface", false);
+    text->setSize(14)->setMaxWidth(300)->setMaxLines(ui::kAllLines)->setColor(item.done ? "on_surface_variant" : "on_surface", false);
     text->grow = true;
     r->onClicked = [i](uint32_t button) {
         if (button == BTN_LEFT) Notes::get().toggle(i);

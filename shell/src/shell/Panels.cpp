@@ -371,7 +371,7 @@ void bluetoothPrompt(Flex* parent) {
                            : r.kind == Kind::EnterPin     ? "Enter the PIN shown on " + r.name + " (often 0000 or 1234)"
                            : r.kind == Kind::EnterPasskey ? "Enter the 6-digit code shown on " + r.name
                                                           : "Allow it to use this computer?";
-    box->add<Label>(hint)->setSize(13)->setColor("on_secondary_container", false)->setMaxWidth(340)->setMaxLines(2);
+    box->add<Label>(hint)->setSize(13)->setColor("on_secondary_container", false)->setMaxWidth(340)->setMaxLines(ui::kAllLines);
 
     if (r.kind == Kind::Confirm || r.kind == Kind::ShowCode) {
         auto* code = box->add<Label>(spaced(r.code));
@@ -424,7 +424,7 @@ void bluetoothView(Flex* body, const std::function<void()>& back) {
     auto* prompt = live->add<Flex>(Flex::Direction::Column);
     prompt->setAlignItems(Align::Stretch);
     auto* error = live->add<Label>();
-    error->setSize(13)->setColor("error", false)->setMaxWidth(380)->setMaxLines(2);
+    error->setSize(13)->setColor("error", false)->setMaxWidth(380)->setMaxLines(ui::kAllLines);
     auto* scroll = live->add<ScrollView>();
     scroll->maxHeight = 340;
     auto* list = scroll->add<Flex>(Flex::Direction::Column);

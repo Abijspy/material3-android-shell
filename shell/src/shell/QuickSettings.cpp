@@ -88,7 +88,7 @@ void connectedInfo(Flex* parent, const char* fg) {
     auto* live = parent->add<Live>();
     live->setSpacing(6);
     auto* link = live->add<Label>();
-    link->setSize(12)->setColor(fg, false)->setMaxWidth(340)->setMaxLines(2);
+    link->setSize(12)->setColor(fg, false)->setMaxWidth(340)->setMaxLines(ui::kAllLines);
     auto [down, up] = rates(live, 13);
     for (Label* l : {down, up}) l->setColor(fg, false);
     auto* addr = live->add<Label>();

@@ -101,7 +101,7 @@ void eventEditor(Flex* card, Popup& popup, const std::string& arg) {
         // Subscribed calendars are read here, changed where they come from
         auto* box = card->add<Flex>(Flex::Direction::Column);
         box->setSpacing(6)->setAlignItems(Align::Start)->setPadding({4, 0});
-        box->add<Label>(e.title.empty() ? "(No title)" : e.title)->setSize(20)->setWeight(600)->setMaxWidth(440)->setMaxLines(3);
+        box->add<Label>(e.title.empty() ? "(No title)" : e.title)->setSize(20)->setWeight(600)->setMaxWidth(440)->setMaxLines(ui::kAllLines);
         std::tm tm{};
         localtime_r(&e.start, &tm);
         char date[64];

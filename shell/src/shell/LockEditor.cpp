@@ -296,7 +296,7 @@ void lockEditor(Flex* card, Popup& popup) {
             t->setSpacing(2)->setAlignItems(Align::Start);
             t->grow = true;
             t->add<Label>(title)->setSize(18)->setWeight(600)->setMaxWidth(250);
-            if (!sub.empty()) t->add<Label>(sub)->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(260)->setMaxLines(3);
+            if (!sub.empty()) t->add<Label>(sub)->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(260)->setMaxLines(ui::kAllLines);
             if (closable) iconButton(h, "close", [select] { select(-1, -1); });
         };
 
@@ -310,7 +310,7 @@ void lockEditor(Flex* card, Popup& popup) {
             auto* txt = about->add<Flex>(Flex::Direction::Column);
             txt->setSpacing(3)->setAlignItems(Align::Start);
             txt->grow = true;
-            txt->add<Label>(d->about)->setSize(13)->setMaxWidth(200)->setMaxLines(3);
+            txt->add<Label>(d->about)->setSize(13)->setMaxWidth(200)->setMaxLines(ui::kAllLines);
             if (*whenShown(chosen->id)) txt->add<Label>(whenShown(chosen->id))->setSize(12)->setColor("primary", false);
             sheet->add<Label>("Move")->setSize(13)->setWeight(600)->setColor("primary", false);
             // A direction pad: the arrows where they point, faint at the edges
@@ -399,7 +399,7 @@ void lockEditor(Flex* card, Popup& popup) {
                 txt->add<Label>(placed ? std::format("In the {}", cellName(placed->col, placed->row)) : std::string(d->about))
                     ->setSize(12)
                     ->setMaxWidth(170)
-                    ->setMaxLines(2)
+                    ->setMaxLines(ui::kAllLines)
                     ->setColor(placed ? "primary" : "on_surface_variant", false);
                 const std::string id = d->id;
                 if (forCell) {
@@ -430,7 +430,7 @@ void lockEditor(Flex* card, Popup& popup) {
                 }
             }
         }
-        if (!forCell && free.first < 0) caption(sheet, "Every cell is taken: pick a widget to replace or remove it")->setMaxWidth(300)->setMaxLines(2);
+        if (!forCell && free.first < 0) caption(sheet, "Every cell is taken: pick a widget to replace or remove it")->setMaxWidth(300)->setMaxLines(ui::kAllLines);
     };
     live->conns.push_back(Config::get().changed.connect([live] { live->syncSoon(); }));
     live->sync();

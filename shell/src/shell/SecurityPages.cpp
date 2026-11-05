@@ -23,7 +23,7 @@ namespace {
 
 Label* errorLine(Node* parent, const std::string& text) {
     auto* l = parent->add<Label>(text);
-    l->setSize(13)->setColor("error", false)->setMaxWidth(640)->setMaxLines(3);
+    l->setSize(13)->setColor("error", false)->setMaxWidth(640)->setMaxLines(ui::kAllLines);
     return l;
 }
 
@@ -105,7 +105,7 @@ void vpnPage(Flex* page, Popup&) {
         caption(live, "OpenVPN, Cisco and other VPN types need NetworkManager's plugin for them (networkmanager-openvpn and so on). "
                       "WireGuard works as it is.")
             ->setMaxWidth(640)
-            ->setMaxLines(3);
+            ->setMaxLines(ui::kAllLines);
     };
     live->watch(Vpn::get().changed);
     live->sync();

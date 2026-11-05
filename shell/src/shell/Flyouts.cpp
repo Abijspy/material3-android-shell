@@ -55,7 +55,7 @@ Switch* headerSwitch(Flex* head) {
 // A line of quieter text
 Label* note(Node* parent, const std::string& text) {
     auto* l = parent->add<Label>(text);
-    l->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(330)->setMaxLines(3);
+    l->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(330)->setMaxLines(ui::kAllLines);
     return l;
 }
 

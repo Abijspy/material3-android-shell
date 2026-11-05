@@ -51,7 +51,7 @@ void printersPage(Flex* page, Popup&) {
         auto error = [&] {
             if (pr.lastError().empty()) return;
             auto* l = live->add<Label>(pr.lastError());
-            l->setSize(13)->setColor("error", false)->setMaxWidth(640)->setMaxLines(3);
+            l->setSize(13)->setColor("error", false)->setMaxWidth(640)->setMaxLines(ui::kAllLines);
         };
 
         // Not there yet: set it up, or start it

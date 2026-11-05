@@ -378,7 +378,7 @@ ui::Node* worldClockCard(ui::Node* parent) {
         head->add<Label>("World clock")->setSize(15)->setWeight(600);
         const auto places = WorldClock::get().places();
         if (places.empty()) {
-            c->add<Label>("Add cities in the clock panel's World tab")->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(280)->setMaxLines(2);
+            c->add<Label>("Add cities in the clock panel's World tab")->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(280)->setMaxLines(ui::kAllLines);
             return;
         }
         for (size_t i = 0; i < places.size() && i < 5; ++i) {

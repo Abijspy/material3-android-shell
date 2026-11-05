@@ -212,7 +212,7 @@ void releaseNotes(Node* parent, int max, float width, const std::string& since) 
         for (const auto& [lead, text] : r.notes) {
             auto* item = seg->add<Flex>(Flex::Direction::Column);
             item->setPadding({16, 12})->setSpacing(3)->setAlignItems(Align::Start);
-            if (!lead.empty()) item->add<Label>(lead)->setSize(14)->setWeight(600)->setMaxWidth(width)->setMaxLines(3);
+            if (!lead.empty()) item->add<Label>(lead)->setSize(14)->setWeight(600)->setMaxWidth(width)->setMaxLines(ui::kAllLines);
             if (!text.empty()) para(item, text, width, 13);
         }
     }

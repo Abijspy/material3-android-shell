@@ -514,7 +514,7 @@ void quickShareRows(Flex* page) {
             auto fw = row(g, "shield", "The firewall blocks phones sending to you",
                           std::format("{} drops connections to Quick Share's port ({}): allow it once", qs.firewall(), qs.port()));
             fw.title->setColor("error", false);
-            fw.subtitle->setMaxWidth(400)->setMaxLines(2);
+            fw.subtitle->setMaxWidth(400)->setMaxLines(ui::kAllLines);
             pillButton(fw.row, "Allow", true, [] { quickshare::QuickShare::get().allowThroughFirewall(); }, "shield");
         }
         auto nameRow = row(g, "badge", "Name shown to others", "Enter to save");
@@ -567,7 +567,7 @@ void bluetoothPage(Flex* page, Popup&) {
     auto* prompt = live->add<Flex>(Flex::Direction::Column);
     prompt->setAlignItems(Align::Stretch);
     auto* error = live->add<Label>();
-    error->setSize(13)->setColor("error", false)->setMaxWidth(640)->setMaxLines(2);
+    error->setSize(13)->setColor("error", false)->setMaxWidth(640)->setMaxLines(ui::kAllLines);
     auto* lists = live->add<Flex>(Flex::Direction::Column);
     lists->setAlignItems(Align::Stretch)->setSpacing(6);
 
@@ -1450,7 +1450,7 @@ void barPage(Flex* page, Popup&) {
         name->setSpacing(6);
         if (on) name->add<Icon>("check_circle", 16)->setFill(true)->setColor("primary", false);
         name->add<Label>(l.name)->setSize(14)->setWeight(600);
-        card->add<Label>(l.about)->setSize(12)->setMaxWidth(136)->setMaxLines(2)->setColor("on_surface_variant", false);
+        card->add<Label>(l.about)->setSize(12)->setMaxWidth(136)->setMaxLines(ui::kAllLines)->setColor("on_surface_variant", false);
         card->onClicked = [id = std::string(l.id)](uint32_t button) {
             if (button != BTN_LEFT) return;
             applyBarLook(id);
@@ -1941,7 +1941,7 @@ void batteryPage(Flex* page, Popup&) {
         box->setPadding({20, 14})->setSpacing(8)->setAlignItems(Align::Stretch);
         auto* top = box->add<Flex>(Flex::Direction::Row);
         auto* since = top->add<Label>("");
-        since->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(320)->setMaxLines(2);
+        since->setSize(13)->setColor("on_surface_variant", false)->setMaxWidth(320)->setMaxLines(ui::kAllLines);
         since->grow = true;
         connectedGroup<int>(top, *span, {{1, "24 hours"}, {7, "7 days"}}, [hist, span](int v) {
             *span = v;
@@ -2550,7 +2550,7 @@ void confirmStrip(Node* parent, const std::string& text, const std::string& acti
     strip->setBackground(destructive ? "error_container" : "secondary_container", false);
     strip->add<Icon>(destructive ? "warning" : "help", 22)->setColor(destructive ? "on_error_container" : "on_secondary_container", false);
     auto* label = strip->add<Label>(text);
-    label->setSize(14)->setMaxWidth(440)->setMaxLines(3)->setColor(destructive ? "on_error_container" : "on_secondary_container", false);
+    label->setSize(14)->setMaxWidth(440)->setMaxLines(ui::kAllLines)->setColor(destructive ? "on_error_container" : "on_secondary_container", false);
     label->grow = true;
     pillButton(strip, "Cancel", false, std::move(no));
     auto* go = pillButton(strip, action, true, std::move(yes));
@@ -3034,7 +3034,7 @@ void installedApps(Flex* page) {
                     k->setSize(13)->setColor("on_surface_variant", false);
                     k->fixedWidth = 120;
                     auto* v = f->add<Label>(value);
-                    v->setSize(13)->setMaxWidth(420)->setMaxLines(3);
+                    v->setSize(13)->setMaxWidth(420)->setMaxLines(ui::kAllLines);
                     v->grow = true;
                 };
                 fact("sell", "Version", inf.version);
@@ -4289,7 +4289,7 @@ void flatpakSetup(Flex* body, bool installed) {
     card->add<Label>(installed ? "Add Flathub to get apps" : "Get apps from Flathub")->setSize(20)->setWeight(600);
     card->add<Label>(installed ? "Flatpak is installed, but has nowhere to get apps from yet. Flathub is where most Flatpak apps are published."
                                : "Thousands of apps, each in its own sandbox, updated along with the rest of your system. Install Flatpak to search Flathub and install them here.")
-        ->setSize(14)->setColor("on_surface_variant", false)->setMaxWidth(520)->setMaxLines(3)->setCentered(true);
+        ->setSize(14)->setColor("on_surface_variant", false)->setMaxWidth(520)->setMaxLines(ui::kAllLines)->setCentered(true);
     if (p.busy()) {
         card->add<Label>(p.status())->setSize(13)->setColor("primary", false)->setMaxWidth(520);
         card->add<kit::WavyBar>()->alignSelf = Align::Stretch;
@@ -4349,7 +4349,7 @@ void packagesPage(Flex* page, Popup&) {
                 std::string why;
                 for (const auto& w : rs.why) why += (why.empty() ? "" : ", ") + w;
                 texts->add<Label>("Updated while running: " + why)
-                    ->setSize(13)->setMaxWidth(560)->setMaxLines(2)->setColor("on_tertiary_container", false);
+                    ->setSize(13)->setMaxWidth(560)->setMaxLines(ui::kAllLines)->setColor("on_tertiary_container", false);
                 auto* actions = banner->add<Flex>(Flex::Direction::Row);
                 actions->setSpacing(8)->setJustify(Align::End);
                 if (rs.shell && !rs.system)
@@ -4382,7 +4382,7 @@ void packagesPage(Flex* page, Popup&) {
                                      : p.lastChecked() == 0 ? "Not checked yet"
                                      : p.updates().empty() ? "Your system is up to date"
                                      : std::format("{} update{}", p.updates().size(), p.updates().size() == 1 ? "" : "s");
-            texts->add<Label>(status)->setSize(18)->setWeight(600)->setMaxWidth(560)->setMaxLines(2);
+            texts->add<Label>(status)->setSize(18)->setWeight(600)->setMaxWidth(560)->setMaxLines(ui::kAllLines);
             // The breakdown and the helper on one quieter line
             std::string detail = pending ? std::format("{} official · {} AUR · {} Flatpak", p.count(Packages::Source::Repo),
                                                        p.count(Packages::Source::Aur), p.count(Packages::Source::Flatpak))
@@ -4393,7 +4393,7 @@ void packagesPage(Flex* page, Popup&) {
             // How the last update or install ended
             if (!p.busy() && !p.status().empty())
                 texts->add<Label>(p.status())->setSize(13)->setColor(p.status().starts_with("Didn't") ? "error" : "primary", false)
-                    ->setMaxWidth(560)->setMaxLines(2);
+                    ->setMaxWidth(560)->setMaxLines(ui::kAllLines);
             if (working) hero->add<kit::WavyBar>();
             auto* actions = hero->add<Flex>(Flex::Direction::Row);
             actions->setSpacing(8)->setJustify(Align::End);
@@ -4850,7 +4850,7 @@ const PageDef kPages[] = {
     {"niri-environment", "data_object", "Environment", "Variables for the apps niri starts", niriEnvironmentPage},
     {"mouse", "touchpad_mouse", "Mouse & touchpad", "Touchpad, pointer, scrolling and gestures", mousePage},
     {"keybinds", "keyboard", "Keyboard", "Layouts, typing and shortcuts", keyboardPage},
-    {"hooks", "webhook", "Hooks", "Your own commands when things happen: locking, a new wallpaper, a low battery…", hooksPage},
+    {"hooks", "webhook", "Hooks", "Your own commands when things happen, such as locking, a new wallpaper or a low battery", hooksPage},
     {"packages", "system_update", "Software & updates", "Updates, repositories and mirrors, the AUR and Flathub", packagesPage},
     {"firmware", "developer_board", "Firmware", "Updates for your devices' firmware, from the LVFS", firmwarePage},
     {"about", "info", "About", "This device and the shell", aboutPage},
@@ -4963,7 +4963,7 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
         ->setSize(15)->setWeight(600)->setColor("on_secondary_container", false);
     otherTexts->add<Label>(Hypr ? "The shell: bar, dock, network, sound…"
                                 : niri ? "How windows look and behave" : "Every compositor option, animations and more")
-        ->setSize(12)->setColor("on_secondary_container", false)->setMaxWidth(170)->setMaxLines(2);
+        ->setSize(12)->setColor("on_secondary_container", false)->setMaxWidth(170)->setMaxLines(ui::kAllLines);
     other->add<Icon>("open_in_new", 18)->setColor("on_secondary_container", false);
     other->onClicked = [](uint32_t button) {
         if (button == BTN_LEFT && open) open(Hypr ? "settings" : "hyprsettings");
@@ -4987,7 +4987,7 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
     auto* heroTitle = heroTexts->add<Label>();
     heroTitle->setSize(36)->setWeight(400)->setMaxWidth(680);
     auto* heroBlurb = heroTexts->add<Label>();
-    heroBlurb->setSize(14)->setColor("on_surface_variant", false)->setMaxWidth(680)->setMaxLines(2);
+    heroBlurb->setSize(14)->setColor("on_surface_variant", false)->setMaxWidth(680)->setMaxLines(ui::kAllLines);
     // Close: a tonal round button in the corner
     auto* close = hero->add<Button>();
     pill(close->setBackground("surface_container_highest", false))->setPadding(Insets(10));
@@ -5071,7 +5071,7 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
         // Wraps to a second line, as Android's summaries do, rather than
         // cutting off in the narrow sidebar
         auto* summary = texts->add<Label>(pagesOf(Hypr)[i].blurb);
-        summary->setSize(12)->setMaxWidth(190)->setMaxLines(2);
+        summary->setSize(12)->setMaxWidth(190)->setMaxLines(ui::kAllLines);
         b->onClicked = [show, i](uint32_t) {
             // The page rebuild must not run inside the click that asked for it
             EventLoop::get().defer([show, i] { (*show)(i); });
