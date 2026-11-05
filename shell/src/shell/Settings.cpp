@@ -713,6 +713,7 @@ void soundPage(Flex* page, Popup& popup) {
                             Sounds::Event::Notification},
                  std::tuple{"volume_up", "Volume", "A tick as it steps", "/sounds/volume", Sounds::Event::Volume},
                  std::tuple{"screenshot_region", "Screenshots", "A shutter", "/sounds/screenshots", Sounds::Event::Screenshot},
+                 std::tuple{"delete", "Trash", "Emptied from the dock", "/sounds/trash", Sounds::Event::Trash},
              }) {
             auto r = row(fx, glyph, title, sub);
             kit::iconButton(r.row, "play_arrow", [sample] { Sounds::preview(sample); }, 20);
@@ -1768,6 +1769,7 @@ void dockPage(Flex* page, Popup&) {
     sliderRow(g, "photo_size_select_small", "Icon size", "/dock/iconSize", 44, 32, 64, 2,
               [](double v) { return std::format("{:.0f} px", v); });
     switchRow(g, "apps", "Running apps", "Apps that are open but not pinned, after a divider", "/dock/showRunning", true);
+    switchRow(g, "delete", "Trash", "At the end: click to open it, right-click to empty it", "/dock/trash", true);
     auto* dlook = group(page, "Look", "How the dock sits on what's behind it");
     switchRow(dlook, "blur_on", "Blur behind the dock", Theme::get().blur() ? "" : "Blur is off in Look & feel", "/dock/blur", true);
     sliderRow(dlook, "opacity", "Opacity", "/dock/opacity", Theme::get().panelOpacity(), 0.2, 1, 0.05, percent);

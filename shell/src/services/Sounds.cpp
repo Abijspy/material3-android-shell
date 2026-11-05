@@ -21,6 +21,7 @@ const char* file(Sounds::Event e) {
     case Sounds::Event::Notification: return "message-new-instant.oga";
     case Sounds::Event::Volume: return "audio-volume-change.oga";
     case Sounds::Event::Screenshot: return "screen-capture.oga";
+    case Sounds::Event::Trash: return "trash-empty.oga";
     }
     return "bell.oga";
 }
@@ -32,6 +33,7 @@ const char* key(Sounds::Event e) {
     case Sounds::Event::Notification: return "/sounds/notifications";
     case Sounds::Event::Volume: return "/sounds/volume";
     case Sounds::Event::Screenshot: return "/sounds/screenshots";
+    case Sounds::Event::Trash: return "/sounds/trash";
     }
     return "/sounds/enabled";
 }

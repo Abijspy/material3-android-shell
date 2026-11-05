@@ -4,6 +4,7 @@
 #include "render/Images.h"
 #include "services/Compositor.h"
 #include "services/Search.h"
+#include "services/Trash.h"
 #include "shell/Panels.h"
 #include "ui/Controls.h"
 #include "ui/Theme.h"
@@ -156,6 +157,9 @@ Dock::Dock(wl::Output* output) : m_output(output) {
     });
     // Pinned apps that were just installed (or removed)
     m_apps = Apps::get().changed.connect([this] { refresh(); });
+    // The trash filled or emptied
+    Trash::get().start();
+    m_trash = Trash::get().changed.connect([this] { refresh(); });
     rebuild();
 }
 
@@ -369,13 +373,36 @@ void Dock::refresh() {
             Compositor::get().focusWindow(copy.windows[next].id);
         };
     };
-    for (const auto& e : entries) add(e);
-    if (!running.empty()) {
+    auto divider = [&] {
         auto* div = m_card->add<Flex>(Flex::Direction::Row);
         div->setBackground("outline_variant", false)->setRadius(Radii(1));
         div->fixedWidth = 2;
         div->fixedHeight = size * 0.6f;
+    };
+    for (const auto& e : entries) add(e);
+    if (!running.empty()) {
+        divider();
         for (const auto& e : running) add(e);
+    }
+
+    // The trash, last, after a divider: full or empty at a glance
+    if (Config::get().value<bool>("/dock/trash", true)) {
+        divider();
+        const int n = Trash::get().count();
+        auto* trash = m_card->add<DockIcon>(n > 0 ? "user-trash-full" : "user-trash", size, 0, false, most, !taskbar);
+        m_magnified.push_back({trash, trash->image(), size});
+        if (most > 1) {
+            trash->stateLayer = ColorRef::none();
+            trash->tooltipLift = size * (most - 1);
+        }
+        trash->tooltip = n == 0 ? "Trash · empty" : std::format("Trash · {} item{}", n, n == 1 ? "" : "s");
+        trash->onClicked = [trash](uint32_t button) {
+            if (button == BTN_RIGHT) {
+                if (panels::openAboveDock) panels::openAboveDock("dockmenu", "@trash", trash->rect().x + trash->rect().w / 2);
+                return;
+            }
+            Trash::get().open();
+        };
     }
 
     // Autohide stays out on an empty workspace

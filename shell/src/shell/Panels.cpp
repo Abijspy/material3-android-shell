@@ -11,6 +11,7 @@
 #include "services/Search.h"
 #include "shell/Dock.h"
 #include "services/Network.h"
+#include "services/Trash.h"
 #include "ui/Controls.h"
 
 #include <cmath>
@@ -498,7 +499,64 @@ void bluetoothView(Flex* body, const std::function<void()>& back) {
 
 // ── Dock menu ──
 
+// The trash's: open it, or empty it (a second tap to be sure)
+void trashMenu(Flex* card, Popup& popup) {
+    const int n = Trash::get().count();
+    card->setPadding(Insets(10))->setSpacing(2);
+    auto* head = card->add<Flex>(Flex::Direction::Row);
+    head->setPadding({10, 8, 10, 10})->setSpacing(12);
+    const std::string icon = n > 0 ? "user-trash-full" : "user-trash";
+    head->add<ImageView>(28, [icon](float scale, int& w, int& h) -> GLuint {
+        auto* t = Images::get().icon(icon, static_cast<int>(std::lround(28 * scale)));
+        if (!t) return 0;
+        w = t->width;
+        h = t->height;
+        return t->id;
+    });
+    auto* texts = head->add<Flex>(Flex::Direction::Column);
+    texts->setAlignItems(Align::Start);
+    texts->add<Label>("Trash")->setSize(15)->setWeight(600);
+    const std::string items = std::format("{} item{}", n, n == 1 ? "" : "s");
+    texts->add<Label>(n == 0 ? "Empty" : items)->setSize(12)->setColor("on_surface_variant", false);
+
+    auto* open = card->add<Button>(Flex::Direction::Row);
+    pill(open)->setPadding({14, 10})->setSpacing(12);
+    open->pressedRadius = 10;
+    open->add<Icon>("folder_open", 20)->setColor("on_surface_variant", false);
+    open->add<Label>("Open")->setSize(14);
+    open->onClicked = [&popup](uint32_t button) {
+        if (button != BTN_LEFT) return;
+        Trash::get().open();
+        popup.close();
+    };
+    if (n == 0) return;
+    auto* empty = card->add<Button>(Flex::Direction::Row);
+    pill(empty)->setPadding({14, 10})->setSpacing(12);
+    empty->pressedRadius = 10;
+    auto* glyph = empty->add<Icon>("delete", 20);
+    glyph->setColor("error", false);
+    auto* label = empty->add<Label>("Empty trash");
+    label->setSize(14)->setColor("error", false);
+    label->setMaxLines(ui::kAllLines)->setMaxWidth(200);
+    auto armed = std::make_shared<bool>(false);
+    empty->onClicked = [empty, glyph, label, armed, items, &popup](uint32_t button) {
+        if (button != BTN_LEFT) return;
+        if (!*armed) {
+            *armed = true;
+            glyph->setText("delete_forever");
+            glyph->setColor("on_error_container");
+            label->setText("Delete " + items + " for good? Tap again");
+            label->setColor("on_error_container");
+            empty->setBackground("error_container");
+            return;
+        }
+        Trash::get().empty();
+        popup.close();
+    };
+}
+
 void dockMenu(Flex* card, Popup& popup, const std::string& arg) {
+    if (arg == "@trash") return trashMenu(card, popup);
     const auto nl = arg.find('|');
     const std::string id = arg.substr(0, nl), cls = nl == std::string::npos ? "" : arg.substr(nl + 1);
     auto lower = [](std::string t) {
