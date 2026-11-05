@@ -29,13 +29,14 @@ public:
     void onRelease() override;
     void onClick(uint32_t button) override;
     // Off to the side, then dismissed
-    void flyOff(float direction);
+    void flyOff(float direction, int snoozeMinutes = 0); // snoozed (not just dismissed) when given
     // A toast arriving: its picture pops, then its words and buttons follow
     void enter();
 
 private:
     uint32_t m_id;
     ui::Node* m_avatar = nullptr;
+    ui::Flex* m_snooze = nullptr; // its choices, shown by the snooze button
     std::vector<ui::Node*> m_parts; // the words, the body, the buttons
     float m_x0 = 0, m_dx = 0;
     bool m_pressing = false, m_swiping = false, m_swiped = false;

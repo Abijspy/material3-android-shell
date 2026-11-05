@@ -71,6 +71,11 @@ public:
 
     void invoke(uint32_t id, const std::string& actionKey);
     void dismiss(uint32_t id);
+    // Out of the way until `minutes` from now, then shown again (as new:
+    // its app, picture and words; not its buttons). Kept across restarts
+    // in ~/.local/state/material3ui/snoozed.json
+    void snooze(uint32_t id, int minutes);
+    int snoozedCount() const;
     void clear();
 
     Signal<uint32_t> posted;  // new or replaced: show a toast

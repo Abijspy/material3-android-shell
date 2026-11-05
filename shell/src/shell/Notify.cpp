@@ -176,6 +176,14 @@ NotificationCard::NotificationCard(const Notifications::Notification& n, bool to
             if (onExpand) onExpand();
         };
     }
+    // Snooze: back later, as new
+    auto* later = head->add<Button>();
+    pill(later)->setPadding(Insets(4));
+    later->add<Icon>("snooze", 18)->setColor("on_surface_variant", false);
+    later->tooltip = "Snooze";
+    later->onClicked = [this](uint32_t) {
+        if (m_snooze) m_snooze->setVisible(!m_snooze->visible());
+    };
     auto* close = head->add<Button>();
     pill(close)->setPadding(Insets(4));
     close->add<Icon>("close", 18)->setColor("on_surface_variant", false);
@@ -201,6 +209,34 @@ NotificationCard::NotificationCard(const Notifications::Notification& n, bool to
             b->add<Label>(a.label)->setSize(13)->setWeight(500)->setColor("on_secondary_container", false);
             b->onClicked = [id, key = a.key](uint32_t) { Notifications::get().invoke(id, key); };
         }
+    }
+
+    // Snooze's choices, under it all until asked for
+    m_snooze = add<Flex>(Direction::Row);
+    m_snooze->setSpacing(8)->setJustify(Align::End);
+    m_snooze->wrap = true;
+    m_snooze->setVisible(false);
+    m_snooze->add<Icon>("snooze", 18)->setColor("on_surface_variant", false);
+    // 0: tomorrow at 9, worked out when chosen
+    for (const auto& [label, minutes] : {std::pair{"15 min", 15}, std::pair{"1 hour", 60}, std::pair{"3 hours", 180}, std::pair{"Tomorrow 9:00", 0}}) {
+        auto* b = m_snooze->add<Button>();
+        pill(b->setBackground("secondary_container", false))->setPadding({12, 6});
+        b->add<Label>(label)->setSize(12)->setWeight(500)->setColor("on_secondary_container", false);
+        const int m = minutes;
+        b->onClicked = [this, m](uint32_t) {
+            int minutes = m;
+            if (minutes == 0) {
+                std::time_t now = std::time(nullptr);
+                std::tm tm{};
+                localtime_r(&now, &tm);
+                tm.tm_mday += 1;
+                tm.tm_hour = 9;
+                tm.tm_min = tm.tm_sec = 0;
+                tm.tm_isdst = -1;
+                minutes = static_cast<int>((std::mktime(&tm) - now + 59) / 60);
+            }
+            flyOff(1, minutes);
+        };
     }
 }
 
@@ -245,12 +281,17 @@ void NotificationCard::onClick(uint32_t button) {
     Button::onClick(button);
 }
 
-void NotificationCard::flyOff(float direction) {
+void NotificationCard::flyOff(float direction, int snoozeMinutes) {
     setTranslateX(direction * (rect().w + 40));
     setOpacity(0);
     const uint32_t id = m_id;
     // By id: dismissed even if the card is rebuilt meanwhile
-    EventLoop::get().addTimer(motion::ms(220), [id] { Notifications::get().dismiss(id); });
+    EventLoop::get().addTimer(motion::ms(220), [id, snoozeMinutes] {
+        if (snoozeMinutes > 0)
+            Notifications::get().snooze(id, snoozeMinutes);
+        else
+            Notifications::get().dismiss(id);
+    });
 }
 
 void NotificationCard::enter() {

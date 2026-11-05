@@ -1,5 +1,7 @@
 #include "services/Notifications.h"
 
+#include "core/Process.h"
+
 #include "core/Config.h"
 #include "core/EventLoop.h"
 #include "core/Guard.h"
@@ -10,6 +12,7 @@
 #include <set>
 #include <cerrno>
 #include <filesystem>
+#include <ctime>
 #include <fstream>
 #include <systemd/sd-bus.h>
 
@@ -53,12 +56,72 @@ Notifications& Notifications::get() {
     return instance;
 }
 
+namespace {
+std::string snoozedFile() {
+    return paths::stateDir() + "/snoozed.json";
+}
+nlohmann::json readSnoozed() {
+    try {
+        std::ifstream in(snoozedFile());
+        if (in) return nlohmann::json::parse(in);
+    } catch (...) {
+    }
+    return nlohmann::json::array();
+}
+void writeSnoozed(const nlohmann::json& j) {
+    std::error_code ec;
+    std::filesystem::create_directories(paths::stateDir(), ec);
+    std::ofstream(snoozedFile() + ".tmp") << j.dump(1);
+    std::filesystem::rename(snoozedFile() + ".tmp", snoozedFile(), ec);
+}
+// Those due: shown again, out of the list
+void wakeSnoozed() {
+    auto all = readSnoozed();
+    if (!all.is_array() || all.empty()) return;
+    const std::time_t now = std::time(nullptr);
+    nlohmann::json left = nlohmann::json::array();
+    for (const auto& n : all) {
+        if (n.value("at", static_cast<std::time_t>(0)) > now) {
+            left.push_back(n);
+            continue;
+        }
+        const std::string icon = !n.value("image", "").empty() ? n.value("image", "") : n.value("icon", "");
+        std::vector<std::string> cmd = {"notify-send", "-a", n.value("app", "Reminder")};
+        if (!icon.empty()) cmd.insert(cmd.end(), {"-i", icon});
+        cmd.push_back(n.value("summary", "Reminder"));
+        if (!n.value("body", "").empty()) cmd.push_back(n.value("body", ""));
+        run(cmd, nullptr);
+    }
+    if (left.size() != all.size()) writeSnoozed(left);
+}
+} // namespace
+
+void Notifications::snooze(uint32_t id, int minutes) {
+    const Notification* n = find(id);
+    if (!n || minutes <= 0) return;
+    auto all = readSnoozed();
+    if (!all.is_array()) all = nlohmann::json::array();
+    all.push_back({{"app", n->app}, {"icon", n->appIcon}, {"image", n->imagePath}, {"summary", n->summary}, {"body", n->body},
+                   {"at", std::time(nullptr) + static_cast<std::time_t>(minutes) * 60}});
+    writeSnoozed(all);
+    dismiss(id);
+}
+
+int Notifications::snoozedCount() const {
+    const auto all = readSnoozed();
+    return all.is_array() ? static_cast<int>(all.size()) : 0;
+}
+
 Notifications::Notifications() {
     loadHistory();
     auto& bus = dbus::Bus::session();
     if (!bus.connected()) return;
     // A test instance (M3_INSTANCE) leaves serving them to your shell
     if (!paths::instance().empty()) return;
+    // Snoozed ones come back when due (a look every 20 s), from this
+    // shell only, so never twice
+    EventLoop::get().addTimer(20 * 1000, [] { wakeSnoozed(); }, true);
+    EventLoop::get().addTimer(3000, [] { wakeSnoozed(); }); // ones due while the shell was off
     sd_bus_add_object(bus.raw(), &m_object, kPath, onMessage, this);
     // Don't steal the name from a running daemon (the QML shell, mako…)
     sd_bus_request_name_async(bus.raw(), nullptr, kName, 0,
