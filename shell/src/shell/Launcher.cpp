@@ -103,9 +103,12 @@ private:
         for (auto& c : q) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         std::vector<std::pair<int, const SettingsHit*>> found;
         for (const auto& h : settingsIndex(m_popup)) {
-            std::string t = h.text;
+            // A page by its title or what it's for ("bluetooth": Connected devices)
+            std::string t = h.text, b = h.isPage ? h.blurb : std::string();
             for (auto& c : t) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            const auto at = t.find(q);
+            for (auto& c : b) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            auto at = t.find(q);
+            if (at == std::string::npos && b.find(q) != std::string::npos) at = 1; // in the description: after title matches
             if (at == std::string::npos) continue;
             // Pages first, then names that start with it
             found.push_back({(h.isPage ? 0 : 2) + (at == 0 ? 0 : 1), &h});
