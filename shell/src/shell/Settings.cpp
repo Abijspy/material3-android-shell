@@ -29,6 +29,7 @@
 #include "services/Currency.h"
 #include "services/AutoSaver.h"
 #include "services/DataUsage.h"
+#include "services/NoiseSuppression.h"
 #include "services/Equalizer.h"
 #include "shell/LiveWallpaper.h"
 #include "services/SessionApps.h"
@@ -717,6 +718,22 @@ void soundPage(Flex* page, Popup& popup) {
             sw->setChecked(Config::get().value<bool>(pointer, true), false);
             sw->onToggled = [pointer](bool on) { Config::get().set(pointer, on); };
         }
+    }
+    // The microphone: noise suppression (RNNoise), installed with a tap
+    auto* mic = group(page, "Microphone");
+    if (!NoiseSuppression::pluginInstalled()) {
+        auto r = row(mic, "noise_aware", "Noise suppression", "Takes out fans, keys and the room's noise on calls: needs the noise-suppression-for-voice package");
+        pillButton(r.row, "Install", true, [] {
+            Packages::get().installTools("noise suppression", {NoiseSuppression::kPackage}, [](bool) {
+                EventLoop::get().defer([] { reshowPage("sound"); });
+            });
+        }, "download");
+    } else {
+        switchRow(mic, "noise_aware", "Noise suppression", "Takes out fans, keys and the room's noise: apps get your voice", "/microphone/noiseSuppression",
+                  false, [](bool) { reshowPage("sound"); });
+        if (NoiseSuppression::get().on())
+            choiceRow<int>(mic, "tune", "Strength", "Stronger cuts more noise, and may clip quiet speech", "/microphone/noiseStrength", 50,
+                           {{20, "Light"}, {50, "Normal"}, {80, "Strong"}});
     }
     // The equaliser: its switch, presets, and each band
     auto* eq = group(page, "Equaliser", "Shapes what you hear on every output, through PipeWire");

@@ -101,6 +101,7 @@ sources = files(
   'src/services/Equalizer.cpp',
   'src/services/AutoSaver.cpp',
   'src/services/WorldClock.cpp',
+  'src/services/NoiseSuppression.cpp',
   'src/services/Privacy.cpp',
   'src/services/DataUsage.cpp',
   'src/services/Notes.cpp',
