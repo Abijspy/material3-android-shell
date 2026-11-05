@@ -19,6 +19,7 @@ struct SearchResult {
     std::function<void()> activate;
     std::string image = {}; // a picture to show as a thumbnail (clipboard images, videos)
     bool video = false; // the thumbnail is a video's frame
+    bool wrap = false;  // its title and subtitle whole, on as many lines as they take (a definition), the row as tall
 };
 
 // Installed applications from XDG .desktop files, ranked by how often they
@@ -77,6 +78,8 @@ std::string webSearchUrl(const std::string& engine, const std::string& q);
 std::vector<SearchResult> query(const std::string& text);
 // Providers that run a process report back asynchronously
 void queryAsync(const std::string& text, std::function<void(std::vector<SearchResult>)> done);
+// A query answered by a lookup (a definition: "define <word>"), as # and @ are
+bool asyncWord(const std::string& text);
 // "#…": the clipboard history as it stands (no refresh), matching `q`
 std::vector<SearchResult> clipboard(const std::string& q);
 } // namespace search

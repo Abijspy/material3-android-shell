@@ -642,8 +642,59 @@ std::vector<SearchResult> clipboard(const std::string& q) {
     return out;
 }
 
+namespace {
+// "define <word>" (one word, or a short phrase): the word, else ""
+std::string definitionWord(const std::string& text) {
+    std::string t = text;
+    for (auto& ch : t) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    if (!t.starts_with("define ")) return {};
+    std::string w = trimmed(t.substr(7));
+    return w.size() >= 2 && w.size() <= 40 ? w : "";
+}
+} // namespace
+
+bool asyncWord(const std::string& text) {
+    return Config::get().value<bool>("/spotlight/define", true) && !definitionWord(trimmed(text)).empty();
+}
+
 void queryAsync(const std::string& raw, std::function<void(std::vector<SearchResult>)> done) {
     const std::string text = trimmed(raw);
+    // A word's meaning (dictionaryapi.dev, free, no key): each sense, an example under it
+    if (const std::string word = asyncWord(text) ? definitionWord(text) : ""; !word.empty()) {
+        static std::map<std::string, std::vector<SearchResult>> cache;
+        if (auto it = cache.find(word); it != cache.end()) return done(it->second);
+        run({"curl", "-fsS", "--max-time", "8", "https://api.dictionaryapi.dev/api/v2/entries/en/" + urlEncoded(word)},
+            [word, done](int code, const std::string& out) {
+                std::vector<SearchResult> rows;
+                try {
+                    if (code != 0) throw std::runtime_error("none");
+                    const auto j = nlohmann::json::parse(out);
+                    const auto& e = j.at(0);
+                    const std::string phonetic = e.value("phonetic", "");
+                    for (const auto& m : e.value("meanings", nlohmann::json::array())) {
+                        const std::string part = m.value("partOfSpeech", "");
+                        for (const auto& d : m.value("definitions", nlohmann::json::array())) {
+                            const std::string def = d.value("definition", "");
+                            if (def.empty()) continue;
+                            std::string sub = word + (phonetic.empty() ? "" : "  " + phonetic) + (part.empty() ? "" : " · " + part);
+                            if (const std::string ex = d.value("example", ""); !ex.empty()) sub += " · “" + ex + "”";
+                            rows.push_back({def, sub, "", "menu_book", "", 100.0 - static_cast<double>(rows.size()), [def] { copy(def); }, {}, false, true});
+                            if (rows.size() >= 6) break;
+                        }
+                        if (rows.size() >= 6) break;
+                    }
+                } catch (...) {
+                    rows.clear();
+                }
+                if (rows.empty())
+                    rows.push_back({std::format("No definition for “{}”", word), code == 0 ? "Not in the dictionary" : "The dictionary couldn't be reached", "",
+                                    "menu_book", "", 0, {}});
+                else
+                    cache[word] = rows;
+                done(rows);
+            });
+        return;
+    }
     if (text.starts_with('#')) {
         const std::string q = trimmed(text.substr(1));
         Clipboard::get().refresh([q, done] { done(clipboard(q)); });

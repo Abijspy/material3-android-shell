@@ -76,7 +76,7 @@ private:
         const std::string text = m_field->text();
         const int token = ++m_token;
         show(search::query(text));
-        if (text.starts_with('#') || text.starts_with('@')) {
+        if (text.starts_with('#') || text.starts_with('@') || search::asyncWord(text)) {
             // Process-backed providers: wait for typing to pause, drop stale replies
             auto alive = m_alive;
             EventLoop::get().debounce(m_debounce, 150, [this, text, token, alive] {
@@ -96,7 +96,9 @@ private:
             const auto& r = m_results[i];
             auto* row = m_list->add<Button>(Direction::Row);
             row->setPadding({14, 8})->setSpacing(14)->setRadius(Radii(18));
-            row->fixedHeight = kRowHeight;
+            // A long answer (a definition) wraps, its row growing with it
+            if (r.wrap) row->minHeight = kRowHeight;
+            else row->fixedHeight = kRowHeight;
             if (!r.image.empty()) {
                 // A copied picture, a screenshot or a video's frame
                 const std::string image = r.image;
@@ -131,9 +133,10 @@ private:
             auto* texts = row->add<Flex>(Direction::Column);
             texts->setAlignItems(Align::Start)->setSpacing(1);
             texts->grow = true;
-            texts->add<Label>(r.title)->setSize(15)->setWeight(500)->setMaxWidth(520);
+            // A long answer shows whole: as many lines as its sentence takes
+            texts->add<Label>(r.title)->setSize(15)->setWeight(500)->setMaxWidth(520)->setMaxLines(r.wrap ? 40 : 1);
             if (!r.subtitle.empty())
-                texts->add<Label>(r.subtitle)->setSize(12)->setColor("on_surface_variant", false)->setMaxWidth(520);
+                texts->add<Label>(r.subtitle)->setSize(12)->setColor("on_surface_variant", false)->setMaxWidth(520)->setMaxLines(r.wrap ? 40 : 1);
             row->onClicked = [this, i](uint32_t) {
                 m_selected = static_cast<int>(i);
                 EventLoop::get().defer([this, alive = m_alive] {
@@ -157,12 +160,14 @@ private:
             m_rows[static_cast<size_t>(m_selected)]->setBackground(ColorRef::none());
         m_selected = index;
         m_rows[static_cast<size_t>(index)]->setBackground("secondary_container");
-        // Keep the selection inside the visible window
-        const float top = static_cast<float>(index) * (kRowHeight + kRowGap);
+        // Keep the selection inside the visible window (rows may differ in height)
+        const auto* sel = m_rows[static_cast<size_t>(index)];
+        const float top = sel->rect().h > 0 ? sel->rect().y - m_list->rect().y : static_cast<float>(index) * (kRowHeight + kRowGap);
+        const float height = sel->rect().h > 0 ? sel->rect().h : kRowHeight;
         const float view = m_scroll->maxHeight;
         const float current = m_scrollTarget;
         if (top < current) m_scrollTarget = top;
-        else if (top + kRowHeight > current + view) m_scrollTarget = top + kRowHeight - view;
+        else if (top + height > current + view) m_scrollTarget = top + height - view;
         m_scroll->scrollTo(m_scrollTarget);
     }
 
