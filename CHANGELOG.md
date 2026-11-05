@@ -1,5 +1,21 @@
 # Changelog
 
+## v6.3.3 — 2026-11-05
+
+- **Screenshot editor.** After a capture, mark up the screenshot in the shell's own editor: pen, arrow, box, highlighter, text, pixelate and crop, in seven colours and three sizes, with undo and redo. Copy it (Ctrl+C) or save it (Ctrl+S). Open it from the "Screenshot saved" notification's Edit button, have it open after every capture (Settings → Tools → Screenshots), or edit any picture with `material3ui msg edit <file>`. Pixelate blurs each block to its average colour, so nothing underneath can be read back.
+- **Microphone noise suppression.** Settings → Sound → Microphone → Noise suppression filters out fans, typing and room noise for every app that records you, at Light, Normal or Strong. It uses RNNoise through PipeWire and installs it with a tap if it's missing.
+- **Snooze a notification.** A snooze button next to close on every notification gives 15 minutes, 1 hour, 3 hours or tomorrow at 9:00. When the time comes, the notification shows again as new. Snoozed notifications survive a restart.
+- **Do not disturb exceptions.** Settings → Notifications → Allowed in Do not disturb has a switch for each app that has sent you a notification. The ones you switch on (calls, messages, your calendar) still pop up, with their sound, while Do not disturb is on.
+- **Trash in the dock.** The trash sits at the end of the dock and shows whether it's full or empty. Click it to open it in your file manager, where things can be restored. Right-click it to empty it, with a second tap to confirm. Settings → Dock can hide it, and Settings → Sound has an optional sound for emptying it.
+- **Badges and progress on dock icons.** Apps that report to a dock (Chromium and Electron apps, Nautilus, Telegram, Thunderbird and others) show an unread count on their icon, a progress bar for downloads and copies, and a red dot when they need your attention. Turn it off in Settings → Dock.
+- **Settings in Spotlight.** Type "bluetooth", "night light" or "wallpaper" to see the matching Settings pages and settings, including Hyprland's or niri's own. Enter opens Settings at that setting and highlights it.
+- **Recent files in Spotlight.** An empty Spotlight shows the three files you opened last. As you type, files whose names match appear, and they come first in the `@` file search. Pictures get a thumbnail.
+- **Timers and reminders from Spotlight.** Type "timer 10 min", "timer for 1 hour 30" or "remind me in 20 minutes to call mum", and Enter starts it.
+- **Word definitions in Spotlight.** Type "define serendipity" to see each meaning of the word, with its pronunciation and an example. Enter copies a meaning.
+- **Caps Lock and Num Lock.** Turning either on or off shows it briefly on screen. While Caps Lock is on, "Caps Lock is on" shows under the password field of the lock screen and the login screen. Switch the on-screen indicator off in Settings → Keyboard.
+- **Text shown in full.** Descriptions, notes and hints no longer end in "…": they take as many lines as they need, and their rows grow with them. In Messages, each conversation's last message and every bubble shows whole, and Spotlight's answers grow to fit their text.
+- **The desktop menu opens Niri Settings again.** On niri, its Niri Settings item opened nothing.
+
 ## v6.3.2 — 2026-11-04
 
 - **Live wallpapers.** Wallpaper & style → Live wallpaper: a video plays as your wallpaper, looping, with desktop widgets and their blur over it as usual. It's decoded on the graphics card where possible and pauses while the screen is locked and, if you like, on battery. A frame of it sets your colours and the lock screen. Switch it off and your previous wallpaper comes back.
