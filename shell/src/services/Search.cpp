@@ -19,6 +19,7 @@
 #include <fstream>
 #include <map>
 #include <nlohmann/json.hpp>
+#include <regex>
 #include <set>
 #include <sstream>
 
@@ -485,6 +486,62 @@ std::string webSearchUrl(const std::string& engine, const std::string& q) {
     return "https://duckduckgo.com/?q=" + e;
 }
 
+namespace {
+// Files opened lately, as apps record them (~/.local/share/recently-used.xbel):
+// newest first, only those still there; read again when the file changes
+struct Recent {
+    std::string path;
+    std::string when; // ISO time, sorts as text
+};
+const std::vector<Recent>& recentFiles() {
+    static std::vector<Recent> list;
+    static fs::file_time_type seen{};
+    const std::string file = paths::home() + "/.local/share/recently-used.xbel";
+    std::error_code ec;
+    const auto mtime = fs::last_write_time(file, ec);
+    if (ec || mtime == seen) return list;
+    seen = mtime;
+    list.clear();
+    std::ifstream in(file);
+    const std::string xml((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    static const std::regex bookmark(R"re(<bookmark\s[^>]*href="file://([^"]+)"[^>]*>)re");
+    static const std::regex stamp(R"re((?:visited|modified)="([^"]+)")re");
+    for (auto it = std::sregex_iterator(xml.begin(), xml.end(), bookmark); it != std::sregex_iterator(); ++it) {
+        std::string path;
+        // %20 and the like, as URIs write them
+        const std::string raw = (*it)[1].str();
+        for (size_t i = 0; i < raw.size(); ++i) {
+            if (raw[i] == '%' && i + 2 < raw.size() && std::isxdigit(static_cast<unsigned char>(raw[i + 1])) && std::isxdigit(static_cast<unsigned char>(raw[i + 2]))) {
+                path += static_cast<char>(std::stoi(raw.substr(i + 1, 2), nullptr, 16));
+                i += 2;
+            } else {
+                path += raw[i];
+            }
+        }
+        std::string when;
+        const std::string tag = (*it)[0].str();
+        for (auto s = std::sregex_iterator(tag.begin(), tag.end(), stamp); s != std::sregex_iterator(); ++s) when = std::max(when, (*s)[1].str());
+        if (fs::is_regular_file(path, ec)) list.push_back({path, when});
+    }
+    std::ranges::sort(list, std::greater{}, &Recent::when);
+    return list;
+}
+
+SearchResult recentRow(const std::string& path, double score) {
+    const fs::path p(path);
+    std::string ext = p.extension().string();
+    for (auto& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    const bool picture = ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp" || ext == ".gif";
+    std::string shown = p.parent_path().string();
+    if (shown.starts_with(paths::home())) shown = "~" + shown.substr(paths::home().size());
+    SearchResult r{p.filename().string(), "Recent · " + shown, "",
+                   picture ? "image" : ext == ".pdf" ? "picture_as_pdf" : ext == ".mp4" || ext == ".mkv" || ext == ".webm" ? "movie" : "description", "", score,
+                   [path] { run({"xdg-open", path}, nullptr); }};
+    if (picture) r.image = path;
+    return r;
+}
+} // namespace
+
 std::vector<SearchResult> query(const std::string& raw) {
     std::vector<SearchResult> out;
     const std::string text = trimmed(raw);
@@ -514,6 +571,23 @@ std::vector<SearchResult> query(const std::string& raw) {
     }
     if (text.starts_with('#') || text.starts_with('@')) return out; // async providers
 
+    // Recent files: the last three on an empty search, any whose name has
+    // what's typed in it after that (Settings → Spotlight)
+    if (Config::get().value<bool>("/spotlight/recent", true)) {
+        std::string q = text;
+        for (auto& c : q) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        int shown = 0;
+        for (const auto& f : recentFiles()) {
+            if (q.empty() ? shown >= 3 : shown >= 4) break;
+            if (!q.empty()) {
+                std::string name = fs::path(f.path).filename().string();
+                for (auto& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                if (q.size() < 3 || name.find(q) == std::string::npos) continue;
+            }
+            out.push_back(recentRow(f.path, q.empty() ? 1000.0 - shown : 150.0 - shown));
+            ++shown;
+        }
+    }
     for (const auto& app : Apps::get().all()) {
         double s = text.empty() ? 1 : std::max({fuzzyScore(text, app.name), fuzzyScore(text, app.generic) * 0.7,
                                                 fuzzyScore(text, app.keywords) * 0.6, fuzzyScore(text, app.id) * 0.5});
@@ -653,6 +727,7 @@ std::string definitionWord(const std::string& text) {
 }
 } // namespace
 
+
 bool asyncWord(const std::string& text) {
     return Config::get().value<bool>("/spotlight/define", true) && !definitionWord(trimmed(text)).empty();
 }
@@ -704,8 +779,19 @@ void queryAsync(const std::string& raw, std::function<void(std::vector<SearchRes
         const std::string q = trimmed(text.substr(1));
         if (q.size() < 2) return done({{"Search files", "Type at least two characters", "", "search", "", 0, {}}});
         run({"fd", "--max-results", "40", "--hidden", "--exclude", ".git", "--", q, paths::home()},
-            [done](int code, const std::string& output) {
+            [done, q](int code, const std::string& output) {
                 std::vector<SearchResult> out;
+                // Recent files that match first
+                std::string lq = q;
+                for (auto& c : lq) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                std::set<std::string> listed;
+                for (const auto& f : recentFiles()) {
+                    std::string name = fs::path(f.path).filename().string();
+                    for (auto& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                    if (name.find(lq) == std::string::npos || listed.size() >= 5) continue;
+                    listed.insert(f.path);
+                    out.push_back(recentRow(f.path, 2));
+                }
                 if (code < 0) {
                     out.push_back({"File search needs fd", "Install the fd package", "", "search_off", "", 0, {}});
                     return done(out);
@@ -715,6 +801,7 @@ void queryAsync(const std::string& raw, std::function<void(std::vector<SearchRes
                 while (std::getline(ss, path)) {
                     const fs::path p(path);
                     const bool dir = path.ends_with('/');
+                    if (listed.contains(path)) continue; // already above, as recent
                     std::string shown = path;
                     if (shown.starts_with(paths::home())) shown = "~" + shown.substr(paths::home().size());
                     out.push_back({dir ? p.parent_path().filename().string() : p.filename().string(), shown, "",
