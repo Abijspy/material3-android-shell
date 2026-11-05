@@ -6,6 +6,8 @@
 #include <cctype>
 #include <format>
 
+#include <sstream>
+
 namespace m3 {
 
 std::time_t Alarms::next(const Alarm& a, std::time_t from) {
@@ -102,6 +104,56 @@ int64_t Alarms::parseLength(const std::string& input) {
         return 0;
     }
     return total > 0 && total <= 100LL * 3600000 ? total : 0;
+}
+
+bool Alarms::parseTimerQuery(const std::string& input, int64_t& ms, std::string& label) {
+    std::string q;
+    for (char c : input) q += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    while (!q.empty() && q.back() == ' ') q.pop_back();
+    q.erase(0, q.find_first_not_of(' '));
+    // Words for units as parseLength reads them ("1 hour and 30 minutes" → "1h30m")
+    auto length = [](std::string t) -> int64_t {
+        std::string out;
+        std::stringstream ss(t);
+        for (std::string w; ss >> w;) {
+            if (w == "and" || w == "a" || w == "an") {
+                if (w != "and") out += "1";
+                continue;
+            }
+            if (w == "hour" || w == "hours" || w == "hr" || w == "hrs") w = "h";
+            else if (w == "minute" || w == "minutes" || w == "mins" || w == "min") w = "m";
+            else if (w == "second" || w == "seconds" || w == "secs" || w == "sec") w = "s";
+            else if (w == "half" && !out.empty() && out.back() == 'h') continue;
+            out += w;
+        }
+        return out.empty() || out.find_first_of("0123456789") == std::string::npos ? 0 : parseLength(out);
+    };
+    label.clear();
+    std::string rest;
+    if (q.starts_with("remind me ")) {
+        rest = q.substr(10);
+        // "in <length> to <what>" or "to <what> in <length>"
+        if (rest.starts_with("in ")) {
+            const auto to = rest.find(" to ");
+            ms = length(rest.substr(3, to == std::string::npos ? std::string::npos : to - 3));
+            if (to != std::string::npos) label = input.substr(input.size() - (rest.size() - to - 4));
+        } else if (rest.starts_with("to ")) {
+            const auto in = rest.rfind(" in ");
+            if (in == std::string::npos) return false;
+            ms = length(rest.substr(in + 4));
+            label = input.substr(input.size() - rest.size() + 3, in - 3);
+        } else {
+            return false;
+        }
+        if (label.empty()) label = "Reminder";
+        return ms > 0;
+    }
+    if (q.starts_with("timer for ")) rest = q.substr(10);
+    else if (q.starts_with("timer ")) rest = q.substr(6);
+    else if (q.ends_with(" timer")) rest = q.substr(0, q.size() - 6);
+    else return false;
+    ms = length(rest);
+    return ms > 0;
 }
 
 std::string Alarms::countdown(int64_t ms) {

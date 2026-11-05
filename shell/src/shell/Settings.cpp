@@ -3481,6 +3481,7 @@ void spotlightPage(Flex* page, Popup&) {
     dropdown(engine.row, engineItem, shown, items, [](const std::string& v) { Config::get().set("/spotlight/engine", v); });
 
     auto* answers = group(page, "Answers", "Shown above apps as you type");
+    row(answers, "timer", "Timers and reminders", "timer 10 min, remind me in 1 hour to call mum: Enter starts it");
     switchRow(answers, "calculate", "Calculator", "2^10, sqrt(2), (4+5)*3: Enter copies the result", "/spotlight/calculator", true);
     switchRow(answers, "straighten", "Unit conversions", "5 km to mi, 100 f in c, 3 cups, 10 GB in GiB", "/spotlight/units", true);
     switchRow(answers, "currency_exchange", "Currency conversion",

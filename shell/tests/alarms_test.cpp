@@ -79,6 +79,25 @@ int main() {
     expect(Alarms::countdown(61000) == "1:01", "minutes");
     expect(Alarms::countdown(3723000) == "1:02:03", "hours");
 
+    // Timers asked for in words (Spotlight)
+    auto timer = [](const std::string& q, int64_t wantMs, const std::string& wantLabel) {
+        int64_t ms = 0;
+        std::string label;
+        const bool ok = Alarms::parseTimerQuery(q, ms, label);
+        return wantMs == 0 ? !ok : ok && ms == wantMs && label == wantLabel;
+    };
+    expect(timer("timer 10 min", 600000, ""), "timer 10 min");
+    expect(timer("Timer for 1 hour 30 minutes", 5400000, ""), "timer for 1 hour 30 minutes");
+    expect(timer("10 minute timer", 600000, ""), "10 minute timer");
+    expect(timer("timer 90s", 90000, ""), "timer 90s");
+    expect(timer("timer an hour", 3600000, ""), "timer an hour");
+    expect(timer("remind me in 20 minutes to Call Mum", 1200000, "Call Mum"), "remind me in … to …");
+    expect(timer("remind me to stretch in 1h", 3600000, "stretch"), "remind me to … in …");
+    expect(timer("remind me in 5 min", 300000, "Reminder"), "remind me in …");
+    expect(timer("timer", 0, ""), "no length");
+    expect(timer("timer abc", 0, ""), "not a length");
+    expect(timer("firefox", 0, ""), "not a timer");
+
     if (failures) std::fprintf(stderr, "%d failed\n", failures);
     return failures ? 1 : 0;
 }

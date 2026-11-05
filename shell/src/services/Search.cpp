@@ -4,6 +4,7 @@
 #include "core/FileWatcher.h"
 #include "core/Paths.h"
 #include "core/Process.h"
+#include "services/Alarms.h"
 #include "services/Clipboard.h"
 #include "services/Currency.h"
 #include "services/Packages.h"
@@ -531,8 +532,28 @@ std::vector<SearchResult> query(const std::string& raw) {
                 out.push_back({a.name, app.name, !a.icon.empty() ? a.icon : app.icon, "bolt", "", s,
                                [app, a] { Apps::get().launch(app, a); }});
             }
-    // Answers (Settings → Spotlight): maths, and unit conversions
+    // Answers (Settings → Spotlight): a timer, maths, and unit conversions
     const auto& cfg = Config::get();
+    {
+        int64_t ms = 0;
+        std::string label;
+        if (Alarms::parseTimerQuery(text, ms, label)) {
+            // "10 min", "1 h 30 min", "45 s"
+            const int64_t secs = ms / 1000;
+            std::string length;
+            if (secs >= 3600) length += std::format("{} h", secs / 3600);
+            if (secs % 3600 >= 60) length += std::format("{}{} min", length.empty() ? "" : " ", (secs % 3600) / 60);
+            if (secs % 60) length += std::format("{}{} s", length.empty() ? "" : " ", secs % 60);
+            out.push_back({label.empty() ? std::format("Start a {} timer", length) : std::format("Remind me in {}", length),
+                           label.empty() ? std::string("Enter starts it · Alarms & timers") : "“" + label + "” · Enter starts it", "", "timer", "", 230,
+                           [ms, label, length] {
+                               Alarms::get().startTimer(ms, label);
+                               run({"notify-send", "-a", "Clock", "-i", "alarm-symbolic", label.empty() ? std::string("Timer started") : "Reminder set",
+                                    label.empty() ? length : label + " in " + length},
+                                   nullptr);
+                           }});
+        }
+    }
     if (cfg.value<bool>("/spotlight/calculator", true) && looksLikeMath(text)) addCalc(out, text, 200);
     if (cfg.value<bool>("/spotlight/units", true)) addConversion(out, text, 210);
     // Money: the ECB's rates of the day, fetched the first time one's asked

@@ -75,6 +75,10 @@ public:
     bool anyRunning() const;
     // "25", "1:30", "1h 20m", "90s" → ms; 0 if it isn't a length
     static int64_t parseLength(const std::string& text);
+    // A timer asked for in words (Spotlight): "timer 10 min", "10 minute
+    // timer", "timer for 1 hour 30", "remind me in 20 minutes to call mum",
+    // "remind me to stretch in 1h"; false when it isn't one
+    static bool parseTimerQuery(const std::string& text, int64_t& ms, std::string& label);
 
     // ── Going off ──
     const std::vector<Ringing>& ringing() const { return m_ringing; }
