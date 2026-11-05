@@ -82,6 +82,8 @@ private:
     void showChecking(bool on);
     ui::Label* m_avatarLetter;
     ui::TextField* m_field;
+    ui::Flex* m_caps = nullptr; // "Caps Lock is on"
+    Connection m_capsConn;
     bool m_busy = false;
     Connection m_alarms; // something rings: its cards stand in for the widgets
 };

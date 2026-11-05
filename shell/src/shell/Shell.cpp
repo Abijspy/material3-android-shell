@@ -136,7 +136,8 @@ bool Shell::start() {
     m_toasts = std::make_unique<Toasts>(focused);
     m_osd = std::make_unique<Osd>(focused);
     // Caps Lock and Num Lock turned on or off: said briefly (Settings → Keyboard)
-    LockKeys::get().start([this](const std::string& which, bool on) {
+    LockKeys::get().start();
+    LockKeys::get().toggled.connectForever([this](const std::string& which, bool on) {
         if (!m_osd || !Config::get().value<bool>("/osd/lockKeys", true)) return;
         if (which == "caps") m_osd->show(on ? "keyboard_capslock" : "keyboard_capslock_badge", -1, on ? "Caps Lock on" : "Caps Lock off");
         else m_osd->show("dialpad", -1, on ? "Num Lock on" : "Num Lock off");

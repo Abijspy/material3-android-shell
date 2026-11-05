@@ -3,6 +3,7 @@
 #include "core/Config.h"
 #include "core/Paths.h"
 #include "render/Images.h"
+#include "services/LockKeys.h"
 #include "services/Alarms.h"
 #include "services/Auth.h"
 #include "services/Mpris.h"
@@ -437,6 +438,18 @@ LockView::LockView(Options options) : Flex(Direction::Column), m_options(std::mo
     go->onClicked = [this](uint32_t) {
         if (!m_busy && onSubmit) onSubmit(m_field->text());
     };
+
+    // Caps Lock on while typing a password: said under the field
+    m_caps = add<Flex>(Direction::Row);
+    pill(m_caps->setBackground("tertiary_container", false))->setPadding({12, 6})->setSpacing(6);
+    m_caps->add<Icon>("keyboard_capslock", 18)->setColor("on_tertiary_container", false);
+    m_caps->add<Label>("Caps Lock is on")->setSize(13)->setWeight(500)->setColor("on_tertiary_container", false);
+    auto& keys = LockKeys::get();
+    keys.start();
+    m_caps->setVisible(keys.capsOn());
+    m_capsConn = keys.toggled.connect([this](const std::string& which, bool on) {
+        if (which == "caps") m_caps->setVisible(on);
+    });
 
     m_status = add<Label>(" ");
     m_status->setSize(14)->setColor("on_surface_variant", false);

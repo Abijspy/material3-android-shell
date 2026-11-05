@@ -1,27 +1,29 @@
 #pragma once
 
 #include "core/EventLoop.h"
+#include "core/Signal.h"
 
-#include <functional>
 #include <string>
 
 namespace m3 {
 
 // Caps Lock and Num Lock as the keyboard's lights say (/sys/class/leds/
-// *::capslock, *::numlock), looked at every 300 ms (sysfs tells no one);
-// `changed` with which and whether it's on. Whatever turned it (any
-// keyboard, any window focused)
+// *::capslock, *::numlock), looked at every 300 ms once started (sysfs
+// tells no one), whatever turned them (any keyboard, any window focused):
+// the OSD, and the lock screen's and login screen's password field
 class LockKeys {
 public:
     static LockKeys& get();
-    void start(std::function<void(const std::string& which, bool on)> changed);
+    void start(); // more than once is fine
+    bool capsOn() const { return m_capsOn == 1; }
+    bool numOn() const { return m_numOn == 1; }
+    Signal<const std::string&, bool> toggled; // "caps" or "num", and whether on now (not the first look)
 
 private:
     LockKeys() = default;
     void poll();
     std::string m_caps, m_num; // the lights' brightness files
     int m_capsOn = -1, m_numOn = -1;
-    std::function<void(const std::string&, bool)> m_changed;
     EventLoop::TimerId m_timer = 0;
 };
 

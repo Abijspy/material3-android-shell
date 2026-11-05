@@ -10,9 +10,8 @@ LockKeys& LockKeys::get() {
     return instance;
 }
 
-void LockKeys::start(std::function<void(const std::string& which, bool on)> changed) {
+void LockKeys::start() {
     if (m_timer) return;
-    m_changed = std::move(changed);
     std::error_code ec;
     for (const auto& e : std::filesystem::directory_iterator("/sys/class/leds", ec)) {
         const std::string name = e.path().filename().string();
@@ -31,11 +30,12 @@ void LockKeys::poll() {
         return v < 0 ? -1 : v > 0 ? 1 : 0;
     };
     const int caps = read(m_caps), num = read(m_num);
-    // The first look only learns how they are
-    if (m_capsOn >= 0 && caps >= 0 && caps != m_capsOn && m_changed) m_changed("caps", caps == 1);
-    if (m_numOn >= 0 && num >= 0 && num != m_numOn && m_changed) m_changed("num", num == 1);
+    const bool capsChanged = m_capsOn >= 0 && caps >= 0 && caps != m_capsOn, numChanged = m_numOn >= 0 && num >= 0 && num != m_numOn;
     m_capsOn = caps;
     m_numOn = num;
+    // The first look only learns how they are
+    if (capsChanged) toggled.emit(std::string("caps"), caps == 1);
+    if (numChanged) toggled.emit(std::string("num"), num == 1);
 }
 
 } // namespace m3
