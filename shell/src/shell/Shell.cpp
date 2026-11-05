@@ -403,7 +403,8 @@ void Shell::greet(bool freshInstall) {
 void Shell::togglePopup(const std::string& name, wl::Output* output, float anchor, const std::string& arg) {
     if (name == "settings") return openSettings(arg);
     if (name == "welcome") return openWelcome();
-    if (name == "hyprsettings") return openHyprSettings(arg);
+    // The compositor's settings app: Hyprland's, or niri's on niri (either name)
+    if (name == "hyprsettings" || name == "nirisettings") return openHyprSettings(arg);
     if (name == "desktopedit") return desktopeditor::open(output ? output : focusedOutput());
     // The compositor's own overview where it has one (niri's)
     if (name == "overview" && Compositor::get().can(Compositor::Feature::NativeOverview)) {
