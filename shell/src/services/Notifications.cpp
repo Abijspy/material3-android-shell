@@ -7,6 +7,7 @@
 #include "core/Paths.h"
 
 #include <algorithm>
+#include <set>
 #include <cerrno>
 #include <filesystem>
 #include <fstream>
@@ -228,6 +229,38 @@ void Notifications::setMuted(const std::string& app, bool on) {
     if (on) list.push_back(app);
     Config::get().set("/notifications/muted", list);
     changed.emit();
+}
+
+bool Notifications::allowedInDnd(const std::string& app) const {
+    const auto list = Config::get().value<nlohmann::json>("/notifications/dndAllowed", nlohmann::json::array());
+    return list.is_array() && std::ranges::find(list, nlohmann::json(app)) != list.end();
+}
+
+void Notifications::setAllowedInDnd(const std::string& app, bool allowed) {
+    std::vector<std::string> list;
+    const auto old = Config::get().value<nlohmann::json>("/notifications/dndAllowed", nlohmann::json::array());
+    if (old.is_array())
+        for (const auto& x : old)
+            if (x.is_string() && x != app) list.push_back(x);
+    if (allowed) list.push_back(app);
+    Config::get().set("/notifications/dndAllowed", list);
+    changed.emit();
+}
+
+bool Notifications::getsThrough(const Notification& n) const {
+    return !m_dnd || n.urgency == Critical || allowedInDnd(n.app);
+}
+
+std::vector<std::string> Notifications::senders() const {
+    std::set<std::string> apps;
+    for (const auto& n : m_history)
+        if (!n.app.empty()) apps.insert(n.app);
+    for (const auto& n : current())
+        if (!n.app.empty()) apps.insert(n.app);
+    // Allowed ones too, even if their notifications are gone
+    for (const auto& a : Config::get().value<nlohmann::json>("/notifications/dndAllowed", nlohmann::json::array()))
+        if (a.is_string()) apps.insert(a.get<std::string>());
+    return {apps.begin(), apps.end()};
 }
 
 bool Notifications::keepsHistory() const {

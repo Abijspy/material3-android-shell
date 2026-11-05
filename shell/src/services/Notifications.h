@@ -57,6 +57,14 @@ public:
     // by the name apps give
     bool muted(const std::string& app) const;
     void setMuted(const std::string& app, bool muted);
+    // Apps whose notifications still show in Do not disturb (calls,
+    // messages): /notifications/dndAllowed
+    bool allowedInDnd(const std::string& app) const;
+    void setAllowedInDnd(const std::string& app, bool allowed);
+    // Shown now: not in Do not disturb, or critical, or from an allowed app
+    bool getsThrough(const Notification& n) const;
+    // Apps that have sent notifications (now and in the history), A to Z
+    std::vector<std::string> senders() const;
 
     bool doNotDisturb() const { return m_dnd; }
     void setDoNotDisturb(bool on);

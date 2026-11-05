@@ -3936,6 +3936,27 @@ void notificationsPage(Flex* page, Popup&) {
     }
     choiceRow<int>(g, "timer", "Pop-ups stay for", "", "/notifications/timeout", 6, {{3, "3 s"}, {6, "6 s"}, {10, "10 s"}, {0, "Until closed"}});
     // The history: dismissed notifications, by day, in the notification centre
+    // Apps that get through Do not disturb (calls, messages)
+    {
+        auto* live = page->add<Live>();
+        live->setSpacing(6);
+        live->sync = [live] {
+            live->clearChildren();
+            auto* g = group(live, "Allowed in Do not disturb", "These apps' notifications still show while it's on; critical ones always do");
+            const auto apps = Notifications::get().senders();
+            if (apps.empty()) {
+                row(g, "notifications_paused", "No apps yet", "Apps show here once they've sent a notification");
+                return;
+            }
+            for (const auto& app : apps) {
+                auto r = row(g, "apps", app);
+                auto* sw = r.row->add<Switch>();
+                sw->setChecked(Notifications::get().allowedInDnd(app), false);
+                sw->onToggled = [app](bool on) { Notifications::get().setAllowedInDnd(app, on); };
+            }
+        };
+        live->sync();
+    }
     auto* h = group(page, "Notification history", "Dismissed notifications, kept for 30 days, under the centre's History tab");
     auto keep = row(h, "history", "Keep notification history", std::format("{} kept", Notifications::get().history().size()));
     auto* keepSw = keep.row->add<Switch>();

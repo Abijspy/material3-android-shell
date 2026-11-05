@@ -80,7 +80,7 @@ void Sounds::start() {
         if (m_told.size() > 200) m_told.pop_front();
         auto& n = Notifications::get();
         const auto* note = n.find(id);
-        if (!note || n.doNotDisturb() || n.muted(note->app)) return;
+        if (!note || !n.getsThrough(*note) || n.muted(note->app)) return;
         play(Event::Notification);
     });
     Screenshot::get().taken.connectForever([this](const std::string&) { play(Event::Screenshot); });

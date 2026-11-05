@@ -375,7 +375,8 @@ void Toasts::show(uint32_t id) {
     const auto* n = Notifications::get().find(id);
     if (!n) return;
     auto& svc = Notifications::get();
-    if (svc.doNotDisturb() && n->urgency != Notifications::Critical) return;
+    // In Do not disturb: only critical ones, and the apps allowed through
+    if (!svc.getsThrough(*n)) return;
     // The centre is open: it shows the new one already
     if (panels::notificationCentreShown() && n->urgency != Notifications::Critical) return;
     ensureSurface();
