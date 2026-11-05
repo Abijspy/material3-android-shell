@@ -3,6 +3,7 @@
 #include "core/Config.h"
 #include "render/Images.h"
 #include "services/Compositor.h"
+#include "services/LauncherEntries.h"
 #include "services/Search.h"
 #include "services/Trash.h"
 #include "shell/Panels.h"
@@ -89,17 +90,52 @@ protected:
     }
 };
 
+// The icon with what its app reports on it: an unread count on its corner
+// and a progress bar along its foot. One node, so all of it grows with the
+// magnification
+class IconStack : public Node {
+public:
+    Flex* badge = nullptr;    // the count
+    Flex* track = nullptr;    // the progress
+    Flex* fill = nullptr;
+    float progress = 0;
+
+protected:
+    SizeF doMeasure(SizeF available) override {
+        for (size_t i = 1; i < children().size(); ++i) children()[i]->measure(available);
+        return children().empty() ? SizeF{} : children().front()->measure(available);
+    }
+    void doArrange() override {
+        const RectF& r = rect();
+        if (children().empty()) return;
+        children().front()->arrange(r);
+        if (track) {
+            const float w = std::round(r.w * 0.78f);
+            fill->fixedWidth = std::max(4.0f, w * progress);
+            track->arrange({r.x + (r.w - w) / 2, r.bottom() - 5, w, 5});
+        }
+        if (badge) {
+            const SizeF s = badge->measure({r.w, r.h});
+            // On the corner, hanging over it a little
+            badge->arrange({r.right() - s.w + 5, r.y - 4, s.w, s.h});
+        }
+    }
+};
+
 // One app: icon, running indicator, lift on hover (or growing with the
 // magnification, its texture drawn at the largest size it can grow to)
 class DockIcon : public Button {
 public:
-    DockIcon(const std::string& icon, float size, int windows, bool focused, float magnify, bool lift)
+    DockIcon(const std::string& icon, float size, int windows, bool focused, float magnify, bool lift,
+             const LauncherEntries::Entry* report = nullptr)
         : Button(Direction::Column), m_lift(lift && magnify <= 1) {
         setPadding({6, 6, 6, 2})->setSpacing(2)->setRadius(Radii(16));
         pressedRadius = 24;
         const std::string name = icon;
         const float px = size * std::max(1.0f, magnify);
-        m_image = add<ImageView>(size, [name, px](float scale, int& w, int& h) -> GLuint {
+        auto* stack = add<IconStack>();
+        m_image = stack;
+        stack->add<ImageView>(size, [name, px](float scale, int& w, int& h) -> GLuint {
             auto* t = Images::get().icon(name.empty() ? "application-x-executable" : name, static_cast<int>(std::lround(px * scale)));
             if (!t) t = Images::get().icon("application-x-executable", static_cast<int>(std::lround(px * scale)));
             if (!t) return 0;
@@ -107,13 +143,32 @@ public:
             h = t->height;
             return t->id;
         });
-        // Running: a dot; focused: a wider pill (M3 Expressive indicator)
+        if (report && report->showsProgress()) {
+            stack->progress = static_cast<float>(report->progress);
+            stack->track = stack->add<Flex>(Direction::Row);
+            pill(stack->track->setBackground("surface_container_highest", false));
+            stack->fill = stack->track->add<Flex>(Direction::Row);
+            pill(stack->fill->setBackground("primary", false));
+            stack->fill->fixedHeight = 5;
+        }
+        if (report && report->showsCount()) {
+            stack->badge = stack->add<Flex>(Direction::Row);
+            pill(stack->badge->setBackground("error", false))->setPadding({4, 1})->setJustify(Align::Center);
+            stack->badge->minWidth = stack->badge->minHeight = 18;
+            stack->badge->add<Label>(report->count > 99 ? "99+" : std::to_string(report->count))
+                ->setSize(11)
+                ->setWeight(700)
+                ->setColor("on_error", false);
+        }
+        // Running: a dot; focused: a wider pill (M3 Expressive indicator);
+        // asking for attention: in the error colour, open or not
+        const bool urgent = report && report->urgent;
         auto* dot = add<Flex>(Direction::Row);
-        pill(dot->setBackground(focused ? "primary" : "on_surface_variant", false));
+        pill(dot->setBackground(urgent ? "error" : focused ? "primary" : "on_surface_variant", false));
         dot->fixedHeight = 4;
         dot->fixedWidth = focused ? 16.0f : windows > 1 ? 10.0f : 4.0f;
-        dot->setVisible(windows > 0);
-        if (windows == 0) {
+        dot->setVisible(windows > 0 || urgent);
+        if (windows == 0 && !urgent) {
             auto* spacer = add<Node>();
             spacer->fixedHeight = 4;
         }
@@ -160,6 +215,15 @@ Dock::Dock(wl::Output* output) : m_output(output) {
     // The trash filled or emptied
     Trash::get().start();
     m_trash = Trash::get().changed.connect([this] { refresh(); });
+    // An app's count or progress changed (a download ticking: once it settles)
+    LauncherEntries::get().start();
+    m_badges = LauncherEntries::get().changed.connect([this] {
+        if (m_refreshTimer) return;
+        m_refreshTimer = EventLoop::get().addTimer(120, [this] {
+            m_refreshTimer = 0;
+            refresh();
+        });
+    });
     rebuild();
 }
 
@@ -334,10 +398,18 @@ void Dock::refresh() {
         if (panels::open) panels::open("launcher");
     };
 
+    const bool badges = Config::get().value<bool>("/dock/badges", true);
     auto add = [&](const Entry& e) {
         bool focused = false;
         for (const auto& w : e.windows) focused = focused || lower(w.appId) == activeClass;
-        auto* icon = m_card->add<DockIcon>(e.icon, size, static_cast<int>(e.windows.size()), focused, most, !taskbar);
+        // What it reports: under its desktop id, else its window class
+        const LauncherEntries::Entry* report = nullptr;
+        if (badges) {
+            if (e.app) report = LauncherEntries::get().find(e.app->id);
+            if (!report) report = LauncherEntries::get().find(shown(e.id));
+            if (!report && !e.cls.empty()) report = LauncherEntries::get().find(e.cls);
+        }
+        auto* icon = m_card->add<DockIcon>(e.icon, size, static_cast<int>(e.windows.size()), focused, most, !taskbar, report);
         m_magnified.push_back({icon, icon->image(), size});
         // Magnified, growing is the hover: no highlight under it, and the
         // tooltip clear of it at its largest
@@ -348,6 +420,8 @@ void Dock::refresh() {
         // Its name (the app's, else its window class), and how many windows
         std::string name = e.app ? e.app->name : !e.cls.empty() ? e.cls : e.id;
         if (e.windows.size() > 1) name += std::format(" · {} windows", e.windows.size());
+        if (report && report->showsCount()) name += std::format(" · {} new", report->count);
+        if (report && report->showsProgress()) name += std::format(" · {:.0f}%", report->progress * 100);
         icon->tooltip = name;
         const Entry copy = e;
         icon->onClicked = [copy, focused, icon](uint32_t button) {

@@ -21,7 +21,8 @@ namespace m3::shell {
 // over them (magnification), drawn larger without moving the others.
 // Click focuses an app's window (cycling through several) or launches it,
 // middle click opens a new one, right click pins or unpins. The trash
-// sits at the end (Settings → Dock).
+// sits at the end (Settings → Dock). Apps' unread counts and progress
+// (LauncherEntries) show on their icons.
 class Dock {
 public:
     // Kept out while its right-click menu is open (the pointer leaves the
@@ -63,7 +64,7 @@ private:
     std::vector<Magnified> m_magnified;
     bool m_shown = true, m_hovered = false, m_held = false;
     EventLoop::TimerId m_hideTimer = 0, m_refreshTimer = 0;
-    Connection m_events, m_workspaces, m_apps, m_trash;
+    Connection m_events, m_workspaces, m_apps, m_trash, m_badges;
 };
 
 } // namespace m3::shell

@@ -103,6 +103,7 @@ sources = files(
   'src/services/WorldClock.cpp',
   'src/services/NoiseSuppression.cpp',
   'src/services/LockKeys.cpp',
+  'src/services/LauncherEntries.cpp',
   'src/services/Privacy.cpp',
   'src/services/Trash.cpp',
   'src/services/DataUsage.cpp',
