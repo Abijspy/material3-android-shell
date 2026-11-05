@@ -4690,6 +4690,8 @@ void aboutPage(Flex* page, Popup&) {
 
 // Settings' Keyboard entry: shortcuts are Hyprland's, in Hyprland Settings
 void keyboardPage(Flex* page, Popup&) {
+    auto* locks = group(page, "Lock keys");
+    switchRow(locks, "keyboard_capslock", "Show Caps Lock and Num Lock", "A brief note on screen as they turn on or off", "/osd/lockKeys", true);
     if (Niri::get().available()) return niriKeyboard(page);
     auto* typing = group(page, "Layouts & typing", "Keyboard layouts, switching between them, repeat rate and delay");
     auto t = row(typing, "keyboard_alt", "Layouts & typing", "In Hyprland Settings → Input devices");

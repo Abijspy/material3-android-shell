@@ -45,6 +45,7 @@
 #include "services/AutoSaver.h"
 #include "services/WorldClock.h"
 #include "services/NoiseSuppression.h"
+#include "services/LockKeys.h"
 #include "shell/LiveWallpaper.h"
 #include "services/Sounds.h"
 #include "services/Notifications.h"
@@ -134,6 +135,12 @@ bool Shell::start() {
     auto focused = [this] { return focusedOutput(); };
     m_toasts = std::make_unique<Toasts>(focused);
     m_osd = std::make_unique<Osd>(focused);
+    // Caps Lock and Num Lock turned on or off: said briefly (Settings → Keyboard)
+    LockKeys::get().start([this](const std::string& which, bool on) {
+        if (!m_osd || !Config::get().value<bool>("/osd/lockKeys", true)) return;
+        if (which == "caps") m_osd->show(on ? "keyboard_capslock" : "keyboard_capslock_badge", -1, on ? "Caps Lock on" : "Caps Lock off");
+        else m_osd->show("dialpad", -1, on ? "Num Lock on" : "Num Lock off");
+    });
     // Screenshots edited in the shell's own editor
     Screenshot::get().openEditor = [this](const std::string& file) {
         EventLoop::get().defer([this, file] { togglePopup("imageeditor", focusedOutput(), -1, file); });
