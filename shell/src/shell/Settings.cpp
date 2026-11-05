@@ -105,6 +105,8 @@ bool compositorPage(std::string_view id) {
 std::function<void(const std::string&)> reshow[2];
 // Types into the open Settings' search (`msg settings search:<words>`)
 std::function<void(const std::string&)> searchFor[2];
+// Shows a page and lights up a setting on it (Spotlight's settings)
+std::function<void(const std::string& page, const std::string& setting)> reveal[2];
 // Rebuilds a page in whichever app shows it
 void reshowPage(const std::string& id) {
     const bool hypr = compositorPage(id);
@@ -3481,6 +3483,7 @@ void spotlightPage(Flex* page, Popup&) {
     dropdown(engine.row, engineItem, shown, items, [](const std::string& v) { Config::get().set("/spotlight/engine", v); });
 
     auto* answers = group(page, "Answers", "Shown above apps as you type");
+    switchRow(answers, "settings", "Settings", "Pages and settings by name: bluetooth, night light, wallpaper", "/spotlight/settings", true);
     row(answers, "timer", "Timers and reminders", "timer 10 min, remind me in 1 hour to call mum: Enter starts it");
     switchRow(answers, "menu_book", "Word definitions", "define serendipity: from dictionaryapi.dev, which gets just the word", "/spotlight/define", true);
     switchRow(answers, "calculate", "Calculator", "2^10, sqrt(2), (4+5)*3: Enter copies the result", "/spotlight/calculator", true);
@@ -4901,9 +4904,50 @@ void settingsPage(const std::string& id) {
     if (reshow[hypr]) reshow[hypr](id);
 }
 
+const std::vector<SettingsHit>& settingsIndex(Popup& popup) {
+    // Every page of both apps (the shell's, and Hyprland's or niri's), built
+    // out of view once: their titles, and their rows' titles and headings
+    static std::vector<SettingsHit> index;
+    if (!index.empty()) return index;
+    const bool niri = !Hyprland::get().available() && Niri::get().available();
+    for (bool hypr : {false, true}) {
+        if (hypr && !niri && !Hyprland::get().available()) continue;
+        for (const auto& p : pagesOf(hypr)) {
+            index.push_back({p.title, p.id, p.title, p.icon, p.blurb, true});
+            // What's new and update notes aren't settings
+            if (std::string_view(p.id) == "about" || std::string_view(p.id) == "packages") continue;
+            Flex scratch(Flex::Direction::Column);
+            p.build(&scratch, popup);
+            std::set<std::string> seen;
+            std::function<void(const Node&)> walk = [&](const Node& n) {
+                const auto* l = dynamic_cast<const Label*>(&n);
+                if (l && !dynamic_cast<const Icon*>(&n) && l->text().size() > 2 &&
+                    ((l->size() == 15 && l->weight() == 500) || (l->size() == 14 && l->weight() == 600)) && l->text() != p.title &&
+                    seen.insert(l->text()).second)
+                    index.push_back({l->text(), p.id, p.title, p.icon, "", false});
+                for (const auto& c : n.children()) walk(*c);
+            };
+            walk(scratch);
+        }
+    }
+    return index;
+}
+
+void openSetting(const std::string& page, const std::string& setting) {
+    const bool hypr = compositorPage(page);
+    if (open) open((hypr ? "hyprsettings " : "settings ") + page);
+    // Once it's open (the request above runs first): the setting lit up
+    EventLoop::get().defer([page, setting, hypr] {
+        EventLoop::get().defer([page, setting, hypr] {
+            if (reveal[hypr]) reveal[hypr](page, setting);
+        });
+    });
+}
+
 void settingsClosed(bool hypr) {
     reshow[hypr] = nullptr; // its pages are gone
     searchFor[hypr] = nullptr;
+    reveal[hypr] = nullptr;
 }
 
 template <bool Hypr>
@@ -5213,6 +5257,10 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
     searchFor[Hypr] = [search](const std::string& t) {
         search->setText(t);
         if (search->onChanged) search->onChanged(t);
+    };
+    reveal[Hypr] = [openAt](const std::string& id, const std::string& setting) {
+        for (size_t i = 0; i < pagesOf(Hypr).size(); ++i)
+            if (pagesOf(Hypr)[i].id == id) return openAt(i, setting);
     };
     search->onSubmit = [=](const std::string& t) {
         const std::string q = lower(t);

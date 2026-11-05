@@ -48,6 +48,14 @@ ui::Node* dashboardWidget(ui::Node* parent, const std::string& id);
 void hyprSettings(ui::Flex* card, Popup& popup, const std::string& page);
 // The open Settings app: show a page; forget it once its window closes
 void settingsPage(const std::string& id);
+// Every Settings page and setting, by name (Spotlight): built once, out of view
+struct SettingsHit {
+    std::string text, page, pageTitle, icon, blurb;
+    bool isPage = false;
+};
+const std::vector<SettingsHit>& settingsIndex(Popup& popup);
+// Settings at `page`, `setting` (a row's title, or "") scrolled to and lit up
+void openSetting(const std::string& page, const std::string& setting);
 void settingsClosed(bool hypr = false);
 void clipboard(ui::Flex* card, Popup& popup);
 // A to-do list (Notes), and its card for the desktop (what blurs behind it)

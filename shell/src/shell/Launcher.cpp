@@ -1,3 +1,4 @@
+#include "core/Config.h"
 #include "core/EventLoop.h"
 #include "render/Images.h"
 #include "services/Clipboard.h"
@@ -7,6 +8,7 @@
 #include "shell/Panels.h"
 #include "ui/Controls.h"
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <xkbcommon/xkbcommon-keysyms.h>
@@ -75,7 +77,9 @@ private:
     void refresh() {
         const std::string text = m_field->text();
         const int token = ++m_token;
-        show(search::query(text));
+        auto results = search::query(text);
+        settingsResults(text, results);
+        show(std::move(results));
         if (text.starts_with('#') || text.starts_with('@') || search::asyncWord(text)) {
             // Process-backed providers: wait for typing to pause, drop stale replies
             auto alive = m_alive;
@@ -86,6 +90,37 @@ private:
                 });
             });
         }
+    }
+
+    // Settings pages and settings whose name has what's typed in it, above
+    // the web search (Settings → Spotlight)
+    void settingsResults(const std::string& raw, std::vector<SearchResult>& out) {
+        std::string q = raw;
+        q.erase(0, q.find_first_not_of(' '));
+        while (!q.empty() && q.back() == ' ') q.pop_back();
+        if (q.size() < 3 || !Config::get().value<bool>("/spotlight/settings", true)) return;
+        if (std::string("=:#@>").find(q[0]) != std::string::npos || search::asyncWord(q)) return;
+        for (auto& c : q) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        std::vector<std::pair<int, const SettingsHit*>> found;
+        for (const auto& h : settingsIndex(m_popup)) {
+            std::string t = h.text;
+            for (auto& c : t) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            const auto at = t.find(q);
+            if (at == std::string::npos) continue;
+            // Pages first, then names that start with it
+            found.push_back({(h.isPage ? 0 : 2) + (at == 0 ? 0 : 1), &h});
+        }
+        std::ranges::stable_sort(found, {}, &std::pair<int, const SettingsHit*>::first);
+        std::vector<SearchResult> rows;
+        for (size_t i = 0; i < found.size() && i < 4; ++i) {
+            const auto* h = found[i].second;
+            const std::string page = h->page, setting = h->isPage ? std::string() : h->text;
+            rows.push_back({h->text, h->isPage ? "Settings · " + h->blurb : "Settings → " + h->pageTitle, "", h->icon, "", 1,
+                            [page, setting] { openSetting(page, setting); }});
+        }
+        // Before the web search, which stays last
+        const bool web = !out.empty() && out.back().glyph == "travel_explore";
+        out.insert(web ? out.end() - 1 : out.end(), rows.begin(), rows.end());
     }
 
     void show(std::vector<SearchResult> results) {
