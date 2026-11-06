@@ -53,13 +53,14 @@ public:
 };
 
 // One choice in a greeter menu: icon, title, optional subtitle and a check
-// A session's compositor logo (Hyprland's, niri's, from the shell's data,
+// A session's compositor logo (Hyprland's, niri's, Umbriel's, from the shell's data,
 // which the greeter user can read), by its command or name; else ""
 std::string sessionLogo(const std::string& exec, const std::string& label) {
     std::string both = exec + " " + label;
     for (auto& ch : both) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
     if (both.find("hyprland") != std::string::npos) return paths::dataFile("icons/hyprland-logo.svg");
     if (both.find("niri") != std::string::npos) return paths::dataFile("icons/niri-logo.svg");
+    if (both.find("umbriel") != std::string::npos) return paths::dataFile("icons/umbriel-logo.svg");
     return {};
 }
 

@@ -4658,7 +4658,10 @@ void aboutPage(Flex* page, Popup&) {
         auto& comp = Compositor::get();
         const std::string compositor = comp.available() ? comp.name() + " " + comp.version() : comp.name() + " (not running)";
         auto wm = row(sys, "grid_view", compositor, "Compositor");
-        const std::string mark = comp.name() == "Hyprland" ? "icons/hyprland-logo.svg" : comp.name() == "niri" ? "icons/niri-logo.svg" : ""; // no Umbriel mark yet
+        const std::string mark = comp.name() == "Hyprland" ? "icons/hyprland-logo.svg"
+                               : comp.name() == "niri"     ? "icons/niri-logo.svg"
+                               : comp.name() == "Umbriel"  ? "icons/umbriel-logo.svg"
+                                                           : "";
         if (const auto path = mark.empty() ? std::string() : paths::dataFile(mark); !path.empty()) useLogo(wm, path);
 
         auto& stats = SystemStats::get();

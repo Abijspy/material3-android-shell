@@ -38,6 +38,12 @@ here from red and orange to teal (the logo is meant to be recoloured) and croppe
 to its artwork, and that file stays under CC BY-SA 4.0. It is used only to name
 niri in Settings → About and on the login screen, and does not imply endorsement.
 
+shell/data/icons/umbriel-logo.svg is the Umbriel logo, public/umbriel.svg in the
+Noctalia documentation (https://github.com/noctalia-dev/noctalia-docs), by the
+Noctalia project, which states no license for it; all rights in it remain
+Noctalia's. It is used only to name Umbriel in Settings → About and on the login
+screen, and does not imply endorsement. It will be removed if Noctalia asks.
+
 shell/data/maps/world.svg, the time zone map in Settings → System, is drawn from
 Natural Earth's 1:50m land, lakes and country borders
 (https://www.naturalearthdata.com), which are in the public domain;
