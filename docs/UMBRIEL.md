@@ -32,7 +32,27 @@ Monitors are still set in `config.toml` (Settings → Display says where). So ar
 
 ## Setting it up
 
-The installer doesn't set Umbriel up yet, and Umbriel isn't packaged for Arch. Build and install it as [its guide](https://github.com/noctalia-dev/umbriel/blob/main/docs/user/installation.md) says. It needs `wlroots0.20`. Then:
+Run the installer and pick **umbriel**, or several compositors at once:
+
+```bash
+./install.sh --compositor umbriel        # or: niri,umbriel · all
+```
+
+Umbriel isn't in Arch's repositories or the AUR yet. So the installer builds it, with its portal for screen sharing, screenshots and input capture, from the PKGBUILDs in [`packaging/umbriel`](../packaging/umbriel) and [`packaging/xdg-desktop-portal-umbriel`](../packaging/xdg-desktop-portal-umbriel). That takes a few minutes. Both are pinned to the commits the shell was tested with, because Umbriel changes as it's developed. They install as the pacman packages `umbriel-git` and `xdg-desktop-portal-umbriel-git`, which you can remove like any other. Running the installer again rebuilds them only when the pinned commit moves on.
+
+It then sets up `~/.config/umbriel`:
+
+- **`material3ui.toml`**, the shell's part: its keys (with your terminal, file manager and browser) and its blur. Updates replace this file.
+- **`config.toml`**, yours. Without one, it starts as Umbriel's packaged config. The shell's own TOML editor (`material3ui toml`) makes three changes, keeping the rest of the file as you wrote it:
+  - It includes `material3ui.toml` (under `[include.optional]`).
+  - It adds `material3ui` to `general.autostart`, so the shell starts with Umbriel.
+  - It takes out the keys that would hide the shell's, because Umbriel applies `config.toml` after its includes. Only two kinds go: keys that start Noctalia, and Umbriel's stock keys you haven't changed (from its example config: <kbd>Super</kbd><kbd>Space</kbd>, <kbd>Super</kbd><kbd>Tab</kbd>, <kbd>Super</kbd><kbd>L</kbd>, <kbd>Super</kbd><kbd>Escape</kbd>…). Keys you set yourself stay, and the installer lists them.
+
+`umbriel config validate` then checks the result. The old files are backed up, and `./install.sh --restore` puts them back. If your `config.toml` also starts another shell (Noctalia, waybar, mako…), the installer warns you. Pick `--umbriel skip` to leave Umbriel's config alone and set it up by hand (below). Then log out, and choose **Umbriel** at the login screen.
+
+### By hand
+
+With Umbriel installed your own way:
 
 1. Copy the shell's part next to your config:
 
@@ -50,9 +70,7 @@ The installer doesn't set Umbriel up yet, and Umbriel isn't packaged for Arch. B
    autostart = ["material3ui"]
    ```
 
-3. Umbriel applies `config.toml` after its includes, so any key bound in both stays as `config.toml` has it. Umbriel's example config binds <kbd>Super</kbd>, the volume and brightness keys and <kbd>Super</kbd><kbd>Escape</kbd> to Noctalia. Remove those lines from `config.toml` to use the shell's.
-
-4. Log out and pick **Umbriel** at the login screen.
+3. Any key bound in both files stays as `config.toml` has it. Remove the ones you'd rather the shell had: Umbriel's example config binds <kbd>Super</kbd>, the volume and brightness keys, and more.
 
 ## Keys
 
@@ -93,7 +111,6 @@ What can still break is anything Umbriel renames in its IPC (its commands, actio
 
 ## Not yet
 
-- The installer and updates don't set up or refresh `material3ui.toml`.
 - Umbriel Settings has no pages for monitors, keys and window rules yet.
 - No minimising from the shell. Umbriel minimises only floating windows.
 - The shell's screen-sharing picker is Hyprland's. On Umbriel, screen sharing goes through `xdg-desktop-portal-umbriel`.

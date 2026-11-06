@@ -1,0 +1,12 @@
+Umbriel and its portal aren't in Arch's repositories or the AUR yet, so
+install.sh builds them from these PKGBUILDs when you pick Umbriel
+(packages umbriel-git and xdg-desktop-portal-umbriel-git, which pacman
+can remove like any other).
+
+Each is pinned to the commit Material3UI was tested with (_commit), since
+Umbriel changes as it's developed. To move to a newer Umbriel: build it,
+check the shell in it (docs/UMBRIEL.md), then set _commit (and the
+portal's, built the same day) to the tested commits and run
+  ./install.sh --compositor umbriel
+again. Once Umbriel is packaged upstream, the installer takes that
+package instead.

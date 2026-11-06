@@ -35,9 +35,12 @@ fi
 # Installs from before 6.0 set up Hyprland only
 NIRI_MODE="$(state niri_mode)"; NIRI_MODE="${NIRI_MODE:-skip}"
 NIRI="$CONFIG_HOME/niri"
+UMBRIEL_MODE="$(state umbriel_mode)"; UMBRIEL_MODE="${UMBRIEL_MODE:-skip}"
+UMB="$CONFIG_HOME/umbriel"
 # A compositor uninstalled since: its config isn't written for it any more
 if [[ "$HYPR_MODE" != skip ]] && ! command -v Hyprland >/dev/null && ! command -v hyprland >/dev/null; then HYPR_MODE=skip; HYPR_GONE=1; fi
 if [[ "$NIRI_MODE" != skip ]] && ! command -v niri >/dev/null; then NIRI_MODE=skip; NIRI_GONE=1; fi
+if [[ "$UMBRIEL_MODE" != skip ]] && ! command -v umbriel >/dev/null; then UMBRIEL_MODE=skip; UMBRIEL_GONE=1; fi
 
 case "$MODE" in all|shell) ;; *) echo "Usage: $0 [all|shell] [stable|canary] [--force]" >&2; exit 2 ;; esac
 
@@ -140,6 +143,7 @@ if [[ "$MODE" == all ]]; then
 
     [[ -z "${HYPR_GONE:-}" ]] || echo "Hyprland isn't installed: its config is left as it is."
     [[ -z "${NIRI_GONE:-}" ]] || echo "niri isn't installed: its config is left as it is."
+    [[ -z "${UMBRIEL_GONE:-}" ]] || echo "Umbriel isn't installed: its config is left as it is."
     if [[ "$HYPR_MODE" != skip ]]; then
         echo "Updating Hyprland modules ($HYPR_MODE)..."
         mkdir -p "$HYPR/material3ui"
@@ -161,6 +165,16 @@ if [[ "$MODE" == all ]]; then
         sed -e "s/\"alacritty\"/\"${term:-alacritty}\"/g" -e "s/\"nemo\"/\"${files:-nemo}\"/g" -e "s/\"librewolf\"/\"${web:-librewolf}\"/g" \
             "$DOT/niri/material3ui.kdl" >"$NIRI/material3ui.kdl.tmp"
         mv "$NIRI/material3ui.kdl.tmp" "$NIRI/material3ui.kdl"
+    fi
+    # Umbriel's material3ui.toml, the same way (config.toml is yours: left
+    # alone; Umbriel reloads as the file changes)
+    if [[ "$UMBRIEL_MODE" == include ]]; then
+        echo "Updating Umbriel's material3ui.toml..."
+        term="$(state terminal)" files="$(state file_manager)" web="$(state browser)"
+        mkdir -p "$UMB"
+        sed -e "s/spawn alacritty/spawn ${term:-alacritty}/g" -e "s/spawn nemo/spawn ${files:-nemo}/g" -e "s/spawn librewolf/spawn ${web:-librewolf}/g" \
+            "$DOT/umbriel/material3ui.toml" >"$UMB/material3ui.toml.tmp"
+        mv "$UMB/material3ui.toml.tmp" "$UMB/material3ui.toml"
     fi
 fi
 
@@ -194,8 +208,8 @@ if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
     # Detached, so it outlives this script (and Lua configs need no dispatch syntax)
     setsid -f material3ui >/dev/null 2>&1 </dev/null
     echo "Shell restarted."
-elif [[ -n "${NIRI_SOCKET:-}" ]]; then
-    # niri reads material3ui.kdl again by itself
+elif [[ -n "${NIRI_SOCKET:-}" || -n "${UMBRIEL_SOCKET:-}" ]]; then
+    # niri and Umbriel read their config again by themselves
     pkill -x material3ui || true
     sleep 0.3
     setsid -f material3ui >/dev/null 2>&1 </dev/null

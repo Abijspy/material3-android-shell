@@ -1,4 +1,5 @@
 #include "services/Hooks.h"
+#include "services/TomlEdit.h"
 #include "build_config.h"
 #include "core/EventLoop.h"
 #include "core/Process.h"
@@ -15,6 +16,8 @@
 #include <execinfo.h>
 #include <fcntl.h>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <iostream>
 #include <spawn.h>
 #include <string>
@@ -24,6 +27,70 @@
 #include <vector>
 
 namespace {
+
+// `material3ui toml`: the installer's way into Umbriel's config.toml (a
+// value read as JSON, or set or removed with the rest of the file kept)
+int tomlCli(const std::vector<std::string>& a) {
+    if (a.size() < 3 || (a[0] != "get" && a[0] != "set" && a[0] != "remove") || (a[0] == "set" && a.size() < 4)) {
+        std::cerr << "usage: material3ui toml get|set|remove <file> <path as a JSON array> [value as JSON]\n";
+        return 2;
+    }
+    const std::string& file = a[1];
+    m3::tomledit::Path path;
+    nlohmann::json value;
+    try {
+        for (const auto& k : nlohmann::json::parse(a[2])) path.push_back(k.get<std::string>());
+        if (a[0] == "set") value = nlohmann::json::parse(a[3]);
+    } catch (const std::exception& e) {
+        std::cerr << "toml: " << e.what() << '\n';
+        return 2;
+    }
+    std::string text;
+    {
+        std::ifstream in(file);
+        if (!in && a[0] != "set") {
+            if (a[0] == "get") std::cout << "null\n";
+            return 0; // nothing there: nothing to read or remove
+        }
+        std::stringstream ss;
+        ss << in.rdbuf();
+        text = ss.str();
+    }
+    if (a[0] == "get") {
+        std::string error;
+        m3::tomledit::parse(text, &error);
+        if (!error.empty()) {
+            std::cerr << "toml: " << file << ": " << error << '\n';
+            return 1;
+        }
+        std::cout << m3::tomledit::get(text, path).dump() << '\n';
+        return 0;
+    }
+    std::string error;
+    const auto out = a[0] == "set" ? m3::tomledit::set(text, path, value, &error) : m3::tomledit::remove(text, path, &error);
+    if (!out) {
+        std::cerr << "toml: " << file << ": " << error << '\n';
+        return 1;
+    }
+    if (*out == text) return 0;
+    // Written beside it, then swapped in: never half written
+    const std::string tmp = file + ".m3new";
+    {
+        std::ofstream o(tmp);
+        o << *out;
+        if (!o) {
+            std::cerr << "toml: can't write " << tmp << '\n';
+            return 1;
+        }
+    }
+    std::error_code ec;
+    std::filesystem::rename(tmp, file, ec);
+    if (ec) {
+        std::cerr << "toml: " << ec.message() << '\n';
+        return 1;
+    }
+    return 0;
+}
 
 void usage() {
     std::cout << "material3ui " << M3_VERSION << " — Material 3 Wayland shell\n\n"
@@ -35,6 +102,9 @@ void usage() {
               << "                           wait for one (since <ms>: one already over counts too)\n"
               << "  material3ui greeter      run as the greetd login screen\n"
               << "  material3ui share-picker choose what an app may share (xdg-desktop-portal-hyprland)\n"
+              << "  material3ui toml get|set|remove <file> <path> [value]\n"
+              << "                           read or change one value of a TOML file, keeping the rest as written\n"
+              << "                           (path and value as JSON: '[\"general\",\"autostart\"]' '[\"material3ui\"]')\n"
               << "  material3ui --version\n\n"
               << "  M3_INSTANCE=<name> material3ui   a second shell beside the first (on a nested compositor, for\n"
               << "                                   testing), with its own socket; msg and events reach it with the same\n";
@@ -196,6 +266,7 @@ int main(int argc, char** argv) {
     if (!args.empty()) {
         if (args[0] == "msg") return m3::ipcSend({args.begin() + 1, args.end()});
         if (args[0] == "events") return m3::Hooks::cli({args.begin() + 1, args.end()});
+        if (args[0] == "toml") return tomlCli({args.begin() + 1, args.end()});
         if (args[0] == "greeter") {
             SignalSource signals;
             m3::EventLoop::get().add(&signals);

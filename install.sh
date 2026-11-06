@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-#  Material3UI installer · Arch Linux + Hyprland 0.55+ or niri 26.04+
+#  Material3UI installer · Arch Linux + Hyprland 0.55+, niri 26.04+ or Umbriel
 #
 #  Asks everything first, shows one plan, then runs without further prompts:
 #  packages, the native shell (built from shell/ and installed to /usr), the
@@ -36,10 +36,13 @@ readonly HYPR_KEEP=(user.lua user_persistence.lua colors.lua)
 readonly NIRI="$CONFIG_HOME/niri"
 # A fresh config.kdl starts as niri's own default
 readonly NIRI_DEFAULT=/usr/share/doc/niri/default-config.kdl
+readonly UMB="$CONFIG_HOME/umbriel"
+# A fresh config.toml starts as Umbriel's packaged one
+readonly UMB_STOCK=/usr/share/umbriel/config.toml
 
 # ── Options ──────────────────────────────────────────────────────────────────
 YES=0 DRY=0 SKIP_DEPS=0 MODE=install RESTORE_STAMP=""
-TERMINAL="" FILE_MANAGER="" BROWSER="" COMPOSITOR="" HYPR_MODE="" NIRI_MODE="" CHANNEL="" GREETER="" INSTALL_DIR=""
+TERMINAL="" FILE_MANAGER="" BROWSER="" COMPOSITOR="" HYPR_MODE="" NIRI_MODE="" UMBRIEL_MODE="" CHANNEL="" GREETER="" INSTALL_DIR=""
 ORIG_ARGS=("$@")
 
 usage() {
@@ -52,13 +55,17 @@ Usage: install.sh [options]
       --terminal NAME       alacritty | kitty | foot | ghostty
       --file-manager NAME   nemo | thunar | nautilus | dolphin
       --browser NAME        librewolf | firefox | chromium | zen-browser
-      --compositor NAME     hyprland | niri | both
+      --compositor NAME     hyprland | niri | umbriel | both (Hyprland and niri) | all,
+                            or a list: niri,umbriel
       --hypr MODE           full: Material3UI owns hyprland.lua (yours is backed up)
                             inject: keep your hyprland.lua, add the shell to it
                             skip: leave Hyprland's config alone
       --niri MODE           include: keep your config.kdl (or start from niri's
                             default), include the shell's material3ui.kdl at its end
                             skip: leave niri's config alone
+      --umbriel MODE        include: keep your config.toml (or start from Umbriel's),
+                            include the shell's material3ui.toml and start the shell
+                            skip: leave Umbriel's config alone
       --channel NAME        latest (follow main) | release (tagged releases)
       --greeter             Also install the login screen (greetd)
       --dir PATH            Where to clone when run outside the repo
@@ -80,6 +87,7 @@ while [[ $# -gt 0 ]]; do
         --compositor) need "$1" "${2:-}"; COMPOSITOR="$2"; shift ;;
         --hypr) need "$1" "${2:-}"; HYPR_MODE="$2"; shift ;;
         --niri) need "$1" "${2:-}"; NIRI_MODE="$2"; shift ;;
+        --umbriel) need "$1" "${2:-}"; UMBRIEL_MODE="$2"; shift ;;
         --channel) need "$1" "${2:-}"; CHANNEL="$2"; shift ;;
         --greeter) GREETER=1 ;;
         --dir) need "$1" "${2:-}"; INSTALL_DIR="$2"; shift ;;
@@ -369,7 +377,8 @@ group_packages() { # group_packages GROUP → its packages, one a line
     case "$1" in
         compositor)
             if [[ "$WANT_HYPR" == 1 ]]; then jq -r '.hyprland[].name' "$deps"; fi
-            if [[ "$WANT_NIRI" == 1 ]]; then jq -r '.niri[].name' "$deps"; fi ;;
+            if [[ "$WANT_NIRI" == 1 ]]; then jq -r '.niri[].name' "$deps"; fi
+            if [[ "$WANT_UMBRIEL" == 1 ]]; then jq -r '.umbriel[].name' "$deps"; fi ;;
         build) jq -r '.core[].name' "$deps" ;; # what meson needs: part of "shell"
         shell) jq -r '.core[].name, .services[].name' "$deps" ;;
         tools) jq -r '.utilities[].name, .theming[].name' "$deps" ;;
@@ -387,6 +396,24 @@ group_packages() { # group_packages GROUP → its packages, one a line
 installed_version() { pacman -Q "$1" 2>/dev/null | awk '{print $2}' || true; }
 repo_version() { LC_ALL=C pacman -Si "$1" 2>/dev/null | sed -n 's/^Version *: //p' | head -n 1 || true; }
 older() { [[ -n "$1" && "$(vercmp "${1%%-*}" "$2")" -lt 0 ]]; } # older VERSION MIN
+# Umbriel isn't in the repositories or the AUR yet: built from
+# packaging/umbriel (and its portal), at the commit the shell was tested with
+UMB_PIN="" # set once the checkout is found
+umbriel_version() { local v; v="$(installed_version umbriel-git)"; [[ -n "$v" ]] || v="$(installed_version umbriel)"; printf '%s' "$v"; }
+# Is the installed Umbriel the tested one (umbriel-git …g<commit>), or the distribution's?
+umbriel_current() { local v; v="$(umbriel_version)"; [[ -n "$v" ]] && { [[ -z "$UMB_PIN" || "$v" == *".g$UMB_PIN"* ]] || ! pacman -Qq umbriel-git >/dev/null 2>&1; }; }
+build_umbriel() { # builds umbriel-git and its portal from packaging/, and installs them
+    local work pkg
+    work="$(mktemp -d)"
+    for pkg in umbriel xdg-desktop-portal-umbriel; do
+        mkdir -p "$work/$pkg"
+        cp "$REPO/packaging/$pkg/PKGBUILD" "$work/$pkg/"
+        # -s: what it builds with, from the repositories (sudo pacman)
+        (cd "$work/$pkg" && PKGDEST="$work/out" makepkg -s --noconfirm --needed) || { rm -rf "$work"; return 1; }
+    done
+    sudo pacman -U --noconfirm "$work"/out/*.pkg.tar.zst
+    rm -rf "$work"
+}
 # yay, made to work: libalpm moves on, and a stale binary won't start
 ensure_yay() {
     yay --version >/dev/null 2>&1 && return 0
@@ -470,7 +497,7 @@ restore_mode() {
     [[ -n "$others" ]] && note "Older installs: $others(pick one with --restore STAMP)"
     confirm "Restore them?" Y || exit 0
     do_ "$dir/restore.sh"
-    ok "Restored. Reload Hyprland to apply (hyprctl reload); niri reloads by itself."
+    ok "Restored. Reload Hyprland to apply (hyprctl reload); niri and Umbriel reload by themselves."
 }
 uninstall_mode() {
     local build
@@ -486,7 +513,7 @@ uninstall_mode() {
 }
 
 # ═════════════════════════════════════════════════════════════════════════════
-printf '\n%s%s  ●  Material3UI%s %s· a native Material 3 shell for Hyprland and niri%s\n' "$P" "$B" "$R" "$D" "$R"
+printf '\n%s%s  ●  Material3UI%s %s· a native Material 3 shell for Hyprland, niri and Umbriel%s\n' "$P" "$B" "$R" "$D" "$R"
 [[ "$DRY" == 1 ]] && printf '  %sDry run: nothing will change.%s\n' "$Y" "$R"
 locate_repo
 mkdir -p "$LOG_DIR"
@@ -512,38 +539,71 @@ else ok "Hyprland ${hv%-*}"; fi
 if [[ -z "$nv" ]]; then :
 elif older "$nv" "$MIN_NIRI"; then warn "niri ${nv%-*} is older than $MIN_NIRI, which the shell needs; pick it and the system update brings ${nr:+${nr%-*}}${nr:-a newer one}"
 else ok "niri ${nv%-*}"; fi
-[[ -n "$hv$nv" ]] || note "Neither Hyprland nor niri is installed yet: the one you pick installs first, before the shell."
+UMB_COMMIT="$(sed -n 's/^_commit=\([0-9a-f]*\).*/\1/p' "$REPO/packaging/umbriel/PKGBUILD" 2>/dev/null || true)"
+UMB_PIN="${UMB_COMMIT:0:7}"
+uv="$(umbriel_version)"
+if [[ -z "$uv" ]]; then :
+elif umbriel_current; then ok "Umbriel ${uv%-*}"
+else warn "Umbriel ${uv%-*} isn't the one the shell was tested with ($UMB_PIN); pick it and that one is built"; fi
+[[ -n "$hv$nv$uv" ]] || note "No compositor the shell runs on is installed yet: the one you pick installs first, before the shell."
 VERSION="$(cat "$REPO/VERSION" 2>/dev/null || echo "?")"
 ok "Material3UI $VERSION from $(tilde "$REPO")"
 [[ -f "$STATE_FILE" ]] && note "Installed before: your previous choices are the defaults."
 
 # ── 2. Choices ───────────────────────────────────────────────────────────────
 section "Your setup"
-# The compositor set up last time, less one uninstalled since while the
-# other is here: you removed it, so it isn't brought back (installs from
-# before 6.0 recorded none: Hyprland)
+# The compositors as a list, in one order: "both" is Hyprland and niri, "all" all three
+comp_norm() {
+    local w out="" c
+    for w in ${1//,/ }; do
+        case "$w" in
+            both) w="hyprland niri" ;;
+            all) w="hyprland niri umbriel" ;;
+        esac
+        out+=" $w"
+    done
+    local list=()
+    for c in hyprland niri umbriel; do [[ " $out " == *" $c "* ]] && list+=("$c"); done
+    for w in $out; do [[ " hyprland niri umbriel " == *" $w "* ]] || fail "Compositor: '$w' isn't one of: hyprland, niri, umbriel, both, all"; done
+    (IFS=,; printf '%s' "${list[*]}")
+}
+comp_name() { # hyprland,niri → "Hyprland and niri"
+    local names=() c
+    for c in ${1//,/ }; do case "$c" in hyprland) names+=(Hyprland) ;; niri) names+=(niri) ;; umbriel) names+=(Umbriel) ;; esac; done
+    local text
+    text="$(printf '%s, ' "${names[@]}")"
+    text="${text%, }"
+    [[ "$text" == *", "* ]] && text="${text%, *} and ${text##*, }"
+    printf '%s' "$text"
+}
+installed_comp() { case "$1" in hyprland) [[ -n "$hv" ]] ;; niri) [[ -n "$nv" ]] ;; umbriel) [[ -n "$uv" ]] ;; esac; }
+# The compositors set up last time, less any uninstalled since while one of
+# them is still here: you removed it, so it isn't brought back (installs
+# from before 6.0 recorded none: Hyprland)
 PREV_COMP_SAVED="$(previous compositor)"
-PREV_COMP_SAVED="${PREV_COMP_SAVED:-hyprland}"
-case "$PREV_COMP_SAVED" in
-    both)
-        if [[ -z "$hv" && -n "$nv" ]]; then PREV_COMP=niri
-        elif [[ -n "$hv" && -z "$nv" ]]; then PREV_COMP=hyprland
-        else PREV_COMP=both; fi ;;
-    niri) if [[ -z "$nv" && -n "$hv" ]]; then PREV_COMP=hyprland; else PREV_COMP=niri; fi ;;
-    *) if [[ -z "$hv" && -n "$nv" ]]; then PREV_COMP=niri; else PREV_COMP=hyprland; fi ;;
-esac
+PREV_COMP_SAVED="$(comp_norm "${PREV_COMP_SAVED:-hyprland}")"
+PREV_COMP="" gone=()
+for c in ${PREV_COMP_SAVED//,/ }; do
+    if installed_comp "$c"; then PREV_COMP+="${PREV_COMP:+,}$c"; else gone+=("$c"); fi
+done
+if [[ -z "$PREV_COMP" ]]; then
+    # None of them here: what is, else the same again
+    for c in hyprland niri umbriel; do installed_comp "$c" && PREV_COMP+="${PREV_COMP:+,}$c"; done
+    [[ -n "$PREV_COMP" ]] || PREV_COMP="$PREV_COMP_SAVED"
+fi
 if [[ -f "$STATE_FILE" && "$PREV_COMP" != "$PREV_COMP_SAVED" && -z "$COMPOSITOR" ]]; then
-    case "$PREV_COMP" in niri) gone=Hyprland ;; *) gone=niri ;; esac
-    note "$gone isn't installed any more: setting up $([[ "$PREV_COMP" == niri ]] && echo niri || echo Hyprland) only (--compositor both, or another answer below, brings it back)"
+    note "$(comp_name "$(IFS=,; printf '%s' "${gone[*]}")") isn't installed any more: setting up $(comp_name "$PREV_COMP") only (--compositor, or another answer below, brings it back)"
 fi
 KEEP_PREVIOUS=1
-if [[ -f "$STATE_FILE" && "$YES" == 0 && -z "$TERMINAL$FILE_MANAGER$BROWSER$COMPOSITOR$HYPR_MODE$NIRI_MODE" ]]; then
+if [[ -f "$STATE_FILE" && "$YES" == 0 && -z "$TERMINAL$FILE_MANAGER$BROWSER$COMPOSITOR$HYPR_MODE$NIRI_MODE$UMBRIEL_MODE" ]]; then
     last="$(previous terminal) · $(previous file_manager) · $(previous browser)"
-    case "$PREV_COMP" in
-        niri) last+=" · niri $(previous niri_mode)" ;;
-        both) last+=" · Hyprland $(previous hypr_mode) and niri $(previous niri_mode)" ;;
-        *) last+=" · Hyprland $(previous hypr_mode)" ;;
-    esac
+    for c in ${PREV_COMP//,/ }; do
+        case "$c" in
+            hyprland) last+=" · Hyprland $(previous hypr_mode)" ;;
+            niri) last+=" · niri $(previous niri_mode)" ;;
+            umbriel) last+=" · Umbriel $(previous umbriel_mode)" ;;
+        esac
+    done
     info "Last time: $last"
     confirm "Keep these?" Y || KEEP_PREVIOUS=0
 fi
@@ -553,14 +613,15 @@ if [[ "$KEEP_PREVIOUS" == 1 ]]; then
     [[ -n "$BROWSER" ]] || BROWSER="$(previous browser)"
     [[ -n "$COMPOSITOR" ]] || COMPOSITOR="$PREV_COMP"
     # A mode only from an install that set that compositor up (else "skip")
-    if [[ -z "$HYPR_MODE" && "$PREV_COMP" != niri ]]; then HYPR_MODE="$(previous hypr_mode)"; fi
-    if [[ -z "$NIRI_MODE" && ( "$PREV_COMP" == niri || "$PREV_COMP" == both ) ]]; then NIRI_MODE="$(previous niri_mode)"; fi
+    if [[ -z "$HYPR_MODE" && ",$PREV_COMP," == *",hyprland,"* ]]; then HYPR_MODE="$(previous hypr_mode)"; fi
+    if [[ -z "$NIRI_MODE" && ",$PREV_COMP," == *",niri,"* ]]; then NIRI_MODE="$(previous niri_mode)"; fi
+    if [[ -z "$UMBRIEL_MODE" && ",$PREV_COMP," == *",umbriel,"* ]]; then UMBRIEL_MODE="$(previous umbriel_mode)"; fi
 fi
 if [[ -z "$CHANNEL" ]]; then
     case "$(previous channel)" in stable) CHANNEL=release ;; canary) CHANNEL=latest ;; esac
 fi
 # The compositor first: the rest follows from it. The default is what's
-# installed already (Hyprland when neither is); each says where it stands
+# installed already (Hyprland when none is); each says where it stands
 comp_status() { # comp_status INSTALLED REPO MIN
     if [[ -z "$1" ]]; then
         if [[ -z "$2" ]]; then echo "not in your repositories"
@@ -569,26 +630,47 @@ comp_status() { # comp_status INSTALLED REPO MIN
     elif older "$1" "$3"; then echo "${1%-*} installed, older than $3: the system is updated first"
     else echo "installed, ${1%-*}"; fi
 }
-if [[ -n "$hv" && -n "$nv" ]]; then comp_default=both
-elif [[ -n "$nv" ]]; then comp_default=niri
-else comp_default=hyprland; fi
+umbriel_status() {
+    if [[ -z "$uv" ]]; then echo "new, built from source (the tested ${UMB_PIN:-commit})"
+    elif umbriel_current; then echo "installed, ${uv%-*}"
+    else echo "${uv%-*} installed: the tested ${UMB_PIN:-one} is built"; fi
+}
+comp_default=""
+for c in hyprland niri umbriel; do installed_comp "$c" && comp_default+="${comp_default:+,}$c"; done
+case "$comp_default" in "") comp_default=hyprland ;; hyprland,niri) comp_default=both ;; hyprland,niri,umbriel) comp_default=all ;; esac
+[[ -z "$COMPOSITOR" ]] || COMPOSITOR="$(comp_norm "$COMPOSITOR")"
+# A list the menu has by name
+case "$COMPOSITOR" in hyprland,niri) COMPOSITOR=both ;; hyprland,niri,umbriel) COMPOSITOR=all ;; esac
 comp_opts=()
 for o in "hyprland:Hyprland, dynamic tiling · $(comp_status "$hv" "$hr" "$MIN_HYPRLAND")" \
          "niri:niri, scrollable tiling · $(comp_status "$nv" "$nr" "$MIN_NIRI")" \
-         "both:both, picked at each login"; do
-    if [[ "${o%%:*}" == "$comp_default" ]]; then comp_opts=("$o" "${comp_opts[@]}"); else comp_opts+=("$o"); fi
+         "umbriel:Umbriel, Noctalia's compositor (new, changing fast) · $(umbriel_status)" \
+         "both:Hyprland and niri, picked at each login" \
+         "all:all three, picked at each login" \
+         ${COMPOSITOR:+"$COMPOSITOR:$(comp_name "$COMPOSITOR"), picked at each login"} \
+         ${comp_default:+"$comp_default:$(comp_name "$comp_default"), picked at each login"}; do
+    # Each once; the default first
+    v="${o%%:*}"
+    for e in "${comp_opts[@]}"; do [[ "${e%%:*}" == "$v" ]] && continue 2; done
+    if [[ "$v" == "$comp_default" ]]; then comp_opts=("$o" "${comp_opts[@]}"); else comp_opts+=("$o"); fi
 done
 choose COMPOSITOR "Compositor" "${comp_opts[@]}"
-WANT_HYPR=0 WANT_NIRI=0
-[[ "$COMPOSITOR" == niri ]] || WANT_HYPR=1
-[[ "$COMPOSITOR" == hyprland ]] || WANT_NIRI=1
+COMPOSITOR="$(comp_norm "$COMPOSITOR")"
+WANT_HYPR=0 WANT_NIRI=0 WANT_UMBRIEL=0
+[[ ",$COMPOSITOR," == *",hyprland,"* ]] && WANT_HYPR=1
+[[ ",$COMPOSITOR," == *",niri,"* ]] && WANT_NIRI=1
+[[ ",$COMPOSITOR," == *",umbriel,"* ]] && WANT_UMBRIEL=1
 # One the repositories can't bring new enough: the shell won't run on it
 if [[ "$WANT_HYPR" == 1 && -z "$hv" ]] && { [[ -z "$hr" ]] || older "$hr" "$MIN_HYPRLAND"; }; then
-    warn "Hyprland ${hr:+${hr%-*} }can't come from your repositories (the shell needs $MIN_HYPRLAND or newer): install it yourself, or pick niri"
+    warn "Hyprland ${hr:+${hr%-*} }can't come from your repositories (the shell needs $MIN_HYPRLAND or newer): install it yourself, or pick another"
 fi
 if [[ "$WANT_NIRI" == 1 && -z "$nv" ]] && { [[ -z "$nr" ]] || older "$nr" "$MIN_NIRI"; }; then
-    warn "niri ${nr:+${nr%-*} }can't come from your repositories (the shell needs $MIN_NIRI or newer): install it yourself, or pick Hyprland"
+    warn "niri ${nr:+${nr%-*} }can't come from your repositories (the shell needs $MIN_NIRI or newer): install it yourself, or pick another"
 fi
+# Umbriel: built here, a few minutes, unless the tested one is installed
+UMB_BUILD=0
+if [[ "$WANT_UMBRIEL" == 1 && "$SKIP_DEPS" == 0 ]] && ! umbriel_current; then UMB_BUILD=1; fi
+if [[ "$WANT_UMBRIEL" == 1 ]]; then note "Umbriel is young and changes as it's developed; the shell was tested with ${UMB_PIN:-the commit in packaging/umbriel} (docs/UMBRIEL.md)."; fi
 # One that's installed but too old: a full system update brings the new
 # one (Arch doesn't do partial upgrades), before anything else installs
 OUTDATED=()
@@ -609,6 +691,11 @@ if [[ "$WANT_NIRI" == 1 ]]; then
     choose NIRI_MODE "niri config" "include:keep your config.kdl, include the shell's at its end" "skip:don't touch it"
 else
     NIRI_MODE=skip
+fi
+if [[ "$WANT_UMBRIEL" == 1 ]]; then
+    choose UMBRIEL_MODE "Umbriel config" "include:keep your config.toml, include the shell's and start it with Umbriel" "skip:don't touch it"
+else
+    UMBRIEL_MODE=skip
 fi
 choose TERMINAL "Terminal" "alacritty:GPU terminal, recoloured with the wallpaper" "kitty:feature-rich" "foot:minimal and fast" "ghostty:modern GPU terminal"
 choose FILE_MANAGER "File manager" "nemo:Cinnamon's" "thunar:light, from Xfce" "nautilus:GNOME Files" "dolphin:KDE's"
@@ -700,6 +787,14 @@ if [[ "$NIRI_MODE" == include ]]; then
     NIRI_RIVALS="$(grep -oE '^\s*spawn-(sh-)?at-startup\s+"(waybar|mako|dunst|swaync|fnott|swaybg|swayidle|[^"]*polkit[^"]*)"' "$NIRI/config.kdl" 2>/dev/null |
         grep -oE '"[^"]*"' | tr -d '"' | xargs -rn1 basename | sort -u | tr '\n' ' ' || true)"
 fi
+UMB_RIVALS=""
+if [[ "$UMBRIEL_MODE" == include ]]; then
+    cfg "$UMB/material3ui.toml" "Umbriel: the shell's keys and blur, with your apps"
+    if [[ ! -e "$UMB/config.toml" ]]; then cfg "$UMB/config.toml" "Umbriel's packaged config + include material3ui.toml, start the shell"
+    else cfg "$UMB/config.toml" "+ include material3ui.toml, start the shell; Noctalia's and Umbriel's stock keys the shell uses taken out"; fi
+    # Another shell started with it (two bars, two notification daemons)
+    UMB_RIVALS="$(grep -oE '^\s*autostart\s*=.*' "$UMB/config.toml" 2>/dev/null | grep -oE '"(noctalia|qs|quickshell|waybar|mako|dunst|swaync|fnott|swaybg|swayidle)[^"]*"' | tr -d '"' | awk '{print $1}' | sort -u | tr '\n' ' ' || true)"
+fi
 [[ -e "$CONFIG_HOME/quickshell/material3ui" ]] && cfg "$CONFIG_HOME/quickshell/material3ui" "v3 Quickshell shell: removed"
 
 extras=()
@@ -713,8 +808,11 @@ row Apps "$TERMINAL · $FILE_MANAGER · $BROWSER"
 desk=()
 [[ "$WANT_HYPR" == 1 ]] && desk+=("Hyprland (config: $HYPR_MODE)")
 [[ "$WANT_NIRI" == 1 ]] && desk+=("niri (config: $NIRI_MODE)")
-desk_text="$(printf '%s and ' "${desk[@]}")"
-row Desktop "${desk_text% and }"
+[[ "$WANT_UMBRIEL" == 1 ]] && desk+=("Umbriel (config: $UMBRIEL_MODE)")
+desk_text="$(printf '%s, ' "${desk[@]}")"
+desk_text="${desk_text%, }"
+[[ "$desk_text" == *", "* ]] && desk_text="${desk_text%, *} and ${desk_text##*, }"
+row Desktop "$desk_text"
 row Updates "$CHANNEL"
 joined="$(IFS=,; printf '%s' "${extras[*]:-none}")"
 row Extras "${joined//,/, }"
@@ -735,6 +833,7 @@ else
         label=""
     done
 fi
+if [[ "$UMB_BUILD" == 1 ]]; then row Umbriel "build Umbriel and its portal ($UMB_PIN, the tested commit) from packaging/umbriel, as pacman packages"; fi
 row Shell "build material3ui $VERSION and install it to /usr"
 label=Configs
 for e in "${CONFIGS[@]}"; do
@@ -748,6 +847,9 @@ if [[ -n "$NIRI_RIVALS" ]]; then
     set -- $NIRI_RIVALS
     if [[ $# -eq 1 ]]; then warn "Your config.kdl also starts $1, which the shell replaces: take it out of config.kdl"
     else warn "Your config.kdl also starts ${NIRI_RIVALS% }, which the shell replaces: take them out of config.kdl"; fi
+fi
+if [[ -n "$UMB_RIVALS" ]]; then
+    warn "Your config.toml also starts ${UMB_RIVALS% }, which the shell replaces: take it out of general.autostart (Umbriel Settings → Startup apps)"
 fi
 note "Backups and a restore.sh go to $(tilde "$BACKUP_DIR")"
 echo
@@ -766,6 +868,7 @@ if [[ "$MISSING_COUNT" -gt 0 ]]; then
     [[ "$MISSING_COUNT" -eq ${#m[@]} ]] || PROG_TOTAL=$((PROG_TOTAL + 8))
 fi
 [[ "$NEED_GSF" == 0 ]] || PROG_TOTAL=$((PROG_TOTAL + 1))
+[[ "$UMB_BUILD" == 0 ]] || PROG_TOTAL=$((PROG_TOTAL + 10))
 [[ "$OPT_KDE" == 0 ]] || PROG_TOTAL=$((PROG_TOTAL + 3))
 
 # ── 4. Packages ──────────────────────────────────────────────────────────────
@@ -806,6 +909,10 @@ elif [[ "$SKIP_DEPS" == 1 ]]; then
 else
     note "Nothing to install."
 fi
+if [[ "$UMB_BUILD" == 1 ]]; then
+    W=10 task "Umbriel and its portal, built from source ($UMB_PIN; a few minutes)" build_umbriel
+    [[ "$DRY" == 1 ]] || ok "Umbriel installed (umbriel-git, xdg-desktop-portal-umbriel-git)"
+fi
 # The compositor the shell will run on: here, and new enough
 comp_check() { # comp_check NAME PACKAGE MIN
     local v
@@ -818,6 +925,11 @@ if [[ "$DRY" == 1 ]]; then note "[dry-run] check the compositor is installed and
 else
     if [[ "$WANT_HYPR" == 1 ]]; then comp_check Hyprland hyprland "$MIN_HYPRLAND"; fi
     if [[ "$WANT_NIRI" == 1 ]]; then comp_check niri niri "$MIN_NIRI"; fi
+    if [[ "$WANT_UMBRIEL" == 1 ]]; then
+        uv="$(umbriel_version)"
+        if [[ -z "$uv" ]]; then warn "Umbriel isn't installed: build it with ./install.sh --compositor umbriel (without --skip-deps)"
+        else ok "Umbriel ${uv%-*}"; fi
+    fi
 fi
 if [[ "$NEED_GSF" == 1 ]]; then
     google_sans() {
@@ -1000,6 +1112,71 @@ elif [[ "$WANT_NIRI" == 1 ]]; then
     note "niri config left as it is: include \"material3ui.kdl\" yourself (docs/NIRI.md)"
 fi
 
+# Umbriel: material3ui.toml (your apps in it), included from config.toml,
+# which also starts the shell. config.toml is edited with the shell's own
+# TOML editor (material3ui toml), so the rest of it stays as you wrote it
+umbriel_toml() {
+    sed -e "s/spawn alacritty/spawn $TERMINAL/g" -e "s/spawn nemo/spawn $FILE_MANAGER/g" -e "s/spawn librewolf/spawn $BROWSER/g" \
+        "$DOT/umbriel/material3ui.toml"
+}
+umbriel_include() {
+    local cfg="$UMB/config.toml" toml=("$BUILD/material3ui" toml) list key ours theirs stock removed=() kept=()
+    [[ -x "$BUILD/material3ui" ]] || toml=(material3ui toml)
+    mkdir -p "$UMB"
+    # None yet: Umbriel's packaged one, as its guide says to start
+    if [[ ! -e "$cfg" ]]; then
+        if [[ -f "$UMB_STOCK" ]]; then cp "$UMB_STOCK" "$cfg"; else printf '# Umbriel\n' >"$cfg"; fi
+    fi
+    "${toml[@]}" get "$cfg" '["general"]' >/dev/null || { warn "Umbriel's config.toml can't be read; fix it, then run ./install.sh again"; return 1; }
+    # The shell's file, included (optional: a missing one isn't an error)
+    list="$("${toml[@]}" get "$cfg" '["include","optional","files"]')"
+    [[ "$list" != null ]] || list='[]'
+    if ! jq -e 'index("material3ui.toml")' <<<"$list" >/dev/null && ! "${toml[@]}" get "$cfg" '["include","files"]' | jq -e 'index("material3ui.toml")' >/dev/null 2>&1; then
+        "${toml[@]}" set "$cfg" '["include","optional","files"]' "$(jq -c '. + ["material3ui.toml"]' <<<"$list")"
+    fi
+    # The shell, started with Umbriel
+    list="$("${toml[@]}" get "$cfg" '["general","autostart"]')"
+    [[ "$list" != null ]] || list='[]'
+    if ! jq -e 'index("material3ui")' <<<"$list" >/dev/null; then
+        "${toml[@]}" set "$cfg" '["general","autostart"]' "$(jq -c '. + ["material3ui"]' <<<"$list")"
+    fi
+    # config.toml is applied after its includes, so a key it binds hides the
+    # shell's: out go Noctalia's, and Umbriel's stock ones (as packaged,
+    # unchanged by you); yours stay
+    while read -r key; do
+        [[ -n "$key" ]] || continue
+        ours="$(jq -cn --arg k "$key" '["keybinds",$k]')"
+        theirs="$("${toml[@]}" get "$cfg" "$ours")"
+        [[ "$theirs" != null ]] || continue
+        stock="$( [[ -f "$UMB_STOCK" ]] && "${toml[@]}" get "$UMB_STOCK" "$ours" || echo null)"
+        if [[ "$theirs" == *noctalia* || "$theirs" == "$stock" ]]; then
+            "${toml[@]}" remove "$cfg" "$ours" && removed+=("$key")
+        else
+            kept+=("$key")
+        fi
+    done < <("${toml[@]}" get "$UMB/material3ui.toml" '["keybinds"]' | jq -r 'keys[]')
+    [[ ${#removed[@]} -eq 0 ]] || note "Keys taken out of config.toml for the shell's: ${removed[*]}"
+    [[ ${#kept[@]} -eq 0 ]] || note "Keys your config.toml binds its own way (kept; the shell's are in material3ui.toml): ${kept[*]}"
+}
+if [[ "$UMBRIEL_MODE" == include ]]; then
+    guard "$UMB/material3ui.toml"
+    if [[ "$DRY" == 1 ]]; then note "[dry-run] write $(tilde "$UMB/material3ui.toml") (with $TERMINAL, $FILE_MANAGER and $BROWSER)"
+    else mkdir -p "$UMB"; umbriel_toml >"$UMB/.material3ui.toml.m3new" && mv -f "$UMB/.material3ui.toml.m3new" "$UMB/material3ui.toml"; fi
+    guard "$UMB/config.toml"
+    if [[ "$DRY" == 1 ]]; then note "[dry-run] include material3ui.toml from $(tilde "$UMB/config.toml"), start the shell, and take out the keys that hide the shell's"
+    elif umbriel_include; then
+        # Umbriel checks what it will read (warnings are fine; errors keep the old one in force)
+        if command -v umbriel >/dev/null && ! umbriel_check="$(umbriel config validate -c "$UMB/config.toml" 2>&1)"; then
+            if grep -q "error" <<<"$umbriel_check"; then
+                warn "Umbriel finds an error in its config; ./install.sh --restore puts the old one back:"
+                printf '%s\n' "$umbriel_check" | sed 's/\x1b\[[0-9;]*m//g' | grep -iv " INF " | tail -n 8 | sed 's/^/    /'
+            else ok "Umbriel (material3ui.toml included; it has notes on your config: umbriel config validate)"; fi
+        else ok "Umbriel (material3ui.toml included)"; fi
+    fi
+elif [[ "$WANT_UMBRIEL" == 1 ]]; then
+    note "Umbriel config left as it is: include material3ui.toml yourself (docs/UMBRIEL.md)"
+fi
+
 # Retired: the v3 Quickshell shell and its helpers, and v1's services
 if [[ -e "$CONFIG_HOME/quickshell/material3ui" ]]; then
     guard "$CONFIG_HOME/quickshell/material3ui"
@@ -1073,6 +1250,7 @@ if [[ "$DRY" == 0 ]]; then
   "compositor": "$COMPOSITOR",
   "hypr_mode": "$HYPR_MODE",
   "niri_mode": "$NIRI_MODE",
+  "umbriel_mode": "$UMBRIEL_MODE",
   "install_dir": "$REPO",
   "channel": "$state_channel",
   "terminal": "$TERMINAL",
@@ -1091,16 +1269,15 @@ if [[ "$DRY" == 0 && -t 1 ]]; then
 fi
 if [[ "$DRY" == 1 ]]; then ok "Dry run finished: nothing was changed"; else ok "Material3UI $VERSION is installed"; fi
 if [[ "$CHANGED" -gt 0 && "$DRY" == 0 ]]; then note "$CHANGED config paths changed; ./install.sh --restore undoes them"; fi
-# niri can't bind Super on its own: Spotlight is Super+Space there
-case "$COMPOSITOR" in
-    niri) spotlight="${A}Super+Space${R}" ;;
-    both) spotlight="${A}Super${R} (${A}Super+Space${R} on niri)" ;;
-    *) spotlight="${A}Super${R}" ;;
-esac
+# niri and Umbriel don't bind a tap of Super for the shell: Spotlight is Super+Space there
+if [[ "$WANT_HYPR" == 0 ]]; then spotlight="${A}Super+Space${R}"
+elif [[ "$WANT_NIRI$WANT_UMBRIEL" == 00 ]]; then spotlight="${A}Super${R}"
+else spotlight="${A}Super${R} (${A}Super+Space${R} on $(comp_name "$(printf '%s' "$COMPOSITOR" | sed 's/hyprland,\?//')"))"; fi
 info "Keys    $spotlight Spotlight · ${A}Super+I${R} Settings · ${A}Super+N${R} Quick Settings · ${A}Super+Return${R} $TERMINAL"
 yours=()
 [[ "$HYPR_MODE" == skip ]] || yours+=("$(tilde "$HYPR/material3ui/user.lua") for Hyprland tweaks")
 [[ "$NIRI_MODE" != include ]] || yours+=("$(tilde "$NIRI/material3ui-user.kdl") for niri tweaks")
+[[ "$UMBRIEL_MODE" != include ]] || yours+=("Umbriel Settings, or $(tilde "$UMB/config.toml"), for Umbriel tweaks")
 yours+=("${A}material3ui msg help${R} for scripting")
 info "Yours   $(printf '%s · ' "${yours[@]}" | sed 's/ · $//')"
 if pacman -Qq quickshell-git >/dev/null 2>&1; then note "quickshell-git isn't used any more: yay -Rns quickshell-git"; fi
@@ -1111,6 +1288,13 @@ if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" && "$WANT_HYPR" == 1 ]]; then
         do_ hyprctl dispatch exec material3ui >/dev/null
         ok "Running"
     fi
+elif [[ -n "${UMBRIEL_SOCKET:-}" && "$WANT_UMBRIEL" == 1 ]]; then
+    # Umbriel has read config.toml again by itself already
+    if confirm "Start the shell now?" Y; then
+        do_ pkill -x material3ui || true
+        do_ umbriel msg spawn material3ui >/dev/null
+        ok "Running"
+    fi
 elif [[ -n "${NIRI_SOCKET:-}" && "$WANT_NIRI" == 1 ]]; then
     # niri has read material3ui.kdl by itself already
     if confirm "Start the shell now?" Y; then
@@ -1119,10 +1303,7 @@ elif [[ -n "${NIRI_SOCKET:-}" && "$WANT_NIRI" == 1 ]]; then
         ok "Running"
     fi
 else
-    case "$COMPOSITOR" in
-        niri) info "Log into niri to start it." ;;
-        both) info "Log into Hyprland or niri to start it." ;;
-        *) info "Log into Hyprland to start it." ;;
-    esac
+    names="$(comp_name "$COMPOSITOR")"
+    info "Log into ${names/ and / or } to start it."
 fi
 note "Log: $(tilde "$LOG")"

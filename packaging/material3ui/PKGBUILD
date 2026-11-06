@@ -5,15 +5,16 @@
 pkgname=material3ui
 pkgver=${M3_PKGVER:-0}
 pkgrel=1
-pkgdesc="A Material 3 desktop shell for Hyprland and niri"
+pkgdesc="A Material 3 desktop shell for Hyprland, niri and Umbriel"
 arch=(x86_64 aarch64)
 url="https://github.com/Abijspy/material3-android-shell"
 license=(MIT)
 depends=(wayland libglvnd pango cairo libxkbcommon systemd-libs libpulse librsvg gdk-pixbuf2 polkit pam fastfetch)
 makedepends=(meson ninja wayland-protocols wlr-protocols nlohmann-json tomlplusplus)
-# The compositor is yours to pick: Hyprland, niri, or both
+# The compositor is yours to pick: Hyprland, niri, Umbriel, or several
 optdepends=('hyprland: a compositor to run on (0.55 or newer)'
             'niri: a compositor to run on (26.04 or newer)'
+            'umbriel-git: a compositor to run on (built by install.sh from packaging/umbriel)'
             'hyprsunset: night light on Hyprland'
             'xwayland-satellite: X11 apps on niri'
             'xdg-desktop-portal-gnome: screen sharing on niri'

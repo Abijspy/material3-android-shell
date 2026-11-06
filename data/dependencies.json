@@ -150,6 +150,28 @@
       "description": "Screen sharing on niri"
     }
   ],
+  "umbriel": [
+    {
+      "name": "base-devel",
+      "command": "makepkg",
+      "description": "Builds Umbriel and its portal (packaging/umbriel): not in the repositories yet"
+    },
+    {
+      "name": "git",
+      "command": "git",
+      "description": "Fetches Umbriel's source"
+    },
+    {
+      "name": "xorg-xwayland",
+      "command": "Xwayland",
+      "description": "X11 apps on Umbriel"
+    },
+    {
+      "name": "xdg-desktop-portal",
+      "command": "/usr/lib/xdg-desktop-portal",
+      "description": "Screen sharing on Umbriel, through its portal"
+    }
+  ],
   "services": [
     {
       "name": "pipewire",

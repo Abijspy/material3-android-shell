@@ -96,7 +96,8 @@ The installer asks a few questions, the compositor first, then shows you one pla
 
 - **Hyprland:** it installs Hyprland and the shell's modular Lua config, or adds the shell to the config you have.
 - **niri:** it installs niri with xwayland-satellite (for X11 apps) and the GNOME portal (for screen sharing). Your `config.kdl` stays yours: the installer adds one `include "material3ui.kdl"` line at its end, and the shell's keys, blur and settings live in files beside it.
-- **Both:** you choose Hyprland or niri at each login. The login screen shows each session with its compositor's logo.
+- **Umbriel:** Umbriel isn't in Arch's repositories or the AUR yet, so the installer builds it, with its portal for screen sharing, from [`packaging/umbriel`](packaging/umbriel). Both are pinned to the commit the shell was tested with, and pacman tracks their files. Your `config.toml` stays yours: the installer includes the shell's `material3ui.toml` from it and starts the shell with Umbriel. It takes out only the keys that would hide the shell's: Noctalia's, and Umbriel's stock ones you haven't changed.
+- **Several:** `both` (Hyprland and niri), `all`, or a list such as `niri,umbriel`. You choose at each login, and the login screen shows each session with its compositor's logo.
 
 <details>
 <summary><b>Installer options</b></summary>
@@ -105,9 +106,10 @@ The installer asks a few questions, the compositor first, then shows you one pla
 | :--- | :--- |
 | `--dry-run` | Show every package and file it would touch, and change nothing (from a local checkout) |
 | `--yes` | Accept all defaults, for scripted or repeat installs |
-| `--compositor hyprland` · `niri` · `both` | What the shell runs on. The default is what's installed already (Hyprland when neither is). |
+| `--compositor hyprland` · `niri` · `umbriel` · `both` · `all` | What the shell runs on, or a list (`niri,umbriel`). The default is what's installed already (Hyprland when none is). |
 | `--hypr full` · `inject` · `skip` | `full` installs the whole Hyprland config. `inject` adds the shell to your existing config. `skip` leaves Hyprland alone. |
 | `--niri include` · `skip` | `include` adds the shell to the end of your niri `config.kdl` (or niri's default config). `skip` leaves niri alone. |
+| `--umbriel include` · `skip` | `include` adds the shell to your Umbriel `config.toml` (or Umbriel's packaged one): its include, the shell started with Umbriel, and the keys that would hide the shell's taken out. `skip` leaves Umbriel alone. |
 | `--terminal` · `--file-manager` · `--browser` | Your apps. The defaults are Alacritty, Nemo and LibreWolf. |
 | `--greeter` | Also install the greetd login screen (asks for sudo) |
 | `--channel latest` · `release` | Follow `main` (default), or the latest tagged release |
@@ -136,7 +138,7 @@ Everything in the shell works on both: the bar with each monitor's workspaces, t
 
 Hyprland is the shell's first home and the most complete. Pick niri if you like scrollable tiling: the rest of the desktop comes with you. → [Material3UI on niri](docs/NIRI.md) · [The Hyprland setup](docs/HYPRLAND.md)
 
-**And Umbriel (new).** The shell also runs on [Umbriel](https://github.com/noctalia-dev/umbriel), the Noctalia project's compositor. The bar shows each monitor's workspaces, and the dock, panels, notifications, Spotlight, keyboard layouts, blur, Umbriel's overview and the lock screen all work. **Umbriel Settings** edits Umbriel's own options (layouts, gaps, borders, blur, animations, input, startup apps) right in your `config.toml`, keeping your comments. The installer doesn't set it up yet: include the shell's keys and blur from your `config.toml` by hand. → [Material3UI on Umbriel](docs/UMBRIEL.md)
+**And Umbriel (new).** The shell also runs on [Umbriel](https://github.com/noctalia-dev/umbriel), the Noctalia project's compositor. The bar shows each monitor's workspaces, and the dock, panels, notifications, Spotlight, keyboard layouts, blur, Umbriel's overview and the lock screen all work. **Umbriel Settings** edits Umbriel's own options (layouts, gaps, borders, blur, animations, input, startup apps) right in your `config.toml`, keeping your comments. Pick it in the installer, which builds Umbriel and sets it up. → [Material3UI on Umbriel](docs/UMBRIEL.md)
 
 ## A tour
 
