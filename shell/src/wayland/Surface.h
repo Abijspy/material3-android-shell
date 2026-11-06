@@ -100,6 +100,11 @@ public:
     // Everything drawn outside its box (the nearest card or pill round it)
     // or the surface, a line each; `checked` counts what was looked at
     std::string overflow(int& checked) const;
+    // A layout asked for and not done yet (the next frame would), now: so a
+    // check sees what will be drawn, not the layout from before a change
+    void layoutIfNeeded() {
+        if (m_needsLayout) layout();
+    }
     std::string dump() const;
 
     // Protocol callbacks

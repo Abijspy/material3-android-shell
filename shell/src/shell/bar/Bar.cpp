@@ -679,7 +679,9 @@ void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
             ws->blurBehind = barBlur();
         }
     } else if (id == "title") {
-        capsule(zone, filled)->add<WindowTitle>(vertical);
+        auto* pill = capsule(zone, filled);
+        pill->givesWay = !vertical; // with the title inside it, on a crowded bar
+        pill->add<WindowTitle>(vertical);
     } else if (id == "island") {
         zone->add<Island>(m_openPopup);
     } else if (id == "clock") {

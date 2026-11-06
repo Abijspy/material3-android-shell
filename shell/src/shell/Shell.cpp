@@ -976,8 +976,9 @@ void Shell::registerIpc() {
         if (!a.empty() && a[0] != "check") return std::string("error: layout check");
         std::string out;
         int checked = 0, surfaces = 0;
-        for (const auto* s : wl::Surface::all()) {
+        for (auto* s : wl::Surface::all()) {
             ++surfaces;
+            s->layoutIfNeeded(); // a text that just changed (a clock, a battery) is laid out first
             out += s->overflow(checked);
         }
         if (out.empty()) return std::format("ok: nothing outside its box ({} nodes on {} surfaces)", checked, surfaces);

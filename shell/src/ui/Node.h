@@ -171,6 +171,10 @@ public:
     bool widthFollowsText = false;
     float minWidth = 0, minHeight = 0;
     bool grow = false; // takes leftover main-axis space in a Flex
+    // In a Flex row short of room, laid out narrower than it measures, as a
+    // label is (what's in it scrolls or gives way in turn) rather than
+    // pushing past the row's end: scrolling text, the bar's window title
+    bool givesWay = false;
     // Cross-axis alignment within a Flex; unset follows the parent's alignItems
     std::optional<Align> alignSelf;
     // Left out of a Flex's flow: the owner places it (menus over a layout)

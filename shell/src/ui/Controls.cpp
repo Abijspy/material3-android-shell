@@ -699,6 +699,7 @@ void ImageView::doPaint(Renderer& r) {
 
 Marquee::Marquee(float maxWidth, std::string text) : m_max(maxWidth), m_start(std::chrono::steady_clock::now()) {
     m_label = add<Label>(std::move(text));
+    givesWay = true; // it scrolls in whatever it gets
 }
 
 Marquee::~Marquee() {

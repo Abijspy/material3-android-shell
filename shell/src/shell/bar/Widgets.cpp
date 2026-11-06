@@ -71,7 +71,13 @@ void BarLayout::doArrange() {
         return;
     }
 
-    const float startRight = r.x + margin + start.w;
+    // Short of room (a narrow screen, a long window title): the start gets
+    // what the centre and the end leave, and what's in it gives way (a title
+    // scrolls in less) instead of pushing the centre over the end
+    SizeF first = start;
+    if (margin * 4 + start.w + centre.w + end.w > r.w && !kids.empty())
+        first = kids[0]->measure({std::max(0.0f, r.w - margin * 4 - centre.w - end.w), r.h});
+    const float startRight = r.x + margin + first.w;
     const float endLeft = r.right() - margin - end.w;
     float cx = r.x + (r.w - centre.w) / 2;
     cx = std::clamp(cx, startRight + margin, std::max(startRight + margin, endLeft - margin - centre.w));
@@ -79,7 +85,7 @@ void BarLayout::doArrange() {
     auto place = [&](size_t i, float x, const SizeF& s) {
         if (i < kids.size()) kids[i]->arrange({x, r.y + (r.h - s.h) / 2, s.w, s.h});
     };
-    place(0, r.x + margin, start);
+    place(0, r.x + margin, first);
     place(1, cx, centre);
     place(2, endLeft, end);
 }
@@ -321,6 +327,7 @@ void Clock::schedule() {
 // the icon stays put beside them
 WindowTitle::WindowTitle(bool vertical) : Flex(vertical ? Direction::Column : Direction::Row) {
     setSpacing(8);
+    givesWay = !vertical; // its title scrolls in less on a crowded bar
     m_icon = add<ImageView>(18, [this](float scale, int& w, int& h) -> GLuint {
         auto* t = m_iconName.empty() ? nullptr : Images::get().icon(m_iconName, static_cast<int>(std::lround(18 * scale)));
         if (!t) return 0;

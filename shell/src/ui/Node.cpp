@@ -315,7 +315,7 @@ float Flex::cornerRadius() const {
 namespace {
 // Text that can give width back (wrapping, or ending in "…"); icons can't
 bool shrinks(const Node* n) {
-    return dynamic_cast<const Label*>(n) && !dynamic_cast<const Icon*>(n);
+    return (dynamic_cast<const Label*>(n) && !dynamic_cast<const Icon*>(n)) || n->givesWay;
 }
 } // namespace
 
