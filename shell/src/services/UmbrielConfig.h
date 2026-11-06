@@ -3,7 +3,11 @@
 #include "core/Signal.h"
 #include "services/TomlEdit.h"
 
+#include <deque>
+#include <functional>
+#include <map>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -15,8 +19,15 @@ namespace m3 {
 // Everything else in the file stays as it was (services/TomlEdit). With no
 // config.toml yet, the first change starts it from Umbriel's packaged one.
 // The file as it was is kept once per session in
-// ~/.config/material3ui/backups; after each change `umbriel config
-// validate` checks it, and what it says is kept for the pages to show
+// ~/.config/material3ui/backups.
+//
+// Umbriel changes as it's developed, so nothing is written that the
+// installed one would refuse: a change goes to a copy beside config.toml
+// first, and `umbriel config validate` checks it; with an error, or
+// Umbriel saying it would ignore that very setting, config.toml stays as
+// it was and lastError() says why. `umbriel config schema` says which
+// options this Umbriel has, with its ranges, choices and defaults: the
+// pages show only those
 class UmbrielConfig {
 public:
     static UmbrielConfig& get();
@@ -32,11 +43,19 @@ public:
     // The file that sets it ("config.toml", "material3ui.toml"); "" none
     std::string from(const tomledit::Path& path) const;
 
-    // Into config.toml; false (and lastError()) when it can't be
+    // Into config.toml, once the installed Umbriel accepts it (changed then,
+    // or lastError() says why not); false when it can't even be tried
     bool set(const tomledit::Path& path, const nlohmann::json& value);
     // Out of config.toml: an include's value, or the default, again
     bool unset(const tomledit::Path& path);
     const std::string& lastError() const { return m_lastError; }
+
+    // The installed Umbriel's own description of an option ("appearance.
+    // blur.radius": type, min, max, values, default); null when it has
+    // none, or there's no schema (no `umbriel` to ask: everything shown)
+    const nlohmann::json* schema(const std::string& dotted) const;
+    bool hasSchema() const { return !m_schema.empty(); }
+    const std::string& umbrielVersion() const { return m_version; }
 
     // What `umbriel config validate` said after the last change, a line
     // each ("error: line 12: …"); empty when it was happy (or isn't there)
@@ -50,6 +69,11 @@ private:
     void validate();
     bool write(const std::string& text);
     std::string packaged() const; // Umbriel's own config.toml, to start from
+    void loadSchema();
+    // A change to config.toml's text, checked by Umbriel before it's
+    // written; one at a time, in order (a slider dragged twice)
+    bool change(std::function<std::optional<std::string>(const std::string&)> edit, std::string dotted);
+    void next();
 
     struct Doc {
         std::string name;
@@ -60,6 +84,14 @@ private:
     std::string m_readError, m_lastError;
     std::vector<std::string> m_problems;
     bool m_backedUp = false;
+    std::map<std::string, nlohmann::json> m_schema;
+    std::string m_version;
+    struct Edit {
+        std::function<std::optional<std::string>(const std::string&)> apply;
+        std::string dotted; // the option, for Umbriel's words about it
+    };
+    std::deque<Edit> m_queue;
+    bool m_checking = false;
 };
 
 } // namespace m3

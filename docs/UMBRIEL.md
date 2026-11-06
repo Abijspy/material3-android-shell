@@ -81,6 +81,16 @@ Umbriel blurs layer surfaces that a `[[layer_rule]]` names. The shell's file blu
 
 Fully see-through parts, such as the space around a panel's card, stay clear. Settings → Look & feel doesn't change these rules yet. Edit `material3ui.toml` to change them.
 
+## When Umbriel changes
+
+Umbriel is young and changes as it's developed (its docs call its defaults "opinions, not stability promises"). The shell is built to keep working when it does:
+
+- **Umbriel Settings shows only what your Umbriel has.** It asks the installed Umbriel which options it knows (`umbriel config schema`), with their ranges, choices and defaults, and hides the rest. An option that's renamed or dropped leaves the page instead of being written wrong.
+- **Nothing is saved that your Umbriel would refuse.** Each change goes to a copy beside `config.toml` first, and `umbriel config validate` checks it. If the check finds an error, or Umbriel says it would ignore that setting, `config.toml` stays as it was and the page says why.
+- **The bar and dock keep up.** If Umbriel stops sending one of the event families the shell subscribes to, the shell subscribes without the keyboard layout. If it refuses the rest too, the shell asks for the state every 1.5 seconds instead. Fields Umbriel stops sending read as empty, new ones are ignored, and a refused action is only logged.
+
+What can still break is anything Umbriel renames in its IPC (its commands, actions or fields). The Umbriel features would then stop working until the shell catches up, but the shell itself keeps running. This was tested with Umbriel 0.1.0.
+
 ## Not yet
 
 - The installer and updates don't set up or refresh `material3ui.toml`.

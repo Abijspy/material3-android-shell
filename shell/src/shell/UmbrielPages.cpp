@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <format>
+#include <optional>
 #include <sstream>
 
 namespace m3::shell::panels {
@@ -52,6 +53,29 @@ std::string shown(const Opt& o, double v) {
     if (o.kind == K::Int) return std::format("{:.0f}{}{}", v, unit.empty() ? "" : " ", unit);
     const int places = o.step >= 1 ? 0 : o.step >= 0.1 ? 1 : o.step >= 0.01 ? 2 : 3;
     return std::format("{:.{}f}{}{}", v, places, unit.empty() ? "" : " ", unit);
+}
+
+// The option as the installed Umbriel describes it (it changes as Umbriel
+// is developed): its default, range and choices from `umbriel config
+// schema` where it says them, else as written here. Nothing when this
+// Umbriel doesn't have it: never shown, never written
+std::optional<Opt> adapted(Opt o) {
+    auto& cfg = UmbrielConfig::get();
+    if (!cfg.hasSchema()) return o;
+    const auto* s = cfg.schema(o.path);
+    if (!s) return std::nullopt;
+    if (s->contains("default")) o.def = (*s)["default"];
+    if (o.kind == K::Int || o.kind == K::Float) {
+        if (s->contains("min") && (*s)["min"].is_number()) o.min = std::max(o.min, (*s)["min"].get<double>());
+        if (s->contains("max") && (*s)["max"].is_number()) o.max = std::min(o.max, (*s)["max"].get<double>());
+        if (o.max <= o.min) return std::nullopt;
+    }
+    if (o.kind == K::Choice && s->contains("values") && (*s)["values"].is_array()) {
+        const auto& values = (*s)["values"];
+        std::erase_if(o.choices, [&](const auto& c) { return std::ranges::find(values, json(c.first)) == values.end(); });
+        if (o.choices.empty()) return std::nullopt;
+    }
+    return o;
 }
 
 // A row for an option: its control showing what's in effect, written into
@@ -164,8 +188,13 @@ void page(Flex* page, std::vector<std::tuple<std::string, std::string, std::vect
         notice(live);
         if (!UmbrielConfig::get().readError().empty()) return;
         for (const auto& [title, sub, opts] : groups) {
+            // Only what this Umbriel has; a group with none of it, not at all
+            std::vector<Opt> shown;
+            for (const auto& o : opts)
+                if (auto a = adapted(o)) shown.push_back(std::move(*a));
+            if (shown.empty()) continue;
             auto* g = group(live, title, sub);
-            for (const auto& o : opts) option(g, o);
+            for (const auto& o : shown) option(g, o);
         }
     };
     live->watch(UmbrielConfig::get().changed);

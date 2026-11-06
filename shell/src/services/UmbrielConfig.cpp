@@ -6,6 +6,7 @@
 #include "core/Process.h"
 
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <format>
@@ -77,6 +78,7 @@ UmbrielConfig& UmbrielConfig::get() {
 
 UmbrielConfig::UmbrielConfig() {
     load();
+    loadSchema();
     validate();
     // Edited elsewhere (an editor, Umbriel's own tools): read and checked again
     FileWatcher::get().watch(file(), [this] {
@@ -193,26 +195,129 @@ bool UmbrielConfig::write(const std::string& text) {
     return true;
 }
 
+namespace {
+
+std::string dottedOf(const tomledit::Path& path) {
+    std::string out;
+    for (const auto& k : path) out += (out.empty() ? "" : ".") + k;
+    return out;
+}
+
+// What `umbriel config validate --json` printed: each diagnostic (its log
+// lines may come first; the report is the line that's JSON)
+nlohmann::json diagnosticsOf(const std::string& out) {
+    std::string report;
+    std::istringstream lines(out);
+    for (std::string line; std::getline(lines, line);)
+        if (line.starts_with("{")) report = line;
+    try {
+        return nlohmann::json::parse(report).value("diagnostics", nlohmann::json::array());
+    } catch (const std::exception&) {
+        return nlohmann::json::array();
+    }
+}
+
+} // namespace
+
 bool UmbrielConfig::set(const tomledit::Path& path, const nlohmann::json& value) {
+    return change([path, value, this](const std::string& text) -> std::optional<std::string> {
+        return tomledit::set(text, path, value, &m_lastError);
+    }, dottedOf(path));
+}
+
+bool UmbrielConfig::unset(const tomledit::Path& path) {
+    if (!exists()) return true;
+    return change([path, this](const std::string& text) -> std::optional<std::string> {
+        return tomledit::remove(text, path, &m_lastError);
+    }, dottedOf(path));
+}
+
+bool UmbrielConfig::change(std::function<std::optional<std::string>(const std::string&)> edit, std::string dotted) {
+    if (!m_readError.empty()) {
+        m_lastError = "config.toml can't be read: " + m_readError;
+        return false;
+    }
+    m_queue.push_back({std::move(edit), std::move(dotted)});
+    if (!m_checking) next();
+    return true;
+}
+
+void UmbrielConfig::next() {
+    if (m_queue.empty()) return;
+    const Edit e = std::move(m_queue.front());
+    m_queue.pop_front();
     m_lastError.clear();
     // None of yours yet: Umbriel's packaged one, as its guide says to start
     std::string text = m_text;
     if (!exists())
         if (const std::string p = packaged(); !p.empty()) text = readFile(p);
-    const auto out = tomledit::set(text, path, value, &m_lastError);
-    if (!out) {
-        log::warn("umbriel config: {} not set: {}", tomledit::literal(nlohmann::json(path)), m_lastError);
-        return false;
+    const auto out = e.apply(text);
+    if (!out || (*out == m_text && exists())) {
+        if (!out) log::warn("umbriel config: {} not changed: {}", e.dotted, m_lastError);
+        changed.emit();
+        return next();
     }
-    return *out == m_text && exists() ? true : write(*out);
+    // Without Umbriel here to ask, as it is
+    if (!haveCommand("umbriel")) {
+        write(*out);
+        return next();
+    }
+    // A copy beside config.toml (its includes found from the same folder),
+    // which the installed Umbriel checks first
+    std::error_code ec;
+    fs::create_directories(dir(), ec);
+    const std::string candidate = dir() + "/.config.toml.m3check";
+    {
+        std::ofstream f(candidate);
+        f << *out;
+    }
+    m_checking = true;
+    const std::string result = *out, dotted = e.dotted;
+    run({"umbriel", "config", "validate", "--json", "-c", candidate}, [this, candidate, result, dotted](int, const std::string& report) {
+        m_checking = false;
+        std::error_code ec;
+        fs::remove(candidate, ec);
+        // Refused: an error, or Umbriel saying it would ignore this very option
+        std::string refusal;
+        for (const auto& d : diagnosticsOf(report)) {
+            const std::string message = d.value("message", ""), severity = d.value("severity", "error");
+            const bool aboutIt = !dotted.empty() && message.find(dotted) != std::string::npos;
+            if (severity == "error" || aboutIt) refusal = message;
+        }
+        if (!refusal.empty()) {
+            m_lastError = "Umbriel " + (umbrielVersion().empty() ? std::string() : umbrielVersion() + " ") + "wouldn't take it: " + refusal;
+            log::warn("umbriel config: {} not written: {}", dotted, refusal);
+            changed.emit();
+        } else {
+            write(result);
+        }
+        next();
+    });
 }
 
-bool UmbrielConfig::unset(const tomledit::Path& path) {
-    m_lastError.clear();
-    if (!exists()) return true;
-    const auto out = tomledit::remove(m_text, path, &m_lastError);
-    if (!out) return false;
-    return *out == m_text ? true : write(*out);
+void UmbrielConfig::loadSchema() {
+    if (!haveCommand("umbriel")) return;
+    // Quick (the binary's own table), and once: which options this Umbriel has
+    std::string out;
+    if (FILE* p = popen("umbriel config schema --json 2>/dev/null", "r")) {
+        char buf[65536];
+        size_t n;
+        while ((n = fread(buf, 1, sizeof buf, p)) > 0) out.append(buf, n);
+        pclose(p);
+    }
+    try {
+        const auto j = nlohmann::json::parse(out);
+        m_version = j.value("version", "");
+        for (const auto& o : j.value("options", nlohmann::json::array()))
+            if (o.contains("path") && o["path"].is_string()) m_schema[o["path"].get<std::string>()] = o;
+    } catch (const std::exception&) {
+        m_schema.clear();
+    }
+}
+
+const nlohmann::json* UmbrielConfig::schema(const std::string& dotted) const {
+    const auto it = m_schema.find(dotted);
+    return it == m_schema.end() ? nullptr : &it->second;
 }
 
 void UmbrielConfig::validate() {
@@ -222,20 +327,11 @@ void UmbrielConfig::validate() {
     }
     run({"umbriel", "config", "validate", "--json", "-c", file()}, [this](int, const std::string& out) {
         std::vector<std::string> problems;
-        try {
-            // Its log lines may come first; the report is the line that's JSON
-            std::string report;
-            std::istringstream lines(out);
-            for (std::string line; std::getline(lines, line);)
-                if (line.starts_with("{")) report = line;
-            const auto j = nlohmann::json::parse(report);
-            for (const auto& d : j.value("diagnostics", nlohmann::json::array())) {
-                std::string where = d.contains("line") && d["line"].is_number() ? std::format("line {}: ", d["line"].get<int>()) : "";
-                const std::string file = d.contains("file") && d["file"].is_string() ? fs::path(d["file"].get<std::string>()).filename().string() : "";
-                if (!file.empty() && file != "config.toml") where = file + ", " + where;
-                problems.push_back(std::format("{}: {}{}", d.value("severity", "error"), where, d.value("message", "")));
-            }
-        } catch (const std::exception&) {
+        for (const auto& d : diagnosticsOf(out)) {
+            std::string where = d.contains("line") && d["line"].is_number() ? std::format("line {}: ", d["line"].get<int>()) : "";
+            const std::string file = d.contains("file") && d["file"].is_string() ? fs::path(d["file"].get<std::string>()).filename().string() : "";
+            if (!file.empty() && file != "config.toml") where = file + ", " + where;
+            problems.push_back(std::format("{}: {}{}", d.value("severity", "error"), where, d.value("message", "")));
         }
         if (problems == m_problems) return;
         m_problems = std::move(problems);

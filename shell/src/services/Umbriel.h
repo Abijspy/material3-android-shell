@@ -18,6 +18,12 @@ namespace m3 {
 // layout). The shell's compositor backend in an Umbriel session. Like
 // niri's, its workspaces are each output's own, numbered from 1, with an
 // empty one at the end; it has its own overview.
+//
+// Umbriel is young and changes as it's developed: fields it no longer
+// sends read as empty, ones it adds are ignored, a refused action is only
+// logged. When it refuses the subscription (a family renamed), the
+// keyboard layout's is dropped first; refused again, the state is asked
+// for every 1.5 s instead, so the bar and dock keep up.
 class Umbriel : public Compositor, public EventSource {
 public:
     static Umbriel& get();
@@ -64,6 +70,8 @@ private:
     Umbriel();
     void connectEvents();
     void handle(const nlohmann::json& event);
+    void refused(); // the subscription: with less, or polling
+    void poll();
     void rebuild(); // the snapshots, as the shell's types
     int workspaceNumber(const std::string& id) const; // its place on its output, 0 if none
 
@@ -77,7 +85,8 @@ private:
     std::vector<std::string> m_layouts;
     int m_layout = -1;
     std::string m_activeTitle, m_activeAppId;
-    EventLoop::TimerId m_reconnect = 0;
+    EventLoop::TimerId m_reconnect = 0, m_poll = 0;
+    std::vector<std::string> m_families = {"workspaces", "windows", "outputs", "keyboard_layout"};
 };
 
 } // namespace m3

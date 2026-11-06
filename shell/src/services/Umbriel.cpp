@@ -143,8 +143,12 @@ bool Umbriel::can(Feature feature) const {
 // ── State ──
 
 void Umbriel::connectEvents() {
+    if (m_eventFd >= 0) {
+        EventLoop::get().remove(this);
+        close(m_eventFd);
+    }
     m_eventFd = connectUnix(m_path, true);
-    const nlohmann::json subscribe = {{"cmd", "subscribe"}, {"events", {"workspaces", "windows", "outputs", "keyboard_layout"}}};
+    const nlohmann::json subscribe = {{"cmd", "subscribe"}, {"events", m_families}};
     if (m_eventFd < 0 || !writeAll(m_eventFd, subscribe.dump() + "\n")) {
         if (m_eventFd >= 0) close(m_eventFd);
         m_eventFd = -1;
@@ -194,6 +198,7 @@ void Umbriel::dispatch(short) {
 void Umbriel::handle(const nlohmann::json& event) {
     if (event.contains("err")) {
         log::warn("umbriel: the subscription was refused: {}", event["err"].dump());
+        EventLoop::get().defer([this] { refused(); });
         return;
     }
     const std::string family = str(event, "event");
@@ -212,6 +217,9 @@ void Umbriel::handle(const nlohmann::json& event) {
         return;
     }
     if (!data->is_array()) return;
+    // The same again (polling asks whether or not it changed): nothing to do
+    if ((family == "workspaces" && *data == m_wsJson) || (family == "windows" && *data == m_winJson) || (family == "outputs" && *data == m_outJson))
+        return;
     // Each is the whole of its family: in place of what was
     const auto oldWs = m_workspaces;
     if (family == "workspaces") m_wsJson = *data;
@@ -224,6 +232,34 @@ void Umbriel::handle(const nlohmann::json& event) {
     if (family != "windows" || m_workspaces.size() != oldWs.size() ||
         !std::ranges::equal(m_workspaces, oldWs, [](const Workspace& a, const Workspace& b) { return a.number == b.number && a.output == b.output && a.windows == b.windows; }))
         workspacesChanged.emit();
+}
+
+void Umbriel::refused() {
+    // It closes a refused subscription: no reconnecting as if it restarted
+    if (m_reconnect) {
+        EventLoop::get().cancel(m_reconnect);
+        m_reconnect = 0;
+    }
+    if (m_eventFd >= 0) {
+        EventLoop::get().remove(this);
+        close(m_eventFd);
+        m_eventFd = -1;
+    }
+    // The keyboard layout's family is the one to do without
+    if (m_families.size() > 3) {
+        m_families.pop_back();
+        log::info("umbriel: subscribing without the keyboard layout");
+        connectEvents();
+        return;
+    }
+    if (m_poll) return;
+    log::warn("umbriel: no event stream from this Umbriel; asking every 1.5 s instead");
+    m_poll = EventLoop::get().addTimer(1500, [this] { poll(); }, true);
+}
+
+void Umbriel::poll() {
+    for (const char* family : {"workspaces", "windows", "outputs"})
+        if (auto data = request({{"cmd", family}}); data && data->is_array()) handle({{"event", family}, {"data", *data}});
 }
 
 int Umbriel::workspaceNumber(const std::string& id) const {
