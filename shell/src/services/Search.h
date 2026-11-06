@@ -20,6 +20,9 @@ struct SearchResult {
     std::string image = {}; // a picture to show as a thumbnail (clipboard images, videos)
     bool video = false; // the thumbnail is a video's frame
     bool wrap = false;  // its title and subtitle whole, on as many lines as they take (a definition), the row as tall
+    // Asked first (restart, shut down): Enter shows this in place of the
+    // subtitle, and only a second Enter (or click) does it
+    std::string confirm = {};
 };
 
 // Installed applications from XDG .desktop files, ranked by how often they

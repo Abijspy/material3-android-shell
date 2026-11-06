@@ -4,6 +4,7 @@
 #include "services/Clipboard.h"
 #include "services/Currency.h"
 #include "services/Search.h"
+#include "services/Session.h"
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
 #include "ui/Controls.h"
@@ -78,6 +79,7 @@ private:
         const std::string text = m_field->text();
         const int token = ++m_token;
         auto results = search::query(text);
+        powerResults(text, results);
         settingsResults(text, results);
         show(std::move(results));
         if (text.starts_with('#') || text.starts_with('@') || search::asyncWord(text)) {
@@ -89,6 +91,41 @@ private:
                     if (*alive && token == m_token) show(std::move(r));
                 });
             });
+        }
+    }
+
+    // Lock, sleep, restart, shut down and log out, by any of their names,
+    // ranked with the rest (Settings → Spotlight). Restart, shut down and
+    // log out ask first
+    void powerResults(const std::string& raw, std::vector<SearchResult>& out) {
+        std::string q = raw;
+        q.erase(0, q.find_first_not_of(' '));
+        while (!q.empty() && q.back() == ' ') q.pop_back();
+        if (q.size() < 3 || !Config::get().value<bool>("/spotlight/power", true)) return;
+        struct Action {
+            const char *title, *subtitle, *glyph, *confirm;
+            std::vector<const char*> names;
+            std::function<void()> run;
+        };
+        const Action actions[] = {
+            {"Lock", "Lock the screen", "lock", "", {"lock", "lock screen"}, [] { if (lock) lock(); }},
+            {"Sleep", "Suspend the computer", "bedtime", "", {"sleep", "suspend"}, [] { Session::get().suspend(); }},
+            {"Restart", "Turns the computer off and on again", "restart_alt", "Press Enter again to restart", {"restart", "reboot"},
+             [] { Session::get().reboot(); }},
+            {"Shut down", "Turns the computer off", "power_settings_new", "Press Enter again to shut down",
+             {"shut down", "shutdown", "power off", "poweroff", "turn off"}, [] { Session::get().powerOff(); }},
+            {"Log out", "Ends your session and closes your apps", "logout", "Press Enter again to log out",
+             {"log out", "logout", "log off", "sign out"}, [] { Session::get().logout(); }},
+        };
+        for (const auto& a : actions) {
+            double best = 0;
+            for (const char* n : a.names) best = std::max(best, fuzzyScore(q, n));
+            if (best < 60) continue; // a start of one of its names, not letters scattered through it
+            SearchResult r{a.title, a.subtitle, "", a.glyph, "", best + 60, a.run};
+            r.confirm = a.confirm;
+            // In its place by score, before the web search (which stays last)
+            auto at = std::ranges::find_if(out, [&](const SearchResult& o) { return o.score < r.score || o.glyph == "travel_explore"; });
+            out.insert(at, std::move(r));
         }
     }
 
@@ -130,6 +167,9 @@ private:
         m_results = std::move(results);
         m_list->clearChildren();
         m_rows.clear();
+        m_titles.clear();
+        m_subtitles.clear();
+        m_armed = -1;
         for (size_t i = 0; i < m_results.size(); ++i) {
             const auto& r = m_results[i];
             auto* row = m_list->add<Button>(Direction::Row);
@@ -172,9 +212,14 @@ private:
             texts->setAlignItems(Align::Start)->setSpacing(1);
             texts->grow = true;
             // A long answer shows whole: as many lines as its sentence takes
-            texts->add<Label>(r.title)->setSize(15)->setWeight(500)->setMaxWidth(520)->setMaxLines(r.wrap ? 40 : 1);
-            if (!r.subtitle.empty())
-                texts->add<Label>(r.subtitle)->setSize(12)->setColor("on_surface_variant", false)->setMaxWidth(520)->setMaxLines(r.wrap ? 40 : 1);
+            m_titles.push_back(texts->add<Label>(r.title));
+            m_titles.back()->setSize(15)->setWeight(500)->setMaxWidth(520)->setMaxLines(r.wrap ? 40 : 1);
+            Label* sub = nullptr;
+            if (!r.subtitle.empty() || !r.confirm.empty()) {
+                sub = texts->add<Label>(r.subtitle);
+                sub->setSize(12)->setColor("on_surface_variant", false)->setMaxWidth(520)->setMaxLines(r.wrap ? 40 : 1);
+            }
+            m_subtitles.push_back(sub);
             row->onClicked = [this, i](uint32_t) {
                 m_selected = static_cast<int>(i);
                 EventLoop::get().defer([this, alive = m_alive] {
@@ -194,6 +239,7 @@ private:
 
     void select(int index) {
         if (m_rows.empty()) return;
+        if (index != m_armed) disarm();
         if (m_selected >= 0 && m_selected < static_cast<int>(m_rows.size()))
             m_rows[static_cast<size_t>(m_selected)]->setBackground(ColorRef::none());
         m_selected = index;
@@ -211,10 +257,30 @@ private:
 
     void activate() {
         if (m_selected < 0 || m_selected >= static_cast<int>(m_results.size())) return;
-        auto fn = m_results[static_cast<size_t>(m_selected)].activate;
+        const auto& r = m_results[static_cast<size_t>(m_selected)];
+        auto fn = r.activate;
         if (!fn) return;
+        // One that asks first: the row says so, in the error colours, and
+        // waits for a second Enter
+        if (!r.confirm.empty() && m_armed != m_selected) {
+            const auto i = static_cast<size_t>(m_selected);
+            m_armed = m_selected;
+            m_rows[i]->setBackground("error_container");
+            m_titles[i]->setColor("on_error_container");
+            if (m_subtitles[i]) m_subtitles[i]->setText(r.confirm)->setColor("on_error_container");
+            return;
+        }
         m_popup.close();
         fn();
+    }
+
+    // The row asking first, back as it was (the selection moved on)
+    void disarm() {
+        if (m_armed < 0 || m_armed >= static_cast<int>(m_rows.size())) return;
+        const auto i = static_cast<size_t>(m_armed);
+        m_armed = -1;
+        m_titles[i]->setColor("on_surface");
+        if (m_subtitles[i]) m_subtitles[i]->setText(m_results[i].subtitle)->setColor("on_surface_variant");
     }
 
 public:
@@ -230,7 +296,8 @@ private:
     Flex* m_list;
     std::vector<SearchResult> m_results;
     std::vector<Button*> m_rows;
-    int m_selected = -1, m_token = 0;
+    std::vector<Label*> m_titles, m_subtitles; // each row's (no subtitle: null)
+    int m_selected = -1, m_token = 0, m_armed = -1; // m_armed: the row asking "again?"
     float m_scrollTarget = 0;
     EventLoop::TimerId m_debounce = 0;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);

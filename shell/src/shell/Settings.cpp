@@ -3488,6 +3488,8 @@ void spotlightPage(Flex* page, Popup&) {
     auto* answers = group(page, "Answers", "Shown above apps as you type");
     switchRow(answers, "history", "Recent files", "The last ones you opened at the top, and by name as you type", "/spotlight/recent", true);
     switchRow(answers, "settings", "Settings", "Pages and settings by name: bluetooth, night light, wallpaper", "/spotlight/settings", true);
+    switchRow(answers, "power_settings_new", "Power", "lock, sleep, restart, shut down, log out: restart, shut down and log out ask first",
+              "/spotlight/power", true);
     row(answers, "timer", "Timers and reminders", "timer 10 min, remind me in 1 hour to call mum: Enter starts it");
     switchRow(answers, "menu_book", "Word definitions", "define serendipity: from dictionaryapi.dev, which gets just the word", "/spotlight/define", true);
     switchRow(answers, "calculate", "Calculator", "2^10, sqrt(2), (4+5)*3: Enter copies the result", "/spotlight/calculator", true);
