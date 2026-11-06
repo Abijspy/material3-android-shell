@@ -135,6 +135,7 @@ material3ui events wait screenshot_taken --since "$since" --timeout 10 | jq -r .
 | `battery_low` | Below 15% on battery (once each time) | `$M3_BATTERY_PERCENT` |
 | `battery_percentage_changed` | Each whole percent up or down | `$M3_BATTERY_PERCENT`, `$M3_BATTERY_STATE` |
 | `power_profile_changed` | Power saver, balanced or performance | `$M3_POWER_PROFILE`, `$M3_POWER_PROFILE_PREVIOUS` |
+| `disk_space_low` | Under 5% (at most 20 GiB) or 1 GiB left: once, and again if that halves | `$M3_DISK_PATH`, `$M3_DISK_FREE`, `$M3_DISK_FREE_PERCENT` |
 | `network_connected` | Online through Wi-Fi or a cable | `$M3_NETWORK_NAME`, `$M3_NETWORK_TYPE` |
 | `network_disconnected` | No network any more | – |
 | `wifi_enabled` | Wi-Fi turned on | – |

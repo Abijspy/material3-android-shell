@@ -204,7 +204,7 @@ Most settings live in the built-in **Settings** app (<kbd>Super</kbd><kbd>I</kbd
 - **Tools:** clipboard and screenshots, default apps, and the system monitor.
 - **You:** notifications, Digital Wellbeing (screen time, app timers, Focus mode), accessibility, security (lock, idle and sleep), users, and the system's date, time and language.
 - **Calendar and clock:** your events, subscribed calendars and public holidays; alarms, timers, their sound and snooze.
-- **Hooks:** your own commands when things happen (the screen locks, the wallpaper changes, the battery runs low, a notification arrives, a screenshot is saved, an alarm goes off, updates arrive: 45 events in all), each with a test run and its last result.
+- **Hooks:** your own commands when things happen (the screen locks, the wallpaper changes, the battery runs low, a notification arrives, a screenshot is saved, an alarm goes off, updates arrive, the disk runs low: 46 events in all), each with a test run and its last result.
 - **Software & updates, Firmware, and About:** updates with automatic checks, repositories and mirrors, your devices' firmware, and this device with its compositor's logo.
 
 The mouse and touchpad, keyboard layouts and shortcuts, monitors, cursor and night light work on either compositor. On niri they're written to niri's config as you change them, and niri applies them at once.

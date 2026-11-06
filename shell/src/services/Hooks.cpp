@@ -72,6 +72,8 @@ const std::vector<Hooks::Event>& Hooks::events() {
          {{"M3_BATTERY_PERCENT", "63"}, {"M3_BATTERY_STATE", "discharging"}}},
         {"power_profile_changed", "speed", "Power mode changed", "Power saver, balanced or performance", "Power",
          {{"M3_POWER_PROFILE", "power-saver"}, {"M3_POWER_PROFILE_PREVIOUS", "balanced"}}},
+        {"disk_space_low", "hard_drive", "Disk space low", "Under 5% (at most 20 GiB) or 1 GiB left: once, and again if that halves", "Storage",
+         {{"M3_DISK_PATH", "/home/you"}, {"M3_DISK_FREE", "3.2 GiB"}, {"M3_DISK_FREE_PERCENT", "2"}}},
 
         {"network_connected", "wifi", "Connected", "Online through Wi-Fi or a cable", "Network",
          {{"M3_NETWORK_NAME", "Home Wi-Fi"}, {"M3_NETWORK_TYPE", "wifi"}}},

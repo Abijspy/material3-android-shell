@@ -98,6 +98,7 @@ sources = files(
   'src/services/Pomodoro.cpp',
   'src/services/Hotspot.cpp',
   'src/services/SessionApps.cpp',
+  'src/services/DiskSpace.cpp',
   'src/services/Equalizer.cpp',
   'src/services/AutoSaver.cpp',
   'src/services/WorldClock.cpp',

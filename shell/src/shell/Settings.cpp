@@ -38,6 +38,7 @@
 #include "services/Firewall.h"
 #include "services/KdeConnect.h"
 #include "shell/ColorPicker.h"
+#include "services/Trash.h"
 #include "services/Wallpaper.h"
 #include "services/Weather.h"
 #include "shell/ClockPanel.h"
@@ -2071,13 +2072,18 @@ void storagePage(Flex* page, Popup&) {
     auto th = row(clean, "photo_library", "Thumbnails", "Counting…");
     measure(thumbs, th.subtitle);
     pillButton(th.row, "Clear", false, [removeAll, thumbs, sub = th.subtitle] { removeAll(thumbs, sub); });
-    const std::string trash = paths::home() + "/.local/share/Trash";
+    // The same emptying as the dock's (read-only folders inside too), so
+    // the dock's trash empties with it
     auto tr = row(clean, "delete", "Trash", "Counting…");
-    measure(trash, tr.subtitle);
-    pillButton(tr.row, "Empty", false, [removeAll, trash, sub = tr.subtitle] {
-        removeAll(trash + "/files", sub);
-        removeAll(trash + "/info", sub);
+    measure(Trash::get().dir(), tr.subtitle);
+    pillButton(tr.row, "Empty", false, [alive, sub = tr.subtitle] {
+        Trash::get().empty();
+        if (*alive) sub->setText("Empty");
     });
+
+    auto* warn = group(page, "Warnings");
+    switchRow(warn, "warning", "Tell me when space runs low", "Under 5% of a disk (at most 20 GiB) or 1 GiB left, with Free up space a tap away",
+              "/storage/lowSpaceWarning", true);
 }
 
 // ── System monitor ──

@@ -41,6 +41,7 @@
 #include "services/Pomodoro.h"
 #include "services/Privacy.h"
 #include "services/SessionApps.h"
+#include "services/DiskSpace.h"
 #include "services/Equalizer.h"
 #include "services/AutoSaver.h"
 #include "services/WorldClock.h"
@@ -142,6 +143,9 @@ bool Shell::start() {
         if (which == "caps") m_osd->show(on ? "keyboard_capslock" : "keyboard_capslock_badge", -1, on ? "Caps Lock on" : "Caps Lock off");
         else m_osd->show("dialpad", -1, on ? "Num Lock on" : "Num Lock off");
     });
+    // Running low on disk space: told, with Settings → Storage a tap away
+    DiskSpace::get().openStorage = [this] { EventLoop::get().defer([this] { openSettings("storage"); }); };
+    DiskSpace::get().start();
     // Screenshots edited in the shell's own editor
     Screenshot::get().openEditor = [this](const std::string& file) {
         EventLoop::get().defer([this, file] { togglePopup("imageeditor", focusedOutput(), -1, file); });
