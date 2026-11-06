@@ -14,9 +14,9 @@ namespace m3 {
 // outputs, workspaces and windows, kept current from its events, and what
 // the shell asks of it (switch workspace, focus or close a window, screens
 // off, log out). Hyprland's backend (services/Hyprland, which also keeps
-// what only Hyprland has: its options, binds and layer rules) or niri's
-// (services/Niri), as the session says. What not every compositor can do is
-// asked of can() first.
+// what only Hyprland has: its options, binds and layer rules), niri's
+// (services/Niri) or Umbriel's (services/Umbriel), as the session says.
+// What not every compositor can do is asked of can() first.
 class Compositor {
 public:
     enum class Feature {
@@ -52,6 +52,11 @@ public:
 
     // The one the shell runs on (a stand-in with nothing in it, outside any)
     static Compositor& get();
+    // Which that is, from the session's variables: "umbriel", "niri" or
+    // "hyprland" ("" outside all three). One started inside another passes
+    // the outer one's variable on: the one whose socket is this display's
+    // wins. The other backends stand down when it isn't theirs
+    static std::string session();
     virtual ~Compositor() = default;
 
     virtual std::string name() const = 0; // "Hyprland"
@@ -95,9 +100,19 @@ public:
     // With WindowCapture: the focused window to `path`; `done` with success
     virtual void captureWindow(const std::string& /*path*/, std::function<void(bool)> done) { done(false); }
 
+    // Keyboard layouts as the compositor names them ("English (US)"), where
+    // it says (niri, Umbriel), and the one in use (-1: none known)
+    virtual std::vector<std::string> keyboardLayouts() const { return {}; }
+    virtual int keyboardLayout() const { return -1; }
+    virtual void nextKeyboardLayout() {}
+    // The one in use, short ("US", "DE"); "" with none known
+    std::string keyboardLayoutShort() const;
+    static std::string layoutShortName(const std::string& layout); // "English (US)" → "US", "German" → "DE"
+
     Signal<> workspacesChanged;   // which exist, which is active, the outputs
     Signal<> activeWindowChanged; // its title or app
     Signal<> windowsChanged;      // one opened, closed, moved or focused
+    Signal<> keyboardLayoutsChanged; // the layouts, or the one in use
 };
 
 } // namespace m3

@@ -96,6 +96,19 @@ namespace {
 bool onNiri() {
     return !Hyprland::get().available() && Niri::get().available();
 }
+
+bool onUmbriel() {
+    return Compositor::session() == "umbriel";
+}
+
+// On Umbriel what the compositor sets is in its config file (it reloads as
+// you save): where, and a button to open it
+void umbrielConfig(Flex* page, const char* icon, const std::string& title, const std::string& what, const char* file = "config.toml") {
+    auto* g = group(page, title, what);
+    auto r = row(g, icon, "In Umbriel's config", std::string("~/.config/umbriel/") + file + ": Umbriel reloads it as you save");
+    const std::string name = file;
+    pillButton(r.row, "Open", true, [name] { spawn("xdg-open \"${XDG_CONFIG_HOME:-$HOME/.config}/umbriel/" + name + "\""); }, "open_in_new");
+}
 // A page of that app ("hypr-…", "niri-…") rather than Settings'
 bool compositorPage(std::string_view id) {
     return id.starts_with("hypr-") || id.starts_with("niri-");
@@ -807,6 +820,13 @@ void displayPage(Flex* page, Popup&) {
               [](double v) { return std::format("{:.0f} K", v); });
 
     if (Niri::get().available()) return niriMonitors(page);
+    if (onUmbriel()) {
+        auto* mons = group(page, "Monitors");
+        for (const auto& o : Compositor::get().outputs())
+            row(mons, "monitor", o.name,
+                std::format("{:.0f}×{:.0f} · scale {:.2f}{}", o.w, o.h, o.scale, o.focused ? " · focused" : ""));
+        return umbrielConfig(page, "tune", "Resolution, scale and position", "Each monitor's [output.<name>]: mode, scale, position, VRR and HDR");
+    }
     auto* mons = group(page, "Monitors", "Arrange them and set their resolution, scale, rotation, VRR and HDR in Hyprland Settings");
     if (auto j = Hyprland::get().requestJson("monitors"); j && j->is_array()) {
         for (const auto& m : *j)
@@ -2548,6 +2568,13 @@ void accessibilityPage(Flex* page, Popup&) {
 // only, linked from here
 void mousePage(Flex* page, Popup&) {
     if (Niri::get().available()) return niriMouse(page); // set here, as niri's own config
+    if (onUmbriel()) {
+        umbrielConfig(page, "touch_app", "Mouse & touchpad", "Tap to click, natural scrolling and speed: [input.touchpad] and [input.pointer]");
+        auto* shell = group(page, "In the shell");
+        auto r = row(shell, "swipe_vertical", "Scrolling in the shell", "Smooth scrolling, speed and touchpad glide");
+        pillButton(r.row, "Look & feel", false, [] { settingsPage("style"); }, "open_in_new");
+        return;
+    }
     auto* g = group(page, "Mouse & touchpad", "Tap to click, natural scrolling, pointer speed and gestures live in Hyprland Settings");
     hyprLink(g, "touch_app", "Touchpad", "Tap to click, natural scrolling, ignore while typing, click with fingers", "hypr-input");
     hyprLink(g, "speed", "Pointer", "Speed and acceleration, for the touchpad and mice", "hypr-input");
@@ -4631,7 +4658,7 @@ void aboutPage(Flex* page, Popup&) {
         auto& comp = Compositor::get();
         const std::string compositor = comp.available() ? comp.name() + " " + comp.version() : comp.name() + " (not running)";
         auto wm = row(sys, "grid_view", compositor, "Compositor");
-        const std::string mark = comp.name() == "Hyprland" ? "icons/hyprland-logo.svg" : comp.name() == "niri" ? "icons/niri-logo.svg" : "";
+        const std::string mark = comp.name() == "Hyprland" ? "icons/hyprland-logo.svg" : comp.name() == "niri" ? "icons/niri-logo.svg" : ""; // no Umbriel mark yet
         if (const auto path = mark.empty() ? std::string() : paths::dataFile(mark); !path.empty()) useLogo(wm, path);
 
         auto& stats = SystemStats::get();
@@ -4737,6 +4764,20 @@ void keyboardPage(Flex* page, Popup&) {
     auto* locks = group(page, "Lock keys");
     switchRow(locks, "keyboard_capslock", "Show Caps Lock and Num Lock", "A brief note on screen as they turn on or off", "/osd/lockKeys", true);
     if (Niri::get().available()) return niriKeyboard(page);
+    if (onUmbriel()) {
+        // The layouts it has, the one in use marked
+        const auto layouts = Compositor::get().keyboardLayouts();
+        if (!layouts.empty()) {
+            auto* g = group(page, "Layouts", layouts.size() > 1 ? "The keyboard layout widget in the bar switches between them" : "");
+            for (size_t i = 0; i < layouts.size(); ++i)
+                row(g, static_cast<int>(i) == Compositor::get().keyboardLayout() ? "radio_button_checked" : "radio_button_unchecked", layouts[i],
+                    Compositor::layoutShortName(layouts[i]));
+        }
+        umbrielConfig(page, "keyboard_alt", "Layouts & typing", "Layouts (layout = \"us,de\"), repeat rate and delay: [input.keyboard]");
+        umbrielConfig(page, "keyboard_command_key", "Keyboard shortcuts", "The shell's keys, under [keybinds]; a key your config.toml binds too stays yours",
+                      "material3ui.toml");
+        return;
+    }
     auto* typing = group(page, "Layouts & typing", "Keyboard layouts, switching between them, repeat rate and delay");
     auto t = row(typing, "keyboard_alt", "Layouts & typing", "In Hyprland Settings → Input devices");
     pillButton(t.row, "Open", true, [] {

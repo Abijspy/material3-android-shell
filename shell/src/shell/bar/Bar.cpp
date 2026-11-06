@@ -430,23 +430,23 @@ private:
 };
 
 // The firewall: a shield, struck through while it's off
-// The keyboard layout in use ("US", "DE"), on niri with more than one; a
-// click switches to the next
+// The keyboard layout in use ("US", "DE"), on niri or Umbriel with more
+// than one; a click switches to the next
 class KeyboardChip : public Chip {
 public:
     explicit KeyboardChip(std::function<void()> click) : Chip("keyboard", std::move(click)) {
-        m_conn = Niri::get().layoutsChanged.connect([this] { sync(); });
+        m_conn = Compositor::get().keyboardLayoutsChanged.connect([this] { sync(); });
         sync();
     }
 
 private:
     void sync() {
-        auto& n = Niri::get();
-        const auto& m = n.model();
-        setVisible(n.available() && m.layouts.size() > 1);
-        set("keyboard", n.layoutShort());
-        if (m.layout >= 0 && m.layout < static_cast<int>(m.layouts.size()))
-            tooltip = m.layouts[static_cast<size_t>(m.layout)] + " (click for the next layout)";
+        auto& c = Compositor::get();
+        const auto layouts = c.keyboardLayouts();
+        const int i = c.keyboardLayout();
+        setVisible(layouts.size() > 1);
+        set("keyboard", c.keyboardLayoutShort());
+        if (i >= 0 && i < static_cast<int>(layouts.size())) tooltip = layouts[static_cast<size_t>(i)] + " (click for the next layout)";
     }
     Connection m_conn;
 };
@@ -539,7 +539,7 @@ const std::vector<Bar::Module>& Bar::modules() {
         {"quickshare", quickShare.c_str(), "Quick Share", "Transfers' progress; opens Send files"},
         {"firewall", "shield_lock", "Firewall", "On or off; opens Firewall settings"},
         {"phone", "smartphone", "Phone", "Your phone's battery (KDE Connect); opens its settings"},
-        {"keyboard", "keyboard", "Keyboard layout", "The layout in use (with more than one, on niri); a click switches"},
+        {"keyboard", "keyboard", "Keyboard layout", "The layout in use (with more than one, on niri or Umbriel); a click switches"},
         {"printers", "print", "Printers", "Jobs waiting; opens Printers"},
         {"updates", "system_update_alt", "Updates", "How many are waiting; opens Software & updates"},
         {"quicksettings", "tune", "Quick Settings", "Opens Quick Settings"},
@@ -778,7 +778,7 @@ void Bar::addModule(Flex* zone, const std::string& id, bool filled) {
         } else if (id == "keyboard") {
             chip = c->add<KeyboardChip>(std::function<void()>{});
             chip->onClicked = [open, chip](uint32_t b) {
-                if (b == BTN_LEFT) Niri::get().nextLayout();
+                if (b == BTN_LEFT) Compositor::get().nextKeyboardLayout();
                 else if (b == BTN_RIGHT) open("settings keybinds", chip);
             };
         } else if (id == "phone") {

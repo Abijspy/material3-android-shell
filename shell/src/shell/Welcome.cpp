@@ -37,6 +37,10 @@ bool onNiri() {
     return Compositor::get().name() == "niri";
 }
 
+bool onUmbriel() {
+    return Compositor::session() == "umbriel";
+}
+
 struct Release {
     std::string version, date;
     std::vector<std::pair<std::string, std::string>> notes; // the bold lead, the rest
@@ -148,10 +152,11 @@ void tourLayout(Flex* page) {
 }
 
 void tourKeys(Flex* page) {
-    const bool niri = onNiri();
+    const bool niri = onNiri() || onUmbriel(); // neither binds a tap of Super to the shell
     pageHead(page, "keyboard", "Keys worth knowing",
-             niri ? "Super is the Windows key. Add your own keys, or change these, in Niri Settings → Keys."
-                  : "Super is the Windows key. Every shortcut can be changed in Hyprland Settings → Keybinds.");
+             onUmbriel() ? "Super is the Windows key. Change these, or add your own, in ~/.config/umbriel/material3ui.toml."
+             : niri      ? "Super is the Windows key. Add your own keys, or change these, in Niri Settings → Keys."
+                         : "Super is the Windows key. Every shortcut can be changed in Hyprland Settings → Keybinds.");
     auto* g = group(page, "Shortcuts");
     const std::vector<std::tuple<std::string, std::string, std::string>> keys = {
         // niri can't bind Super on its own
@@ -180,12 +185,15 @@ void tourDone(Flex* page) {
     pillButton(s.row, "Open", false, [] {
         if (open) open("settings");
     });
-    // The compositor's app (hyprsettings opens Niri Settings on niri)
-    auto h = onNiri() ? row(g, "tune", "Niri Settings", "Gaps, borders, blur, animations, keys and window rules")
-                      : row(g, "tune", "Hyprland Settings", "Windows, animations, input, keybinds and more");
-    pillButton(h.row, "Open", false, [] {
-        if (open) open("hyprsettings");
-    });
+    // The compositor's app (hyprsettings opens Niri Settings on niri);
+    // Umbriel has its config file instead
+    if (!onUmbriel()) {
+        auto h = onNiri() ? row(g, "tune", "Niri Settings", "Gaps, borders, blur, animations, keys and window rules")
+                          : row(g, "tune", "Hyprland Settings", "Windows, animations, input, keybinds and more");
+        pillButton(h.row, "Open", false, [] {
+            if (open) open("hyprsettings");
+        });
+    }
     auto d = row(g, "dashboard_customize", "Desktop widgets", "A clock, weather, music and app shortcuts on the wallpaper");
     pillButton(d.row, "Edit", false, [] {
         if (open) open("desktopedit");
@@ -272,7 +280,7 @@ void welcome(Flex* card, Popup& popup) {
             hero->setSpacing(14)->setPadding({24, 0})->setAlignItems(Align::Center);
             logo(hero, 132);
             hero->add<Label>("Welcome to Material3UI")->setSize(34)->setWeight(600);
-            para(hero, std::string("A Material 3 Expressive desktop for ") + (onNiri() ? "niri" : "Hyprland") + ", version " M3_VERSION
+            para(hero, std::string("A Material 3 Expressive desktop for ") + (onUmbriel() ? "Umbriel" : onNiri() ? "niri" : "Hyprland") + ", version " M3_VERSION
                            ". A few quick choices and you're ready; nothing here is final, and all of it is in Settings later.",
                  620, 16)->setCentered(true);
             break;

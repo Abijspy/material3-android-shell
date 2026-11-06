@@ -326,10 +326,12 @@ public:
         line();
         entry("terminal", "Open a terminal", [] { spawn("${TERMINAL:-alacritty}"); });
         line();
-        // The compositor's own: niri's in a niri session, Hyprland's in Hyprland's
+        // The compositor's own: niri's in a niri session, Hyprland's in
+        // Hyprland's; Umbriel's monitors are in its config (Settings → Display says where)
         const bool niri = !Hyprland::get().available() && Niri::get().available();
-        entry("desktop_windows", "Display settings", [niri] {
-            if (panels::open) panels::open(niri ? "settings display" : "hyprsettings hypr-monitors");
+        const bool umbriel = Compositor::session() == "umbriel";
+        entry("desktop_windows", "Display settings", [niri, umbriel] {
+            if (panels::open) panels::open(niri || umbriel ? "settings display" : "hyprsettings hypr-monitors");
         });
         entry("palette", "Personalise", [] {
             if (panels::open) panels::open("settings appearance");
@@ -337,9 +339,10 @@ public:
         entry("settings", "Material3UI Settings", [] {
             if (panels::open) panels::open("settings");
         });
-        entry("tune", niri ? "Niri Settings" : "Hyprland Settings", [niri] {
-            if (panels::open) panels::open(niri ? "nirisettings" : "hyprsettings");
-        });
+        if (!umbriel)
+            entry("tune", niri ? "Niri Settings" : "Hyprland Settings", [niri] {
+                if (panels::open) panels::open(niri ? "nirisettings" : "hyprsettings");
+            });
     }
 
     bool interactive() const override { return true; }

@@ -39,7 +39,7 @@ public:
     // The app a pin stands for here: the compositor's settings app is one pin
     // (material3ui-hyprland or material3ui-niri, whichever was pinned) that
     // is Hyprland Settings on Hyprland and Niri Settings on niri; each one's
-    // launcher entry shows only in its own session
+    // launcher entry shows only in its own session; "" on Umbriel, which has none
     static std::string shown(const std::string& pinnedId);
 
 private:

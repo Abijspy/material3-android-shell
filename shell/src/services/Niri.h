@@ -47,14 +47,16 @@ public:
     void reload() override;
     void toggleOverview() override;
     void captureWindow(const std::string& path, std::function<void(bool)> done) override;
+    std::vector<std::string> keyboardLayouts() const override { return m_model.layouts; }
+    int keyboardLayout() const override { return m_model.layout; }
+    void nextKeyboardLayout() override { nextLayout(); }
 
     // niri's own
     // A request ("Outputs", {"Action": …}): the reply's Ok value, or nothing
     std::optional<nlohmann::json> request(const nlohmann::json& request) const;
     void action(const nlohmann::json& action);
     // The keyboard layout in use, short ("US", "DE", "FR"), and the next one
-    std::string layoutShort() const;
-    static std::string shortName(const std::string& layout); // "English (US)" → "US", "German" → "DE"
+    std::string layoutShort() const { return keyboardLayoutShort(); }
     void nextLayout();
     const niri::Model& model() const { return m_model; }
     Signal<> layoutsChanged; // the keyboard layouts, or the one in use

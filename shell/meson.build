@@ -108,6 +108,7 @@ sources = files(
   'src/services/LauncherEntries.cpp',
   'src/services/Privacy.cpp',
   'src/services/Trash.cpp',
+  'src/services/Umbriel.cpp',
   'src/services/DataUsage.cpp',
   'src/services/Notes.cpp',
   'src/services/KdeConnect.cpp',

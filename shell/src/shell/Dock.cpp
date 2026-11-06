@@ -296,6 +296,7 @@ void Dock::setPinned(const std::vector<std::string>& ids) {
 
 std::string Dock::shown(const std::string& pinnedId) {
     if (pinnedId != "material3ui-hyprland" && pinnedId != "material3ui-niri") return pinnedId;
+    if (Compositor::session() == "umbriel") return {}; // no settings app of its own
     return Compositor::get().name() == "niri" ? "material3ui-niri" : "material3ui-hyprland";
 }
 
@@ -351,7 +352,7 @@ void Dock::refresh() {
     std::vector<std::string> seen; // what each pin stands for here, once
     for (const auto& id : pinned()) {
         const std::string here = shown(id);
-        if (std::ranges::find(seen, here) != seen.end()) continue;
+        if (here.empty() || std::ranges::find(seen, here) != seen.end()) continue;
         seen.push_back(here);
         Entry e{id, "", "", findApp(here), {}, true};
         if (e.app) e.icon = e.app->icon;

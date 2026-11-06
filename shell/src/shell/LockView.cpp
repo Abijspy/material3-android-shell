@@ -103,6 +103,7 @@ std::string sessionNote(const std::string& exec) {
     if (exec.find("start-hyprland") != std::string::npos || exec.find("Hyprland") != std::string::npos)
         return "Material3UI's home";
     if (exec.find("niri") != std::string::npos) return "Scrollable tiling, with Material3UI";
+    if (exec.find("umbriel") != std::string::npos) return "Scrolling, dwindle and master layouts, with Material3UI";
     return exec;
 }
 

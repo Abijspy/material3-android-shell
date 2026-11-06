@@ -152,16 +152,18 @@ bool Shell::start() {
         EventLoop::get().defer([this, file] { togglePopup("imageeditor", focusedOutput(), -1, file); });
     };
     // A keyboard layout switched (by its keys, or the bar): its name, briefly
-    Niri::get().layoutsChanged.connectForever([this, last = std::make_shared<std::string>()] {
-        const auto& m = Niri::get().model();
-        if (m.layouts.size() < 2 || m.layout < 0 || m.layout >= static_cast<int>(m.layouts.size())) return;
-        const std::string now = m.layouts[static_cast<size_t>(m.layout)];
+    Compositor::get().keyboardLayoutsChanged.connectForever([this, last = std::make_shared<std::string>()] {
+        const auto layouts = Compositor::get().keyboardLayouts();
+        const int i = Compositor::get().keyboardLayout();
+        if (layouts.size() < 2 || i < 0 || i >= static_cast<int>(layouts.size())) return;
+        const std::string now = layouts[static_cast<size_t>(i)];
         const bool changed = !last->empty() && *last != now;
         *last = now;
         if (changed && m_osd) m_osd->show("keyboard", -1, now);
     });
     // The airplane key: the shell's where the compositor's config sends it
-    // here (material3ui.kdl, keybinds.lua), else the kernel's toggle stays
+    // here (material3ui.kdl, material3ui.toml, keybinds.lua), else the
+    // kernel's toggle stays
     {
         auto binds = [](const std::filesystem::path& file) {
             std::ifstream in(file);
@@ -169,8 +171,10 @@ bool Shell::start() {
             return text.find("XF86RFKill") != std::string::npos;
         };
         const auto config = std::filesystem::path(paths::configDir()).parent_path();
-        const bool niri = !Hyprland::get().available() && Niri::get().available();
-        if (niri ? binds(config / "niri" / "material3ui.kdl") : binds(config / "hypr" / "material3ui" / "keybinds.lua"))
+        const std::string session = Compositor::session();
+        if (session == "niri"      ? binds(config / "niri" / "material3ui.kdl")
+            : session == "umbriel" ? binds(config / "umbriel" / "material3ui.toml")
+                                   : binds(config / "hypr" / "material3ui" / "keybinds.lua"))
             Airplane::get().takeKey();
     }
     // Locking: IPC, loginctl lock-session, idle timeout, before suspend
@@ -716,18 +720,18 @@ void Shell::registerIpc() {
         EventLoop::get().defer([this, file] { togglePopup("imageeditor", focusedOutput(), -1, file); });
         return std::string("editing");
     });
-    ipc.add("keyboard", "keyboard [next|list]: the keyboard layout in use, or the next (niri)", [](const IpcServer::Args& a) {
-        auto& n = Niri::get();
-        if (!n.available()) return std::string("error: keyboard layouts are niri's");
+    ipc.add("keyboard", "keyboard [next|list]: the keyboard layout in use, or the next (niri, Umbriel)", [](const IpcServer::Args& a) {
+        auto& c = Compositor::get();
+        const auto layouts = c.keyboardLayouts();
+        if (layouts.empty()) return std::string("error: the compositor doesn't say its keyboard layouts (niri and Umbriel do)");
         if (!a.empty() && a[0] == "next") {
-            n.nextLayout(); // niri says so in a moment: the list would still show the old one
+            c.nextKeyboardLayout(); // it says so in a moment: the list would still show the old one
             return std::string("switching to the next layout");
         }
-        const auto& m = n.model();
         std::string out;
-        for (size_t i = 0; i < m.layouts.size(); ++i)
-            out += std::format("{} {} ({})\n", static_cast<int>(i) == m.layout ? "*" : " ", m.layouts[i], Niri::shortName(m.layouts[i]));
-        return out.empty() ? std::string("no layouts") : out;
+        for (size_t i = 0; i < layouts.size(); ++i)
+            out += std::format("{} {} ({})\n", static_cast<int>(i) == c.keyboardLayout() ? "*" : " ", layouts[i], Compositor::layoutShortName(layouts[i]));
+        return out;
     });
     ipc.add("notes", "notes [list|add <text>|done <n>|remove <n>|clear]: the to-do list (n from 1, as listed); no argument opens it",
             [this](const IpcServer::Args& a) {
@@ -1447,7 +1451,7 @@ void Shell::registerIpc() {
     });
     ipc.add("workspaces", "List the compositor's workspaces as the shell sees them", [](const auto&) {
         auto& c = Compositor::get();
-        if (!c.available()) return std::string("error: not running under a compositor the shell knows (Hyprland or niri)");
+        if (!c.available()) return std::string("error: not running under a compositor the shell knows (Hyprland, niri or Umbriel)");
         std::string out;
         for (const auto& w : c.workspaces())
             out += std::format("{}\t{}\t{} windows{}\n", w.number, w.output, w.windows,

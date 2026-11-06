@@ -64,6 +64,9 @@ Niri& Niri::get() {
 Niri::Niri() {
     const char* path = std::getenv("NIRI_SOCKET");
     if (!path || !*path) return;
+    // An Umbriel started from a niri session passes niri's variable on:
+    // Umbriel's session, then, and nothing of niri to touch
+    if (Compositor::session() != "niri") return;
     m_path = path;
     // The state now, for whoever asks before the stream's first lines
     if (auto ws = request("Workspaces")) m_model.setWorkspaces(ws->value("Workspaces", nlohmann::json::array()));
@@ -98,35 +101,6 @@ std::optional<nlohmann::json> Niri::request(const nlohmann::json& req) const {
     } catch (const std::exception&) {
     }
     return std::nullopt;
-}
-
-std::string Niri::shortName(const std::string& name) {
-    // A code in brackets ("English (US)", "English (UK)") says it
-    if (const auto open = name.rfind('('), close = name.rfind(')'); open != std::string::npos && (close == open + 3 || close == open + 4)) {
-        std::string code = name.substr(open + 1, close - open - 1);
-        if (std::ranges::all_of(code, [](char c) { return std::isupper(static_cast<unsigned char>(c)); })) return code;
-    }
-    static const std::pair<const char*, const char*> languages[] = {
-        {"English", "EN"},   {"German", "DE"},  {"French", "FR"},  {"Spanish", "ES"},  {"Italian", "IT"},  {"Portuguese", "PT"},
-        {"Russian", "RU"},   {"Ukrainian", "UK"}, {"Polish", "PL"}, {"Czech", "CS"},   {"Dutch", "NL"},    {"Swedish", "SV"},
-        {"Norwegian", "NO"}, {"Danish", "DA"},  {"Finnish", "FI"}, {"Turkish", "TR"},  {"Greek", "EL"},    {"Hebrew", "HE"},
-        {"Arabic", "AR"},    {"Hindi", "HI"},   {"Tamil", "TA"},   {"Japanese", "JA"}, {"Korean", "KO"},   {"Chinese", "ZH"},
-        {"Hungarian", "HU"}, {"Romanian", "RO"}, {"Vietnamese", "VI"}, {"Thai", "TH"}, {"Persian", "FA"}, {"Bengali", "BN"},
-    };
-    for (const auto& [lang, code] : languages)
-        if (name.starts_with(lang)) return code;
-    std::string out;
-    for (char c : name) {
-        if (!std::isalpha(static_cast<unsigned char>(c))) break;
-        if (out.size() < 2) out += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-    }
-    return out.empty() ? "??" : out;
-}
-
-std::string Niri::layoutShort() const {
-    const auto& m = m_model;
-    if (m.layout < 0 || m.layout >= static_cast<int>(m.layouts.size())) return {};
-    return shortName(m.layouts[static_cast<size_t>(m.layout)]);
 }
 
 void Niri::nextLayout() {
@@ -239,7 +213,10 @@ void Niri::handle(const nlohmann::json& event) {
     const unsigned changes = m_model.apply(event);
     // Outputs come and go with their workspaces; niri has no event of their own
     if (event.contains("WorkspacesChanged")) refreshOutputs();
-    if (changes & niri::Model::Layouts) layoutsChanged.emit();
+    if (changes & niri::Model::Layouts) {
+        layoutsChanged.emit();
+        keyboardLayoutsChanged.emit();
+    }
     if (!(changes & (niri::Model::Workspaces | niri::Model::Windows | niri::Model::Focus))) return;
     // A burst (a workspace switch is several events): published once
     m_pending |= changes;

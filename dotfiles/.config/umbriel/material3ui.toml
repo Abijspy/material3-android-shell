@@ -1,0 +1,60 @@
+# Material3UI on Umbriel: the shell's keys, and blur behind its bar, dock,
+# panels and notifications. Include it from ~/.config/umbriel/config.toml
+# and start the shell with the session:
+#
+#     [include.optional]
+#     files = ["material3ui.toml"]
+#
+#     [general]
+#     autostart = ["material3ui"]
+#
+# Umbriel applies the including file last, so a key your config.toml binds
+# too stays yours (its example binds Mod, the media keys and Mod+Escape to
+# Noctalia): remove those lines there for the shell's.
+
+[keybinds]
+"Mod+Return" = { action = "spawn alacritty", repeat = false }
+"Mod+E" = { action = "spawn nemo", repeat = false }
+"Mod+B" = { action = "spawn librewolf", repeat = false }
+"Mod+Space" = { action = "spawn material3ui msg launcher", repeat = false }
+"Mod+A" = { action = "spawn material3ui msg popup notifications", repeat = false }
+"Mod+N" = { action = "spawn material3ui msg popup quicksettings", repeat = false }
+"Mod+D" = { action = "spawn material3ui msg popup dashboard", repeat = false }
+"Mod+I" = { action = "spawn material3ui msg settings", repeat = false }
+"Mod+G" = { action = "spawn material3ui msg screenshot", repeat = false }
+"Mod+V" = { action = "spawn material3ui msg clipboard", repeat = false }
+"Mod+Period" = { action = "spawn material3ui msg launcher :", repeat = false }
+"Mod+Tab" = "spawn material3ui msg switcher next"
+"Mod+Shift+Tab" = "spawn material3ui msg switcher prev"
+"Mod+Grave" = { action = "overview-toggle", repeat = false }
+"Mod+Escape" = { action = "spawn material3ui msg popup power", repeat = false }
+"Mod+L" = { action = "spawn material3ui msg lock", repeat = false, allow_when_locked = true }
+"Ctrl+Mod+T" = { action = "spawn material3ui msg wallpaper pick", repeat = false }
+"Ctrl+Alt+Delete" = { action = "spawn material3ui msg settings monitor", repeat = false }
+"Mod+Shift+S" = { action = "spawn material3ui msg screenshot region", repeat = false }
+"Mod+Shift+X" = { action = "spawn material3ui msg screenshot ocr", repeat = false }
+"Mod+Shift+C" = { action = "spawn material3ui msg colorpicker", repeat = false }
+"Mod+Shift+R" = { action = "spawn material3ui msg record region", repeat = false }
+"XF86MonBrightnessUp" = { action = "spawn material3ui msg brightness up", allow_when_locked = true }
+"XF86MonBrightnessDown" = { action = "spawn material3ui msg brightness down", allow_when_locked = true }
+"XF86AudioRaiseVolume" = { action = "spawn material3ui msg volume up", allow_when_locked = true }
+"XF86AudioLowerVolume" = { action = "spawn material3ui msg volume down", allow_when_locked = true }
+"XF86AudioMute" = { action = "spawn material3ui msg volume mute", allow_when_locked = true, repeat = false }
+# The airplane key: the shell's airplane mode (the kernel's own toggle
+# stands down while the shell runs)
+"XF86RFKill" = { action = "spawn material3ui msg airplane toggle", allow_when_locked = true, repeat = false }
+
+# Blur behind the shell. Over windows (panels, notifications, the dock) it
+# blurs what's really there; the bar, over the wallpaper, takes the cheaper
+# cached blur. Fully see-through parts (around a panel's card) stay clear
+[[layer_rule]]
+match.namespace = "^material3ui-(popup|toasts|osd|dock|switcher)$"
+blur = true
+blur_popups = true
+blur_ignore_alpha = 0.3
+blur_optimized = false
+
+[[layer_rule]]
+match.namespace = "^material3ui-(bar|frame)$"
+blur = true
+blur_ignore_alpha = 0.3

@@ -64,9 +64,9 @@ Hyprland& Hyprland::get() {
 Hyprland::Hyprland() {
     const char* sig = std::getenv("HYPRLAND_INSTANCE_SIGNATURE");
     if (!sig || !*sig) return;
-    // niri started from a Hyprland session passes its variable on: niri's
-    // session, then, and nothing of it to touch
-    if (const char* niri = std::getenv("NIRI_SOCKET"); niri && *niri) return;
+    // niri or Umbriel started from a Hyprland session passes its variable
+    // on: their session, then, and nothing of Hyprland to touch
+    if (Compositor::session() != "hyprland") return;
     const char* runtime = std::getenv("XDG_RUNTIME_DIR");
     m_dir = std::format("{}/hypr/{}", runtime ? runtime : "/tmp", sig);
 
