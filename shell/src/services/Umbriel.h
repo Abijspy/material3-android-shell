@@ -17,7 +17,8 @@ namespace m3 {
 // of it again on each change (workspaces, windows, outputs, the keyboard
 // layout). The shell's compositor backend in an Umbriel session. Like
 // niri's, its workspaces are each output's own, numbered from 1, with an
-// empty one at the end; it has its own overview.
+// empty one at the end; it has its own overview. Floating windows minimise
+// (tiled ones can't, in Umbriel), and focusing one brings it back.
 //
 // Umbriel is young and changes as it's developed: fields it no longer
 // sends read as empty, ones it adds are ignored, a refused action is only
@@ -46,7 +47,7 @@ public:
     void focusWorkspaceRelative(int delta) override;
     void focusWindow(const std::string& id) override;
     void closeWindow(const std::string& id) override;
-    void minimise(const std::string&) override {}
+    void minimise(const std::string& appId) override; // its floating windows (Umbriel's only minimisable ones)
     void grabKeys(bool) override {}
     void setScreens(bool on) override;
     bool quit() override;

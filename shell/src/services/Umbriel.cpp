@@ -132,10 +132,11 @@ bool Umbriel::can(Feature feature) const {
     case Feature::Reload:
     case Feature::NativeOverview:
     case Feature::DynamicWorkspaces:
+    // Floating windows; window-focus brings one back
+    case Feature::Minimise:
     // The focused window's box is where it shows (a window screenshot)
     case Feature::WindowGeometry: return true;
-    // Minimising is floating windows' only; no key grab for the shell; the
-    // pointer's place isn't said
+    // No key grab for the shell; the pointer's place isn't said
     default: return false;
     }
 }
@@ -373,6 +374,12 @@ void Umbriel::focusWindow(const std::string& id) {
 
 void Umbriel::closeWindow(const std::string& id) {
     if (!id.empty()) action("window-close", {{"window", id}});
+}
+
+void Umbriel::minimise(const std::string& appId) {
+    // What Umbriel says can go (floating, on a workspace, not pinned)
+    for (const auto& w : m_winJson)
+        if (w.is_object() && str(w, "app_id") == appId && flag(w, "minimizable")) action("window-minimize", {{"window", str(w, "id")}});
 }
 
 void Umbriel::setScreens(bool on) {

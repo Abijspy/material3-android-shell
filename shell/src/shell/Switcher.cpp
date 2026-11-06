@@ -33,8 +33,9 @@ struct Win {
 std::vector<Win> windows() {
     std::vector<std::pair<int, Win>> found;
     for (const auto& w : Compositor::get().windows(true)) {
-        // Special workspaces (the scratchpad) aren't in the round; minimised windows are
-        if (w.minimised && w.workspaceName != "special:minimized") continue;
+        // Hyprland's special workspaces (the scratchpad) aren't in the round;
+        // minimised windows are (Hyprland's in special:minimized, Umbriel's anywhere)
+        if (w.minimised && Compositor::get().name() == "Hyprland" && w.workspaceName != "special:minimized") continue;
         found.push_back({w.focusOrder, {w.id, w.appId, w.title, w.minimised ? -1 : w.workspace, w.workspaceName}});
     }
     std::ranges::sort(found, [](const auto& a, const auto& b) { return a.first < b.first; });

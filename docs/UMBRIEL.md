@@ -6,6 +6,7 @@ The shell also runs on [Umbriel](https://github.com/noctalia-dev/umbriel), the N
 
 - **The desktop:** the bar shows each monitor's own workspaces, which Umbriel adds and removes as you use them. The dock, panels, notifications, Spotlight, the clipboard, the window switcher and the lock screen all work, along with the rest of the shell.
 - **Windows:** the bar's window title, the dock's running apps, focusing and closing windows from the dock, and screenshots of a window.
+- **Minimised windows:** Umbriel minimises floating windows only (from an app's own button, Umbriel's title bar, or Escape in the shell's windows when they float). A minimised window stays in the dock and the window switcher, and a click brings it back.
 - **The overview:** <kbd>Super</kbd><kbd>`</kbd> and the shell's overview button open Umbriel's own overview.
 - **Keyboard layouts:** the bar's keyboard widget shows the layout in use and switches to the next one. Each switch shows on screen, and Settings → Keyboard lists your layouts.
 - **Blur** behind the bar, dock, panels and notifications, through Umbriel's layer rules (below).
@@ -112,5 +113,4 @@ What can still break is anything Umbriel renames in its IPC (its commands, actio
 ## Not yet
 
 - Umbriel Settings has no pages for monitors, keys and window rules yet.
-- No minimising from the shell. Umbriel minimises only floating windows.
 - The shell's screen-sharing picker is Hyprland's. On Umbriel, screen sharing goes through `xdg-desktop-portal-umbriel`.
