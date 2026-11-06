@@ -10,6 +10,7 @@ The shell also runs on [Umbriel](https://github.com/noctalia-dev/umbriel), the N
 - **The overview:** <kbd>Super</kbd><kbd>`</kbd> and the shell's overview button open Umbriel's own overview.
 - **Keyboard layouts:** the bar's keyboard widget shows the layout in use and switches to the next one. Each switch shows on screen, and Settings → Keyboard lists your layouts.
 - **Blur** behind the bar, dock, panels and notifications, through Umbriel's layer rules (below).
+- **Screen sharing:** through Umbriel's portal, with the shell's own picker. It offers the screens (with a preview) or a window, and an option to let Umbriel's screencast keys change what's shared later. The installer sets it as the portal's `chooser_cmd` (`material3ui share-picker --umbriel`) in `~/.config/xdg-desktop-portal-umbriel/config.toml`. Umbriel's own picker is `/usr/lib/umbriel-share-picker`, if you'd rather have it.
 - **Screens off, logging out, reloading the config:** as on the other compositors.
 
 - **Umbriel Settings:** an app for Umbriel's own options, as Hyprland and niri have theirs (below).
@@ -49,7 +50,7 @@ It then sets up `~/.config/umbriel`:
   - It adds `material3ui` to `general.autostart`, so the shell starts with Umbriel.
   - It takes out the keys that would hide the shell's, because Umbriel applies `config.toml` after its includes. Only two kinds go: keys that start Noctalia, and Umbriel's stock keys you haven't changed (from its example config: <kbd>Super</kbd><kbd>Space</kbd>, <kbd>Super</kbd><kbd>Tab</kbd>, <kbd>Super</kbd><kbd>L</kbd>, <kbd>Super</kbd><kbd>Escape</kbd>…). Keys you set yourself stay, and the installer lists them.
 
-`umbriel config validate` then checks the result. The old files are backed up, and `./install.sh --restore` puts them back. If your `config.toml` also starts another shell (Noctalia, waybar, mako…), the installer warns you. Pick `--umbriel skip` to leave Umbriel's config alone and set it up by hand (below). Then log out, and choose **Umbriel** at the login screen.
+It also makes the shell's picker the one Umbriel's portal shows for screen sharing (`screencast.chooser_cmd` in `~/.config/xdg-desktop-portal-umbriel/config.toml`, the rest of that file kept). `umbriel config validate` then checks the result. The old files are backed up, and `./install.sh --restore` puts them back. If your `config.toml` also starts another shell (Noctalia, waybar, mako…), the installer warns you. Pick `--umbriel skip` to leave Umbriel's config alone and set it up by hand (below). Then log out, and choose **Umbriel** at the login screen.
 
 ### By hand
 
@@ -113,4 +114,3 @@ What can still break is anything Umbriel renames in its IPC (its commands, actio
 ## Not yet
 
 - Umbriel Settings has no pages for monitors, keys and window rules yet.
-- The shell's screen-sharing picker is Hyprland's. On Umbriel, screen sharing goes through `xdg-desktop-portal-umbriel`.

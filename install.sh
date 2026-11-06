@@ -37,6 +37,8 @@ readonly NIRI="$CONFIG_HOME/niri"
 # A fresh config.kdl starts as niri's own default
 readonly NIRI_DEFAULT=/usr/share/doc/niri/default-config.kdl
 readonly UMB="$CONFIG_HOME/umbriel"
+# Umbriel's portal: which picker it shows when an app shares the screen
+readonly UMB_PORTAL="$CONFIG_HOME/xdg-desktop-portal-umbriel/config.toml"
 # A fresh config.toml starts as Umbriel's packaged one
 readonly UMB_STOCK=/usr/share/umbriel/config.toml
 
@@ -792,6 +794,7 @@ if [[ "$UMBRIEL_MODE" == include ]]; then
     cfg "$UMB/material3ui.toml" "Umbriel: the shell's keys and blur, with your apps"
     if [[ ! -e "$UMB/config.toml" ]]; then cfg "$UMB/config.toml" "Umbriel's packaged config + include material3ui.toml, start the shell"
     else cfg "$UMB/config.toml" "+ include material3ui.toml, start the shell; Noctalia's and Umbriel's stock keys the shell uses taken out"; fi
+    cfg "$UMB_PORTAL" "Umbriel's portal: the shell's screen-sharing picker"
     # Another shell started with it (two bars, two notification daemons)
     UMB_RIVALS="$(grep -oE '^\s*autostart\s*=.*' "$UMB/config.toml" 2>/dev/null | grep -oE '"(noctalia|qs|quickshell|waybar|mako|dunst|swaync|fnott|swaybg|swayidle)[^"]*"' | tr -d '"' | awk '{print $1}' | sort -u | tr '\n' ' ' || true)"
 fi
@@ -1172,6 +1175,18 @@ if [[ "$UMBRIEL_MODE" == include ]]; then
                 printf '%s\n' "$umbriel_check" | sed 's/\x1b\[[0-9;]*m//g' | grep -iv " INF " | tail -n 8 | sed 's/^/    /'
             else ok "Umbriel (material3ui.toml included; it has notes on your config: umbriel config validate)"; fi
         else ok "Umbriel (material3ui.toml included)"; fi
+    fi
+    # Screen sharing: the shell's picker in place of the portal's own (the
+    # rest of a portal config of yours kept)
+    guard "$UMB_PORTAL"
+    if [[ "$DRY" == 1 ]]; then note "[dry-run] screencast.chooser_cmd = \"material3ui share-picker --umbriel\" in $(tilde "$UMB_PORTAL")"
+    else
+        mkdir -p "$(dirname "$UMB_PORTAL")"
+        [[ -e "$UMB_PORTAL" ]] || printf '# xdg-desktop-portal-umbriel. Material3UI set the picker below (Umbriel'"'"'s own: /usr/lib/umbriel-share-picker)\n' >"$UMB_PORTAL"
+        toml=("$BUILD/material3ui" toml)
+        [[ -x "$BUILD/material3ui" ]] || toml=(material3ui toml)
+        if "${toml[@]}" set "$UMB_PORTAL" '["screencast","chooser_cmd"]' '"material3ui share-picker --umbriel"'; then ok "Screen sharing on Umbriel: the shell's picker (from your next login)"
+        else warn "Couldn't set the screen-sharing picker in $(tilde "$UMB_PORTAL")"; fi
     fi
 elif [[ "$WANT_UMBRIEL" == 1 ]]; then
     note "Umbriel config left as it is: include material3ui.toml yourself (docs/UMBRIEL.md)"

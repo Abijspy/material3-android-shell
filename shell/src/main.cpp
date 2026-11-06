@@ -101,7 +101,8 @@ void usage() {
               << "  material3ui events wait <event|*> [--since <ms>] [--timeout <s>]\n"
               << "                           wait for one (since <ms>: one already over counts too)\n"
               << "  material3ui greeter      run as the greetd login screen\n"
-              << "  material3ui share-picker choose what an app may share (xdg-desktop-portal-hyprland)\n"
+              << "  material3ui share-picker [--umbriel]  choose what an app may share (xdg-desktop-portal-hyprland,\n"
+              << "                           or with --umbriel xdg-desktop-portal-umbriel's chooser_cmd)\n"
               << "  material3ui toml get|set|remove <file> <path> [value]\n"
               << "                           read or change one value of a TOML file, keeping the rest as written\n"
               << "                           (path and value as JSON: '[\"general\",\"autostart\"]' '[\"material3ui\"]')\n"
@@ -277,7 +278,9 @@ int main(int argc, char** argv) {
         if (args[0] == "share-picker") {
             // Run by xdg-desktop-portal-hyprland when an app asks to share
             const bool allowToken = std::ranges::find(args, std::string("--allow-token")) != args.end();
-            m3::share::SharePicker picker(allowToken);
+            // Or xdg-desktop-portal-umbriel's chooser_cmd: JSON in and out
+            const bool umbriel = std::ranges::find(args, std::string("--umbriel")) != args.end();
+            m3::share::SharePicker picker(allowToken, umbriel);
             if (!picker.start()) return 1;
             return m3::EventLoop::get().run();
         }

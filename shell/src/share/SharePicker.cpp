@@ -21,6 +21,7 @@
 #include <format>
 #include <iostream>
 #include <linux/input-event-codes.h>
+#include <nlohmann/json.hpp>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
 namespace m3::share {
@@ -85,10 +86,20 @@ Button* tile(Node* parent, const std::string& name, const std::string& sub, std:
 
 } // namespace
 
-SharePicker::SharePicker(bool allowToken) : m_allowToken(allowToken) {}
+SharePicker::SharePicker(bool allowToken, bool umbriel) : m_allowToken(allowToken && !umbriel), m_umbriel(umbriel) {}
 SharePicker::~SharePicker() = default;
 
 void SharePicker::finish(const std::string& selection) {
+    if (m_umbriel) {
+        // Umbriel's portal reads the first line; no selections means cancelled
+        nlohmann::json out = {{"selections", nlohmann::json::array()}};
+        if (selection.starts_with("screen:")) out["selections"].push_back({{"kind", "monitor"}, {"output", selection.substr(7)}});
+        else if (selection.starts_with("window:")) out["selections"].push_back({{"kind", "window"}, {"identifier", selection.substr(7)}});
+        if (!out["selections"].empty()) out["dynamic"] = m_allowToken;
+        std::cout << out.dump() << std::endl;
+        EventLoop::get().quit(0);
+        return;
+    }
     // XDPH reads the last line; nothing at all means cancelled
     if (!selection.empty()) std::cout << "[SELECTION]" << (m_allowToken ? "r" : "") << "/" << selection << std::endl;
     EventLoop::get().quit(selection.empty() ? 1 : 0);
@@ -115,13 +126,33 @@ void SharePicker::pickRegion() {
 bool SharePicker::start() {
     auto& d = wl::Display::get();
     if (!d.connect() || !Renderer::get().init(d.display())) return false;
-    m_windows = windowsFromEnv();
+    if (m_umbriel) {
+        // What the portal offers, one line of JSON
+        std::string line;
+        std::getline(std::cin, line);
+        try {
+            const auto req = nlohmann::json::parse(line);
+            const auto types = req.value("types", nlohmann::json::array());
+            m_screensAllowed = std::ranges::find(types, nlohmann::json("monitor")) != types.end();
+            m_windowsAllowed = std::ranges::find(types, nlohmann::json("window")) != types.end();
+            for (const auto& o : req.value("outputs", nlohmann::json::array()))
+                m_screens.push_back({o.value("name", ""), o.value("description", ""), o.value("focused", false)});
+            for (const auto& w : req.value("windows", nlohmann::json::array()))
+                m_windows.push_back({w.value("identifier", ""), w.value("app_id", ""), w.value("title", "")});
+        } catch (const std::exception& e) {
+            std::cerr << "share-picker: the portal's request isn't JSON: " << e.what() << '\n';
+            finish("");
+            return true;
+        }
+    } else {
+        m_windows = windowsFromEnv();
+        for (const auto& m : Compositor::get().outputs()) m_screens.push_back({m.name, "", m.focused});
+    }
     // The screens, with a small preview each
-    const auto monitors = Compositor::get().outputs();
     std::vector<std::pair<std::string, std::string>> shots; // name → preview file
     std::error_code ec;
     std::filesystem::create_directories(paths::runtimeDir(), ec);
-    for (const auto& m : monitors) {
+    for (const auto& m : m_screens) {
         const std::string file = paths::runtimeDir() + "/share-" + m.name + ".png";
         // Taken now, before the picker covers the screen. A grab that fails
         // shows no preview, never the one an earlier share left
@@ -132,7 +163,9 @@ bool SharePicker::start() {
 
     // On the focused screen
     wl::Output* where = nullptr;
-    const std::string focused = Compositor::get().focusedOutput();
+    std::string focused = Compositor::get().focusedOutput();
+    for (const auto& m : m_screens)
+        if (m.focused) focused = m.name;
     for (auto& o : d.outputs())
         if (!where || o->name == focused) where = o.get();
     wl::LayerSurface::Options o;
@@ -250,10 +283,18 @@ bool SharePicker::start() {
         }
         st->body->requestLayout();
     };
-    connectedGroup<int>(tabs, 0, {{0, "Screens"}, {1, "Windows"}, {2, "Region"}}, [st](int v) {
-        st->tab = v;
-        EventLoop::get().defer([st] { st->fill(); });
-    });
+    // Only the kinds asked for; Umbriel's portal takes no region
+    std::vector<std::pair<int, std::string>> kinds;
+    if (m_screensAllowed) kinds.push_back({0, "Screens"});
+    if (m_windowsAllowed) kinds.push_back({1, "Windows"});
+    if (!m_umbriel) kinds.push_back({2, "Region"});
+    if (kinds.empty()) kinds.push_back({0, "Screens"});
+    st->tab = kinds.front().first;
+    if (kinds.size() > 1)
+        connectedGroup<int>(tabs, st->tab, kinds, [st](int v) {
+            st->tab = v;
+            EventLoop::get().defer([st] { st->fill(); });
+        });
 
     // Remember, and the answer
     auto* foot = card->add<Flex>(Flex::Direction::Row);
@@ -261,7 +302,8 @@ bool SharePicker::start() {
     auto* sw = foot->add<Switch>();
     sw->setChecked(m_allowToken, false);
     sw->onToggled = [this](bool on) { m_allowToken = on; };
-    auto* remember = foot->add<Label>("Let this app share again without asking");
+    // Umbriel: a share its screencast keys may move to another window or screen
+    auto* remember = foot->add<Label>(m_umbriel ? "Let me change what's shared later, with Umbriel's keys" : "Let this app share again without asking");
     remember->setSize(13)->setMaxWidth(320)->setMaxLines(2)->setColor("on_surface_variant", false);
     remember->grow = true;
     pillButton(foot, "Cancel", false, [this] { finish(""); });
