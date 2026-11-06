@@ -10,7 +10,7 @@ arch=(x86_64 aarch64)
 url="https://github.com/Abijspy/material3-android-shell"
 license=(MIT)
 depends=(wayland libglvnd pango cairo libxkbcommon systemd-libs libpulse librsvg gdk-pixbuf2 polkit pam fastfetch)
-makedepends=(meson ninja wayland-protocols wlr-protocols nlohmann-json)
+makedepends=(meson ninja wayland-protocols wlr-protocols nlohmann-json tomlplusplus)
 # The compositor is yours to pick: Hyprland, niri, or both
 optdepends=('hyprland: a compositor to run on (0.55 or newer)'
             'niri: a compositor to run on (26.04 or newer)'

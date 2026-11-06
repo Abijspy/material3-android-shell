@@ -339,10 +339,9 @@ public:
         entry("settings", "Material3UI Settings", [] {
             if (panels::open) panels::open("settings");
         });
-        if (!umbriel)
-            entry("tune", niri ? "Niri Settings" : "Hyprland Settings", [niri] {
-                if (panels::open) panels::open(niri ? "nirisettings" : "hyprsettings");
-            });
+        entry("tune", umbriel ? "Umbriel Settings" : niri ? "Niri Settings" : "Hyprland Settings", [niri, umbriel] {
+            if (panels::open) panels::open(umbriel ? "umbrielsettings" : niri ? "nirisettings" : "hyprsettings");
+        });
     }
 
     bool interactive() const override { return true; }

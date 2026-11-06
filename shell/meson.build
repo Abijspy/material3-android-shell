@@ -13,6 +13,7 @@ glesv2 = dependency('glesv2')
 pangocairo = dependency('pangocairo', version: '>= 1.50')
 cairo = dependency('cairo')
 json = dependency('nlohmann_json', version: '>= 3.10')
+toml = dependency('tomlplusplus', version: '>= 3.3') # Umbriel's config, read and edited in place
 xkbcommon = dependency('xkbcommon')
 libsystemd = dependency('libsystemd', version: '>= 246') # sd-bus
 libcrypto = dependency('libcrypto', version: '>= 3.0') # Quick Share's encryption
@@ -107,6 +108,8 @@ sources = files(
   'src/services/LockKeys.cpp',
   'src/services/LauncherEntries.cpp',
   'src/services/Privacy.cpp',
+  'src/services/TomlEdit.cpp',
+  'src/services/UmbrielConfig.cpp',
   'src/services/Trash.cpp',
   'src/services/Umbriel.cpp',
   'src/services/DataUsage.cpp',
@@ -188,6 +191,7 @@ sources = files(
   'src/shell/SoftwarePages.cpp',
   'src/shell/Tools.cpp',
   'src/shell/Switcher.cpp',
+  'src/shell/UmbrielPages.cpp',
   'src/shell/Welcome.cpp',
   'src/shell/WidgetStyles.cpp',
   'src/shell/Tooltip.cpp',
@@ -210,8 +214,8 @@ sources = files(
 
 install_data('data/pam/material3ui', install_dir: get_option('sysconfdir') / 'pam.d')
 # The Settings app: a launcher entry and its icon
-install_data('data/material3ui-settings.desktop', 'data/material3ui-hyprland.desktop', 'data/material3ui-niri.desktop', 'data/material3ui-quickshare.desktop', 'data/material3ui-print.desktop', install_dir: get_option('datadir') / 'applications')
-install_data('data/icons/material3ui-settings.svg', 'data/icons/material3ui-hyprland.svg', 'data/icons/material3ui-niri.svg', 'data/icons/material3ui-quickshare.svg', install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps')
+install_data('data/material3ui-settings.desktop', 'data/material3ui-hyprland.desktop', 'data/material3ui-niri.desktop', 'data/material3ui-umbriel.desktop', 'data/material3ui-quickshare.desktop', 'data/material3ui-print.desktop', install_dir: get_option('datadir') / 'applications')
+install_data('data/icons/material3ui-settings.svg', 'data/icons/material3ui-hyprland.svg', 'data/icons/material3ui-niri.svg', 'data/icons/material3ui-umbriel.svg', 'data/icons/material3ui-quickshare.svg', install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps')
 install_data('data/icons/material3ui-settings.svg', 'data/icons/quickshare-symbol.svg', install_dir: get_option('datadir') / 'material3ui/icons')
 # Shipped data: emoji list, logo, wallpapers
 install_data('data/emojis.txt', install_dir: get_option('datadir') / 'material3ui')
@@ -243,7 +247,7 @@ install_data('data/wallpapers/default_wallpaper.png', 'data/wallpapers/midnight-
 
 executable('material3ui', sources, protocol_sources,
   include_directories: include_directories('src'),
-  dependencies: [wayland_client, wayland_egl, egl, glesv2, pangocairo, cairo, json, xkbcommon, libsystemd, libpulse, librsvg, gdk_pixbuf, polkit_agent, pam, libcrypto],
+  dependencies: [wayland_client, wayland_egl, egl, glesv2, pangocairo, cairo, json, toml, xkbcommon, libsystemd, libpulse, librsvg, gdk_pixbuf, polkit_agent, pam, libcrypto],
   # Function names in crash.log's backtraces
   link_args: ['-rdynamic'],
   install: true)
@@ -257,6 +261,8 @@ test('lyrics', executable('lyrics_test', 'tests/lyrics_test.cpp', 'src/services/
   include_directories: include_directories('src'), dependencies: [json]))
 test('alarms', executable('alarms_test', 'tests/alarms_test.cpp', 'src/services/AlarmsParse.cpp',
   include_directories: include_directories('src')))
+test('toml-edit', executable('toml_edit_test', 'tests/toml_edit_test.cpp', 'src/services/TomlEdit.cpp',
+  include_directories: include_directories('src'), dependencies: [json, toml]))
 test('pacman-conf', executable('pacman_conf_test', 'tests/pacman_conf_test.cpp', 'src/services/PacmanConf.cpp',
   include_directories: include_directories('src')))
 test('firmware', executable('firmware_test', 'tests/firmware_test.cpp', 'src/services/FirmwareParse.cpp',

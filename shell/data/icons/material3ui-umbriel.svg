@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Umbriel Settings: the Settings squircle at night, a crescent over
+       three tiled windows -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7b86e8"/>
+      <stop offset="1" stop-color="#26306f"/>
+    </linearGradient>
+  </defs>
+  <path d="M64 4C108 4 124 20 124 64S108 124 64 124 4 108 4 64 20 4 64 4Z" fill="url(#bg)"/>
+  <path d="M44 18a20 20 0 1 0 22 26a16 16 0 1 1-22-26Z" fill="#ffe7a3"/>
+  <rect x="28" y="58" width="36" height="46" rx="8" fill="#ffffff"/>
+  <rect x="70" y="58" width="30" height="20" rx="7" fill="#e3e6ff" opacity="0.9"/>
+  <rect x="70" y="84" width="30" height="20" rx="7" fill="#e3e6ff" opacity="0.6"/>
+  <g stroke="#26306f" stroke-width="5" stroke-linecap="round">
+    <line x1="37" y1="72" x2="55" y2="72"/>
+    <line x1="37" y1="84" x2="55" y2="84"/>
+    <line x1="37" y1="94" x2="49" y2="94"/>
+  </g>
+</svg>

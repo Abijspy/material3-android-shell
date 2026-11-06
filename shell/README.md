@@ -10,7 +10,7 @@ Material3UI's shell: a Wayland shell drawn directly with EGL/OpenGL ES, with no 
 | :--- | :--- |
 | System access goes through Quickshell's bindings, or shells out to `hyprctl`, `pacman`, Python | Direct Unix sockets, inotify, sysfs, D-Bus (sd-bus), PipeWire (libpulse) and PAM |
 | JavaScript inside QML is untyped and hard to refactor | C++20, compiled with warnings on |
-| Every Quickshell release can break the shell | Depends only on libwayland, EGL/GLES2, Pango/Cairo, xkbcommon, libsystemd, libpulse, librsvg, gdk-pixbuf, PAM, polkit-agent and nlohmann-json |
+| Every Quickshell release can break the shell | Depends only on libwayland, EGL/GLES2, Pango/Cairo, xkbcommon, libsystemd, libpulse, librsvg, gdk-pixbuf, PAM, polkit-agent, nlohmann-json and toml++ |
 
 ## Architecture
 
@@ -56,7 +56,7 @@ The overall approach (a poll loop, direct Wayland, a GLES scene graph, Pango tex
 
 ## Building
 
-Dependencies: `meson`, `wayland`, `wayland-protocols`, `wlr-protocols`, `mesa` (EGL/GLES2), `pango`, `cairo`, `libxkbcommon`, `systemd-libs` (sd-bus), `libpulse` (talks to `pipewire-pulse`), `librsvg`, `gdk-pixbuf2`, `pam`, `polkit`, `nlohmann-json`. At runtime, optionally: `matugen` (palette), `cliphist` + `wl-clipboard` (clipboard history), `fd` (file search), `hyprsunset` (night light).
+Dependencies: `meson`, `wayland`, `wayland-protocols`, `wlr-protocols`, `mesa` (EGL/GLES2), `pango`, `cairo`, `libxkbcommon`, `systemd-libs` (sd-bus), `libpulse` (talks to `pipewire-pulse`), `librsvg`, `gdk-pixbuf2`, `pam`, `polkit`, `nlohmann-json`, `tomlplusplus`. At runtime, optionally: `matugen` (palette), `cliphist` + `wl-clipboard` (clipboard history), `fd` (file search), `hyprsunset` (night light).
 
 `meson install` also installs `/etc/pam.d/material3ui` (the lock screen's PAM service; it includes `login`).
 

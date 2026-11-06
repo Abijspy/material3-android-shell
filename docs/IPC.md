@@ -27,6 +27,7 @@ M3_INSTANCE=test material3ui msg workspaces
 | `settings [page]` | Settings. Pages: `network`, `vpn`, `bluetooth`, `printers`, `defaults`, `notifications`, `tools`, `spotlight`, `wellbeing`, `calendar`, `weather`, `battery`, `storage`, `monitor`, `sound`, `display`, `appearance`, `style`, `bar`, `dock`, `lockscreen`, `accessibility`, `lock`, `firewall`, `users`, `system`, `mouse`, `keybinds`, `hooks`, `packages`, `firmware`, `about` |
 | `hyprsettings [page]` | Hyprland Settings (pages `hypr-…`); on niri, Niri Settings |
 | `nirisettings [page]` | Niri Settings, on niri. Pages: `niri-layout`, `niri-decoration`, `niri-animations`, `niri-behaviour`, `niri-keys`, `niri-rules`, `niri-startup`, `niri-environment` |
+| `umbrielsettings [page]` | Umbriel Settings, on Umbriel. Pages: `umbriel-layout`, `umbriel-decoration`, `umbriel-animations`, `umbriel-input`, `umbriel-behaviour`, `umbriel-startup` |
 | `clipboard` | Clipboard history |
 | `screenshot` | The screenshot tool |
 | `wallpaper pick` | The wallpaper picker |

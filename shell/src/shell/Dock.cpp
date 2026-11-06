@@ -295,8 +295,8 @@ void Dock::setPinned(const std::vector<std::string>& ids) {
 }
 
 std::string Dock::shown(const std::string& pinnedId) {
-    if (pinnedId != "material3ui-hyprland" && pinnedId != "material3ui-niri") return pinnedId;
-    if (Compositor::session() == "umbriel") return {}; // no settings app of its own
+    if (pinnedId != "material3ui-hyprland" && pinnedId != "material3ui-niri" && pinnedId != "material3ui-umbriel") return pinnedId;
+    if (Compositor::session() == "umbriel") return "material3ui-umbriel";
     return Compositor::get().name() == "niri" ? "material3ui-niri" : "material3ui-hyprland";
 }
 

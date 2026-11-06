@@ -81,6 +81,11 @@
       "description": "JSON (build only)"
     },
     {
+      "name": "tomlplusplus",
+      "command": "",
+      "description": "TOML, for Umbriel Settings (build only)"
+    },
+    {
       "name": "libpulse",
       "command": "pactl",
       "description": "Audio (PipeWire through pipewire-pulse)"

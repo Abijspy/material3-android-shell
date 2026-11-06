@@ -11,7 +11,24 @@ The shell also runs on [Umbriel](https://github.com/noctalia-dev/umbriel), the N
 - **Blur** behind the bar, dock, panels and notifications, through Umbriel's layer rules (below).
 - **Screens off, logging out, reloading the config:** as on the other compositors.
 
-What Umbriel itself sets lives in its config file, which it reloads as you save. Monitors, the mouse and touchpad, keyboard layouts and repeat all go there. Settings → Display, Mouse & touchpad and Keyboard say where, with a button that opens the file. There's no Umbriel Settings app (as Hyprland and niri have).
+- **Umbriel Settings:** an app for Umbriel's own options, as Hyprland and niri have theirs (below).
+
+## Umbriel Settings
+
+Open it from the launcher, the dock (the pin that is Hyprland Settings on Hyprland and Niri Settings on niri), the card at the top of Settings' sidebar, the desktop's right-click menu, or `material3ui msg umbrielsettings`. Its pages:
+
+- **Windows & layout:** the layout (scrolling, dwindle, master or floating), gaps, the scrolling strip's centring, the master window's place and width, and workspaces going back and forth.
+- **Borders & effects:** borders, corners, Umbriel's title bars, how solid a window stays while dragged, blur (passes, radius, noise, saturation, brightness, contrast) and shadows.
+- **Animations:** all of them, or each one: windows opening (pop in, zoom, slide, fade), closing, moving and resizing, dialogs, workspaces (slide or reveal) and the overview.
+- **Input devices:** keyboard layouts, variants and options, key repeat, the touchpad (tap to click, natural scrolling, off while typing, speed, right click, scrolling), the mouse and the pointer.
+- **Behaviour:** apps bringing themselves forward, dialogs, maximising, the overview's size and blur, the keys cheatsheet and X11 apps.
+- **Startup apps:** what Umbriel starts at login, with the shell itself a tap away if it isn't there.
+
+Each option shows what's in effect: your `config.toml`'s value, else what it includes (`from material3ui.toml`), else Umbriel's default. A change goes into `config.toml` itself, since Umbriel applies it after its includes, and Umbriel applies it as the file is saved. The rest of the file stays as you wrote it: comments, order and spacing. A changed option gets a ↺ button that takes it out of `config.toml` again.
+
+The first change in a session copies `config.toml` to `~/.config/material3ui/backups` first. Without a `config.toml` of yours, the first change starts it from Umbriel's packaged one, which is how Umbriel's guide says to begin. After each change, and whenever the file changes, the app runs `umbriel config validate` and shows anything it reports at the top of the page. If the file can't be read, nothing in the app changes it until it's fixed.
+
+Monitors are still set in `config.toml` (Settings → Display says where). So are keys and window rules, for now.
 
 ## Setting it up
 
@@ -67,5 +84,6 @@ Fully see-through parts, such as the space around a panel's card, stay clear. Se
 ## Not yet
 
 - The installer and updates don't set up or refresh `material3ui.toml`.
+- Umbriel Settings has no pages for monitors, keys and window rules yet.
 - No minimising from the shell. Umbriel minimises only floating windows.
 - The shell's screen-sharing picker is Hyprland's. On Umbriel, screen sharing goes through `xdg-desktop-portal-umbriel`.

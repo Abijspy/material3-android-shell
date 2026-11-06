@@ -185,15 +185,13 @@ void tourDone(Flex* page) {
     pillButton(s.row, "Open", false, [] {
         if (open) open("settings");
     });
-    // The compositor's app (hyprsettings opens Niri Settings on niri);
-    // Umbriel has its config file instead
-    if (!onUmbriel()) {
-        auto h = onNiri() ? row(g, "tune", "Niri Settings", "Gaps, borders, blur, animations, keys and window rules")
-                          : row(g, "tune", "Hyprland Settings", "Windows, animations, input, keybinds and more");
-        pillButton(h.row, "Open", false, [] {
-            if (open) open("hyprsettings");
-        });
-    }
+    // The compositor's app (hyprsettings opens Niri Settings on niri, Umbriel Settings on Umbriel)
+    auto h = onUmbriel() ? row(g, "tune", "Umbriel Settings", "Layouts, gaps, borders, blur, animations and input")
+             : onNiri()  ? row(g, "tune", "Niri Settings", "Gaps, borders, blur, animations, keys and window rules")
+                         : row(g, "tune", "Hyprland Settings", "Windows, animations, input, keybinds and more");
+    pillButton(h.row, "Open", false, [] {
+        if (open) open("hyprsettings");
+    });
     auto d = row(g, "dashboard_customize", "Desktop widgets", "A clock, weather, music and app shortcuts on the wallpaper");
     pillButton(d.row, "Edit", false, [] {
         if (open) open("desktopedit");

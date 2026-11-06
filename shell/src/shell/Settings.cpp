@@ -51,6 +51,7 @@
 #include "shell/WellbeingPage.h"
 #include "shell/KeyCapture.h"
 #include "shell/NiriPages.h"
+#include "shell/UmbrielPages.h"
 #include "shell/LockLayout.h"
 #include "shell/PanelKit.h"
 #include "shell/SettingsKit.h"
@@ -109,9 +110,9 @@ void umbrielConfig(Flex* page, const char* icon, const std::string& title, const
     const std::string name = file;
     pillButton(r.row, "Open", true, [name] { spawn("xdg-open \"${XDG_CONFIG_HOME:-$HOME/.config}/umbriel/" + name + "\""); }, "open_in_new");
 }
-// A page of that app ("hypr-…", "niri-…") rather than Settings'
+// A page of that app ("hypr-…", "niri-…", "umbriel-…") rather than Settings'
 bool compositorPage(std::string_view id) {
-    return id.starts_with("hypr-") || id.starts_with("niri-");
+    return id.starts_with("hypr-") || id.starts_with("niri-") || id.starts_with("umbriel-");
 }
 
 // Rebuilds a page by id (after a reset, so its controls show the defaults)
@@ -2569,7 +2570,11 @@ void accessibilityPage(Flex* page, Popup&) {
 void mousePage(Flex* page, Popup&) {
     if (Niri::get().available()) return niriMouse(page); // set here, as niri's own config
     if (onUmbriel()) {
-        umbrielConfig(page, "touch_app", "Mouse & touchpad", "Tap to click, natural scrolling and speed: [input.touchpad] and [input.pointer]");
+        auto* g = group(page, "Mouse & touchpad", "Tap to click, natural scrolling, speed and the pointer live in Umbriel Settings");
+        auto t = row(g, "touch_app", "Touchpad, mouse and pointer", "In Umbriel Settings → Input devices");
+        pillButton(t.row, "Open", true, [] {
+            if (open) open("hyprsettings umbriel-input");
+        }, "open_in_new");
         auto* shell = group(page, "In the shell");
         auto r = row(shell, "swipe_vertical", "Scrolling in the shell", "Smooth scrolling, speed and touchpad glide");
         pillButton(r.row, "Look & feel", false, [] { settingsPage("style"); }, "open_in_new");
@@ -4776,7 +4781,11 @@ void keyboardPage(Flex* page, Popup&) {
                 row(g, static_cast<int>(i) == Compositor::get().keyboardLayout() ? "radio_button_checked" : "radio_button_unchecked", layouts[i],
                     Compositor::layoutShortName(layouts[i]));
         }
-        umbrielConfig(page, "keyboard_alt", "Layouts & typing", "Layouts (layout = \"us,de\"), repeat rate and delay: [input.keyboard]");
+        auto* typing = group(page, "Layouts & typing", "Keyboard layouts, repeat rate and delay");
+        auto t = row(typing, "keyboard_alt", "Layouts & typing", "In Umbriel Settings → Input devices");
+        pillButton(t.row, "Open", true, [] {
+            if (open) open("hyprsettings umbriel-input");
+        }, "open_in_new");
         umbrielConfig(page, "keyboard_command_key", "Keyboard shortcuts", "The shell's keys, under [keybinds]; a key your config.toml binds too stays yours",
                       "material3ui.toml");
         return;
@@ -4809,12 +4818,12 @@ HueChip categoryColours(const std::string& id) {
         orange{"#fad8bc", "#6a3a0a"}, yellow{"#fcde7a", "#5c4300"}, green{"#c0e4ba", "#0c4c23"}, grey{"#dedede", "#424242"},
         teal{"#a8eafa", "#00505f"}, red{"#fcd2d2", "#6a1e1e"}, purple{"#ecdcfc", "#4c258e"};
     static const std::vector<std::pair<std::vector<std::string>, const Pair*>> table = {
-        {{"network", "vpn", "bluetooth", "printers", "weather", "hypr-windows", "hypr-layouts", "hypr-groups", "niri-layout"}, &blue},
-        {{"defaults", "hypr-input", "niri-behaviour"}, &apps},
-        {{"notifications", "sound", "hypr-animations", "niri-animations"}, &pink},
-        {{"display", "appearance", "style", "bar", "dock", "hypr-decoration", "hypr-monitors", "niri-decoration"}, &orange},
+        {{"network", "vpn", "bluetooth", "printers", "weather", "hypr-windows", "hypr-layouts", "hypr-groups", "niri-layout", "umbriel-layout"}, &blue},
+        {{"defaults", "hypr-input", "niri-behaviour", "umbriel-behaviour", "umbriel-input"}, &apps},
+        {{"notifications", "sound", "hypr-animations", "niri-animations", "umbriel-animations"}, &pink},
+        {{"display", "appearance", "style", "bar", "dock", "hypr-decoration", "hypr-monitors", "niri-decoration", "umbriel-decoration"}, &orange},
         {{"storage", "monitor", "calendar", "clock", "hypr-render"}, &yellow},
-        {{"battery", "packages", "firmware", "wellbeing", "hypr-startup", "niri-startup"}, &green},
+        {{"battery", "packages", "firmware", "wellbeing", "hypr-startup", "niri-startup", "umbriel-startup"}, &green},
         {{"lock", "firewall", "lockscreen", "users", "hypr-window-rules", "hypr-layer-rules", "hypr-workspace-rules", "hypr-profiles", "niri-rules"},
          &teal},
         {{"hypr-debug"}, &red},
@@ -4934,6 +4943,12 @@ const PageDef kPages[] = {
     {"niri-rules", "rule", "Window rules", "Float, maximise, size and hide apps' windows", niriRulesPage},
     {"niri-startup", "rocket_launch", "Startup apps", "Apps and commands to run when niri starts", niriStartupPage},
     {"niri-environment", "data_object", "Environment", "Variables for the apps niri starts", niriEnvironmentPage},
+    {"umbriel-layout", "view_quilt", "Windows & layout", "Layouts, gaps, the scrolling strip and master", umbrielLayoutPage},
+    {"umbriel-decoration", "auto_awesome", "Borders & effects", "Borders, corners, title bars, blur and shadows", umbrielDecorationPage},
+    {"umbriel-animations", "animation", "Animations", "Windows opening, closing and moving, and workspaces", umbrielAnimationsPage},
+    {"umbriel-input", "touchpad_mouse", "Input devices", "Keyboard layouts and repeat, the touchpad, mouse and pointer", umbrielInputPage},
+    {"umbriel-behaviour", "tune", "Behaviour", "Focus, maximising, the overview and the session", umbrielBehaviourPage},
+    {"umbriel-startup", "rocket_launch", "Startup apps", "Apps and commands to run when Umbriel starts", umbrielStartupPage},
     {"mouse", "touchpad_mouse", "Mouse & touchpad", "Touchpad, pointer, scrolling and gestures", mousePage},
     {"keybinds", "keyboard", "Keyboard", "Layouts, typing and shortcuts", keyboardPage},
     {"hooks", "webhook", "Hooks", "Your own commands when things happen, such as locking, a new wallpaper or a low battery", hooksPage},
@@ -4952,12 +4967,16 @@ const std::vector<PageDef>& pagesOf(bool hypr) {
             if (prefix ? std::string_view(p.id).starts_with(prefix) : !compositorPage(p.id)) out.push_back(p);
         return out;
     };
-    static const std::vector<PageDef> shell = pick(nullptr), hyprland = pick("hypr-"), niri = pick("niri-");
+    static const std::vector<PageDef> shell = pick(nullptr), hyprland = pick("hypr-"), niri = pick("niri-"), umbriel = pick("umbriel-");
     if (!hypr) return shell;
-    return onNiri() ? niri : hyprland;
+    return onUmbriel() ? umbriel : onNiri() ? niri : hyprland;
 }
 
 int pageGroup(const std::string& id) {
+    // Umbriel Settings: how it looks, how it behaves, then your lists
+    if (id == "umbriel-input" || id == "umbriel-behaviour") return 1;
+    if (id == "umbriel-startup") return 3;
+    if (id.starts_with("umbriel-")) return 0;
     // Niri Settings: how it looks, how it behaves, then your lists
     if (id == "niri-behaviour") return 1;
     if (id == "niri-keys" || id == "niri-rules" || id == "niri-startup" || id == "niri-environment") return 3;
@@ -4992,7 +5011,7 @@ const std::vector<SettingsHit>& settingsIndex(Popup& popup) {
     // out of view once: their titles, and their rows' titles and headings
     static std::vector<SettingsHit> index;
     if (!index.empty()) return index;
-    const bool niri = !Hyprland::get().available() && Niri::get().available();
+    const bool niri = (!Hyprland::get().available() && Niri::get().available()) || onUmbriel();
     for (bool hypr : {false, true}) {
         if (hypr && !niri && !Hyprland::get().available()) continue;
         for (const auto& p : pagesOf(hypr)) {
@@ -5057,15 +5076,15 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
     sideScroll->fixedWidth = 280;
     auto* side = sideScroll->add<Flex>(Flex::Direction::Column);
     side->setAlignItems(Align::Stretch)->setSpacing(10)->setPadding({4, 10, 4, 8});
-    const bool niri = onNiri();
-    auto* brand = side->add<Label>(Hypr ? (niri ? "niri" : "Hyprland") : "Settings");
+    const bool niri = onNiri(), umbriel = onUmbriel();
+    auto* brand = side->add<Label>(Hypr ? (umbriel ? "Umbriel" : niri ? "niri" : "Hyprland") : "Settings");
     brand->setSize(34)->setWeight(400);
     brand->alignSelf = Align::Start;
     auto* searchBox = side->add<Flex>(Flex::Direction::Row);
     pill(searchBox->setBackground(ColorRef("on_surface", 0.1f), false))->setPadding({16, 4, 8, 4})->setSpacing(8);
     searchBox->add<Icon>("search", 20)->setColor("on_surface_variant", false);
     auto* search = searchBox->add<TextField>();
-    search->setPlaceholder(Hypr ? (niri ? "Search niri options" : "Search Hyprland options") : "Search settings");
+    search->setPlaceholder(Hypr ? (umbriel ? "Search Umbriel options" : niri ? "Search niri options" : "Search Hyprland options") : "Search settings");
     // Ctrl+F: to the search, from anywhere in the app
     popup.onKey = [undo = popup.onKey, search](const KeyEvent& e) {
         if (e.ctrl() && (e.sym == XKB_KEY_f || e.sym == XKB_KEY_F)) {
@@ -5086,17 +5105,17 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
     auto* otherTexts = other->add<Flex>(Flex::Direction::Column);
     otherTexts->setAlignItems(Align::Start)->setSpacing(1);
     otherTexts->grow = true;
-    otherTexts->add<Label>(Hypr ? "Material3UI Settings" : niri ? "Niri Settings" : "Hyprland Settings")
+    otherTexts->add<Label>(Hypr ? "Material3UI Settings" : umbriel ? "Umbriel Settings" : niri ? "Niri Settings" : "Hyprland Settings")
         ->setSize(15)->setWeight(600)->setColor("on_secondary_container", false);
     otherTexts->add<Label>(Hypr ? "The shell: bar, dock, network, sound…"
-                                : niri ? "How windows look and behave" : "Every compositor option, animations and more")
+                                : niri || umbriel ? "How windows look and behave" : "Every compositor option, animations and more")
         ->setSize(12)->setColor("on_secondary_container", false)->setMaxWidth(170)->setMaxLines(ui::kAllLines);
     other->add<Icon>("open_in_new", 18)->setColor("on_secondary_container", false);
     other->onClicked = [](uint32_t button) {
         if (button == BTN_LEFT && open) open(Hypr ? "settings" : "hyprsettings");
     };
-    // The compositor's app is there on Hyprland and niri
-    other->setVisible(Hypr || Hyprland::get().available() || niri);
+    // The compositor's app is there on Hyprland, niri and Umbriel
+    other->setVisible(Hypr || Hyprland::get().available() || niri || umbriel);
 
     // The page: a fixed header with the close button, then what scrolls
     auto* right = columns->add<Flex>(Flex::Direction::Column);

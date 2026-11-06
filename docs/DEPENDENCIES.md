@@ -16,7 +16,7 @@ The installer asks which compositor the shell runs on (`--compositor hyprland`, 
 | Component | Package | Description |
 | :--- | :--- | :--- |
 | **Shell** | built from `shell/` | The native C++ shell (`material3ui`), built with `meson` and `ninja` (`base-devel`) by the installer. |
-| **Shell libraries** | `wayland` `wayland-protocols` `wlr-protocols` `mesa` `pango` `cairo` `librsvg` `gdk-pixbuf2` `libxkbcommon` `nlohmann-json` `libpulse` `polkit` `pam` | Wayland and layer shell, OpenGL ES, text, icons and wallpapers, keyboard, JSON, audio, the polkit agent and the lock screen. |
+| **Shell libraries** | `wayland` `wayland-protocols` `wlr-protocols` `mesa` `pango` `cairo` `librsvg` `gdk-pixbuf2` `libxkbcommon` `nlohmann-json` `tomlplusplus` `libpulse` `polkit` `pam` | Wayland and layer shell, OpenGL ES, text, icons and wallpapers, keyboard, JSON and TOML, audio, the polkit agent and the lock screen. |
 | **Theme** | `matugen` | Material 3 theme generation from wallpapers. |
 | **GTK Theme** | `adw-gtk-theme` | Libadwaita-like theme for GTK3 applications. |
 | **Cursor** | `bibata-cursor-theme-bin` | Bibata Modern Classic, the default cursor (AUR). Another can be picked in Hyprland Settings → Cursor, or Settings → Mouse & touchpad on niri. |

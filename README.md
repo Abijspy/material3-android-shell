@@ -136,7 +136,7 @@ Everything in the shell works on both: the bar with each monitor's workspaces, t
 
 Hyprland is the shell's first home and the most complete. Pick niri if you like scrollable tiling: the rest of the desktop comes with you. → [Material3UI on niri](docs/NIRI.md) · [The Hyprland setup](docs/HYPRLAND.md)
 
-**And Umbriel (new).** The shell also runs on [Umbriel](https://github.com/noctalia-dev/umbriel), the Noctalia project's compositor. The bar shows each monitor's workspaces, and the dock, panels, notifications, Spotlight, keyboard layouts, blur, Umbriel's overview and the lock screen all work. The installer doesn't set it up yet: include the shell's keys and blur from your `config.toml` by hand. → [Material3UI on Umbriel](docs/UMBRIEL.md)
+**And Umbriel (new).** The shell also runs on [Umbriel](https://github.com/noctalia-dev/umbriel), the Noctalia project's compositor. The bar shows each monitor's workspaces, and the dock, panels, notifications, Spotlight, keyboard layouts, blur, Umbriel's overview and the lock screen all work. **Umbriel Settings** edits Umbriel's own options (layouts, gaps, borders, blur, animations, input, startup apps) right in your `config.toml`, keeping your comments. The installer doesn't set it up yet: include the shell's keys and blur from your `config.toml` by hand. → [Material3UI on Umbriel](docs/UMBRIEL.md)
 
 ## A tour
 

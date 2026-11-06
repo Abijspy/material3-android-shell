@@ -334,7 +334,7 @@ void Shell::holdDocks(bool held) {
 
 void Shell::openSettings(const std::string& page) {
     // The compositor's own pages live in Hyprland (or Niri) Settings
-    if (page.starts_with("hypr-") || page.starts_with("niri-")) return openHyprSettings(page);
+    if (page.starts_with("hypr-") || page.starts_with("niri-") || page.starts_with("umbriel-")) return openHyprSettings(page);
     if (m_settings && !m_settings->closing()) {
         if (!page.empty()) panels::settingsPage(page);
         // Raised, and back from minimised if it was
@@ -359,15 +359,18 @@ void Shell::openSettings(const std::string& page) {
 }
 
 void Shell::openHyprSettings(const std::string& page) {
-    // The compositor's own options: Hyprland's, or niri's in Niri Settings
-    const bool niri = !Hyprland::get().available() && Niri::get().available();
-    if (!Hyprland::get().available() && !niri) {
-        log::info("Hyprland Settings: not on Hyprland or niri");
+    // The compositor's own options: Hyprland's, niri's in Niri Settings, or
+    // Umbriel's in Umbriel Settings
+    const bool umbriel = Compositor::session() == "umbriel";
+    const bool niri = !umbriel && !Hyprland::get().available() && Niri::get().available();
+    if (!Hyprland::get().available() && !niri && !umbriel) {
+        log::info("Hyprland Settings: not on Hyprland, niri or Umbriel");
         return;
     }
     // Another compositor's page asked for (an old link): the app's first
-    const std::string want = page.starts_with(niri ? "hypr-" : "niri-") ? "" : page;
-    const std::string appId = niri ? "material3ui-niri" : "material3ui-hyprland";
+    const std::string own = umbriel ? "umbriel-" : niri ? "niri-" : "hypr-";
+    const std::string want = page.empty() || page.starts_with(own) ? page : "";
+    const std::string appId = umbriel ? "material3ui-umbriel" : niri ? "material3ui-niri" : "material3ui-hyprland";
     if (m_hyprSettings && !m_hyprSettings->closing()) {
         if (!want.empty()) panels::settingsPage(want);
         auto& c = Compositor::get();
@@ -380,7 +383,7 @@ void Shell::openHyprSettings(const std::string& page) {
     opts.name = "hyprsettings";
     opts.window = true;
     opts.appId = appId; // its own .desktop file and dock icon
-    opts.title = niri ? "Niri Settings" : "Hyprland Settings";
+    opts.title = umbriel ? "Umbriel Settings" : niri ? "Niri Settings" : "Hyprland Settings";
     opts.icon = "tune";
     m_hyprSettings = std::make_unique<Popup>(nullptr, opts, [want](ui::Flex* card, Popup& p) { panels::hyprSettings(card, p, want); });
     m_hyprSettings->onClosed = [this] {
@@ -422,7 +425,7 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
     if (name == "settings") return openSettings(arg);
     if (name == "welcome") return openWelcome();
     // The compositor's settings app: Hyprland's, or niri's on niri (either name)
-    if (name == "hyprsettings" || name == "nirisettings") return openHyprSettings(arg);
+    if (name == "hyprsettings" || name == "nirisettings" || name == "umbrielsettings") return openHyprSettings(arg);
     if (name == "desktopedit") return desktopeditor::open(output ? output : focusedOutput());
     // The compositor's own overview where it has one (niri's)
     if (name == "overview" && Compositor::get().can(Compositor::Feature::NativeOverview)) {
@@ -953,6 +956,11 @@ void Shell::registerIpc() {
         return std::string(m_hyprSettings && !m_hyprSettings->closing() ? "open" : "closed");
     });
     ipc.add("nirisettings", "nirisettings [niri-layout|niri-decoration|niri-animations|niri-behaviour|niri-keys|niri-rules|niri-startup|niri-environment]: Niri Settings",
+            [this](const IpcServer::Args& a) {
+        openHyprSettings(a.empty() ? "" : a[0]);
+        return std::string(m_hyprSettings && !m_hyprSettings->closing() ? "open" : "closed");
+    });
+    ipc.add("umbrielsettings", "umbrielsettings [umbriel-layout|umbriel-decoration|umbriel-animations|umbriel-input|umbriel-behaviour|umbriel-startup]: Umbriel Settings",
             [this](const IpcServer::Args& a) {
         openHyprSettings(a.empty() ? "" : a[0]);
         return std::string(m_hyprSettings && !m_hyprSettings->closing() ? "open" : "closed");
