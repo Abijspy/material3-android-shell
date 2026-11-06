@@ -1909,6 +1909,12 @@ void batteryPage(Flex* page, Popup&) {
                 p.watts() > 0 ? std::format("{:.1f} W", p.watts()) : p.full() ? "Plugged in, not charging" : "Not reported");
             row(g, "battery_profile", "Health",
                 p.health() > 0 ? std::format("{}% of its design capacity", p.health()) : "Not reported");
+
+            auto* alerts = group(live, "Alerts", "Told with a notification");
+            switchRow(alerts, "battery_alert", "Low battery", "At 10%, and at 5% to plug in now", "/battery/lowAlerts", true);
+            choiceRow<int>(alerts, "battery_charging_80", "Remind me to unplug", "Charging far past 80% wears a battery out sooner",
+                           "/battery/unplugAt", 0, {{0, "Off"}, {80, "80%"}, {85, "85%"}, {90, "90%"}});
+            switchRow(alerts, "battery_full", "Fully charged", "When it's full on the charger", "/battery/fullAlert", false);
         }
 
         auto* modes = group(live, "Power mode", "How hard the CPU and GPU may work: battery life against speed");

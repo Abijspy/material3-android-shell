@@ -79,6 +79,7 @@ sources = files(
   'src/services/AlarmsParse.cpp',
   'src/services/Audio.cpp',
   'src/services/Backups.cpp',
+  'src/services/BatteryAlerts.cpp',
   'src/services/Calendar.cpp',
   'src/services/Auth.cpp',
   'src/services/Clipboard.cpp',

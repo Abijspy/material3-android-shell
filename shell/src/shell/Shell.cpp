@@ -26,6 +26,7 @@
 #include "services/Printers.h"
 #include "services/ThemedIcons.h"
 #include "services/Wellbeing.h"
+#include "services/BatteryAlerts.h"
 #include "services/Calendar.h"
 #include "quickshare/QuickShare.h"
 #include "services/Clipboard.h"
@@ -193,6 +194,7 @@ bool Shell::start() {
     LiveWallpaper::get().start();
     Equalizer::get().start();
     AutoSaver::get().start();
+    BatteryAlerts::get().start();
     WorldClock::get().start();
     NoiseSuppression::get().start();
     // Updates: checked in the background (Settings → Software & updates); a
