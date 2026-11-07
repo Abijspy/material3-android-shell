@@ -3,7 +3,9 @@
 #include "core/Process.h"
 #include "services/Compositor.h"
 #include "services/Search.h"
+#include "services/Umbriel.h"
 #include "services/UmbrielConfig.h"
+#include "core/EventLoop.h"
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
 #include "shell/SettingsKit.h"
@@ -13,6 +15,7 @@
 #include <cmath>
 #include <format>
 #include <optional>
+#include <regex>
 #include <sstream>
 
 namespace m3::shell::panels {
@@ -428,6 +431,371 @@ void umbrielStartupPage(Flex* p, Popup&) {
         }
     };
     live->watch(UmbrielConfig::get().changed);
+    live->sync();
+}
+
+namespace {
+
+// Umbriel's actions a key can do, in words
+const std::vector<std::pair<std::string, std::string>>& umbrielActions() {
+    static const std::vector<std::pair<std::string, std::string>> list = {
+        {"window-close", "Close the window"},
+        {"window-toggle-fullscreen", "Fullscreen"},
+        {"window-toggle-maximize", "Maximise (the column's full width)"},
+        {"window-toggle-maximize-to-edges", "Maximise to the edges"},
+        {"window-toggle-floating", "Float or tile the window"},
+        {"window-toggle-pinned", "Pin above other windows"},
+        {"window-minimize", "Minimise (a floating window)"},
+        {"window-restore-minimized", "Bring back the last minimised"},
+        {"window-focus-left", "Focus the window to the left"},
+        {"window-focus-right", "Focus the window to the right"},
+        {"window-focus-up", "Focus the window above"},
+        {"window-focus-down", "Focus the window below"},
+        {"window-move-left", "Move the window left"},
+        {"window-move-right", "Move the window right"},
+        {"window-focus-last", "Focus the window before"},
+        {"column-center", "Centre the column"},
+        {"column-toggle-tabbed", "Tab the column"},
+        {"window-cycle-primary-extent", "Cycle the width"},
+        {"workspace-next", "Next workspace"},
+        {"workspace-previous", "Previous workspace"},
+        {"workspace-focus-last", "The workspace before"},
+        {"window-move-to-workspace-next", "Window to the next workspace"},
+        {"window-move-to-workspace-previous", "Window to the previous workspace"},
+        {"workspace-toggle-show-desktop", "Show the desktop"},
+        {"overview-toggle", "Overview"},
+        {"scratchpad-toggle", "Show or hide the scratchpad"},
+        {"window-toggle-scratchpad", "Window to or from the scratchpad"},
+        {"keyboard-layout-next", "Next keyboard layout"},
+        {"screencast-set-window", "Share this window instead"},
+        {"cheatsheet-toggle", "Keys cheatsheet"},
+        {"config-reload", "Reload the config"},
+        {"session-quit", "Quit Umbriel"},
+    };
+    return list;
+}
+
+// A key's action ("window-close", "spawn foot", or a table with one) in words
+std::string actionWords(const json& v) {
+    const std::string a = v.is_string() ? v.get<std::string>() : v.is_object() ? v.value("action", "") : "";
+    if (a.starts_with("spawn ")) return "Runs " + a.substr(6);
+    const auto space = a.find(' ');
+    const std::string word = a.substr(0, space);
+    for (const auto& [id, label] : umbrielActions())
+        if (id == word) return space == std::string::npos ? label : label + a.substr(space);
+    return a;
+}
+
+bool validChord(const std::string& keys) {
+    static const std::regex chord(R"(^((Mod|Shift|Ctrl|Control|Alt|Super|Logo|Win)\+)*[A-Za-z0-9_]+$)");
+    return std::regex_match(keys, chord);
+}
+
+// What a rule matches, and what it does, in words
+std::string ruleMatch(const json& r) {
+    const auto m = r.value("match", json::object());
+    std::string out;
+    if (m.contains("app_id")) out += "Apps: " + (m["app_id"].is_string() ? m["app_id"].get<std::string>() : m["app_id"].dump());
+    if (m.contains("title")) out += (out.empty() ? "" : " · ") + std::string("Titles: ") + (m["title"].is_string() ? m["title"].get<std::string>() : m["title"].dump());
+    return out.empty() ? "Every window" : out;
+}
+
+std::string ruleEffects(const json& r) {
+    std::vector<std::string> parts;
+    for (const auto& [k, v] : r.items()) {
+        if (k == "match") continue;
+        if (k == "default_floating") parts.push_back(v == true ? "opens floating" : "opens tiled");
+        else if (k == "default_fullscreen" && v == true) parts.push_back("opens fullscreen");
+        else if (k == "default_maximize" && v == true) parts.push_back("opens maximised");
+        else if (k == "default_pinned" && v == true) parts.push_back("opens pinned");
+        else if (k == "default_workspace") parts.push_back("opens on workspace " + (v.is_string() ? v.get<std::string>() : v.dump()));
+        else if (k == "opacity" && v.is_number()) parts.push_back(std::format("{:.0f}% opaque", v.get<double>() * 100));
+        else if (k == "blur") parts.push_back(v == true ? "blurred behind" : "no blur");
+        else parts.push_back(k + " = " + v.dump());
+    }
+    std::string out;
+    for (const auto& p : parts) out += (out.empty() ? "" : ", ") + p;
+    if (!out.empty()) out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
+    return out;
+}
+
+// A mode as config.toml writes it: 1920x1080@60, 2560x1440@143.912
+std::string modeText(const json& m) {
+    const double hz = m.value("refresh_mhz", 0) / 1000.0;
+    std::string rate = std::format("{:.3f}", hz);
+    while (rate.ends_with("0")) rate.pop_back();
+    if (rate.ends_with(".")) rate.pop_back();
+    return std::format("{}x{}@{}", m.value("width", 0), m.value("height", 0), rate);
+}
+
+} // namespace
+
+void umbrielKeysPage(Flex* page, Popup&) {
+    auto* live = page->add<Live>();
+    live->setSpacing(6);
+    auto draft = std::make_shared<std::string>();
+    auto problem = std::make_shared<std::string>();
+    live->sync = [live, draft, problem] {
+        live->clearChildren();
+        notice(live);
+        auto& cfg = UmbrielConfig::get();
+        if (!cfg.readError().empty()) return;
+        // config.toml's, which win over the includes'
+        json mine = cfg.own({"keybinds"});
+        if (!mine.is_object()) mine = json::object();
+        auto* g = group(live, "Your keys", "In config.toml: they win over the shell's and other includes'");
+        if (mine.empty()) row(g, "info", "None yet", "Add one below");
+        for (const auto& [chord, v] : mine.items()) {
+            if (v.is_object() && !v.contains("action")) continue; // a submap's, not a key
+            const bool locked = v.is_object() && v.value("allow_when_locked", false);
+            auto r = row(g, actionWords(v).starts_with("Runs ") ? "terminal" : "keyboard_command_key", chord,
+                         actionWords(v) + (locked ? " · on the lock screen too" : ""));
+            const std::string k = chord;
+            confirmButton(r.row, "umbkey:" + k, "delete", [k] { UmbrielConfig::get().unset({"keybinds", k}); })->tooltip = "Remove";
+        }
+        // A new key: its combination, then what it does
+        auto keys = row(g, "keyboard", "New key", problem->empty() ? "Mod is Super; then pick what it does" : *problem);
+        if (!problem->empty()) keys.subtitle->setColor("error", false);
+        auto* combo = keys.row->add<TextField>();
+        combo->setPlaceholder("Mod+Shift+K");
+        combo->setText(*draft);
+        combo->fixedWidth = 170;
+        combo->onChanged = [draft](const std::string& t) { *draft = t; };
+        auto add = [live, draft, problem](json action) {
+            if (!validChord(*draft)) {
+                *problem = "First the keys, like Mod+Shift+K";
+                live->syncSoon();
+                return;
+            }
+            const std::string chord = *draft;
+            problem->clear();
+            draft->clear();
+            UmbrielConfig::get().set({"keybinds", chord}, action);
+        };
+        auto act = row(g, "bolt", "Does an Umbriel action");
+        dropdown(act.row, g, "Choose", umbrielActions(), [add](const std::string& a) { add(a); });
+        auto cmd = row(g, "terminal", "Or runs a command", "Enter to add");
+        auto* f = cmd.row->add<TextField>();
+        f->setPlaceholder("firefox, or material3ui msg …");
+        f->fixedWidth = 260;
+        f->onSubmit = [add](const std::string& text) {
+            if (!text.empty()) add(json{{"action", "spawn " + text}, {"repeat", false}});
+        };
+
+        // The includes' (the shell's material3ui.toml): where config.toml doesn't bind the same keys
+        json all = cfg.value({"keybinds"});
+        std::vector<std::pair<std::string, std::string>> theirs;
+        if (all.is_object())
+            for (const auto& [chord, v] : all.items())
+                if (!mine.contains(chord) && (v.is_string() || (v.is_object() && v.contains("action")))) theirs.push_back({chord, actionWords(v)});
+        if (!theirs.empty()) {
+            auto* tg = group(live, "From material3ui.toml and other includes", std::format("{} keys. A key of yours with the same keys wins over one of these", theirs.size()));
+            for (const auto& [chord, what] : theirs) {
+                auto r = row(tg, "", chord, what);
+                r.title->setSize(13);
+            }
+        }
+    };
+    live->watch(UmbrielConfig::get().changed);
+    live->sync();
+}
+
+void umbrielRulesPage(Flex* page, Popup&) {
+    auto* live = page->add<Live>();
+    live->setSpacing(6);
+    auto app = std::make_shared<std::string>();
+    auto problem = std::make_shared<std::string>();
+    live->sync = [live, app, problem] {
+        live->clearChildren();
+        notice(live);
+        auto& cfg = UmbrielConfig::get();
+        if (!cfg.readError().empty()) return;
+        const auto rules = cfg.tables("window_rule");
+        auto* g = group(live, "Your window rules", "In config.toml: how an app's windows open and look");
+        bool any = false;
+        for (const auto& r : rules) {
+            if (r.index < 0) continue;
+            any = true;
+            auto x = row(g, "rule", ruleMatch(r.data), ruleEffects(r.data));
+            const int index = r.index;
+            confirmButton(x.row, std::format("umbrule:{}:{}", index, r.data.dump()), "delete",
+                          [index] { UmbrielConfig::get().removeTable("window_rule", index); })->tooltip = "Remove";
+        }
+        if (!any) row(g, "info", "None yet", "Add one below: an app, then what its windows do");
+        // A new rule: the app, then what it does
+        auto who = row(g, "apps", "App", problem->empty() ? "Its app id (an open window's, below), or a pattern" : *problem);
+        if (!problem->empty()) who.subtitle->setColor("error", false);
+        auto* field = who.row->add<TextField>();
+        field->setPlaceholder("firefox");
+        field->setText(*app);
+        field->fixedWidth = 200;
+        field->onChanged = [app](const std::string& t) { *app = t; };
+        // The apps open now
+        std::vector<std::pair<std::string, std::string>> open;
+        for (const auto& w : Compositor::get().windows(true))
+            if (!w.appId.empty() && std::ranges::none_of(open, [&](const auto& o) { return o.first == w.appId; })) open.push_back({w.appId, w.appId});
+        if (!open.empty())
+            dropdown(who.row, g, "Open apps", open, [app, live](const std::string& id) {
+                *app = id;
+                live->syncSoon();
+            });
+        auto add = [live, app, problem](json effect) {
+            std::string id = *app;
+            id.erase(0, id.find_first_not_of(' '));
+            while (!id.empty() && id.back() == ' ') id.pop_back();
+            if (id.empty()) {
+                *problem = "First the app, like firefox";
+                live->syncSoon();
+                return;
+            }
+            // A plain id matches itself exactly; a pattern as written
+            const bool pattern = id.find_first_of("^$.*+?()[]|\\") != std::string::npos;
+            json rule = effect;
+            rule["match"] = {{"app_id", pattern ? id : "^" + id + "$"}};
+            problem->clear();
+            app->clear();
+            UmbrielConfig::get().addTable("window_rule", rule);
+        };
+        auto what = row(g, "bolt", "Its windows");
+        const std::vector<std::pair<std::string, std::string>> effects = {
+            {"floating", "Open floating"},     {"tiled", "Open tiled"},           {"fullscreen", "Open fullscreen"},
+            {"maximize", "Open maximised"},    {"pinned", "Open pinned on top"},  {"ws1", "Open on workspace 1"},
+            {"ws2", "Open on workspace 2"},    {"ws3", "Open on workspace 3"},    {"ws4", "Open on workspace 4"},
+            {"o90", "90% opaque"},             {"o80", "80% opaque"},             {"blur", "Blurred behind"},
+        };
+        dropdown(what.row, g, "Choose", effects, [add](const std::string& e) {
+            if (e == "floating") add({{"default_floating", true}});
+            else if (e == "tiled") add({{"default_floating", false}});
+            else if (e == "fullscreen") add({{"default_fullscreen", true}});
+            else if (e == "maximize") add({{"default_maximize", true}});
+            else if (e == "pinned") add({{"default_pinned", true}});
+            else if (e.starts_with("ws")) add({{"default_workspace", std::stoi(e.substr(2))}});
+            else if (e == "o90") add({{"opacity", 0.9}});
+            else if (e == "o80") add({{"opacity", 0.8}});
+            else if (e == "blur") add({{"blur", true}});
+        });
+
+        // The includes' rules
+        std::vector<const UmbrielConfig::Table*> theirs;
+        for (const auto& r : rules)
+            if (r.index < 0) theirs.push_back(&r);
+        if (!theirs.empty()) {
+            auto* tg = group(live, "From includes", "Umbriel applies every matching rule, these before yours");
+            for (const auto* r : theirs) {
+                auto x = row(tg, "", ruleMatch(r->data), ruleEffects(r->data) + " · " + r->file);
+                x.title->setSize(13);
+            }
+        }
+    };
+    live->watch(UmbrielConfig::get().changed);
+    live->sync();
+}
+
+void umbrielMonitorsPage(Flex* page, Popup&) {
+    auto* live = page->add<Live>();
+    live->setSpacing(6);
+    // A change on probation: put back unless kept within 15 s (a mode the
+    // screen can't show, a scale too large to reach the button)
+    struct Trial {
+        tomledit::Path path;
+        json before; // config.toml's own, null: not set there
+        EventLoop::TimerId timer = 0;
+        int left = 0;
+    };
+    auto trial = std::make_shared<std::optional<Trial>>();
+    auto settle = [trial](bool keep) {
+        if (!*trial) return;
+        auto t = **trial;
+        trial->reset();
+        if (t.timer) EventLoop::get().cancel(t.timer);
+        if (keep) return;
+        if (t.before.is_null()) UmbrielConfig::get().unset(t.path);
+        else UmbrielConfig::get().set(t.path, t.before);
+    };
+    live->sync = [live, trial, settle] {
+        live->clearChildren();
+        notice(live);
+        auto& cfg = UmbrielConfig::get();
+        if (!cfg.readError().empty()) return;
+        if (*trial) {
+            auto* c = live->add<Flex>(Flex::Direction::Row);
+            c->setPadding({18, 14})->setSpacing(14)->setRadius(Radii(20))->setBackground("primary_container", false);
+            c->add<Icon>("timer", 22)->setColor("on_primary_container", false);
+            auto* l = c->add<Label>(std::format("Keep this? Going back in {} s", (*trial)->left));
+            l->setSize(14)->setWeight(600)->setColor("on_primary_container", false);
+            l->grow = true;
+            pillButton(c, "Go back", false, [settle] { settle(false); });
+            pillButton(c, "Keep", true, [settle] { settle(true); }, "check");
+        }
+        // Umbriel's outputs, with their modes
+        json outs = Compositor::session() == "umbriel" ? Umbriel::get().request({{"cmd", "outputs"}}).value_or(json::array()) : json::array();
+        if (!outs.is_array() || outs.empty()) {
+            row(group(live, "Monitors"), "monitor", "Umbriel isn't running", "Monitors show here in an Umbriel session");
+            return;
+        }
+        // A change that's tried first: the old value kept to go back to
+        auto tryIt = [live, trial, settle](const tomledit::Path& path, const json& value) {
+            settle(true); // an earlier one, kept as it is
+            Trial t{path, UmbrielConfig::get().own(path), 0, 15};
+            t.timer = EventLoop::get().addTimer(1000, [live, trial, settle, alive = live->alive()] {
+                if (!*alive || !*trial) return;
+                if (--(*trial)->left <= 0) {
+                    (*trial)->timer = 0;
+                    settle(false);
+                }
+                live->syncSoon();
+            }, true);
+            *trial = t;
+            UmbrielConfig::get().set(path, value);
+        };
+        for (const auto& o : outs) {
+            const std::string name = o.value("name", "");
+            if (name.empty()) continue;
+            const std::string desc = o.value("description", "");
+            auto* g = group(live, name, desc);
+            auto on = row(g, "monitor", "On", o.value("enabled", true) ? "Part of the desktop" : "Off");
+            auto* sw = on.row->add<Switch>();
+            sw->setChecked(o.value("enabled", true), false);
+            sw->onToggled = [name](bool v) { UmbrielConfig::get().set({"output", name, "enabled"}, v); };
+            if (!o.value("enabled", true)) continue;
+            // Its modes, the one in use first
+            std::vector<std::pair<std::string, std::string>> modes;
+            std::string current;
+            for (const auto& m : o.value("modes", json::array())) {
+                const std::string text = modeText(m);
+                const std::string label = std::format("{}×{} at {:.0f} Hz{}", m.value("width", 0), m.value("height", 0),
+                                                      m.value("refresh_mhz", 0) / 1000.0, m.value("preferred", false) ? " (best)" : "");
+                if (std::ranges::any_of(modes, [&](const auto& x) { return x.first == text; })) continue;
+                modes.push_back({text, label});
+                if (m.value("current", false)) current = label;
+            }
+            if (!modes.empty()) {
+                auto r = row(g, "aspect_ratio", "Resolution", "");
+                dropdown(r.row, g, current.empty() ? "Choose" : current, modes,
+                         [name, tryIt](const std::string& mode) { tryIt({"output", name, "mode"}, mode); });
+            }
+            const double scale = o.value("scale", 1.0);
+            auto sc = row(g, "zoom_in", "Scale", std::format("{:.0f}%", scale * 100));
+            connectedGroup<double>(sc.row, std::round(scale * 4) / 4, {{1.0, "100%"}, {1.25, "125%"}, {1.5, "150%"}, {1.75, "175%"}, {2.0, "200%"}},
+                                   [name, tryIt](double v) { tryIt({"output", name, "scale"}, v); });
+            const std::string transform = o.value("transform", "normal");
+            auto rot = row(g, "screen_rotation", "Rotation", "");
+            connectedGroup<std::string>(rot.row, transform, {{"normal", "None"}, {"90", "90°"}, {"180", "180°"}, {"270", "270°"}},
+                                        [name, tryIt](std::string v) { tryIt({"output", name, "transform"}, v); });
+            if (!o["adaptive_sync"].is_null()) {
+                const json vrr = cfg.value({"output", name, "vrr"});
+                auto v = row(g, "speed", "Variable refresh rate", "Smoother games and video, where the screen can");
+                connectedGroup<std::string>(v.row, vrr.is_string() ? vrr.get<std::string>() : "disabled",
+                                            {{"disabled", "Off"}, {"fullscreen", "Fullscreen"}, {"always", "Always"}},
+                                            [name](std::string x) { UmbrielConfig::get().set({"output", name, "vrr"}, x); });
+            }
+        }
+        auto r = row(group(live, "Arranging them"), "view_quilt", "Their positions",
+                     "Each monitor's [output.<name>] position = [x, y] in config.toml; Umbriel lines them up from left to right without one");
+        pillButton(r.row, "Open config.toml", false, [] { spawn("xdg-open \"${XDG_CONFIG_HOME:-$HOME/.config}/umbriel/config.toml\""); }, "open_in_new");
+    };
+    live->watch(UmbrielConfig::get().changed);
+    live->watch(Compositor::get().workspacesChanged); // outputs come and go
     live->sync();
 }
 

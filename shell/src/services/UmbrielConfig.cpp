@@ -232,6 +232,36 @@ bool UmbrielConfig::unset(const tomledit::Path& path) {
     }, dottedOf(path));
 }
 
+std::vector<UmbrielConfig::Table> UmbrielConfig::tables(const std::string& name) const {
+    std::vector<Table> out;
+    for (size_t d = 0; d < m_docs.size(); ++d) {
+        const auto it = m_docs[d].data.find(name);
+        if (it == m_docs[d].data.end() || !it->is_array()) continue;
+        const bool mine = d + 1 == m_docs.size() && exists();
+        for (size_t i = 0; i < it->size(); ++i) out.push_back({m_docs[d].name, (*it)[i], mine ? static_cast<int>(i) : -1});
+    }
+    return out;
+}
+
+nlohmann::json UmbrielConfig::own(const tomledit::Path& path) const {
+    if (m_docs.empty() || !exists()) return nullptr;
+    const auto* v = at(m_docs.back().data, path);
+    return v ? *v : nlohmann::json();
+}
+
+bool UmbrielConfig::addTable(const std::string& name, const nlohmann::json& value) {
+    return change([name, value, this](const std::string& text) -> std::optional<std::string> {
+        return tomledit::appendTable(text, name, value, &m_lastError);
+    }, name);
+}
+
+bool UmbrielConfig::removeTable(const std::string& name, int index) {
+    if (index < 0) return false;
+    return change([name, index, this](const std::string& text) -> std::optional<std::string> {
+        return tomledit::removeTable(text, name, static_cast<size_t>(index), &m_lastError);
+    }, name);
+}
+
 bool UmbrielConfig::change(std::function<std::optional<std::string>(const std::string&)> edit, std::string dotted) {
     if (!m_readError.empty()) {
         m_lastError = "config.toml can't be read: " + m_readError;
@@ -277,12 +307,13 @@ void UmbrielConfig::next() {
         m_checking = false;
         std::error_code ec;
         fs::remove(candidate, ec);
-        // Refused: an error, or Umbriel saying it would ignore this very option
+        // Refused: a new error, or Umbriel saying it would ignore this very
+        // option (what it said of the file before is no fault of this change)
         std::string refusal;
         for (const auto& d : diagnosticsOf(report)) {
             const std::string message = d.value("message", ""), severity = d.value("severity", "error");
             const bool aboutIt = !dotted.empty() && message.find(dotted) != std::string::npos;
-            if (severity == "error" || aboutIt) refusal = message;
+            if ((severity == "error" || aboutIt) && !m_known.contains(message)) refusal = message;
         }
         if (!refusal.empty()) {
             m_lastError = "Umbriel " + (umbrielVersion().empty() ? std::string() : umbrielVersion() + " ") + "wouldn't take it: " + refusal;
@@ -327,7 +358,9 @@ void UmbrielConfig::validate() {
     }
     run({"umbriel", "config", "validate", "--json", "-c", file()}, [this](int, const std::string& out) {
         std::vector<std::string> problems;
+        m_known.clear();
         for (const auto& d : diagnosticsOf(out)) {
+            m_known.insert(d.value("message", ""));
             std::string where = d.contains("line") && d["line"].is_number() ? std::format("line {}: ", d["line"].get<int>()) : "";
             const std::string file = d.contains("file") && d["file"].is_string() ? fs::path(d["file"].get<std::string>()).filename().string() : "";
             if (!file.empty() && file != "config.toml") where = file + ", " + where;

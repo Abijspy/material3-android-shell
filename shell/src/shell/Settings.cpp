@@ -4821,10 +4821,10 @@ HueChip categoryColours(const std::string& id) {
         {{"network", "vpn", "bluetooth", "printers", "weather", "hypr-windows", "hypr-layouts", "hypr-groups", "niri-layout", "umbriel-layout"}, &blue},
         {{"defaults", "hypr-input", "niri-behaviour", "umbriel-behaviour", "umbriel-input"}, &apps},
         {{"notifications", "sound", "hypr-animations", "niri-animations", "umbriel-animations"}, &pink},
-        {{"display", "appearance", "style", "bar", "dock", "hypr-decoration", "hypr-monitors", "niri-decoration", "umbriel-decoration"}, &orange},
+        {{"display", "appearance", "style", "bar", "dock", "hypr-decoration", "hypr-monitors", "niri-decoration", "umbriel-decoration", "umbriel-monitors"}, &orange},
         {{"storage", "monitor", "calendar", "clock", "hypr-render"}, &yellow},
         {{"battery", "packages", "firmware", "wellbeing", "hypr-startup", "niri-startup", "umbriel-startup"}, &green},
-        {{"lock", "firewall", "lockscreen", "users", "hypr-window-rules", "hypr-layer-rules", "hypr-workspace-rules", "hypr-profiles", "niri-rules"},
+        {{"lock", "firewall", "lockscreen", "users", "hypr-window-rules", "hypr-layer-rules", "hypr-workspace-rules", "hypr-profiles", "niri-rules", "umbriel-rules", "umbriel-keys"},
          &teal},
         {{"hypr-debug"}, &red},
         {{"accessibility", "tools", "spotlight", "hooks", "hypr-plugins"}, &purple},
@@ -4948,6 +4948,9 @@ const PageDef kPages[] = {
     {"umbriel-animations", "animation", "Animations", "Windows opening, closing and moving, and workspaces", umbrielAnimationsPage},
     {"umbriel-input", "touchpad_mouse", "Input devices", "Keyboard layouts and repeat, the touchpad, mouse and pointer", umbrielInputPage},
     {"umbriel-behaviour", "tune", "Behaviour", "Focus, maximising, the overview and the session", umbrielBehaviourPage},
+    {"umbriel-monitors", "monitor", "Monitors", "Resolution, scale, rotation and variable refresh rate", umbrielMonitorsPage},
+    {"umbriel-keys", "keyboard_command_key", "Keys", "Keys for Umbriel's actions or any command, beside the shell's", umbrielKeysPage},
+    {"umbriel-rules", "rule", "Window rules", "How an app's windows open: floating, on a workspace, see-through…", umbrielRulesPage},
     {"umbriel-startup", "rocket_launch", "Startup apps", "Apps and commands to run when Umbriel starts", umbrielStartupPage},
     {"mouse", "touchpad_mouse", "Mouse & touchpad", "Touchpad, pointer, scrolling and gestures", mousePage},
     {"keybinds", "keyboard", "Keyboard", "Layouts, typing and shortcuts", keyboardPage},
@@ -4975,7 +4978,7 @@ const std::vector<PageDef>& pagesOf(bool hypr) {
 int pageGroup(const std::string& id) {
     // Umbriel Settings: how it looks, how it behaves, then your lists
     if (id == "umbriel-input" || id == "umbriel-behaviour") return 1;
-    if (id == "umbriel-startup") return 3;
+    if (id == "umbriel-startup" || id == "umbriel-keys" || id == "umbriel-rules") return 3;
     if (id.starts_with("umbriel-")) return 0;
     // Niri Settings: how it looks, how it behaves, then your lists
     if (id == "niri-behaviour") return 1;

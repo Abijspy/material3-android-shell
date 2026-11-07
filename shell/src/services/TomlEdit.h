@@ -32,4 +32,12 @@ std::optional<std::string> set(const std::string& text, const Path& path, const 
 // never set. The text as it was when `path` isn't in it
 std::optional<std::string> remove(const std::string& text, const Path& path, std::string* error = nullptr);
 
+// Arrays of tables ([[window_rule]]): a new one at the end, `value` an
+// object whose objects are written as dotted keys (match.app_id = "…")
+std::optional<std::string> appendTable(const std::string& text, const std::string& name, const nlohmann::json& value,
+                                       std::string* error = nullptr);
+// …and the `index`th of them (from 0, in the file's order) taken out: its
+// header and its lines, up to the next header
+std::optional<std::string> removeTable(const std::string& text, const std::string& name, size_t index, std::string* error = nullptr);
+
 } // namespace m3::tomledit

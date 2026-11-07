@@ -20,5 +20,10 @@ void umbrielAnimationsPage(ui::Flex* page, Popup&);
 void umbrielInputPage(ui::Flex* page, Popup&);
 void umbrielBehaviourPage(ui::Flex* page, Popup&);
 void umbrielStartupPage(ui::Flex* page, Popup&);
+// Lists: your keys, window rules and monitors, beside what config.toml's
+// includes (the shell's material3ui.toml) say
+void umbrielKeysPage(ui::Flex* page, Popup&);
+void umbrielRulesPage(ui::Flex* page, Popup&);
+void umbrielMonitorsPage(ui::Flex* page, Popup&);
 
 } // namespace m3::shell::panels

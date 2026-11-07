@@ -120,6 +120,25 @@ int main() {
         expect(gone && *gone == base, "a table added and taken out again leaves the file as it was");
     }
 
+    // Arrays of tables: added at the end, and the nth taken out
+    {
+        const std::string rules = "[general]\nmod_key = \"Alt\"\n\n[[window_rule]]\nmatch.app_id = \"^firefox$\"\ndefault_workspace = 2\n\n# The terminal\n[[window_rule]]\nmatch.app_id = \"^foot$\"\nopacity = 0.9\n\n[keybinds]\n\"Mod+T\" = \"spawn foot\"\n";
+        auto added = tomledit::appendTable(rules, "window_rule", json{{"match", {{"app_id", "^mpv$"}}}, {"default_floating", true}}, &err);
+        expect(added && added->ends_with("\"Mod+T\" = \"spawn foot\"\n\n[[window_rule]]\nmatch.app_id = \"^mpv$\"\ndefault_floating = true\n"), "a table added at the end, dotted");
+        expect(added && tomledit::get(*added, {"keybinds", "Mod+T"}) == "spawn foot", "the keys after the rules still the keys'");
+        auto first = tomledit::removeTable(rules, "window_rule", 0, &err);
+        expect(first && !has(*first, "firefox") && has(*first, "# The terminal\n[[window_rule]]\nmatch.app_id = \"^foot$\""), "the first taken out, the next's comment kept");
+        auto second = tomledit::removeTable(rules, "window_rule", 1, &err);
+        expect(second && !has(*second, "^foot$") && !has(*second, "# The terminal") && has(*second, "default_workspace = 2\n\n[keybinds]"),
+               "the second taken out, with its comment");
+        expect(second && tomledit::parse(*second)["window_rule"].size() == 1, "one left");
+        expect(!tomledit::removeTable(rules, "window_rule", 5, &err), "one that isn't there: refused");
+        auto onlyOne = tomledit::appendTable("", "window_rule", json{{"opacity", 0.5}}, &err);
+        expect(onlyOne && *onlyOne == "[[window_rule]]\nopacity = 0.5\n", "into an empty file");
+        auto none = onlyOne ? tomledit::removeTable(*onlyOne, "window_rule", 0, &err) : std::nullopt;
+        expect(none && none->empty(), "the last taken out: nothing left");
+    }
+
     // Refused, leaving nothing half done
     expect(!tomledit::set("[x\n", {"a"}, 1, &err), "an unreadable file isn't edited");
     expect(!tomledit::set(base, {"appearance"}, 1, &err), "a table isn't replaced by a value");

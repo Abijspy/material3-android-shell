@@ -387,4 +387,91 @@ std::optional<std::string> remove(const std::string& text, const Path& path, std
     return checked(out, path, nullptr, error);
 }
 
+namespace {
+
+// An object's entries as lines, its objects as dotted keys; what a rule
+// matches ("match") first, as it reads
+void flatten(const nlohmann::json& value, const std::string& prefix, std::string& out) {
+    auto one = [&](const std::string& k, const nlohmann::json& v) {
+        const std::string name = prefix.empty() ? key(k) : prefix + "." + key(k);
+        if (v.is_object() && !v.empty()) flatten(v, name, out);
+        else out += name + " = " + literal(v) + "\n";
+    };
+    if (value.contains("match")) one("match", value["match"]);
+    for (const auto& [k, v] : value.items())
+        if (k != "match") one(k, v);
+}
+
+size_t tableCount(const toml::table& doc, const std::string& name) {
+    const auto* a = doc.get(name) ? doc.get(name)->as_array() : nullptr;
+    return a ? a->size() : 0;
+}
+
+} // namespace
+
+std::optional<std::string> appendTable(const std::string& text, const std::string& name, const nlohmann::json& value, std::string* error) {
+    if (!value.is_object() || value.empty()) {
+        if (error) *error = "nothing to add";
+        return std::nullopt;
+    }
+    const auto doc = parseTable(text, error);
+    if (!doc) return std::nullopt;
+    if (const auto* n = doc->get(name); n && !n->is_array_of_tables()) {
+        if (error) *error = name + " isn't a list of tables";
+        return std::nullopt;
+    }
+    const size_t before = tableCount(*doc, name);
+    std::string block = "[[" + key(name) + "]]\n";
+    flatten(value, "", block);
+    std::string out = text;
+    if (!out.empty() && out.back() != '\n') out += '\n';
+    if (!out.empty() && !out.ends_with("\n\n")) out += '\n';
+    out += block;
+    std::string why;
+    const auto check = parseTable(out, &why);
+    if (!check || tableCount(*check, name) != before + 1) {
+        if (error) *error = "the edit wouldn't read back: " + why;
+        return std::nullopt;
+    }
+    return out;
+}
+
+std::optional<std::string> removeTable(const std::string& text, const std::string& name, size_t index, std::string* error) {
+    const auto doc = parseTable(text, error);
+    if (!doc) return std::nullopt;
+    const auto* n = doc->get(name);
+    const auto* list = n ? n->as_array() : nullptr;
+    if (!list || !n->is_array_of_tables() || index >= list->size()) {
+        if (error) *error = "there's no such " + name;
+        return std::nullopt;
+    }
+    const Lines lines(text);
+    const auto* t = (*list)[index].as_table();
+    const size_t header = t->source().begin.line - 1; // its [[name]] line, 0-based
+    if (trim(lines.line(header)) .rfind("[[", 0) != 0) {
+        if (error) *error = "it isn't written as [[" + name + "]]";
+        return std::nullopt;
+    }
+    std::set<size_t> headers;
+    headerLines(lines, *doc, headers);
+    const auto next = headers.upper_bound(header);
+    size_t end = next == headers.end() ? lines.count() : *next;
+    // Its own lines: not the comments and blank lines that lead the next one in
+    while (end > header + 1 && next != headers.end() && (trim(lines.line(end - 1)).empty() || trim(lines.line(end - 1))[0] == '#')) --end;
+    // With the comment written just above it, and a blank line before that
+    size_t start = header;
+    while (start > 0 && !trim(lines.line(start - 1)).empty() && trim(lines.line(start - 1))[0] == '#') --start;
+    const bool blankBefore = start > 0 && trim(lines.line(start - 1)).empty();
+    const size_t from = lines.starts[blankBefore ? start - 1 : start];
+    const size_t to = end < lines.count() ? lines.starts[end] : text.size();
+    std::string out = text.substr(0, from) + text.substr(to);
+    std::string why;
+    const auto check = parseTable(out, &why);
+    if (!check || tableCount(*check, name) != list->size() - 1) {
+        if (error) *error = "the edit wouldn't read back: " + why;
+        return std::nullopt;
+    }
+    return out;
+}
+
 } // namespace m3::tomledit

@@ -24,13 +24,16 @@ Open it from the launcher, the dock (the pin that is Hyprland Settings on Hyprla
 - **Animations:** all of them, or each one: windows opening (pop in, zoom, slide, fade), closing, moving and resizing, dialogs, workspaces (slide or reveal) and the overview.
 - **Input devices:** keyboard layouts, variants and options, key repeat, the touchpad (tap to click, natural scrolling, off while typing, speed, right click, scrolling), the mouse and the pointer.
 - **Behaviour:** apps bringing themselves forward, dialogs, maximising, the overview's size and blur, the keys cheatsheet and X11 apps.
+- **Monitors:** each one on or off, its resolution (from the modes it reports), scale, rotation and variable refresh rate. A new resolution, scale or rotation is tried first: it goes back by itself after 15 seconds unless you press Keep.
+- **Keys:** yours in `config.toml`, removed with two taps, and new ones: the keys (like `Mod+Shift+K`), then an Umbriel action or a command. The shell's keys from `material3ui.toml` are listed below them.
+- **Window rules:** yours (`[[window_rule]]` in `config.toml`), and new ones: an app (picked from the open ones, or typed), then what its windows do, such as open floating, fullscreen, maximised, pinned, on a workspace, see-through or blurred.
 - **Startup apps:** what Umbriel starts at login, with the shell itself a tap away if it isn't there.
 
 Each option shows what's in effect: your `config.toml`'s value, else what it includes (`from material3ui.toml`), else Umbriel's default. A change goes into `config.toml` itself, since Umbriel applies it after its includes, and Umbriel applies it as the file is saved. The rest of the file stays as you wrote it: comments, order and spacing. A changed option gets a ↺ button that takes it out of `config.toml` again.
 
 The first change in a session copies `config.toml` to `~/.config/material3ui/backups` first. Without a `config.toml` of yours, the first change starts it from Umbriel's packaged one, which is how Umbriel's guide says to begin. After each change, and whenever the file changes, the app runs `umbriel config validate` and shows anything it reports at the top of the page. If the file can't be read, nothing in the app changes it until it's fixed.
 
-Monitors are still set in `config.toml` (Settings → Display says where). So are keys and window rules, for now.
+Monitor positions are still set in `config.toml` (`position = [x, y]`).
 
 ## Setting it up
 
@@ -110,7 +113,3 @@ Umbriel is young and changes as it's developed (its docs call its defaults "opin
 - **The bar and dock keep up.** If Umbriel stops sending one of the event families the shell subscribes to, the shell subscribes without the keyboard layout. If it refuses the rest too, the shell asks for the state every 1.5 seconds instead. Fields Umbriel stops sending read as empty, new ones are ignored, and a refused action is only logged.
 
 What can still break is anything Umbriel renames in its IPC (its commands, actions or fields). The Umbriel features would then stop working until the shell catches up, but the shell itself keeps running. This was tested with Umbriel 0.1.0.
-
-## Not yet
-
-- Umbriel Settings has no pages for monitors, keys and window rules yet.

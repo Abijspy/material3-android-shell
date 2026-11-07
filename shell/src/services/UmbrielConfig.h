@@ -4,6 +4,7 @@
 #include "services/TomlEdit.h"
 
 #include <deque>
+#include <set>
 #include <functional>
 #include <map>
 #include <nlohmann/json.hpp>
@@ -48,6 +49,20 @@ public:
     bool set(const tomledit::Path& path, const nlohmann::json& value);
     // Out of config.toml: an include's value, or the default, again
     bool unset(const tomledit::Path& path);
+
+    // Lists of tables ([[window_rule]]): each in Umbriel's order (the
+    // includes', then config.toml's), with its file and, for config.toml's,
+    // its place among config.toml's own (for removeTable)
+    struct Table {
+        std::string file;
+        nlohmann::json data;
+        int index = -1; // in config.toml; -1 for an include's
+    };
+    std::vector<Table> tables(const std::string& name) const;
+    bool addTable(const std::string& name, const nlohmann::json& value); // at config.toml's end
+    bool removeTable(const std::string& name, int index);
+    // What config.toml itself says at `path` (not its includes); null when nothing
+    nlohmann::json own(const tomledit::Path& path) const;
     const std::string& lastError() const { return m_lastError; }
 
     // The installed Umbriel's own description of an option ("appearance.
@@ -83,6 +98,7 @@ private:
     std::string m_text;      // config.toml as it is
     std::string m_readError, m_lastError;
     std::vector<std::string> m_problems;
+    std::set<std::string> m_known; // Umbriel's words about the file as it is: not a change's fault
     bool m_backedUp = false;
     std::map<std::string, nlohmann::json> m_schema;
     std::string m_version;
