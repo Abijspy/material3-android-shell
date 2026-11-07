@@ -94,6 +94,21 @@ if [[ "$CHANNEL" == stable && -n "${tag:-}" ]]; then
     fi
 fi
 if [[ -z "$PKG" ]]; then
+    # What the build needs and isn't here yet: a release can add one
+    # (tomlplusplus in 6.4), and a missing one would stop meson
+    deps="$INSTALL_DIR/data/dependencies.json"
+    if command -v jq >/dev/null && [[ -f "$deps" ]]; then
+        lacking=()
+        # The repositories' only (an AUR one, as matugen-bin, isn't pacman's to install)
+        while read -r p; do [[ -n "$p" ]] && pacman -Si "$p" >/dev/null 2>&1 && lacking+=("$p"); done < <(pacman -T $(jq -r '.core[].name' "$deps") 2>/dev/null || true)
+        if [[ ${#lacking[@]} -gt 0 ]]; then
+            echo "Installing what the build needs: ${lacking[*]}"
+            read -ra root_ <<<"${M3_ROOT:-}"
+            read -ra sudo_ <<<"${M3_SUDO:-sudo}"
+            if [[ ${#root_[@]} -gt 0 ]]; then "${root_[@]}" pacman -S --needed --noconfirm "${lacking[@]}" || echo "Couldn't install ${lacking[*]}: the build may stop"
+            else "${sudo_[@]}" pacman -S --needed --noconfirm "${lacking[@]}" || echo "Couldn't install ${lacking[*]}: the build may stop"; fi
+        fi
+    fi
     echo "Building the shell..."
     BUILD="$INSTALL_DIR/shell/build-release"
     [[ -d "$BUILD" ]] && setup_flags=(--reconfigure) || setup_flags=()
