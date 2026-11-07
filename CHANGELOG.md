@@ -1,5 +1,16 @@
 # Changelog
 
+## v6.4 — 2026-11-07
+
+- **Umbriel support.** The shell now runs on [Umbriel](https://github.com/noctalia-dev/umbriel), the Noctalia project's compositor, as well as Hyprland and niri, and finds out by itself which one it's on. The bar shows each monitor's workspaces, and the dock, panels, notifications, Spotlight, the window switcher, keyboard layouts, blur, window screenshots, Umbriel's overview and the lock screen all work. Floating windows can be minimised and come back from the dock. Screen sharing uses the shell's own picker. The login screen and Settings → About show Umbriel's logo. Umbriel is young and changing fast; see docs/UMBRIEL.md.
+- **Umbriel Settings.** An app for Umbriel's own options, as Hyprland and niri have theirs: windows and layout, borders and effects, animations, monitors, input devices, behaviour, keys, window rules and startup apps. Changes go into your `config.toml` and keep your comments and order. Each change is checked by your installed Umbriel before it's saved, so nothing it would refuse is written, and options your Umbriel doesn't have aren't shown. A new resolution, scale or rotation goes back by itself after 15 seconds unless you keep it.
+- **Pick any compositors in the installer.** Choose Hyprland, niri, Umbriel, Hyprland and niri, all three, or a list (`--compositor niri,umbriel`). Umbriel isn't in Arch's repositories yet, so the installer builds it and its screen-sharing portal at the version the shell was tested with, as pacman packages you can remove like any other. It sets up your `config.toml` without touching the rest of it.
+- **Power actions in Spotlight.** Type "lock", "sleep", "restart", "shut down" or "log out". Restart, shut down and log out ask you to press Enter again first.
+- **Low disk space warning.** When your disk gets close to full, a notification says how much is left and offers to empty the trash or open Settings → Storage. It's also a hook (`disk_space_low`), and Settings → Storage can switch it off.
+- **Battery alerts.** A warning at 10% and again at 5%, which the shell didn't have before. You can also choose a reminder to unplug at 80, 85 or 90%, to keep the battery healthy, and a notice when it's fully charged. They're in Settings → Battery → Alerts.
+- **A long window title no longer pushes the clock aside.** On a narrow screen or a crowded bar, the title now scrolls in the space that's left.
+- **Updates that build from source** install any new build package first (this release adds `tomlplusplus`).
+
 ## v6.3.3 — 2026-11-05
 
 - **Screenshot editor.** After a capture, mark up the screenshot in the shell's own editor: pen, arrow, box, highlighter, text, pixelate and crop, in seven colours and three sizes, with undo and redo. Copy it (Ctrl+C) or save it (Ctrl+S). Open it from the "Screenshot saved" notification's Edit button, have it open after every capture (Settings → Tools → Screenshots), or edit any picture with `material3ui msg edit <file>`. Pixelate blurs each block to its average colour, so nothing underneath can be read back.
