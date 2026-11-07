@@ -25,5 +25,8 @@ void umbrielStartupPage(ui::Flex* page, Popup&);
 void umbrielKeysPage(ui::Flex* page, Popup&);
 void umbrielRulesPage(ui::Flex* page, Popup&);
 void umbrielMonitorsPage(ui::Flex* page, Popup&);
+// Noctalia's community shaders (services/UmbrielShaders): what's on, the
+// families, and each effect with its preview, to download and turn on
+void umbrielEffectsPage(ui::Flex* page, Popup&);
 
 } // namespace m3::shell::panels

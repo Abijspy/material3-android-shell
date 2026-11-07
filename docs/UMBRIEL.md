@@ -21,6 +21,7 @@ Open it from the launcher, the dock (the pin that is Hyprland Settings on Hyprla
 
 - **Windows & layout:** the layout (scrolling, dwindle, master or floating), gaps, the scrolling strip's centring, the master window's place and width, and workspaces going back and forth.
 - **Borders & effects:** borders, corners, Umbriel's title bars, how solid a window stays while dragged, blur (passes, radius, noise, saturation, brightness, contrast) and shadows.
+- **Effects:** Noctalia's [community shaders](https://github.com/noctalia-dev/community-umbriel-shaders) for window borders, windows, the whole screen, the pointer and animations, each shown with its preview, author and description, and matching **families** that set several at once. Pick one and it's downloaded, checked and turned on (see [Effects](#effects)).
 - **Animations:** all of them, or each one: windows opening (pop in, zoom, slide, fade), closing, moving and resizing, dialogs, workspaces (slide or reveal) and the overview.
 - **Input devices:** keyboard layouts, variants and options, key repeat, the touchpad (tap to click, natural scrolling, off while typing, speed, right click, scrolling), the mouse and the pointer.
 - **Behaviour:** apps bringing themselves forward, dialogs, maximising, the overview's size and blur, the keys cheatsheet and X11 apps.
@@ -76,6 +77,17 @@ With Umbriel installed your own way:
    ```
 
 3. Any key bound in both files stays as `config.toml` has it. Remove the ones you'd rather the shell had: Umbriel's example config binds <kbd>Super</kbd>, the volume and brightness keys, and more.
+
+## Effects
+
+Umbriel Settings → Effects lists the community collection's catalogue, which it fetches from GitHub once a day. Pick an effect (or **Apply** a family) and:
+
+1. Its files, and those of any companion it needs (a border's inner overlay, say), are downloaded at the catalogue's revision. Each file is checked against the SHA-256 hash the catalogue gives, and one that doesn't match isn't used.
+2. They go where the collection's README puts them: `~/.config/umbriel/shaders/community`, with the license notices beside them.
+3. Its recipe goes into `config.toml` as one change, checked by your Umbriel first like any other: the include (under `[include.optional]`, so a shaders folder deleted later never stops Umbriel at login), and its selector (`effects.cursor = "glow"`, or an animation event's effect and timing).
+4. Umbriel reloads, and the page asks it whether the shader compiled. One it couldn't (a shader that needs a newer Umbriel) is turned off again, and the page says so.
+
+**On now** lists what's selected, each with **Turn off**. Removing an effect (the bin on its card, two taps) takes out its include and its files, and those of companions nothing else installed needs.
 
 ## Keys
 

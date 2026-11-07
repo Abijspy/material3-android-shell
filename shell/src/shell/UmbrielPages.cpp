@@ -1,10 +1,13 @@
 #include "shell/UmbrielPages.h"
 
+#include "core/Log.h"
 #include "core/Process.h"
 #include "services/Compositor.h"
 #include "services/Search.h"
 #include "services/Umbriel.h"
 #include "services/UmbrielConfig.h"
+#include "services/UmbrielShaders.h"
+#include "render/Images.h"
 #include "core/EventLoop.h"
 #include "shell/PanelKit.h"
 #include "shell/Panels.h"
@@ -14,6 +17,7 @@
 #include <algorithm>
 #include <cmath>
 #include <format>
+#include <linux/input-event-codes.h>
 #include <optional>
 #include <regex>
 #include <sstream>
@@ -799,4 +803,226 @@ void umbrielMonitorsPage(Flex* page, Popup&) {
     live->sync();
 }
 
+namespace {
+
+// A slot in words
+std::string slotName(const std::string& slot) {
+    static const std::pair<const char*, const char*> names[] = {
+        {"effects.border", "Border of the focused window"}, {"effects.window", "Windows"},
+        {"effects.screen", "Whole screen"},                 {"effects.cursor", "Pointer"},
+        {"animation.windows_in", "Opening windows"},       {"animation.windows_out", "Closing windows"},
+        {"animation.windows_move", "Moving windows"},      {"animation.workspaces", "Switching workspaces"},
+        {"animation.overview", "The overview"},            {"animation.scratchpad", "The scratchpad"},
+        {"animation.border", "Border changes"},            {"animation.dim_unfocused", "Dimming other windows"},
+        {"animation.layers", "Panels"},
+    };
+    for (const auto& [id, name] : names)
+        if (slot == id) return name;
+    return slot;
+}
+
+// What an animation is for ("Opening and closing windows")
+std::string usesText(const UmbrielShaders::Effect& e) {
+    std::vector<std::string> parts;
+    for (const auto& u : e.uses) {
+        if (!u.starts_with("animation.")) continue;
+        std::string n = slotName(u);
+        if (!parts.empty()) n[0] = static_cast<char>(std::tolower(static_cast<unsigned char>(n[0])));
+        parts.push_back(n);
+    }
+    std::string out;
+    for (size_t i = 0; i < parts.size(); ++i) out += (i == 0 ? "" : i + 1 == parts.size() ? " and " : ", ") + parts[i];
+    return out;
+}
+
+bool matches(const UmbrielShaders::Effect& e, const std::string& filter) {
+    if (filter.empty()) return true;
+    auto low = [](std::string t) {
+        for (auto& c : t) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return t;
+    };
+    const std::string f = low(filter);
+    std::string all = e.name + " " + e.description + " " + e.author;
+    for (const auto& t : e.tags) all += " " + t;
+    return low(all).find(f) != std::string::npos;
+}
+
+} // namespace
+
+void umbrielEffectsPage(Flex* page, Popup&) {
+    auto& sh = UmbrielShaders::get();
+    sh.refresh();
+    auto tab = std::make_shared<std::string>("cursor");
+    auto filter = std::make_shared<std::string>();
+
+    // What's on, the catalogue's state and the families
+    auto* top = page->add<Live>();
+    top->setSpacing(6);
+    top->sync = [top] {
+        top->clearChildren();
+        notice(top);
+        auto& sh = UmbrielShaders::get();
+        auto& cfg = UmbrielConfig::get();
+        if (!cfg.readError().empty()) return;
+        auto* g = group(top, "Community shaders", "Effects by Noctalia's community, downloaded when you pick one");
+        if (sh.state() == UmbrielShaders::State::Ready) {
+            auto r = row(g, "auto_fix_high", std::format("{} effects", std::ranges::count_if(sh.effects(), [](const auto& e) { return e.role != "companion"; })),
+                         "github.com/noctalia-dev/community-umbriel-shaders · revision " + sh.revision().substr(0, 7));
+            pillButton(r.row, "Check for new", false, [] { UmbrielShaders::get().refresh(true); }, "refresh");
+        } else if (sh.state() == UmbrielShaders::State::Failed) {
+            auto r = row(g, "cloud_off", "The catalogue isn't here", sh.error());
+            r.subtitle->setColor("error", false);
+            pillButton(r.row, "Try again", true, [] { UmbrielShaders::get().refresh(true); }, "refresh");
+        } else {
+            row(g, "cloud_download", "Getting the catalogue…", "From GitHub, once a day");
+        }
+        // How the last one went
+        if (!sh.message().empty()) {
+            auto* c = top->add<Flex>(Flex::Direction::Row);
+            const bool bad = sh.messageIsError();
+            c->setPadding({18, 14})->setSpacing(14)->setRadius(Radii(20))->setAlignItems(Align::Start);
+            c->setBackground(bad ? "error_container" : "secondary_container", false);
+            c->add<Icon>(bad ? "error" : "check_circle", 22)->setColor(bad ? "on_error_container" : "on_secondary_container", false);
+            auto* l = c->add<Label>(sh.message());
+            l->setSize(14)->setMaxWidth(560)->setMaxLines(ui::kAllLines)->setColor(bad ? "on_error_container" : "on_secondary_container", false);
+            l->grow = true;
+        }
+        // What's on now, each with a way off
+        auto* on = group(top, "On now", "");
+        const auto used = sh.inUse();
+        if (used.empty()) row(on, "info", "Nothing yet", "Pick an effect below: it's downloaded and turned on");
+        for (const auto& [slot, preset] : used) {
+            const auto* e = sh.byPreset(preset);
+            auto r = row(on, slot.starts_with("animation") ? "animation" : "auto_fix_high", e ? e->name : preset,
+                         slotName(slot) + (e ? " · by " + e->author : ""));
+            const std::string s = slot;
+            pillButton(r.row, "Turn off", false, [s] { UmbrielShaders::get().turnOff(s); });
+        }
+        // Families: matching effects for several slots at once
+        if (sh.state() == UmbrielShaders::State::Ready && !sh.families().empty()) {
+            auto* fg = group(top, "Families", "Matching effects for several places at once: applying one turns them all on");
+            for (const auto& f : sh.families()) {
+                if (!f.activation.is_object()) continue;
+                const std::string by = f.authors.empty() ? "" : " · by " + f.authors.front();
+                auto r = row(fg, "palette", f.name, f.description + std::format(" · {} effects", f.members.size()) + by);
+                if (sh.busy() == "family:" + f.id) {
+                    r.row->add<Label>("Installing…")->setSize(13)->setColor("on_surface_variant", false);
+                } else {
+                    const std::string id = f.id;
+                    auto* b = pillButton(r.row, "Apply", false, [id] { UmbrielShaders::get().useFamily(id); }, "download");
+                    if (!sh.busy().empty()) b->setOpacity(0.4f);
+                }
+            }
+        }
+    };
+    top->watch(sh.changed);
+    top->watch(UmbrielConfig::get().changed);
+    top->sync();
+
+    // The effects by kind, and a filter: outside what's rebuilt, so typing keeps its place
+    auto* head = page->add<Flex>(Flex::Direction::Column);
+    head->setSpacing(10)->setPadding({0, 12, 0, 4})->setAlignItems(Align::Stretch);
+    auto* tabs = head->add<Flex>(Flex::Direction::Row);
+    auto* findRow = head->add<Flex>(Flex::Direction::Row);
+    pill(findRow->setBackground(ColorRef("on_surface", 0.08f), false))->setPadding({16, 4, 8, 4})->setSpacing(8);
+    findRow->add<Icon>("search", 20)->setColor("on_surface_variant", false);
+    auto* field = findRow->add<TextField>();
+    field->setPlaceholder("Filter: fire, neon, minimal, an author…");
+    field->bare = true;
+    field->grow = true;
+
+    auto* grid = page->add<Live>();
+    grid->setSpacing(6);
+    grid->sync = [grid, tab, filter] {
+        grid->clearChildren();
+        auto& sh = UmbrielShaders::get();
+        if (sh.state() != UmbrielShaders::State::Ready) return;
+        std::vector<const UmbrielShaders::Effect*> shown;
+        for (const auto& e : sh.effects())
+            if (e.kind == *tab && e.role != "companion" && matches(e, *filter)) shown.push_back(&e);
+        sh.fetchPreviews(shown);
+        if (shown.empty()) {
+            row(group(grid, ""), "search_off", "Nothing matches", "Another word, or another kind above");
+            return;
+        }
+        std::vector<std::string> selected;
+        for (const auto& [slot, preset] : sh.inUse()) selected.push_back(preset);
+        auto* flow = grid->add<kit::Flow>();
+        flow->spacing = 10;
+        for (const auto* e : shown) {
+            const bool on = std::ranges::find(selected, e->preset) != selected.end();
+            const bool busy = sh.busy() == e->id;
+            auto* t = flow->add<Button>(Flex::Direction::Column);
+            t->setPadding(Insets(10))->setSpacing(6)->setRadius(Radii(22))->setAlignItems(Align::Start);
+            t->setBackground(on ? "secondary_container" : "surface_container_high", false);
+            if (on) t->setBorder(3, "primary");
+            t->pressedRadius = 14;
+            t->fixedWidth = 216;
+            // Its preview, once here
+            auto* frame = t->add<Flex>(Flex::Direction::Row);
+            frame->setRadius(Radii(14))->setBackground("surface_container_highest", false)->setJustify(Align::Center);
+            frame->fixedWidth = 196;
+            frame->fixedHeight = 110;
+            const std::string file = sh.preview(*e);
+            if (file.empty()) {
+                frame->add<Icon>(e->kind == "animation" ? "animation" : "auto_fix_high", 32)->setColor("on_surface_variant", false);
+            } else {
+                auto* img = frame->add<ImageView>(196, 110, [file](float scale, int& w, int& h) -> GLuint {
+                    auto* tex = Images::get().picture(file, static_cast<int>(196 * scale), static_cast<int>(110 * scale), true);
+                    if (!tex) return 0;
+                    w = tex->width;
+                    h = tex->height;
+                    return tex->id;
+                });
+                img->cover = true;
+                img->radius = 14;
+            }
+            t->add<Label>(e->name)->setSize(14)->setWeight(600)->setMaxWidth(196)->setMaxLines(ui::kAllLines);
+            const std::string what = e->kind == "animation" ? usesText(*e) : "";
+            t->add<Label>((what.empty() ? "" : what + " · ") + "by " + e->author)->setSize(12)->setMaxWidth(196)->setMaxLines(ui::kAllLines)
+                ->setColor("on_surface_variant", false);
+            t->add<Label>(e->description)->setSize(12)->setMaxWidth(196)->setMaxLines(ui::kAllLines)->setColor("on_surface_variant", false);
+            // Use, or what it is now
+            auto* actions = t->add<Flex>(Flex::Direction::Row);
+            actions->setSpacing(6)->setAlignItems(Align::Center);
+            const std::string id = e->id;
+            if (busy) {
+                actions->add<Label>("Installing…")->setSize(13)->setColor("on_surface_variant", false);
+            } else if (on) {
+                actions->add<Icon>("check_circle", 18)->setColor("primary", false);
+                actions->add<Label>("On")->setSize(13)->setWeight(600)->setColor("primary", false);
+            } else {
+                auto* b = pillButton(actions, sh.installed(id) ? "Use" : "Get and use", !sh.installed(id) ? false : true,
+                                     [id] { UmbrielShaders::get().use(id); }, sh.installed(id) ? "check" : "download");
+                if (!sh.busy().empty()) b->setOpacity(0.4f);
+            }
+            if (sh.installed(id) && !busy) {
+                actions->add<Node>()->grow = true;
+                confirmButton(actions, "umbshader:" + id, "delete", [id] { UmbrielShaders::get().remove(id); })->tooltip = "Remove its files";
+            }
+            t->onClicked = [id, on](uint32_t button) {
+                if (button == BTN_LEFT && !on && UmbrielShaders::get().busy().empty()) UmbrielShaders::get().use(id);
+            };
+        }
+    };
+    grid->watch(sh.changed);
+    grid->watch(UmbrielConfig::get().changed);
+    connectedGroup<std::string>(tabs, *tab,
+                                {{"cursor", "Pointer"}, {"border", "Borders"}, {"window", "Windows"}, {"screen", "Screen"}, {"animation", "Animations"}},
+                                [tab, grid](std::string v) {
+                                    *tab = v;
+                                    grid->syncSoon();
+                                });
+    field->onChanged = [filter, grid](const std::string& t) {
+        *filter = t;
+        grid->syncSoon();
+    };
+    grid->sync();
+
+    auto* foot = group(page, "About these", "");
+    row(foot, "gavel", "Their licenses", "Each keeps its author's license, installed beside it in ~/.config/umbriel/shaders/community");
+    row(foot, "memory", "On the graphics card", "Effects run on every frame they're seen: a busy one costs battery. One your Umbriel can't compile is turned off again");
+}
+
 } // namespace m3::shell::panels
+

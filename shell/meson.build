@@ -110,6 +110,7 @@ sources = files(
   'src/services/Privacy.cpp',
   'src/services/TomlEdit.cpp',
   'src/services/UmbrielConfig.cpp',
+  'src/services/UmbrielShaders.cpp',
   'src/services/Trash.cpp',
   'src/services/Umbriel.cpp',
   'src/services/DataUsage.cpp',

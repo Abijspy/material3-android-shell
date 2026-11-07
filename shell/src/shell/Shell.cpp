@@ -960,7 +960,7 @@ void Shell::registerIpc() {
         openHyprSettings(a.empty() ? "" : a[0]);
         return std::string(m_hyprSettings && !m_hyprSettings->closing() ? "open" : "closed");
     });
-    ipc.add("umbrielsettings", "umbrielsettings [umbriel-layout|umbriel-decoration|umbriel-animations|umbriel-monitors|umbriel-input|umbriel-behaviour|umbriel-keys|umbriel-rules|umbriel-startup]: Umbriel Settings",
+    ipc.add("umbrielsettings", "umbrielsettings [umbriel-layout|umbriel-decoration|umbriel-animations|umbriel-effects|umbriel-monitors|umbriel-input|umbriel-behaviour|umbriel-keys|umbriel-rules|umbriel-startup]: Umbriel Settings",
             [this](const IpcServer::Args& a) {
         openHyprSettings(a.empty() ? "" : a[0]);
         return std::string(m_hyprSettings && !m_hyprSettings->closing() ? "open" : "closed");

@@ -63,6 +63,11 @@ public:
     bool removeTable(const std::string& name, int index);
     // What config.toml itself says at `path` (not its includes); null when nothing
     nlohmann::json own(const tomledit::Path& path) const;
+
+    // Several changes as one (a null value takes its key out), checked and
+    // written together; `done` says whether they were saved
+    using Changes = std::vector<std::pair<tomledit::Path, nlohmann::json>>;
+    bool apply(Changes changes, std::function<void(bool saved)> done = {});
     const std::string& lastError() const { return m_lastError; }
 
     // The installed Umbriel's own description of an option ("appearance.
@@ -87,7 +92,8 @@ private:
     void loadSchema();
     // A change to config.toml's text, checked by Umbriel before it's
     // written; one at a time, in order (a slider dragged twice)
-    bool change(std::function<std::optional<std::string>(const std::string&)> edit, std::string dotted);
+    bool change(std::function<std::optional<std::string>(const std::string&)> edit, std::vector<std::string> dotted,
+                std::function<void(bool)> done = {});
     void next();
 
     struct Doc {
@@ -104,7 +110,8 @@ private:
     std::string m_version;
     struct Edit {
         std::function<std::optional<std::string>(const std::string&)> apply;
-        std::string dotted; // the option, for Umbriel's words about it
+        std::vector<std::string> dotted; // the options, for Umbriel's words about them
+        std::function<void(bool)> done;
     };
     std::deque<Edit> m_queue;
     bool m_checking = false;

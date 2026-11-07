@@ -5,6 +5,7 @@
 #include "core/Paths.h"
 #include "core/Process.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -222,14 +223,14 @@ nlohmann::json diagnosticsOf(const std::string& out) {
 bool UmbrielConfig::set(const tomledit::Path& path, const nlohmann::json& value) {
     return change([path, value, this](const std::string& text) -> std::optional<std::string> {
         return tomledit::set(text, path, value, &m_lastError);
-    }, dottedOf(path));
+    }, {dottedOf(path)});
 }
 
 bool UmbrielConfig::unset(const tomledit::Path& path) {
     if (!exists()) return true;
     return change([path, this](const std::string& text) -> std::optional<std::string> {
         return tomledit::remove(text, path, &m_lastError);
-    }, dottedOf(path));
+    }, {dottedOf(path)});
 }
 
 std::vector<UmbrielConfig::Table> UmbrielConfig::tables(const std::string& name) const {
@@ -252,22 +253,38 @@ nlohmann::json UmbrielConfig::own(const tomledit::Path& path) const {
 bool UmbrielConfig::addTable(const std::string& name, const nlohmann::json& value) {
     return change([name, value, this](const std::string& text) -> std::optional<std::string> {
         return tomledit::appendTable(text, name, value, &m_lastError);
-    }, name);
+    }, {name});
 }
 
 bool UmbrielConfig::removeTable(const std::string& name, int index) {
     if (index < 0) return false;
     return change([name, index, this](const std::string& text) -> std::optional<std::string> {
         return tomledit::removeTable(text, name, static_cast<size_t>(index), &m_lastError);
-    }, name);
+    }, {name});
 }
 
-bool UmbrielConfig::change(std::function<std::optional<std::string>(const std::string&)> edit, std::string dotted) {
+bool UmbrielConfig::apply(Changes changes, std::function<void(bool)> done) {
+    std::vector<std::string> dotted;
+    for (const auto& [path, value] : changes) dotted.push_back(dottedOf(path));
+    return change([changes, this](const std::string& text) -> std::optional<std::string> {
+        std::string out = text;
+        for (const auto& [path, value] : changes) {
+            const auto next = value.is_null() ? tomledit::remove(out, path, &m_lastError) : tomledit::set(out, path, value, &m_lastError);
+            if (!next) return std::nullopt;
+            out = *next;
+        }
+        return out;
+    }, dotted, std::move(done));
+}
+
+bool UmbrielConfig::change(std::function<std::optional<std::string>(const std::string&)> edit, std::vector<std::string> dotted,
+                           std::function<void(bool)> done) {
     if (!m_readError.empty()) {
         m_lastError = "config.toml can't be read: " + m_readError;
+        if (done) done(false);
         return false;
     }
-    m_queue.push_back({std::move(edit), std::move(dotted)});
+    m_queue.push_back({std::move(edit), std::move(dotted), std::move(done)});
     if (!m_checking) next();
     return true;
 }
@@ -282,14 +299,17 @@ void UmbrielConfig::next() {
     if (!exists())
         if (const std::string p = packaged(); !p.empty()) text = readFile(p);
     const auto out = e.apply(text);
+    const std::string what = e.dotted.empty() ? std::string() : e.dotted.front();
     if (!out || (*out == m_text && exists())) {
-        if (!out) log::warn("umbriel config: {} not changed: {}", e.dotted, m_lastError);
+        if (!out) log::warn("umbriel config: {} not changed: {}", what, m_lastError);
         changed.emit();
+        if (e.done) e.done(out.has_value());
         return next();
     }
     // Without Umbriel here to ask, as it is
     if (!haveCommand("umbriel")) {
-        write(*out);
+        const bool ok = write(*out);
+        if (e.done) e.done(ok);
         return next();
     }
     // A copy beside config.toml (its includes found from the same folder),
@@ -302,8 +322,10 @@ void UmbrielConfig::next() {
         f << *out;
     }
     m_checking = true;
-    const std::string result = *out, dotted = e.dotted;
-    run({"umbriel", "config", "validate", "--json", "-c", candidate}, [this, candidate, result, dotted](int, const std::string& report) {
+    const std::string result = *out;
+    const std::vector<std::string> dotted = e.dotted;
+    const auto done = e.done;
+    run({"umbriel", "config", "validate", "--json", "-c", candidate}, [this, candidate, result, dotted, done, what](int, const std::string& report) {
         m_checking = false;
         std::error_code ec;
         fs::remove(candidate, ec);
@@ -312,15 +334,17 @@ void UmbrielConfig::next() {
         std::string refusal;
         for (const auto& d : diagnosticsOf(report)) {
             const std::string message = d.value("message", ""), severity = d.value("severity", "error");
-            const bool aboutIt = !dotted.empty() && message.find(dotted) != std::string::npos;
+            const bool aboutIt = std::ranges::any_of(dotted, [&](const std::string& d) { return !d.empty() && message.find(d) != std::string::npos; });
             if ((severity == "error" || aboutIt) && !m_known.contains(message)) refusal = message;
         }
         if (!refusal.empty()) {
             m_lastError = "Umbriel " + (umbrielVersion().empty() ? std::string() : umbrielVersion() + " ") + "wouldn't take it: " + refusal;
-            log::warn("umbriel config: {} not written: {}", dotted, refusal);
+            log::warn("umbriel config: {} not written: {}", what, refusal);
             changed.emit();
+            if (done) done(false);
         } else {
-            write(result);
+            const bool ok = write(result);
+            if (done) done(ok);
         }
         next();
     });

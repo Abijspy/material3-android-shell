@@ -4820,7 +4820,7 @@ HueChip categoryColours(const std::string& id) {
     static const std::vector<std::pair<std::vector<std::string>, const Pair*>> table = {
         {{"network", "vpn", "bluetooth", "printers", "weather", "hypr-windows", "hypr-layouts", "hypr-groups", "niri-layout", "umbriel-layout"}, &blue},
         {{"defaults", "hypr-input", "niri-behaviour", "umbriel-behaviour", "umbriel-input"}, &apps},
-        {{"notifications", "sound", "hypr-animations", "niri-animations", "umbriel-animations"}, &pink},
+        {{"notifications", "sound", "hypr-animations", "niri-animations", "umbriel-animations", "umbriel-effects"}, &pink},
         {{"display", "appearance", "style", "bar", "dock", "hypr-decoration", "hypr-monitors", "niri-decoration", "umbriel-decoration", "umbriel-monitors"}, &orange},
         {{"storage", "monitor", "calendar", "clock", "hypr-render"}, &yellow},
         {{"battery", "packages", "firmware", "wellbeing", "hypr-startup", "niri-startup", "umbriel-startup"}, &green},
@@ -4948,6 +4948,7 @@ const PageDef kPages[] = {
     {"umbriel-animations", "animation", "Animations", "Windows opening, closing and moving, and workspaces", umbrielAnimationsPage},
     {"umbriel-input", "touchpad_mouse", "Input devices", "Keyboard layouts and repeat, the touchpad, mouse and pointer", umbrielInputPage},
     {"umbriel-behaviour", "tune", "Behaviour", "Focus, maximising, the overview and the session", umbrielBehaviourPage},
+    {"umbriel-effects", "auto_fix_high", "Effects", "Community shaders for borders, windows, the pointer and animations", umbrielEffectsPage},
     {"umbriel-monitors", "monitor", "Monitors", "Resolution, scale, rotation and variable refresh rate", umbrielMonitorsPage},
     {"umbriel-keys", "keyboard_command_key", "Keys", "Keys for Umbriel's actions or any command, beside the shell's", umbrielKeysPage},
     {"umbriel-rules", "rule", "Window rules", "How an app's windows open: floating, on a workspace, see-through…", umbrielRulesPage},
