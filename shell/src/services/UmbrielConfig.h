@@ -76,6 +76,12 @@ public:
     const nlohmann::json* schema(const std::string& dotted) const;
     bool hasSchema() const { return !m_schema.empty(); }
     const std::string& umbrielVersion() const { return m_version; }
+    // Every option the installed Umbriel describes, by its dotted path
+    const std::map<std::string, nlohmann::json>& schemaAll() const { return m_schema; }
+    // The options this Umbriel has that the one you ran before didn't
+    // (empty the first time), and that one's version
+    const std::set<std::string>& newOptions() const { return m_new; }
+    const std::string& newSince() const { return m_since; }
 
     // What `umbriel config validate` said after the last change, a line
     // each ("error: line 12: …"); empty when it was happy (or isn't there)
@@ -107,7 +113,9 @@ private:
     std::set<std::string> m_known; // Umbriel's words about the file as it is: not a change's fault
     bool m_backedUp = false;
     std::map<std::string, nlohmann::json> m_schema;
-    std::string m_version;
+    std::string m_version, m_revision, m_since;
+    std::set<std::string> m_new;
+    void watchUmbriel(); // the schema read again when Umbriel is updated
     struct Edit {
         std::function<std::optional<std::string>(const std::string&)> apply;
         std::vector<std::string> dotted; // the options, for Umbriel's words about them

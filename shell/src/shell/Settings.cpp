@@ -4822,7 +4822,7 @@ HueChip categoryColours(const std::string& id) {
         {{"defaults", "hypr-input", "niri-behaviour", "umbriel-behaviour", "umbriel-input"}, &apps},
         {{"notifications", "sound", "hypr-animations", "niri-animations", "umbriel-animations", "umbriel-effects"}, &pink},
         {{"display", "appearance", "style", "bar", "dock", "hypr-decoration", "hypr-monitors", "niri-decoration", "umbriel-decoration", "umbriel-monitors"}, &orange},
-        {{"storage", "monitor", "calendar", "clock", "hypr-render"}, &yellow},
+        {{"storage", "monitor", "calendar", "clock", "hypr-render", "umbriel-all"}, &yellow},
         {{"battery", "packages", "firmware", "wellbeing", "hypr-startup", "niri-startup", "umbriel-startup"}, &green},
         {{"lock", "firewall", "lockscreen", "users", "hypr-window-rules", "hypr-layer-rules", "hypr-workspace-rules", "hypr-profiles", "niri-rules", "umbriel-rules", "umbriel-keys"},
          &teal},
@@ -4953,6 +4953,7 @@ const PageDef kPages[] = {
     {"umbriel-keys", "keyboard_command_key", "Keys", "Keys for Umbriel's actions or any command, beside the shell's", umbrielKeysPage},
     {"umbriel-rules", "rule", "Window rules", "How an app's windows open: floating, on a workspace, see-through…", umbrielRulesPage},
     {"umbriel-startup", "rocket_launch", "Startup apps", "Apps and commands to run when Umbriel starts", umbrielStartupPage},
+    {"umbriel-all", "settings_suggest", "All options", "Every option your Umbriel has, from its own schema: new ones appear as it adds them", umbrielAllPage},
     {"mouse", "touchpad_mouse", "Mouse & touchpad", "Touchpad, pointer, scrolling and gestures", mousePage},
     {"keybinds", "keyboard", "Keyboard", "Layouts, typing and shortcuts", keyboardPage},
     {"hooks", "webhook", "Hooks", "Your own commands when things happen, such as locking, a new wallpaper or a low battery", hooksPage},
@@ -4980,6 +4981,7 @@ int pageGroup(const std::string& id) {
     // Umbriel Settings: how it looks, how it behaves, then your lists
     if (id == "umbriel-input" || id == "umbriel-behaviour") return 1;
     if (id == "umbriel-startup" || id == "umbriel-keys" || id == "umbriel-rules") return 3;
+    if (id == "umbriel-all") return 2;
     if (id.starts_with("umbriel-")) return 0;
     // Niri Settings: how it looks, how it behaves, then your lists
     if (id == "niri-behaviour") return 1;

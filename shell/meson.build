@@ -219,7 +219,7 @@ install_data('data/material3ui-settings.desktop', 'data/material3ui-hyprland.des
 install_data('data/icons/material3ui-settings.svg', 'data/icons/material3ui-hyprland.svg', 'data/icons/material3ui-niri.svg', 'data/icons/material3ui-umbriel.svg', 'data/icons/material3ui-quickshare.svg', install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps')
 install_data('data/icons/material3ui-settings.svg', 'data/icons/quickshare-symbol.svg', install_dir: get_option('datadir') / 'material3ui/icons')
 # Shipped data: emoji list, logo, wallpapers
-install_data('data/emojis.txt', install_dir: get_option('datadir') / 'material3ui')
+install_data('data/emojis.txt', 'data/umbriel-known-options.txt', install_dir: get_option('datadir') / 'material3ui')
 # Default profile pictures (Settings → Users → Change picture)
 install_subdir('data/avatars', install_dir: get_option('datadir') / 'material3ui')
 # What's new, the welcome tour and About → Changelog read it

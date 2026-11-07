@@ -28,5 +28,9 @@ void umbrielMonitorsPage(ui::Flex* page, Popup&);
 // Noctalia's community shaders (services/UmbrielShaders): what's on, the
 // families, and each effect with its preview, to download and turn on
 void umbrielEffectsPage(ui::Flex* page, Popup&);
+// Every option the installed Umbriel describes (`umbriel config schema`),
+// each as a control made from its type, range and choices: what a newer
+// Umbriel adds is here without the shell knowing it, marked new
+void umbrielAllPage(ui::Flex* page, Popup&);
 
 } // namespace m3::shell::panels

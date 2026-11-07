@@ -13,6 +13,7 @@
 #include <format>
 #include <fstream>
 #include <sstream>
+#include <unistd.h>
 
 namespace m3 {
 
@@ -80,6 +81,7 @@ UmbrielConfig& UmbrielConfig::get() {
 UmbrielConfig::UmbrielConfig() {
     load();
     loadSchema();
+    watchUmbriel();
     validate();
     // Edited elsewhere (an editor, Umbriel's own tools): read and checked again
     FileWatcher::get().watch(file(), [this] {
@@ -350,7 +352,28 @@ void UmbrielConfig::next() {
     });
 }
 
+void UmbrielConfig::watchUmbriel() {
+    // Where `umbriel` is on PATH: replaced by an update, read again
+    const char* path = std::getenv("PATH");
+    std::stringstream dirs(path ? path : "/usr/local/bin:/usr/bin");
+    for (std::string d; std::getline(dirs, d, ':');) {
+        const std::string bin = d + "/umbriel";
+        if (d.empty() || access(bin.c_str(), X_OK) != 0) continue;
+        FileWatcher::get().watch(bin, [this] {
+            const std::string before = m_version + m_revision;
+            loadSchema();
+            if (m_version + m_revision == before) return;
+            log::info("umbriel config: Umbriel is now {} ({}): its options read again", m_version, m_revision.substr(0, 7));
+            load();
+            validate();
+            changed.emit();
+        });
+        return;
+    }
+}
+
 void UmbrielConfig::loadSchema() {
+    m_schema.clear();
     if (!haveCommand("umbriel")) return;
     // Quick (the binary's own table), and once: which options this Umbriel has
     std::string out;
@@ -362,12 +385,49 @@ void UmbrielConfig::loadSchema() {
     }
     try {
         const auto j = nlohmann::json::parse(out);
-        m_version = j.value("version", "");
+        m_version = j.contains("version") && j["version"].is_string() ? j["version"].get<std::string>() : "";
+        m_revision = j.contains("revision") && j["revision"].is_string() ? j["revision"].get<std::string>() : "";
         for (const auto& o : j.value("options", nlohmann::json::array()))
             if (o.contains("path") && o["path"].is_string()) m_schema[o["path"].get<std::string>()] = o;
     } catch (const std::exception&) {
         m_schema.clear();
     }
+    if (m_schema.empty()) return;
+    // What's new since the Umbriel you ran before (its version and commit:
+    // 0.1.0 alone names many builds), kept until the next one
+    const std::string file = paths::stateDir() + "/umbriel-schema.json";
+    const std::string build = m_version + (m_revision.empty() ? "" : " (" + m_revision.substr(0, 7) + ")");
+    nlohmann::json seen;
+    try {
+        std::ifstream in(file);
+        if (in) seen = nlohmann::json::parse(in);
+    } catch (...) {
+    }
+    auto list = [](const nlohmann::json& j, const char* key) {
+        std::set<std::string> out;
+        if (j.is_object() && j.contains(key) && j[key].is_array())
+            for (const auto& v : j[key])
+                if (v.is_string()) out.insert(v.get<std::string>());
+        return out;
+    };
+    m_new.clear();
+    m_since.clear();
+    if (seen.is_object() && seen.value("build", "") == build) {
+        m_new = list(seen, "new");
+        m_since = seen.value("since", "");
+    } else if (seen.is_object()) {
+        const auto before = list(seen, "paths");
+        for (const auto& [p, o] : m_schema)
+            if (!before.contains(p)) m_new.insert(p);
+        m_since = seen.value("build", "");
+    }
+    nlohmann::json save = {{"build", build}, {"since", m_since}, {"paths", nlohmann::json::array()}, {"new", nlohmann::json::array()}};
+    for (const auto& [p, o] : m_schema) save["paths"].push_back(p);
+    for (const auto& p : m_new) save["new"].push_back(p);
+    std::error_code ec;
+    fs::create_directories(paths::stateDir(), ec);
+    std::ofstream(file + ".tmp") << save.dump();
+    fs::rename(file + ".tmp", file, ec);
 }
 
 const nlohmann::json* UmbrielConfig::schema(const std::string& dotted) const {

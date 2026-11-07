@@ -1,6 +1,7 @@
 #include "shell/UmbrielPages.h"
 
 #include "core/Log.h"
+#include "core/Paths.h"
 #include "core/Process.h"
 #include "services/Compositor.h"
 #include "services/Search.h"
@@ -17,8 +18,11 @@
 #include <algorithm>
 #include <cmath>
 #include <format>
+#include <fstream>
 #include <linux/input-event-codes.h>
+#include <map>
 #include <optional>
+#include <set>
 #include <regex>
 #include <sstream>
 
@@ -40,16 +44,20 @@ tomledit::Path split(const std::string& dotted) {
 // One option of Umbriel's: where it is in config.toml, its row, and what
 // Umbriel does without it
 struct Opt {
-    enum class Kind { Bool, Int, Float, Choice, Text };
-    const char* path;
-    const char* icon;
-    const char* title;
-    const char* sub;
+    // Number: typed in (a range too wide for a slider); List: comma-separated
+    enum class Kind { Bool, Int, Float, Choice, Text, Number, List };
+    std::string path;
+    std::string icon;
+    std::string title;
+    std::string sub;
     Kind kind;
     json def = nullptr; // Umbriel's default; null: the device's own (libinput's)
     double min = 0, max = 0, step = 1;
-    const char* unit = ""; // "px", "ms", "%" (a fraction shown as a percentage)
+    std::string unit = ""; // "px", "ms", "%" (a fraction shown as a percentage)
     std::vector<std::pair<std::string, std::string>> choices = {}; // value, label
+    bool integer = false;   // Number: whole numbers
+    std::string listOf = ""; // List: "string", "int" or "float"
+    std::string defaultText = ""; // sliders: shown after the value, "8 (default 8)"
 };
 
 using K = Opt::Kind;
@@ -111,7 +119,8 @@ void option(Flex* g, const Opt& o) {
     case K::Int:
     case K::Float: {
         const double value = v.is_number() ? v.get<double>() : o.min;
-        r.subtitle->setText((sub.empty() ? "" : sub + " · ") + shown(o, value));
+        const std::string dflt = o.defaultText.empty() ? "" : " (default " + o.defaultText + ")";
+        r.subtitle->setText((sub.empty() ? "" : sub + " · ") + shown(o, value) + dflt);
         r.subtitle->setVisible(true);
         auto* sl = r.row->add<Slider>();
         sl->fixedWidth = 240;
@@ -119,8 +128,8 @@ void option(Flex* g, const Opt& o) {
         sl->setValue(static_cast<float>(value), false);
         auto* label = r.subtitle;
         const Opt copy = o;
-        sl->onChanged = [label, copy, sub](float x) {
-            label->setText((sub.empty() ? "" : sub + " · ") + shown(copy, std::round(x / copy.step) * copy.step));
+        sl->onChanged = [label, copy, sub, dflt](float x) {
+            label->setText((sub.empty() ? "" : sub + " · ") + shown(copy, std::round(x / copy.step) * copy.step) + dflt);
         };
         sl->onCommitted = [path, copy](float x) {
             const double snapped = std::round(x / copy.step) * copy.step;
@@ -150,6 +159,60 @@ void option(Flex* g, const Opt& o) {
         f->onSubmit = [path](const std::string& t) {
             if (t.empty()) UmbrielConfig::get().unset(path);
             else UmbrielConfig::get().set(path, t);
+        };
+        break;
+    }
+    case K::Number: {
+        auto* f = r.row->add<TextField>();
+        f->fixedWidth = 160;
+        auto number = [&](const json& x) {
+            return !x.is_number() ? std::string() : o.integer ? std::to_string(x.get<long long>()) : std::format("{}", x.get<double>());
+        };
+        f->setText(now.is_null() ? "" : number(now));
+        f->setPlaceholder(number(o.def));
+        const Opt copy = o;
+        f->onSubmit = [path, copy](const std::string& t) {
+            if (t.empty()) return (void)UmbrielConfig::get().unset(path);
+            try {
+                double x = std::stod(t);
+                if (copy.max > copy.min) x = std::clamp(x, copy.min, copy.max);
+                if (copy.integer) UmbrielConfig::get().set(path, static_cast<long long>(std::llround(x)));
+                else UmbrielConfig::get().set(path, x);
+            } catch (...) {
+            }
+        };
+        break;
+    }
+    case K::List: {
+        // As written, a comma between; Enter applies, empty takes it out
+        auto* f = r.row->add<TextField>();
+        f->fixedWidth = 240;
+        auto words = [](const json& x) {
+            std::string out;
+            if (x.is_array())
+                for (const auto& e : x) out += (out.empty() ? "" : ", ") + (e.is_string() ? e.get<std::string>() : e.dump());
+            return out;
+        };
+        f->setText(now.is_null() ? "" : words(now));
+        f->setPlaceholder(words(o.def));
+        const std::string of = o.listOf;
+        f->onSubmit = [path, of](const std::string& t) {
+            if (t.empty()) return (void)UmbrielConfig::get().unset(path);
+            json list = json::array();
+            std::stringstream ss(t);
+            for (std::string w; std::getline(ss, w, ',');) {
+                w.erase(0, w.find_first_not_of(' '));
+                while (!w.empty() && w.back() == ' ') w.pop_back();
+                if (w.empty()) continue;
+                try {
+                    if (of == "int") list.push_back(std::stoll(w));
+                    else if (of == "float") list.push_back(std::stod(w));
+                    else list.push_back(w);
+                } catch (...) {
+                    return; // not a number where one's wanted: nothing written
+                }
+            }
+            UmbrielConfig::get().set(path, list);
         };
         break;
     }
@@ -186,22 +249,72 @@ void notice(Flex* page) {
     if (!cfg.lastError().empty()) card("error", "That change wasn't saved", cfg.lastError(), true);
 }
 
-// A page: its state, then its groups of options, built again as config.toml changes
-void page(Flex* page, std::vector<std::tuple<std::string, std::string, std::vector<Opt>>> groups) {
+std::optional<Opt> fromSchema(const std::string& p, const json& s); // below
+std::string humane(std::string key);
+std::string lastPart(const std::string& dotted);
+std::string parentOf(const std::string& dotted);
+
+// The options these pages were written for (shell/data/umbriel-known-options.txt):
+// any other one Umbriel has is newer than them. Empty without the file, and
+// then nothing counts as newer
+const std::set<std::string>& knownOptions() {
+    static const std::set<std::string> known = [] {
+        std::set<std::string> out;
+        std::ifstream in(paths::dataFile("umbriel-known-options.txt"));
+        for (std::string line; std::getline(in, line);)
+            if (!line.empty() && line[0] != '#') out.insert(line);
+        return out;
+    }();
+    return known;
+}
+
+// A page: its state, then its groups of options, built again as config.toml
+// changes. The options of its `sections` that are newer than these pages
+// (a newer Umbriel's) join the group showing their table, or a group of
+// their own named after it, marked new
+void page(Flex* page, std::vector<std::tuple<std::string, std::string, std::vector<Opt>>> groups, std::vector<std::string> sections = {}) {
     auto* live = page->add<Live>();
     live->setSpacing(6);
-    live->sync = [live, groups] {
+    live->sync = [live, groups, sections] {
         live->clearChildren();
         notice(live);
-        if (!UmbrielConfig::get().readError().empty()) return;
+        auto& cfg = UmbrielConfig::get();
+        if (!cfg.readError().empty()) return;
+        // Only what this Umbriel has; a group with none of it, not at all
+        std::vector<std::tuple<std::string, std::string, std::vector<Opt>>> shown;
         for (const auto& [title, sub, opts] : groups) {
-            // Only what this Umbriel has; a group with none of it, not at all
-            std::vector<Opt> shown;
+            std::vector<Opt> here;
             for (const auto& o : opts)
-                if (auto a = adapted(o)) shown.push_back(std::move(*a));
-            if (shown.empty()) continue;
+                if (auto a = adapted(o)) here.push_back(std::move(*a));
+            shown.push_back({title, sub, std::move(here)});
+        }
+        const auto& known = knownOptions();
+        if (!known.empty())
+            for (const auto& [path, s] : cfg.schemaAll()) {
+                const std::string section = path.substr(0, path.find('.'));
+                if (known.contains(path) || std::ranges::find(sections, section) == sections.end()) continue;
+                auto o = fromSchema(path, s);
+                if (!o) continue;
+                o->sub = "New in your Umbriel · " + o->sub;
+                // Beside the options of its table, else a group of its own
+                const std::string parent = parentOf(path);
+                auto it = std::ranges::find_if(shown, [&](const auto& g) {
+                    return std::ranges::any_of(std::get<2>(g), [&](const Opt& x) { return parentOf(x.path) == parent; });
+                });
+                if (it == shown.end()) {
+                    const std::string title = parent.find('.') == std::string::npos ? humane(parent) : humane(lastPart(parent));
+                    it = std::ranges::find_if(shown, [&](const auto& g) { return std::get<1>(g) == "New in your Umbriel: " + parent; });
+                    if (it == shown.end()) {
+                        shown.push_back({title, "New in your Umbriel: " + parent, {}});
+                        it = shown.end() - 1;
+                    }
+                }
+                std::get<2>(*it).push_back(std::move(*o));
+            }
+        for (const auto& [title, sub, opts] : shown) {
+            if (opts.empty()) continue;
             auto* g = group(live, title, sub);
-            for (const auto& o : shown) option(g, o);
+            for (const auto& o : opts) option(g, o);
         }
     };
     live->watch(UmbrielConfig::get().changed);
@@ -242,7 +355,7 @@ void umbrielLayoutPage(Flex* p, Popup&) {
               K::Bool, false},
              {"layout.stacking.drop_zones", "dashboard", "Snap to halves and quarters", "Floating: drag a window to an edge or corner", K::Bool, true},
          }},
-    });
+    }, {"layout", "workspaces"});
 }
 
 void umbrielDecorationPage(Flex* p, Popup&) {
@@ -275,7 +388,7 @@ void umbrielDecorationPage(Flex* p, Popup&) {
              {"appearance.shadow.offset_x", "east", "Across", "", K::Int, 2, -40, 40, 1, "px"},
              {"appearance.shadow.offset_y", "south", "Down", "", K::Int, 2, -40, 40, 1, "px"},
          }},
-    });
+    }, {"appearance", "colors"});
 }
 
 void umbrielAnimationsPage(Flex* p, Popup&) {
@@ -306,7 +419,7 @@ void umbrielAnimationsPage(Flex* p, Popup&) {
              {"animation.overview.enabled", "grid_view", "The overview", "", K::Bool, true},
              {"animation.layers.enabled", "layers", "Panels", "The shell's bar and panels animate themselves: best left off", K::Bool, false},
          }},
-    });
+    }, {"animation"});
 }
 
 void umbrielInputPage(Flex* p, Popup&) {
@@ -347,7 +460,7 @@ void umbrielInputPage(Flex* p, Popup&) {
              {"input.cursor.theme", "style", "Theme", "A cursor theme's name · Enter to apply", K::Text, ""},
              {"input.cursor.hide_when_typing", "keyboard", "Hide while typing", "", K::Bool, false},
          }},
-    });
+    }, {"input"});
 }
 
 void umbrielBehaviourPage(Flex* p, Popup&) {
@@ -374,7 +487,7 @@ void umbrielBehaviourPage(Flex* p, Popup&) {
               "Switching a screen share to another window or screen", K::Bool, false},
              {"general.xwayland", "apps", "X11 apps", "Through Xwayland, started when one opens · at your next login", K::Bool, true},
          }},
-    });
+    }, {"general", "overview", "screencast", "hot_corners", "scratchpad"});
 }
 
 void umbrielStartupPage(Flex* p, Popup&) {
@@ -1022,6 +1135,210 @@ void umbrielEffectsPage(Flex* page, Popup&) {
     auto* foot = group(page, "About these", "");
     row(foot, "gavel", "Their licenses", "Each keeps its author's license, installed beside it in ~/.config/umbriel/shaders/community");
     row(foot, "memory", "On the graphics card", "Effects run on every frame they're seen: a busy one costs battery. One your Umbriel can't compile is turned off again");
+}
+
+namespace {
+
+// "repeat_delay" → "Repeat delay", "hot_corners" → "Hot corners"
+std::string humane(std::string key) {
+    for (const char* unit : {"_ms", "_px"})
+        if (key.ends_with(unit)) key.resize(key.size() - 3);
+    for (auto& c : key)
+        if (c == '_') c = ' ';
+    if (!key.empty()) key[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(key[0])));
+    return key;
+}
+
+std::string lastPart(const std::string& dotted) {
+    const auto dot = dotted.rfind('.');
+    return dot == std::string::npos ? dotted : dotted.substr(dot + 1);
+}
+
+std::string parentOf(const std::string& dotted) {
+    const auto dot = dotted.rfind('.');
+    return dot == std::string::npos ? std::string() : dotted.substr(0, dot);
+}
+
+// Lists of tables, names you choose, and whole tables: their own pages (keys,
+// rules, monitors) or config.toml, not one control each
+bool generated(const std::string& p, const json& s) {
+    if (p.find('<') != std::string::npos || p.find("[]") != std::string::npos) return false;
+    const std::string section = p.substr(0, p.find('.'));
+    static const std::set<std::string> elsewhere = {"include", "keybinds", "output", "window_rule", "layer_rule", "workspace", "security_context_rule", "environment"};
+    if (elsewhere.contains(section)) return false;
+    static const std::set<std::string> kinds = {"bool", "int", "float", "enum", "string", "color", "string_array", "int_array", "float_array"};
+    return kinds.contains(s.value("type", ""));
+}
+
+// An option's control, from what Umbriel says of it
+std::optional<Opt> fromSchema(const std::string& p, const json& s) {
+    if (!generated(p, s)) return std::nullopt;
+    const std::string type = s.value("type", "");
+    Opt o;
+    o.path = p;
+    o.title = humane(lastPart(p));
+    o.def = s.contains("default") ? s["default"] : json();
+    std::string sub = p, dflt;
+    if (!o.def.is_null()) dflt = o.def.is_string() ? (o.def.get<std::string>().empty() ? "none" : o.def.get<std::string>()) : o.def.dump();
+    if (p.ends_with("_ms")) o.unit = "ms";
+    else if (p.ends_with("_px")) o.unit = "px";
+    const bool bounded = s.contains("min") && s.contains("max") && s["min"].is_number() && s["max"].is_number();
+    if (bounded) {
+        o.min = s["min"].get<double>();
+        o.max = s["max"].get<double>();
+    }
+    const json values = s.contains("values") && s["values"].is_array() ? s["values"] : json::array();
+    if (type == "bool") {
+        o.kind = K::Bool;
+        o.icon = "toggle_on";
+    } else if ((type == "int" || type == "float") && bounded && o.max > o.min) {
+        const double range = o.max - o.min;
+        if (type == "int" && range <= 10000) {
+            o.kind = K::Int;
+            o.step = range > 2000 ? 10 : 1;
+        } else if (type == "float" && range <= 10000) {
+            o.kind = K::Float;
+            // About two hundred steps, on a round number
+            const double raw = range / 200;
+            double step = 0.001;
+            for (double nice : {0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0})
+                if (nice <= raw) step = nice;
+            o.step = step;
+        } else {
+            o.kind = K::Number;
+            o.integer = type == "int";
+        }
+        o.icon = "tune";
+        if (!o.def.is_number()) o.def = o.min;
+    } else if (type == "int" || type == "float") {
+        o.kind = K::Number;
+        o.integer = type == "int";
+        o.icon = "tune";
+    } else if ((type == "enum" || type == "string") && !values.empty()) {
+        o.kind = K::Choice;
+        o.icon = "list";
+        for (const auto& v : values)
+            if (v.is_string()) o.choices.push_back({v.get<std::string>(), humane(v.get<std::string>())});
+        if (o.choices.empty()) return std::nullopt;
+    } else if (type == "string" || type == "color") {
+        o.kind = K::Text;
+        o.icon = type == "color" ? "palette" : "text_fields";
+        if (type == "color") sub += " · #RRGGBBAA";
+    } else {
+        o.kind = K::List;
+        o.icon = "format_list_bulleted";
+        o.listOf = type == "int_array" ? "int" : type == "float_array" ? "float" : "string";
+    }
+    // A slider says its value, and the default after it; the rest, the default here
+    if (o.kind == K::Int || o.kind == K::Float) o.defaultText = dflt;
+    else if (!dflt.empty()) sub += " · default " + dflt;
+    o.sub = sub;
+    return o;
+}
+
+} // namespace
+
+void umbrielAllPage(Flex* page, Popup&) {
+    auto section = std::make_shared<std::string>("appearance");
+    auto filter = std::make_shared<std::string>();
+
+    // What it's from, and what's new in this Umbriel
+    auto* top = page->add<Live>();
+    top->setSpacing(6);
+    top->sync = [top] {
+        top->clearChildren();
+        notice(top);
+        auto& cfg = UmbrielConfig::get();
+        if (!cfg.readError().empty()) return;
+        auto* g = group(top, "From your Umbriel", "");
+        if (!cfg.hasSchema()) {
+            row(g, "info", "Umbriel isn't installed", "These options come from Umbriel itself (umbriel config schema)");
+            return;
+        }
+        const auto count = std::ranges::count_if(cfg.schemaAll(), [](const auto& kv) { return generated(kv.first, kv.second); });
+        row(g, "auto_awesome", std::format("Umbriel {}: {} options", cfg.umbrielVersion(), count),
+            "Made from its own description of them, so a newer Umbriel's options show up here as it adds them");
+        // New since the Umbriel you had before
+        std::vector<Opt> fresh;
+        for (const auto& p : cfg.newOptions())
+            if (const auto* s = cfg.schema(p))
+                if (auto o = fromSchema(p, *s)) fresh.push_back(std::move(*o));
+        if (!fresh.empty()) {
+            auto* ng = group(top, std::format("New in this Umbriel ({})", fresh.size()),
+                             cfg.newSince().empty() ? std::string() : "Since " + cfg.newSince());
+            for (const auto& o : fresh) option(ng, o);
+        }
+    };
+    top->watch(UmbrielConfig::get().changed);
+    top->sync();
+
+    // The section, and a filter over all of them: outside what's rebuilt
+    auto* head = page->add<Flex>(Flex::Direction::Column);
+    head->setSpacing(10)->setPadding({0, 12, 0, 4})->setAlignItems(Align::Stretch);
+    auto* pick = head->add<Flex>(Flex::Direction::Column);
+    pick->setAlignItems(Align::Stretch);
+    auto* findRow = head->add<Flex>(Flex::Direction::Row);
+    pill(findRow->setBackground(ColorRef("on_surface", 0.08f), false))->setPadding({16, 4, 8, 4})->setSpacing(8);
+    findRow->add<Icon>("search", 20)->setColor("on_surface_variant", false);
+    auto* field = findRow->add<TextField>();
+    field->setPlaceholder("Find an option in every section: blur, repeat, cursor…");
+    field->bare = true;
+    field->grow = true;
+
+    auto* list = page->add<Live>();
+    list->setSpacing(6);
+    list->sync = [list, section, filter, pick] {
+        list->clearChildren();
+        auto& cfg = UmbrielConfig::get();
+        if (!cfg.readError().empty() || !cfg.hasSchema()) return;
+        // The sections, as this Umbriel has them
+        std::map<std::string, int> sections;
+        for (const auto& [p, s] : cfg.schemaAll())
+            if (generated(p, s)) ++sections[p.substr(0, p.find('.'))];
+        if (!sections.contains(*section) && !sections.empty()) *section = sections.begin()->first;
+        pick->clearChildren();
+        std::vector<std::pair<std::string, std::string>> items;
+        for (const auto& [name, n] : sections) items.push_back({name, std::format("{} ({})", humane(name), n)});
+        auto r = row(pick, "category", "Section", filter->empty() ? "" : "Finding in every section");
+        dropdown(r.row, pick, std::format("{} ({})", humane(*section), sections[*section]), items, [section, list](const std::string& v) {
+            *section = v;
+            list->syncSoon();
+        });
+        // Its options (or every section's that match), by the table they're in
+        auto low = [](std::string t) {
+            for (auto& c : t) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            return t;
+        };
+        const std::string f = low(*filter);
+        std::map<std::string, std::vector<Opt>> tables;
+        int shown = 0;
+        for (const auto& [p, s] : cfg.schemaAll()) {
+            const bool hit = f.empty() ? p.substr(0, p.find('.')) == *section : low(p + " " + humane(lastPart(p))).find(f) != std::string::npos;
+            if (!hit || shown >= 120) continue;
+            if (auto o = fromSchema(p, s)) {
+                tables[parentOf(p)].push_back(std::move(*o));
+                ++shown;
+            }
+        }
+        if (tables.empty()) {
+            row(group(list, ""), "search_off", "Nothing matches", "Another word, or a section above");
+            return;
+        }
+        for (const auto& [parent, opts] : tables) {
+            auto* g = group(list, parent.find('.') == std::string::npos ? humane(parent) : humane(lastPart(parent)), parent);
+            for (const auto& o : opts) option(g, o);
+        }
+        if (shown >= 120) caption(list, "The first 120: a longer word finds fewer");
+    };
+    list->watch(UmbrielConfig::get().changed);
+    field->onChanged = [filter, list](const std::string& t) {
+        *filter = t;
+        list->syncSoon();
+    };
+    list->sync();
+
+    auto* foot = group(page, "Not here", "");
+    row(foot, "rule", "Keys, window rules, monitors and effects", "On their own pages; anything else that's a list, in config.toml");
 }
 
 } // namespace m3::shell::panels
