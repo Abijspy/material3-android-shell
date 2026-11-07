@@ -44,7 +44,7 @@ Run the installer and pick **umbriel**, or several compositors at once:
 ./install.sh --compositor umbriel        # or: niri,umbriel · all
 ```
 
-Umbriel isn't in Arch's repositories or the AUR yet. So the installer builds it, with its portal for screen sharing, screenshots and input capture, from the PKGBUILDs in [`packaging/umbriel`](../packaging/umbriel) and [`packaging/xdg-desktop-portal-umbriel`](../packaging/xdg-desktop-portal-umbriel). That takes a few minutes. Both are pinned to the commits the shell was tested with, because Umbriel changes as it's developed. They install as the pacman packages `umbriel-git` and `xdg-desktop-portal-umbriel-git`, which you can remove like any other. Running the installer again rebuilds them only when the pinned commit moves on.
+The installer installs Noctalia's own AUR packages, `umbriel-git` and `xdg-desktop-portal-umbriel-git` (screen sharing, screenshots and input capture), through yay like any other AUR package. Being `-git` packages, they build the latest Umbriel when installed. An Umbriel you have already, from the AUR or built yourself and of any version, is kept as it is. To move to a newer Umbriel later, reinstall it (`yay -S umbriel-git`, or `yay -Syu --devel`).
 
 It then sets up `~/.config/umbriel`:
 
@@ -124,4 +124,4 @@ Umbriel is young and changes as it's developed (its docs call its defaults "opin
 - **Nothing is saved that your Umbriel would refuse.** Each change goes to a copy beside `config.toml` first, and `umbriel config validate` checks it. If the check finds an error, or Umbriel says it would ignore that setting, `config.toml` stays as it was and the page says why.
 - **The bar and dock keep up.** If Umbriel stops sending one of the event families the shell subscribes to, the shell subscribes without the keyboard layout. If it refuses the rest too, the shell asks for the state every 1.5 seconds instead. Fields Umbriel stops sending read as empty, new ones are ignored, and a refused action is only logged.
 
-What can still break is anything Umbriel renames in its IPC (its commands, actions or fields). The Umbriel features would then stop working until the shell catches up, but the shell itself keeps running. This was tested with Umbriel 0.1.0.
+What can still break is anything Umbriel renames in its IPC (its commands, actions or fields). The Umbriel features would then stop working until the shell catches up, but the shell itself keeps running. The shell was first tested with Umbriel 0.1.0 at 90f65cb, and since with 7ffde79.

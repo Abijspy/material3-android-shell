@@ -380,7 +380,16 @@ group_packages() { # group_packages GROUP → its packages, one a line
         compositor)
             if [[ "$WANT_HYPR" == 1 ]]; then jq -r '.hyprland[].name' "$deps"; fi
             if [[ "$WANT_NIRI" == 1 ]]; then jq -r '.niri[].name' "$deps"; fi
-            if [[ "$WANT_UMBRIEL" == 1 ]]; then jq -r '.umbriel[].name' "$deps"; fi ;;
+            if [[ "$WANT_UMBRIEL" == 1 ]]; then
+                # Already here, from any package: left as it is
+                jq -r '.umbriel[].name' "$deps" | while read -r p; do
+                    case "$p" in
+                        umbriel-git) [[ -n "$(umbriel_version)" ]] || echo "$p" ;;
+                        xdg-desktop-portal-umbriel-git) [[ -x /usr/lib/xdg-desktop-portal-umbriel ]] || echo "$p" ;;
+                        *) echo "$p" ;;
+                    esac
+                done
+            fi ;;
         build) jq -r '.core[].name' "$deps" ;; # what meson needs: part of "shell"
         shell) jq -r '.core[].name, .services[].name' "$deps" ;;
         tools) jq -r '.utilities[].name, .theming[].name' "$deps" ;;
@@ -398,40 +407,17 @@ group_packages() { # group_packages GROUP → its packages, one a line
 installed_version() { pacman -Q "$1" 2>/dev/null | awk '{print $2}' || true; }
 repo_version() { LC_ALL=C pacman -Si "$1" 2>/dev/null | sed -n 's/^Version *: //p' | head -n 1 || true; }
 older() { [[ -n "$1" && "$(vercmp "${1%%-*}" "$2")" -lt 0 ]]; } # older VERSION MIN
-# Umbriel isn't in the repositories or the AUR yet: built from
-# packaging/umbriel (and its portal), at the commit the shell was tested with
-UMB_PIN="" # set once the checkout is found
-umbriel_version() { local v; v="$(installed_version umbriel-git)"; [[ -n "$v" ]] || v="$(installed_version umbriel)"; printf '%s' "$v"; }
-# Is the installed Umbriel the tested one (umbriel-git …g<commit>), or the distribution's?
-umbriel_current() { local v; v="$(umbriel_version)"; [[ -n "$v" ]] && { [[ -z "$UMB_PIN" || "$v" == *".g$UMB_PIN"* ]] || ! pacman -Qq umbriel-git >/dev/null 2>&1; }; }
-build_umbriel() { # builds umbriel-git and its portal from packaging/, and installs them
-    local work pkg
-    work="$(mktemp -d)"
-    for pkg in umbriel xdg-desktop-portal-umbriel; do
-        mkdir -p "$work/$pkg"
-        cp "$REPO/packaging/$pkg/PKGBUILD" "$work/$pkg/"
-        # -s: what it builds with, from the repositories (sudo pacman)
-        (cd "$work/$pkg" && PKGDEST="$work/out" makepkg -s --noconfirm --needed) || { rm -rf "$work"; return 1; }
+# Umbriel: Noctalia's own AUR packages (umbriel-git and its portal), which
+# build the latest Umbriel when installed. One already installed, from
+# anywhere and of any version, is yours and left as it is: Umbriel Settings
+# reads its options from whatever Umbriel is here
+umbriel_version() {
+    local v p
+    for p in umbriel-git umbriel; do
+        v="$(installed_version "$p")"
+        [[ -z "$v" ]] || { printf '%s' "$v"; return; }
     done
-    sudo pacman -U --noconfirm "$work"/out/*.pkg.tar.zst
-    rm -rf "$work"
-}
-# yay, made to work: libalpm moves on, and a stale binary won't start
-ensure_yay() {
-    yay --version >/dev/null 2>&1 && return 0
-    local tmp
-    tmp="$(mktemp -d)"
-    sudo pacman -S --needed --noconfirm base-devel git
-    git clone -q --depth 1 https://aur.archlinux.org/yay-bin.git "$tmp/yay-bin"
-    (cd "$tmp/yay-bin" && makepkg -si --noconfirm) || true
-    if ! yay --version >/dev/null 2>&1; then
-        # The prebuilt binary is tied to one libalpm: build from source
-        if pacman -Qq yay-bin >/dev/null 2>&1; then sudo pacman -Rdd --noconfirm yay-bin; fi
-        git clone -q --depth 1 https://aur.archlinux.org/yay.git "$tmp/yay"
-        (cd "$tmp/yay" && makepkg -si --noconfirm)
-    fi
-    rm -rf "$tmp"
-    yay --version >/dev/null 2>&1
+    command -v umbriel >/dev/null && umbriel --version 2>/dev/null | awk '{print $2}'
 }
 
 # ── Backups and the restore script ───────────────────────────────────────────
@@ -541,12 +527,8 @@ else ok "Hyprland ${hv%-*}"; fi
 if [[ -z "$nv" ]]; then :
 elif older "$nv" "$MIN_NIRI"; then warn "niri ${nv%-*} is older than $MIN_NIRI, which the shell needs; pick it and the system update brings ${nr:+${nr%-*}}${nr:-a newer one}"
 else ok "niri ${nv%-*}"; fi
-UMB_COMMIT="$(sed -n 's/^_commit=\([0-9a-f]*\).*/\1/p' "$REPO/packaging/umbriel/PKGBUILD" 2>/dev/null || true)"
-UMB_PIN="${UMB_COMMIT:0:7}"
 uv="$(umbriel_version)"
-if [[ -z "$uv" ]]; then :
-elif umbriel_current; then ok "Umbriel ${uv%-*}"
-else warn "Umbriel ${uv%-*} isn't the one the shell was tested with ($UMB_PIN); pick it and that one is built"; fi
+[[ -z "$uv" ]] || ok "Umbriel ${uv%-*}"
 [[ -n "$hv$nv$uv" ]] || note "No compositor the shell runs on is installed yet: the one you pick installs first, before the shell."
 VERSION="$(cat "$REPO/VERSION" 2>/dev/null || echo "?")"
 ok "Material3UI $VERSION from $(tilde "$REPO")"
@@ -633,9 +615,8 @@ comp_status() { # comp_status INSTALLED REPO MIN
     else echo "installed, ${1%-*}"; fi
 }
 umbriel_status() {
-    if [[ -z "$uv" ]]; then echo "new, built from source (the tested ${UMB_PIN:-commit})"
-    elif umbriel_current; then echo "installed, ${uv%-*}"
-    else echo "${uv%-*} installed: the tested ${UMB_PIN:-one} is built"; fi
+    if [[ -z "$uv" ]]; then echo "installs first: the latest, from Noctalia's umbriel-git (AUR)"
+    else echo "installed, ${uv%-*}"; fi
 }
 comp_default=""
 for c in hyprland niri umbriel; do installed_comp "$c" && comp_default+="${comp_default:+,}$c"; done
@@ -670,9 +651,7 @@ if [[ "$WANT_NIRI" == 1 && -z "$nv" ]] && { [[ -z "$nr" ]] || older "$nr" "$MIN_
     warn "niri ${nr:+${nr%-*} }can't come from your repositories (the shell needs $MIN_NIRI or newer): install it yourself, or pick another"
 fi
 # Umbriel: built here, a few minutes, unless the tested one is installed
-UMB_BUILD=0
-if [[ "$WANT_UMBRIEL" == 1 && "$SKIP_DEPS" == 0 ]] && ! umbriel_current; then UMB_BUILD=1; fi
-if [[ "$WANT_UMBRIEL" == 1 ]]; then note "Umbriel is young and changes as it's developed; the shell was tested with ${UMB_PIN:-the commit in packaging/umbriel} (docs/UMBRIEL.md)."; fi
+if [[ "$WANT_UMBRIEL" == 1 ]]; then note "Umbriel is young and changes fast; Umbriel Settings reads its options from the Umbriel you have, so it keeps up (docs/UMBRIEL.md)."; fi
 # One that's installed but too old: a full system update brings the new
 # one (Arch doesn't do partial upgrades), before anything else installs
 OUTDATED=()
@@ -836,7 +815,6 @@ else
         label=""
     done
 fi
-if [[ "$UMB_BUILD" == 1 ]]; then row Umbriel "build Umbriel and its portal ($UMB_PIN, the tested commit) from packaging/umbriel, as pacman packages"; fi
 row Shell "build material3ui $VERSION and install it to /usr"
 label=Configs
 for e in "${CONFIGS[@]}"; do
@@ -871,7 +849,6 @@ if [[ "$MISSING_COUNT" -gt 0 ]]; then
     [[ "$MISSING_COUNT" -eq ${#m[@]} ]] || PROG_TOTAL=$((PROG_TOTAL + 8))
 fi
 [[ "$NEED_GSF" == 0 ]] || PROG_TOTAL=$((PROG_TOTAL + 1))
-[[ "$UMB_BUILD" == 0 ]] || PROG_TOTAL=$((PROG_TOTAL + 10))
 [[ "$OPT_KDE" == 0 ]] || PROG_TOTAL=$((PROG_TOTAL + 3))
 
 # ── 4. Packages ──────────────────────────────────────────────────────────────
@@ -912,10 +889,6 @@ elif [[ "$SKIP_DEPS" == 1 ]]; then
 else
     note "Nothing to install."
 fi
-if [[ "$UMB_BUILD" == 1 ]]; then
-    W=10 task "Umbriel and its portal, built from source ($UMB_PIN; a few minutes)" build_umbriel
-    [[ "$DRY" == 1 ]] || ok "Umbriel installed (umbriel-git, xdg-desktop-portal-umbriel-git)"
-fi
 # The compositor the shell will run on: here, and new enough
 comp_check() { # comp_check NAME PACKAGE MIN
     local v
@@ -930,7 +903,7 @@ else
     if [[ "$WANT_NIRI" == 1 ]]; then comp_check niri niri "$MIN_NIRI"; fi
     if [[ "$WANT_UMBRIEL" == 1 ]]; then
         uv="$(umbriel_version)"
-        if [[ -z "$uv" ]]; then warn "Umbriel isn't installed: build it with ./install.sh --compositor umbriel (without --skip-deps)"
+        if [[ -z "$uv" ]]; then warn "Umbriel isn't installed: yay -S umbriel-git xdg-desktop-portal-umbriel-git, or ./install.sh --compositor umbriel without --skip-deps"
         else ok "Umbriel ${uv%-*}"; fi
     fi
 fi

@@ -14,7 +14,7 @@ makedepends=(meson ninja wayland-protocols wlr-protocols nlohmann-json tomlplusp
 # The compositor is yours to pick: Hyprland, niri, Umbriel, or several
 optdepends=('hyprland: a compositor to run on (0.55 or newer)'
             'niri: a compositor to run on (26.04 or newer)'
-            'umbriel-git: a compositor to run on (built by install.sh from packaging/umbriel)'
+            'umbriel-git: a compositor to run on (AUR, by Noctalia)'
             'hyprsunset: night light on Hyprland'
             'xwayland-satellite: X11 apps on niri'
             'xdg-desktop-portal-gnome: screen sharing on niri'

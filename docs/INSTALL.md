@@ -23,7 +23,7 @@ Before we dive in, let's clarify what Material3UI Shell actually is. It is a des
 
 Before running the installer, make sure your system meets these basic requirements:
 * You are running Arch Linux, CachyOS, or a similar Arch-based distribution.
-* Nothing for the compositor: the installer installs Hyprland, niri, Umbriel or several, whichever you pick. One you have already needs to be Hyprland 0.55 or newer, or niri 26.04 or newer; if it's older, the installer offers to update the system first. Umbriel isn't in Arch's repositories yet, so the installer builds it (and its screen-sharing portal) at the commit the shell was tested with.
+* Nothing for the compositor: the installer installs Hyprland, niri, Umbriel or several, whichever you pick. One you have already needs to be Hyprland 0.55 or newer, or niri 26.04 or newer; if it's older, the installer offers to update the system first. Umbriel comes from Noctalia's own AUR packages (`umbriel-git` and its screen-sharing portal), which build the latest Umbriel; one you have already is kept.
 * You have an AUR helper installed. If you do not have one, the installer will set up `yay` for you.
 * Standard build tools like `git`, `curl`, and `base-devel` are present on your system.
 

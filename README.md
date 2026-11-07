@@ -96,7 +96,7 @@ The installer asks a few questions, the compositor first, then shows you one pla
 
 - **Hyprland:** it installs Hyprland and the shell's modular Lua config, or adds the shell to the config you have.
 - **niri:** it installs niri with xwayland-satellite (for X11 apps) and the GNOME portal (for screen sharing). Your `config.kdl` stays yours: the installer adds one `include "material3ui.kdl"` line at its end, and the shell's keys, blur and settings live in files beside it.
-- **Umbriel:** Umbriel isn't in Arch's repositories or the AUR yet, so the installer builds it, with its portal for screen sharing, from [`packaging/umbriel`](packaging/umbriel). Both are pinned to the commit the shell was tested with, and pacman tracks their files. Your `config.toml` stays yours: the installer includes the shell's `material3ui.toml` from it and starts the shell with Umbriel. It takes out only the keys that would hide the shell's: Noctalia's, and Umbriel's stock ones you haven't changed.
+- **Umbriel:** the installer installs Noctalia's own AUR packages, `umbriel-git` and its screen-sharing portal, which build the latest Umbriel. An Umbriel you have already is kept, whatever its version: Umbriel Settings reads its options from Umbriel itself. Your `config.toml` stays yours: the installer includes the shell's `material3ui.toml` from it and starts the shell with Umbriel. It takes out only the keys that would hide the shell's: Noctalia's, and Umbriel's stock ones you haven't changed.
 - **Several:** `both` (Hyprland and niri), `all`, or a list such as `niri,umbriel`. You choose at each login, and the login screen shows each session with its compositor's logo.
 
 <details>

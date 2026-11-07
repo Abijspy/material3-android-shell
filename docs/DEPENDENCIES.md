@@ -10,7 +10,7 @@ The installer asks which compositor the shell runs on (`--compositor hyprland`, 
 | :--- | :--- | :--- |
 | **Hyprland** | `hyprland` `xdg-desktop-portal-hyprland` `hypridle` `hyprlock` `hyprsunset` `hyprpicker` | Hyprland 0.55 or newer; screen sharing with the shell's picker, the idle daemon and fallback lock screen its config starts, night light and a colour picker. |
 | **niri** | `niri` `xwayland-satellite` `xdg-desktop-portal-gnome` | niri 26.04 or newer, X11 apps, and screen sharing. Night light needs nothing more: the shell warms the screens itself. |
-| **Umbriel** | `umbriel-git` `xdg-desktop-portal-umbriel-git` (built from `packaging/`), with `base-devel` `git` `xorg-xwayland` `xdg-desktop-portal` | Umbriel and its portal, built at the commits the shell was tested with (not in the repositories yet; their own build dependencies, such as `wlroots0.20`, come from the repositories), X11 apps, and screen sharing. |
+| **Umbriel** | `umbriel-git` `xdg-desktop-portal-umbriel-git` (AUR, maintained by Noctalia), `xorg-xwayland` `xdg-desktop-portal` | Umbriel and its portal, built from the latest source when installed, X11 apps, and screen sharing. An Umbriel you have already is kept. |
 
 ### Core Components
 

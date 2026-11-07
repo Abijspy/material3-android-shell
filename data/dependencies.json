@@ -152,14 +152,14 @@
   ],
   "umbriel": [
     {
-      "name": "base-devel",
-      "command": "makepkg",
-      "description": "Builds Umbriel and its portal (packaging/umbriel): not in the repositories yet"
+      "name": "umbriel-git",
+      "command": "umbriel",
+      "description": "Wayland compositor: Noctalia's (AUR, by noctalia-dev; builds the latest)"
     },
     {
-      "name": "git",
-      "command": "git",
-      "description": "Fetches Umbriel's source"
+      "name": "xdg-desktop-portal-umbriel-git",
+      "command": "/usr/lib/xdg-desktop-portal-umbriel",
+      "description": "Screen sharing and screenshots for apps on Umbriel (AUR, by noctalia-dev)"
     },
     {
       "name": "xorg-xwayland",
