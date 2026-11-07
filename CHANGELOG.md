@@ -1,5 +1,10 @@
 # Changelog
 
+## v6.4.2 — 2026-11-07
+
+- **Umbriel Settings keeps up with Umbriel.** Options a newer Umbriel adds now appear by themselves on the right page, in the group they belong to, marked "New in your Umbriel". For example, the new title-bar button size, gap and padding sit beside Title bars on Borders & effects. Each gets a switch, slider, choice or text field made from Umbriel's own description of it. A new **All options** page lists every option your Umbriel has, by section and with a search, and puts the ones added since your last Umbriel first. When Umbriel is updated, the shell reads its options again by itself, with no restart.
+- **The installer installs the latest Umbriel.** It now uses Noctalia's own AUR packages, `umbriel-git` and its screen-sharing portal, which build the newest Umbriel. Before, it built an older version the shell had been tested with, and a re-run could replace a newer Umbriel with that older one. An Umbriel you already have is now never touched.
+
 ## v6.4.1 — 2026-11-07
 
 - **Effects in Umbriel Settings.** A new Effects page brings Noctalia's [community shaders](https://github.com/noctalia-dev/community-umbriel-shaders) for Umbriel: 156 effects for window borders, windows, the whole screen, the pointer and animations, each with its preview, author and description, and 11 matching families that turn several on at once. Pick one and it's downloaded, checked against the collection's published hashes and turned on in your `config.toml`. Your Umbriel checks the change first, as with every setting. If Umbriel can't compile a shader, the page turns it off again and tells you. **On now** lists what's on, each with Turn off, and removing an effect deletes its files.
