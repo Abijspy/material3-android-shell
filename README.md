@@ -6,13 +6,13 @@
 
 <p align="center">
   <b>One design language, from the login screen to the package manager.</b><br/>
-  A Material 3 desktop shell for Hyprland and niri, written in C++ for Wayland.
+  A Material 3 desktop shell for Hyprland, niri and Umbriel, written in C++ for Wayland.
 </p>
 
 <p align="center">
   <a href="#screenshots">Screenshots</a> ·
   <a href="#install-in-one-line">Install</a> ·
-  <a href="#hyprland-or-niri">Hyprland or niri</a> ·
+  <a href="#hyprland-niri-or-umbriel">Hyprland, niri or Umbriel</a> ·
   <a href="#a-tour">Tour</a> ·
   <a href="#make-it-yours">Customise</a> ·
   <a href="#repository-structure">Code</a> ·
@@ -25,6 +25,7 @@
   <img alt="Release" src="https://img.shields.io/github/v/release/Abijspy/material3-android-shell?label=release&color=6750A4"/>
   <img alt="Hyprland" src="https://img.shields.io/badge/Hyprland-0.55%2B-58E1FF"/>
   <img alt="niri" src="https://img.shields.io/badge/niri-26.04%2B-F4B183"/>
+  <img alt="Umbriel" src="https://img.shields.io/badge/Umbriel-0.1%2B-8F7FE0"/>
   <img alt="Arch" src="https://img.shields.io/badge/Arch-based-1793D1"/>
   <img alt="License" src="https://img.shields.io/badge/license-MIT-7D5260"/>
 </p>
@@ -39,9 +40,9 @@ Most Linux desktops are a patchwork. The bar comes from one project, the lock sc
 
 **Material3UI replaces the patchwork with one shell.** Your wallpaper sets the colours. The same palette, shapes and motion carry through the bar, dock, panels, notifications, lock screen, login screen, password prompts and update manager, and out into GTK, KDE and terminal apps.
 
-**On Hyprland or niri.** The same shell runs on both compositors and finds out by itself which one it's on. Each gets its own settings app (Hyprland Settings or Niri Settings), its own blur and its own keys set up for you. Install one, or both and pick at the login screen. → [Hyprland or niri](#hyprland-or-niri)
+**On Hyprland, niri or Umbriel.** The same shell runs on all three compositors and finds out by itself which one it's on. Each gets its own settings app (Hyprland Settings, Niri Settings or Umbriel Settings), its own blur and its own keys set up for you. Install one, or several and pick at the login screen. → [Hyprland, niri or Umbriel](#hyprland-niri-or-umbriel)
 
-**It's native.** The shell is one C++ program that talks to Wayland, D-Bus, PipeWire and PAM directly, and to Hyprland or niri over their own IPC. It renders every pixel itself with OpenGL ES and leaves the blur to the compositor. There's no Qt, QML or Quickshell.
+**It's native.** The shell is one C++ program that talks to Wayland, D-Bus, PipeWire and PAM directly, and to Hyprland, niri or Umbriel over their own IPC. It renders every pixel itself with OpenGL ES and leaves the blur to the compositor. There's no Qt, QML or Quickshell.
 
 **It's light on your machine.** Sitting idle, the whole shell (bar, dock, desktop and every service behind them) uses **under 0.1% of one CPU core** and draws about 20 frames a minute, when the clock or a status icon changes. It uses **about 75 MB of memory**, 25 MB of it its own; the rest is its share of the graphics libraries every app loads. [How it's measured](#how-its-measured).
 
@@ -86,7 +87,7 @@ These were taken on niri. On Hyprland the shell looks the same, over Hyprland's 
 
 ## Install in one line
 
-You need an Arch-based system (Arch, CachyOS, EndeavourOS, ...). The shell runs on Hyprland 0.55 or newer, on niri 26.04 or newer, or on both. The installer asks which, and installs it if it isn't there.
+You need an Arch-based system (Arch, CachyOS, EndeavourOS, ...). The shell runs on Hyprland 0.55 or newer, on niri 26.04 or newer, on Umbriel, or on several of them. The installer asks which, and installs it if it isn't there.
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Abijspy/material3-android-shell/main/install.sh)"
@@ -117,44 +118,45 @@ The installer asks a few questions, the compositor first, then shows you one pla
 | `--restore [stamp]` | Put back the configs an install replaced (the last one by default) |
 | `--uninstall` | Remove the shell from `/usr`; configs stay |
 
-The full walkthrough from a fresh system is in the [install guide](docs/INSTALL.md), and niri's own in [Material3UI on niri](docs/NIRI.md). Coming from KDE or GNOME? Read the [migration guide](docs/MIGRATION.md).
+The full walkthrough from a fresh system is in the [install guide](docs/INSTALL.md), niri's own in [Material3UI on niri](docs/NIRI.md), and Umbriel's in [Material3UI on Umbriel](docs/UMBRIEL.md). Coming from KDE or GNOME? Read the [migration guide](docs/MIGRATION.md).
 
 </details>
 
-## Hyprland or niri
+## Hyprland, niri or Umbriel
 
-Everything in the shell works on both: the bar with each monitor's workspaces, the dock, every panel, notifications, Spotlight, the window switcher, screenshots and recording, the lock and login screens, Digital Wellbeing, hooks and the IPC. What differs is the compositor underneath.
+Everything in the shell works on all three: the bar with each monitor's workspaces, the dock, every panel, notifications, Spotlight, the window switcher, screenshots and recording, the lock screen, Digital Wellbeing, hooks and the IPC. What differs is the compositor underneath.
 
-| | Hyprland | niri |
-| :--- | :--- | :--- |
-| **Windows** | Tiled into the screen (dwindle or master), floating, or Hyprland's scrolling layout | Built around scrolling columns: new windows open to the right and the view follows |
-| **Its settings app** | **Hyprland Settings:** every Hyprland option, displays, animations, keybinds, rules, plugins and profiles | **Niri Settings:** layout, borders and shadows, blur, animations, behaviour, keys, window rules, startup apps and variables |
-| **Blur** | Hyprland's, behind the bar, panels and dock, and behind the apps you pick | niri's (26.04), the same places, and behind the workspaces in the overview |
-| **Overview** (<kbd>Super</kbd><kbd>`</kbd>) | The shell's | niri's own, over a blurred wallpaper |
-| **Spotlight** | Tap <kbd>Super</kbd> | <kbd>Super</kbd><kbd>Space</kbd> (niri can't bind <kbd>Super</kbd> on its own) |
-| **Your changes go in** | `~/.config/hypr/material3ui/`: `user.lua`, `apps.lua`, `keybinds_custom.lua` | `~/.config/niri/`: your `config.kdl` and `material3ui-user.kdl` |
-| **Only on Hyprland** | Minimising, recording one window, the shell's screen-sharing picker, the magnifier and colour filters | niri has no minimised state, zoom or screen shaders, and shares the screen through the GNOME portal's picker |
-| **The login screen runs on** | Hyprland | niri, when Hyprland isn't installed |
+| | Hyprland | niri | Umbriel |
+| :--- | :--- | :--- | :--- |
+| **Windows** | Tiled into the screen (dwindle or master), floating, or Hyprland's scrolling layout | Built around scrolling columns: new windows open to the right and the view follows | Scrolling columns, dwindle, master or floating, chosen for each workspace, with tab groups |
+| **Its settings app** | **Hyprland Settings:** every Hyprland option, displays, animations, keybinds, rules, plugins and profiles | **Niri Settings:** layout, borders and shadows, blur, animations, behaviour, keys, window rules, startup apps and variables | **Umbriel Settings:** layout, borders, blur and shadows, animations, community shaders, monitors, input devices, behaviour, keys, window rules, startup apps, and every other option Umbriel has |
+| **Blur** | Hyprland's, behind the bar, panels and dock, and behind the apps you pick | niri's (26.04), the same places, and behind the workspaces in the overview | Umbriel's, behind the bar, panels, dock and notifications |
+| **Overview** (<kbd>Super</kbd><kbd>`</kbd>) | The shell's | niri's own, over a blurred wallpaper | Umbriel's own |
+| **Spotlight** | Tap <kbd>Super</kbd> | <kbd>Super</kbd><kbd>Space</kbd> (niri can't bind <kbd>Super</kbd> on its own) | <kbd>Super</kbd><kbd>Space</kbd> |
+| **Minimising** | Any window | No: niri has no minimised state | Floating windows (Umbriel minimises only those) |
+| **Sharing the screen** | The shell's own picker: a screen, a window or a region | The GNOME portal's picker | The shell's own picker: a screen or a window |
+| **Recording one window** | Yes | No: windows have no fixed place to record | Yes |
+| **Magnifier and colour filters** | Yes | No | No (Umbriel has screen shaders of its own: Umbriel Settings → Effects) |
+| **Your changes go in** | `~/.config/hypr/material3ui/`: `user.lua`, `apps.lua`, `keybinds_custom.lua` | `~/.config/niri/`: your `config.kdl` and `material3ui-user.kdl` | `~/.config/umbriel/`: your `config.toml` |
+| **The login screen runs on** | Hyprland | niri, when Hyprland isn't installed | Not yet: it needs Hyprland or niri installed to run on, and offers Umbriel sessions from there |
 
-Hyprland is the shell's first home and the most complete. Pick niri if you like scrollable tiling: the rest of the desktop comes with you. → [Material3UI on niri](docs/NIRI.md) · [The Hyprland setup](docs/HYPRLAND.md)
-
-**And Umbriel (new).** The shell also runs on [Umbriel](https://github.com/noctalia-dev/umbriel), the Noctalia project's compositor. The bar shows each monitor's workspaces, and the dock, panels, notifications, Spotlight, keyboard layouts, blur, Umbriel's overview and the lock screen all work. **Umbriel Settings** edits Umbriel's own options (layouts, gaps, borders, blur, animations, input, monitors, keys, window rules, startup apps) right in your `config.toml`, keeping your comments, and installs Noctalia's community shaders with a tap. Pick it in the installer, which builds Umbriel and sets it up. → [Material3UI on Umbriel](docs/UMBRIEL.md)
+Hyprland is the shell's first home and the most complete. Pick niri if you like scrollable tiling, or Umbriel, the Noctalia project's compositor, for a choice of layouts on each workspace and GLSL effects: the rest of the desktop comes with you. Umbriel is young and changes fast, so Umbriel Settings reads Umbriel's options from Umbriel itself, and new ones show up without a shell update. → [Material3UI on niri](docs/NIRI.md) · [Material3UI on Umbriel](docs/UMBRIEL.md) · [The Hyprland setup](docs/HYPRLAND.md)
 
 ## A tour
 
 From the moment the machine boots:
 
-**1 · Log in.** The login screen runs on greetd and is the lock screen's twin: the same clock, widgets, weather, password pill and motion, on frosted glass. Pick a user and a session (Hyprland or niri, each with its logo), or suspend and shut down from there. When you change your wallpaper, avatar, keyboard layout or monitors in Settings, the login screen picks them up automatically. → [Login screen](docs/GREETER.md)
+**1 · Log in.** The login screen runs on greetd and is the lock screen's twin: the same clock, widgets, weather, password pill and motion, on frosted glass. Pick a user and a session (Hyprland, niri or Umbriel, each with its logo), or suspend and shut down from there. When you change your wallpaper, avatar, keyboard layout or monitors in Settings, the login screen picks them up automatically. → [Login screen](docs/GREETER.md)
 
-**2 · The desktop.** The bar is yours to arrange: drop widgets (weather, date, media, CPU, notifications, clipboard, screenshot and more) into its left, centre and right, or right-click it to edit it in place. It shows each monitor's own workspaces, as many as Hyprland or niri has. Its centre holds a dynamic island. It grows to show the song that's playing, a workspace switch or an incoming notification, then shrinks back. The bar and panels are translucent with the compositor's blur behind them. A dock on the bottom edge keeps your pinned and running apps (with the unread counts and download progress they report) and the trash, and slides away until you need it.
+**2 · The desktop.** The bar is yours to arrange: drop widgets (weather, date, media, CPU, notifications, clipboard, screenshot and more) into its left, centre and right, or right-click it to edit it in place. It shows each monitor's own workspaces, as many as your compositor has. Its centre holds a dynamic island. It grows to show the song that's playing, a workspace switch or an incoming notification, then shrinks back. The bar and panels are translucent with the compositor's blur behind them. A dock on the bottom edge keeps your pinned and running apps (with the unread counts and download progress they report) and the trash, and slides away until you need it.
 
-**3 · Tap <kbd>Super</kbd>** (on niri, <kbd>Super</kbd><kbd>Space</kbd>). Spotlight opens. It finds apps, files and commands, does maths, and has an emoji picker. <kbd>Super</kbd><kbd>V</kbd> opens the clipboard history, images included.
+**3 · Tap <kbd>Super</kbd>** (on niri and Umbriel, <kbd>Super</kbd><kbd>Space</kbd>). Spotlight opens. It finds apps, files and commands, does maths, and has an emoji picker. <kbd>Super</kbd><kbd>V</kbd> opens the clipboard history, images included.
 
 **4 · Open the panels.**
 - **Quick Settings:** volume, brightness, Wi-Fi, Bluetooth, Do Not Disturb, Caffeine, night light, and the connected network's live download and upload speed.
 - **Notification Centre** and **Dashboard:** notifications, the clock, a calendar (your country's public holidays in red) and the week's weather.
 - **Clock:** alarms, once or on the days you pick, and timers counting down in rings. When one goes off, a card at the top of the screen (or on the lock screen) snoozes or stops it. The bar, the desktop and the lock screen each have an Alarms & timers widget.
-- **Overview:** every workspace at a glance. On niri it's niri's own overview, with your wallpaper blurred behind the workspaces.
+- **Overview:** every workspace at a glance. On niri and Umbriel it's the compositor's own overview; niri's has your wallpaper blurred behind the workspaces.
 
 **5 · Change the wallpaper.** Ten wallpapers ship with the shell, eight of them drawn from Material 3 Expressive shapes (<kbd>Ctrl</kbd><kbd>Super</kbd><kbd>T</kbd>). Pick one or your own image and Matugen builds a new Material 3 palette from it, or seed the palette from an accent colour you choose. The whole desktop recolours: GTK, KDE, Alacritty and kitty, Hyprland's window borders and niri's focus ring.
 
@@ -173,15 +175,15 @@ From the moment the machine boots:
 
 **9 · Something feels slow.** <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd> opens the system monitor: CPU, memory, disks and processes, read straight from `/proc`.
 
-**10 · Grab part of the screen.** <kbd>Super</kbd><kbd>G</kbd> opens the screenshot tool, which captures a region, a window or the whole screen, with a delay. Shots are copied to the clipboard and can open in an editor. <kbd>Super</kbd><kbd>Shift</kbd><kbd>S</kbd> grabs a region straight away. <kbd>Super</kbd><kbd>Shift</kbd><kbd>X</kbd> copies the text in a region (OCR), and <kbd>Super</kbd><kbd>Shift</kbd><kbd>R</kbd> starts or stops a screen recording. Its Record tab records a region, a screen or (on Hyprland) a window as MP4, WebM, MKV or GIF, at the resolution, frame rate and quality you pick, with system sound or the microphone. On Hyprland, when an app asks to share your screen, the shell's own picker asks what it may see: a screen, a window or a region.
+**10 · Grab part of the screen.** <kbd>Super</kbd><kbd>G</kbd> opens the screenshot tool, which captures a region, a window or the whole screen, with a delay. Shots are copied to the clipboard and can open in an editor. <kbd>Super</kbd><kbd>Shift</kbd><kbd>S</kbd> grabs a region straight away. <kbd>Super</kbd><kbd>Shift</kbd><kbd>X</kbd> copies the text in a region (OCR), and <kbd>Super</kbd><kbd>Shift</kbd><kbd>R</kbd> starts or stops a screen recording. Its Record tab records a region, a screen or (on Hyprland and Umbriel) a window as MP4, WebM, MKV or GIF, at the resolution, frame rate and quality you pick, with system sound or the microphone. On Hyprland and Umbriel, when an app asks to share your screen, the shell's own picker asks what it may see: a screen, a window or (on Hyprland) a region.
 
 ## Keys worth learning
 
-The same keys on both compositors, except where the table says otherwise.
+The same keys on all three compositors, except where the table says otherwise.
 
 | | Open | | Do |
 | :--- | :--- | :--- | :--- |
-| <kbd>Super</kbd> tap | Spotlight (on niri, <kbd>Super</kbd><kbd>Space</kbd>) | <kbd>Super</kbd><kbd>Return</kbd> | Terminal |
+| <kbd>Super</kbd> tap | Spotlight (on niri and Umbriel, <kbd>Super</kbd><kbd>Space</kbd>) | <kbd>Super</kbd><kbd>Return</kbd> | Terminal |
 | <kbd>Super</kbd><kbd>Space</kbd> | App launcher (Hyprland) | <kbd>Super</kbd><kbd>E</kbd> | File manager |
 | <kbd>Super</kbd><kbd>N</kbd> | Quick Settings | <kbd>Super</kbd><kbd>B</kbd> | Browser |
 | <kbd>Super</kbd><kbd>A</kbd> | Notifications | <kbd>Super</kbd><kbd>V</kbd> | Clipboard history |
@@ -196,6 +198,7 @@ The same keys on both compositors, except where the table says otherwise.
 Keys for windows and workspaces:
 - **Hyprland:** the shell's own (<kbd>Super</kbd><kbd>1…0</kbd>, <kbd>Super</kbd><kbd>Q</kbd>, <kbd>Super</kbd><kbd>F</kbd>, ...), in [`keybinds.lua`](dotfiles/.config/hypr/material3ui/keybinds.lua). Change any of them in **Hyprland Settings → Keybinds**.
 - **niri:** niri's own, from your `config.kdl`: <kbd>Super</kbd><kbd>Q</kbd> closes, <kbd>Super</kbd><kbd>F</kbd> maximises a column, <kbd>Super</kbd><kbd>R</kbd> cycles its width, and the arrows and <kbd>Super</kbd><kbd>1…9</kbd> move around. The shell's keys, in [`material3ui.kdl`](dotfiles/.config/niri/material3ui.kdl), take over the few that clash (<kbd>Super</kbd><kbd>D</kbd>, <kbd>Super</kbd><kbd>T</kbd>, <kbd>Super</kbd><kbd>V</kbd>, <kbd>Super</kbd><kbd>L</kbd>…). Rebind any key in **Niri Settings → Keys**, or in `material3ui-user.kdl`, which is read last.
+- **Umbriel:** Umbriel's own, from your `config.toml`: <kbd>Super</kbd><kbd>Q</kbd> closes, <kbd>Super</kbd><kbd>F</kbd> goes full screen, <kbd>Super</kbd><kbd>R</kbd> cycles a column's width, <kbd>Super</kbd><kbd>T</kbd> floats a window, and the arrows and <kbd>Super</kbd><kbd>1…9</kbd> move around. The shell's keys are in [`material3ui.toml`](dotfiles/.config/umbriel/material3ui.toml). The installer takes out the stock keys that would hide them (<kbd>Super</kbd><kbd>Space</kbd>, <kbd>Super</kbd><kbd>Tab</kbd>, <kbd>Super</kbd><kbd>L</kbd>, <kbd>Super</kbd><kbd>Esc</kbd>…), and keeps any you changed. Rebind any key in **Umbriel Settings → Keys**.
 
 ## Make it yours
 
@@ -211,11 +214,11 @@ Most settings live in the built-in **Settings** app (<kbd>Super</kbd><kbd>I</kbd
 - **Hooks:** your own commands when things happen (the screen locks, the wallpaper changes, the battery runs low, a notification arrives, a screenshot is saved, an alarm goes off, updates arrive, the disk runs low: 46 events in all), each with a test run and its last result.
 - **Software & updates, Firmware, and About:** updates with automatic checks, repositories and mirrors, your devices' firmware, and this device with its compositor's logo.
 
-The mouse and touchpad, keyboard layouts and shortcuts, monitors, cursor and night light work on either compositor. On niri they're written to niri's config as you change them, and niri applies them at once.
+The mouse and touchpad, keyboard layouts and shortcuts, monitors, cursor and night light work on every compositor. On niri they're written to niri's config as you change them, and niri applies them at once. On Umbriel, Settings sends you to Umbriel Settings for the ones Umbriel owns (the touchpad, mouse, keyboard and monitors).
 
 ### The compositor's own settings app
 
-Next to Settings sits an app for the compositor itself: **Hyprland Settings** in a Hyprland session, **Niri Settings** in a niri one. Open it from the launcher, the card at the top of Settings' sidebar, the dock (one pin that follows the session), or `material3ui msg hyprsettings`. Changes apply as you make them.
+Next to Settings sits an app for the compositor itself: **Hyprland Settings** in a Hyprland session, **Niri Settings** in a niri one, **Umbriel Settings** in an Umbriel one. Open it from the launcher, the card at the top of Settings' sidebar, the dock (one pin that follows the session), or `material3ui msg hyprsettings`. Changes apply as you make them.
 
 **Hyprland Settings** saves at once, undoes with <kbd>Ctrl</kbd><kbd>Z</kbd> and resets each option to what your config files had. It has:
 - **Every Hyprland option** (all of them, read from the running Hyprland, so new ones appear on their own): windows and borders, decoration, layouts, input devices, gestures, cursor, groups, behaviour, rendering and debug, with Hyprland's config errors on top.
@@ -239,19 +242,31 @@ Its changes live in `hyprland_custom.lua`, applied after the rest of your config
 
 Its changes live in `material3ui-settings.kdl`, which niri merges into your config field by field. → [Niri Settings](docs/NIRI.md#niri-settings)
 
+**Umbriel Settings** shows each option as it's in effect (your `config.toml`, what it includes, or Umbriel's default) and writes what you change into `config.toml` itself, keeping your comments and order. Your Umbriel checks each change before it's saved, so nothing it would refuse is written, and a changed option has a button back to the default. It has:
+- **Windows & layout:** the layout (scrolling, dwindle, master or floating), gaps, the scrolling strip's centring, and the master window's place and width.
+- **Borders & effects:** borders, corners, Umbriel's title bars, blur and shadows.
+- **Animations:** each of Umbriel's animations on or off, with its style.
+- **Effects:** Noctalia's [community shaders](https://github.com/noctalia-dev/community-umbriel-shaders) for window borders, windows, the whole screen, the pointer and animations, with their previews, and families that set several at once. A pick is downloaded, checked against the collection's hashes and turned on; one your Umbriel can't compile is turned off again.
+- **Monitors:** resolution, scale, rotation and variable refresh rate. A new resolution, scale or rotation goes back by itself unless you keep it.
+- **Input devices:** keyboard layouts and repeat, the touchpad, mouse and pointer.
+- **Behaviour, keys, window rules and startup apps.**
+- **All options:** every option your Umbriel has, made from Umbriel's own description of them, with a search. Options a newer Umbriel adds also join the page for their section by themselves, marked new.
+
+→ [Umbriel Settings](docs/UMBRIEL.md#umbriel-settings)
+
 ### Which file to edit
 
 For everything else, here is where to go. Updates never overwrite the files marked ✎.
 
-| I want to... | On Hyprland | On niri |
-| :--- | :--- | :--- |
-| Use a different terminal, browser or file manager | ✎ `~/.config/hypr/material3ui/apps.lua` | **Niri Settings → Keys** and **Environment**, or re-run the installer with `--terminal` and friends |
-| Remap, disable or add keys | **Hyprland Settings → Keybinds** (saved to ✎ `keybinds_custom.lua`) | **Niri Settings → Keys**, or ✎ `~/.config/niri/material3ui-user.kdl` |
-| Change how windows look, move and behave | **Hyprland Settings** (saved to `hyprland_custom.lua`) | **Niri Settings** (saved to `material3ui-settings.kdl`) |
-| Write my own config by hand | ✎ `~/.config/hypr/material3ui/user.lua` | ✎ your `~/.config/niri/config.kdl`, or ✎ `material3ui-user.kdl` to win over the shell's |
-| Understand the setup | [docs/HYPRLAND.md](docs/HYPRLAND.md) | [docs/NIRI.md](docs/NIRI.md) |
+| I want to... | On Hyprland | On niri | On Umbriel |
+| :--- | :--- | :--- | :--- |
+| Use a different terminal, browser or file manager | ✎ `~/.config/hypr/material3ui/apps.lua` | **Niri Settings → Keys** and **Environment**, or re-run the installer with `--terminal` and friends | **Umbriel Settings → Keys**, or re-run the installer with `--terminal` and friends |
+| Remap, disable or add keys | **Hyprland Settings → Keybinds** (saved to ✎ `keybinds_custom.lua`) | **Niri Settings → Keys**, or ✎ `~/.config/niri/material3ui-user.kdl` | **Umbriel Settings → Keys** (saved to ✎ `config.toml`) |
+| Change how windows look, move and behave | **Hyprland Settings** (saved to `hyprland_custom.lua`) | **Niri Settings** (saved to `material3ui-settings.kdl`) | **Umbriel Settings** (saved to ✎ `config.toml`) |
+| Write my own config by hand | ✎ `~/.config/hypr/material3ui/user.lua` | ✎ your `~/.config/niri/config.kdl`, or ✎ `material3ui-user.kdl` to win over the shell's | ✎ your `~/.config/umbriel/config.toml`, which wins over the shell's `material3ui.toml` |
+| Understand the setup | [docs/HYPRLAND.md](docs/HYPRLAND.md) | [docs/NIRI.md](docs/NIRI.md) | [docs/UMBRIEL.md](docs/UMBRIEL.md) |
 
-And on either compositor:
+And on any of them:
 
 | I want to... | Go to |
 | :--- | :--- |
@@ -265,12 +280,12 @@ And on either compositor:
 
 ### Drive it from the terminal
 
-Every panel and action is a command on the shell's IPC socket, sent with `material3ui msg`, the same on Hyprland and niri:
+Every panel and action is a command on the shell's IPC socket, sent with `material3ui msg`, the same on Hyprland, niri and Umbriel:
 
 ```bash
 material3ui msg popup dashboard              # toggle a panel
 material3ui msg settings dock                # open Settings on a page
-material3ui msg hyprsettings                 # Hyprland Settings, or Niri Settings on niri
+material3ui msg hyprsettings                 # the compositor's settings app (Hyprland, Niri or Umbriel Settings)
 material3ui msg wallpaper set ~/sunset.jpg   # apply a wallpaper; "next" cycles
 material3ui msg screenshot region            # or window, screen, ocr
 material3ui msg volume set 40
@@ -287,8 +302,8 @@ A desktop shell touches a lot of your system, so the installer and updater are b
 - **Nothing is overwritten silently.** Every replaced file is copied to `~/.config/material3ui/backups/<timestamp>/` first.
 - **Everything is logged** to `~/.cache/material3ui/install-*.log`.
 - **You review before it runs.** It lists missing packages (found with `pacman -T`) and every file it will write, and waits for your confirmation.
-- **Your compositor config stays yours.** On Hyprland, `inject` adds three lines to your `hyprland.lua`. On niri, the installer adds one `include` line to your `config.kdl` and warns you if it starts something the shell replaces (a bar, a notification daemon, a wallpaper tool). Each config is checked with the compositor (`Hyprland --verify-config`, `niri validate`) after it's written.
-- **Updates keep your changes.** `./update.sh` rebuilds the shell and preserves `apps.lua`, `user.lua`, your keybind edits, your niri `config.kdl` and `material3ui-user.kdl`, and your colours, and remembers how you set up Hyprland and niri.
+- **Your compositor config stays yours.** On Hyprland, `inject` adds three lines to your `hyprland.lua`. On niri, the installer adds one `include` line to your `config.kdl` and warns you if it starts something the shell replaces (a bar, a notification daemon, a wallpaper tool). On Umbriel, it includes `material3ui.toml` from your `config.toml` and starts the shell, changing nothing else in the file, and warns you about another shell your config starts. Each config is checked with the compositor (`Hyprland --verify-config`, `niri validate`, `umbriel config validate`) after it's written.
+- **Updates keep your changes.** `./update.sh` rebuilds the shell and preserves `apps.lua`, `user.lua`, your keybind edits, your niri `config.kdl` and `material3ui-user.kdl`, your Umbriel `config.toml`, and your colours, and remembers how you set up each compositor.
 - **Upgrades stay interactive.** Package installs and upgrades run in your own terminal, where you can see and answer every pacman or sudo prompt.
 - **The login screen is optional** and installs separately. If its step fails, the rest of the install carries on.
 
@@ -299,7 +314,7 @@ flowchart LR
     W[Wallpaper] --> M[Matugen] --> P[Material 3 palette]
     P --> S[material3ui: C++ shell]
     P --> A[GTK · KDE · terminals · window borders]
-    S <-- IPC --> H[Hyprland or niri]
+    S <-- IPC --> H[Hyprland, niri or Umbriel]
     S -- auto sync --> G[material3ui greeter on greetd]
     S <-- IPC --> C[material3ui msg · key binds]
     S --- X[Wayland · D-Bus · PipeWire · PAM]
@@ -319,9 +334,9 @@ material3-android-shell/
 │   │   ├── wayland/            outputs, input, layer and lock surfaces, app windows
 │   │   ├── render/             OpenGL ES drawing, text (Pango) and pictures (icons, SVG, photos)
 │   │   ├── ui/                 the widget toolkit: layout, labels, buttons, sliders, text fields, theme
-│   │   ├── services/           Hyprland and niri, audio, network, Bluetooth, power, notifications,
+│   │   ├── services/           Hyprland, niri and Umbriel, audio, network, Bluetooth, power, notifications,
 │   │   │                       packages, weather, calendar, time zones and the rest
-│   │   ├── shell/              the bar, dock, panels, lock screen, Settings, Hyprland and Niri Settings
+│   │   ├── shell/              the bar, dock, panels, lock screen, Settings, Hyprland, Niri and Umbriel Settings
 │   │   ├── greeter/            `material3ui greeter`, the login screen greetd runs
 │   │   ├── dbus/  ipc/         sd-bus on the event loop; the IPC socket and `material3ui msg`
 │   │   ├── polkit/             the polkit agent
@@ -335,13 +350,14 @@ material3-android-shell/
 ├── dotfiles/
 │   ├── .config/hypr/           the modular Hyprland config: hyprland.lua and material3ui/*.lua
 │   ├── .config/niri/           material3ui.kdl, the shell's part of a niri config
+│   ├── .config/umbriel/        material3ui.toml, the shell's part of an Umbriel config
 │   ├── .config/matugen/        colour templates: GTK, KDE, terminals, editors, Hyprland and more
 │   ├── .config/alacritty/      the terminal, recoloured with the wallpaper
 │   └── .local/share/material3ui/scripts/   the theme hooks Matugen runs
 ├── greeter/                    the login screen's sessions (on Hyprland or niri) and material3ui-greeter
 ├── packaging/                  PKGBUILDs for material3ui and material3ui-greeter, and build-pkg.sh
 ├── data/dependencies.json      every package the installer can install, by group (list: docs/DEPENDENCIES.md)
-├── docs/                       the guides: install, Hyprland, niri, the login screen, IPC, packages, migration
+├── docs/                       the guides: install, Hyprland, niri, Umbriel, the login screen, IPC, packages, migration
 ├── scripts/                    generators for the emoji list, the logo, the wallpapers and the world map
 ├── extras/                     optional configs: kitty, fish, hypridle and hyprlock, a Ryzen power-mode service
 └── .github/workflows/          builds both packages for every release
@@ -362,27 +378,27 @@ Animations draw at your screen's refresh rate only while they run. Endless ones,
 ## FAQ
 
 <details>
-<summary><b>Should I pick Hyprland or niri?</b></summary>
+<summary><b>Should I pick Hyprland, niri or Umbriel?</b></summary>
 
-Pick the way you like to work. Hyprland tiles windows into the screen (or scrolls them, in its scrolling layout), has an option for nearly everything, and is the shell's most complete home: minimising, recording a single window, the shell's own screen-sharing picker and the magnifier are Hyprland-only. niri lays windows out in columns you scroll through, and the rest of the shell is the same there. Not sure? Install both (`--compositor both`) and choose at the login screen. → [Hyprland or niri](#hyprland-or-niri)
+Pick the way you like to work. Hyprland tiles windows into the screen (or scrolls them, in its scrolling layout), has an option for nearly everything, and is the shell's most complete home: the magnifier and colour filters are Hyprland-only, and its screen-sharing picker can share a region. niri lays windows out in columns you scroll through. Umbriel, the newest, lets each workspace have its own layout (scrolling, dwindle, master or floating), and runs GLSL effects on borders, windows, the screen and the pointer. The rest of the shell is the same on all three. Not sure? Install several (`--compositor all`) and choose at the login screen. → [Hyprland, niri or Umbriel](#hyprland-niri-or-umbriel)
 </details>
 
 <details>
-<summary><b>Will it wreck my existing Hyprland or niri config?</b></summary>
+<summary><b>Will it wreck my existing Hyprland, niri or Umbriel config?</b></summary>
 
-No. On Hyprland, pick `--hypr inject` and the installer adds three `require` lines to your existing `hyprland.lua` (backed up first). Pick `skip` and it doesn't touch Hyprland at all. With `full`, your old config is backed up before anything is replaced. On niri, your `config.kdl` gets one `include "material3ui.kdl"` line at its end (backed up first), or nothing with `--niri skip`. Everything the shell sets for niri lives in its own files beside your config.
+No. On Hyprland, pick `--hypr inject` and the installer adds three `require` lines to your existing `hyprland.lua` (backed up first). Pick `skip` and it doesn't touch Hyprland at all. With `full`, your old config is backed up before anything is replaced. On niri, your `config.kdl` gets one `include "material3ui.kdl"` line at its end (backed up first), or nothing with `--niri skip`. Everything the shell sets for niri lives in its own files beside your config. On Umbriel, your `config.toml` (backed up first) gets the include and the shell in its startup apps, and loses only the stock keys that would hide the shell's, or nothing with `--umbriel skip`.
 </details>
 
 <details>
-<summary><b>I already use Material3UI on Hyprland. How do I add niri?</b></summary>
+<summary><b>I already use Material3UI on Hyprland. How do I add niri or Umbriel?</b></summary>
 
-Run `./install.sh --compositor both` once, then log out and choose niri at the login screen. Your Hyprland setup stays as it is. To do it by hand instead, see [Material3UI on niri](docs/NIRI.md#by-hand).
+Run the installer once with both, such as `./install.sh --compositor hyprland,umbriel` (or `both` for Hyprland and niri, `all` for the three), then log out and choose the new one at the login screen. Your Hyprland setup stays as it is. To do it by hand instead, see [Material3UI on niri](docs/NIRI.md#by-hand) or [on Umbriel](docs/UMBRIEL.md#by-hand).
 </details>
 
 <details>
 <summary><b>Does it work on Sway, river or another compositor?</b></summary>
 
-Not yet. The shell talks to Hyprland and niri over their own IPC for workspaces, windows and settings, and those two are what it supports.
+Not yet. The shell talks to Hyprland, niri and Umbriel over their own IPC for workspaces, windows and settings, and those three are what it supports.
 </details>
 
 <details>
@@ -394,7 +410,7 @@ Not officially. The installer, the update checker and package search are built o
 <details>
 <summary><b>How do I go back to what I had?</b></summary>
 
-Run `./install.sh --restore`, or copy the files from `~/.config/material3ui/backups/<timestamp>/` back into place: that folder mirrors the paths the installer replaced. If you used inject mode on Hyprland, remove the `require("material3ui.…")` lines and reload Hyprland. On niri, remove the `include "material3ui.kdl"` line from your `config.kdl`. To remove only the login screen, run `material3ui-greeter uninstall`.
+Run `./install.sh --restore`, or copy the files from `~/.config/material3ui/backups/<timestamp>/` back into place: that folder mirrors the paths the installer replaced. If you used inject mode on Hyprland, remove the `require("material3ui.…")` lines and reload Hyprland. On niri, remove the `include "material3ui.kdl"` line from your `config.kdl`. On Umbriel, take `material3ui.toml` out of `[include.optional]` and `material3ui` out of `general.autostart` in your `config.toml`. To remove only the login screen, run `material3ui-greeter uninstall`.
 </details>
 
 <details>
@@ -417,10 +433,11 @@ Yes: run `material3ui-greeter preview`.
 
 ## Credits
 
-Material3UI began as a fork of **[NAnDoroid-shell](https://github.com/na-ive/nandoroid-shell)** by [na-ive](https://github.com/na-ive), and is MIT-licensed with its authors' permission. Since the fork it has added its own installer, Hyprland and niri setups, login screen, polkit agent, package manager and logo, and in v4 it was rewritten as a native C++ shell. Its architecture follows [Noctalia](https://github.com/noctalia-dev/noctalia), though none of Noctalia's code is used. See [NOTICE](NOTICE) for what changed, and the [upstream changelog](docs/UPSTREAM_CHANGELOG.md) for NAnDoroid's history.
+Material3UI began as a fork of **[NAnDoroid-shell](https://github.com/na-ive/nandoroid-shell)** by [na-ive](https://github.com/na-ive), and is MIT-licensed with its authors' permission. Since the fork it has added its own installer, Hyprland, niri and Umbriel setups, login screen, polkit agent, package manager and logo, and in v4 it was rewritten as a native C++ shell. Its architecture follows [Noctalia](https://github.com/noctalia-dev/noctalia), though none of Noctalia's code is used. See [NOTICE](NOTICE) for what changed, and the [upstream changelog](docs/UPSTREAM_CHANGELOG.md) for NAnDoroid's history.
 
 It also stands on the work of:
-- [Hyprland](https://hypr.land) and [niri](https://github.com/YaLTeR/niri), the compositors it runs on. Their logos appear in the shell under their own licences (see [NOTICE](NOTICE)).
+- [Hyprland](https://hypr.land), [niri](https://github.com/YaLTeR/niri) and [Umbriel](https://github.com/noctalia-dev/umbriel), the compositors it runs on. Their logos appear in the shell, credited in [NOTICE](NOTICE).
+- Noctalia's [community Umbriel shaders](https://github.com/noctalia-dev/community-umbriel-shaders), downloaded in Umbriel Settings → Effects, each under its author's licence.
 - [Quickshell](https://quickshell.org) by outfoxxed: the framework v1–v3 were built on.
 - [end-4/dots-hyprland](https://github.com/end-4/dots-hyprland): architecture.
 - [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell): installer flow, config layout and system monitor design.
