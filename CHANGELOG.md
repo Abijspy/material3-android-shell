@@ -1,5 +1,9 @@
 # Changelog
 
+## v6.4.1 — 2026-11-07
+
+- **Effects in Umbriel Settings.** A new Effects page brings Noctalia's [community shaders](https://github.com/noctalia-dev/community-umbriel-shaders) for Umbriel: 156 effects for window borders, windows, the whole screen, the pointer and animations, each with its preview, author and description, and 11 matching families that turn several on at once. Pick one and it's downloaded, checked against the collection's published hashes and turned on in your `config.toml`. Your Umbriel checks the change first, as with every setting. If Umbriel can't compile a shader, the page turns it off again and tells you. **On now** lists what's on, each with Turn off, and removing an effect deletes its files.
+
 ## v6.4 — 2026-11-07
 
 - **Umbriel support.** The shell now runs on [Umbriel](https://github.com/noctalia-dev/umbriel), the Noctalia project's compositor, as well as Hyprland and niri, and finds out by itself which one it's on. The bar shows each monitor's workspaces, and the dock, panels, notifications, Spotlight, the window switcher, keyboard layouts, blur, window screenshots, Umbriel's overview and the lock screen all work. Floating windows can be minimised and come back from the dock. Screen sharing uses the shell's own picker. The login screen and Settings → About show Umbriel's logo. Umbriel is young and changing fast; see docs/UMBRIEL.md.
