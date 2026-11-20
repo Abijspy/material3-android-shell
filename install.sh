@@ -300,6 +300,14 @@ stop_spin() {
     SPIN_PID=""
     printf '\r\e[2K'
 }
+# What went wrong, from this step's part of the log: the errors themselves
+# (a parallel build prints them well above its last lines), else its end
+show_failure() {
+    local part errs
+    part="$(awk '/^── /{buf=""} {buf=buf $0 "\n"} END{printf "%s", buf}' "$LOG")"
+    errs="$(grep -E -A6 '^FAILED:|error:|Killed signal|No space left|Out of memory|cannot allocate' <<<"$part" | head -n 40 || true)"
+    if [[ -n "$errs" ]]; then printf '%s\n' "$errs"; else tail -n 15 <<<"$part"; fi | sed "s/^/    /"
+}
 task() { # [W=weight] task "Label" command...
     local label="$1" start=$SECONDS rc=0 weight="${W:-1}"
     shift
@@ -314,7 +322,7 @@ task() { # [W=weight] task "Label" command...
     stop_spin
     if [[ $rc -ne 0 ]]; then
         printf '  %s✗%s %s\n' "$E" "$R" "$label"
-        tail -n 15 "$LOG" | sed "s/^/    /"
+        show_failure
         fail "$label failed"
     fi
     progress_add "$weight"
