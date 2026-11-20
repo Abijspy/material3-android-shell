@@ -417,7 +417,26 @@ umbriel_version() {
         v="$(installed_version "$p")"
         [[ -z "$v" ]] || { printf '%s' "$v"; return; }
     done
-    command -v umbriel >/dev/null && umbriel --version 2>/dev/null | awk '{print $2}'
+    # Nothing printed and still success when there's no Umbriel: the caller
+    # runs under set -e
+    if command -v umbriel >/dev/null; then umbriel --version 2>/dev/null | awk '{print $2}' || true; fi
+}
+# yay, made to work: libalpm moves on, and a stale binary won't start
+ensure_yay() {
+    yay --version >/dev/null 2>&1 && return 0
+    local tmp
+    tmp="$(mktemp -d)"
+    sudo pacman -S --needed --noconfirm base-devel git
+    git clone -q --depth 1 https://aur.archlinux.org/yay-bin.git "$tmp/yay-bin"
+    (cd "$tmp/yay-bin" && makepkg -si --noconfirm) || true
+    if ! yay --version >/dev/null 2>&1; then
+        # The prebuilt binary is tied to one libalpm: build from source
+        if pacman -Qq yay-bin >/dev/null 2>&1; then sudo pacman -Rdd --noconfirm yay-bin; fi
+        git clone -q --depth 1 https://aur.archlinux.org/yay.git "$tmp/yay"
+        (cd "$tmp/yay" && makepkg -si --noconfirm)
+    fi
+    rm -rf "$tmp"
+    yay --version >/dev/null 2>&1
 }
 
 # ── Backups and the restore script ───────────────────────────────────────────
