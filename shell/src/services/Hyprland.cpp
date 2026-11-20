@@ -99,7 +99,7 @@ std::optional<nlohmann::json> Hyprland::requestJson(const std::string& command) 
     const auto reply = request("j/" + command);
     if (reply.empty()) return std::nullopt;
     try {
-        return nlohmann::json::parse(reply);
+        return std::optional<nlohmann::json>(std::in_place, nlohmann::json::parse(reply));
     } catch (const std::exception&) {
         return std::nullopt;
     }

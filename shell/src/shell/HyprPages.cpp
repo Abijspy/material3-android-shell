@@ -245,15 +245,15 @@ std::optional<nlohmann::json> parse(const Option& o, const std::string& text) {
     for (std::string w; in >> w;) words.push_back(w);
     try {
         switch (o.kind) {
-        case Kind::Text: return nlohmann::json(text);
-        case Kind::Int: return nlohmann::json(std::stoll(text));
-        case Kind::Float: return nlohmann::json(std::stod(text));
+        case Kind::Text: return std::optional<nlohmann::json>(std::in_place, nlohmann::json(text));
+        case Kind::Int: return std::optional<nlohmann::json>(std::in_place, nlohmann::json(std::stoll(text)));
+        case Kind::Float: return std::optional<nlohmann::json>(std::in_place, nlohmann::json(std::stod(text)));
         case Kind::Color: {
             if (words.size() != 1) return std::nullopt;
             std::string w = words[0];
             // Also take #RRGGBB / #RRGGBBAA, as colour pickers write them
             if (w.starts_with('#')) w = "rgba(" + w.substr(1) + (w.size() == 7 ? "ff" : "") + ")";
-            return nlohmann::json(w);
+            return std::optional<nlohmann::json>(std::in_place, nlohmann::json(w));
         }
         case Kind::Gradient: {
             nlohmann::json g{{"colors", nlohmann::json::array()}, {"angle", 0}};
@@ -262,11 +262,11 @@ std::optional<nlohmann::json> parse(const Option& o, const std::string& text) {
                 else g["colors"].push_back(w.starts_with('#') ? "rgba(" + w.substr(1) + (w.size() == 7 ? "ff" : "") + ")" : w);
             }
             if (g["colors"].empty()) return std::nullopt;
-            return g;
+            return std::optional<nlohmann::json>(std::in_place, g);
         }
         case Kind::Vec2:
             if (words.size() != 2) return std::nullopt;
-            return nlohmann::json{std::stod(words[0]), std::stod(words[1])};
+            return std::optional<nlohmann::json>(std::in_place, nlohmann::json{std::stod(words[0]), std::stod(words[1])});
         case Kind::Gaps: {
             if (words.empty() || words.size() > 4) return std::nullopt;
             std::vector<int> n;
@@ -275,7 +275,7 @@ std::optional<nlohmann::json> parse(const Option& o, const std::string& text) {
             if (n.size() == 1) n = {n[0], n[0], n[0], n[0]};
             else if (n.size() == 2) n = {n[0], n[1], n[0], n[1]};
             else if (n.size() == 3) n = {n[0], n[1], n[2], n[1]};
-            return nlohmann::json{n[0], n[1], n[2], n[3]};
+            return std::optional<nlohmann::json>(std::in_place, nlohmann::json{n[0], n[1], n[2], n[3]});
         }
         default: return std::nullopt;
         }

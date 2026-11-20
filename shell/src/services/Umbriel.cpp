@@ -100,7 +100,7 @@ std::optional<nlohmann::json> Umbriel::request(const nlohmann::json& req) const 
     close(fd);
     try {
         const auto j = nlohmann::json::parse(reply.substr(0, reply.find('\n')));
-        if (j.contains("ok")) return j["ok"];
+        if (j.contains("ok")) return std::optional<nlohmann::json>(std::in_place, j["ok"]);
         if (j.contains("err")) log::warn("umbriel: {} → {}", req.dump(), j["err"].dump());
     } catch (const std::exception&) {
     }

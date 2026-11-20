@@ -96,7 +96,7 @@ std::optional<nlohmann::json> Niri::request(const nlohmann::json& req) const {
     close(fd);
     try {
         const auto j = nlohmann::json::parse(reply.substr(0, reply.find('\n')));
-        if (j.contains("Ok")) return j["Ok"];
+        if (j.contains("Ok")) return std::optional<nlohmann::json>(std::in_place, j["Ok"]);
         if (j.contains("Err")) log::warn("niri: {} → {}", req.dump(), j["Err"].dump());
     } catch (const std::exception&) {
     }
