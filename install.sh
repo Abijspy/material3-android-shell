@@ -255,6 +255,12 @@ choose() { # choose VAR "Title" "value:description"... (the first is the default
 PROG_DONE=0 PROG_TOTAL=0
 # Braille cells with one dot in each column: [left row × 4 + right row]
 readonly WAVE_CELLS=(⠉ ⠑ ⠡ ⢁ ⠊ ⠒ ⠢ ⢂ ⠌ ⠔ ⠤ ⢄ ⡈ ⡐ ⡠ ⣀)
+# The Linux console's fonts have no Braille or heavy lines: plain ASCII there
+if [[ "${TERM:-}" == linux ]]; then
+    BAR_DONE="=" BAR_LEFT="-" BAR_CELLS=("~" "-")
+else
+    BAR_DONE="━" BAR_LEFT="─" BAR_CELLS=()
+fi
 readonly WAVE_ROWS=(1 0 0 1 2 3 3 2) # a sine, top row 0, sampled twice a cell
 bar() { # bar FRAME WEIGHT → the bar, coloured, BAR_W cells wide
     local w=${BAR_W:-24} total=$((PROG_TOTAL > 0 ? PROG_TOTAL : 1)) done run x a b out=""
@@ -264,13 +270,14 @@ bar() { # bar FRAME WEIGHT → the bar, coloured, BAR_W cells wide
     (( run > 0 || $2 == 0 )) || run=1
     (( done + run <= w )) || run=$((w - done))
     out+="$P"
-    for ((x = 0; x < done; x++)); do out+="━"; done
+    for ((x = 0; x < done; x++)); do out+="$BAR_DONE"; done
     for ((x = 0; x < run; x++)); do
+        if [[ ${#BAR_CELLS[@]} -gt 0 ]]; then out+="${BAR_CELLS[(x + $1) % 2]}"; continue; fi
         a=$(((2 * x - $1) % 8 + 8)) b=$(((2 * x + 1 - $1) % 8 + 8))
         out+="${WAVE_CELLS[WAVE_ROWS[a % 8] * 4 + WAVE_ROWS[b % 8]]}"
     done
     out+="$R$D"
-    for ((x = done + run; x < w; x++)); do out+="─"; done
+    for ((x = done + run; x < w; x++)); do out+="$BAR_LEFT"; done
     printf '%s%s' "$out" "$R"
 }
 percent() { local t=$((PROG_TOTAL > 0 ? PROG_TOTAL : 1)); echo $((PROG_DONE * 100 / t > 100 ? 100 : PROG_DONE * 100 / t)); }
@@ -733,7 +740,11 @@ fi
 
 # ── 3. The plan ──────────────────────────────────────────────────────────────
 section "The plan"
-if ! command -v jq >/dev/null; then task "jq, to read the package list" sudo pacman -S --needed --noconfirm jq; fi
+if ! command -v jq >/dev/null; then
+    # Password first, in the open: a task's spinner would draw over sudo's prompt
+    [[ "$DRY" == 1 ]] || sudo -v || fail "sudo is needed for packages and for installing the shell"
+    task "jq, to read the package list" sudo pacman -S --needed --noconfirm jq
+fi
 # What each group still needs: pacman -T prints what isn't satisfied
 # locally (it honours provides). A package counts in its first group
 declare -A MISS=() TOTAL=()
