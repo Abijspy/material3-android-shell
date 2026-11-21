@@ -64,9 +64,6 @@ Niri& Niri::get() {
 Niri::Niri() {
     const char* path = std::getenv("NIRI_SOCKET");
     if (!path || !*path) return;
-    // An Umbriel started from a niri session passes niri's variable on:
-    // Umbriel's session, then, and nothing of niri to touch
-    if (Compositor::session() != "niri") return;
     m_path = path;
     // The state now, for whoever asks before the stream's first lines
     if (auto ws = request("Workspaces")) m_model.setWorkspaces(ws->value("Workspaces", nlohmann::json::array()));

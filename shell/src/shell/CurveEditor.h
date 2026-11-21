@@ -8,8 +8,8 @@
 
 namespace m3::shell {
 
-// A cubic bezier from (0,0) to (1,1): the two control points, as Hyprland's
-// curves (and CSS's cubic-bezier) take them
+// A cubic bezier from (0,0) to (1,1): the two control points, as niri's
+// cubic-bezier curves (and CSS's) take them
 using Bezier = std::array<double, 4>; // x0 y0 x1 y1
 
 // y at time x (0–1) along the curve, solving x(t) = x first

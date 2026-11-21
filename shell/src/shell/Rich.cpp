@@ -502,7 +502,7 @@ void overview(Flex* card0, Popup& popup) {
     auto& h = Compositor::get();
     // Each window drawn where it is: the compositor has to say where
     if (!h.can(Compositor::Feature::WindowGeometry)) {
-        caption(card0, h.available() ? "The overview isn't available on " + h.name() : std::string("The overview needs Hyprland"));
+        caption(card0, h.available() ? "The overview isn't available on " + h.name() : std::string("The overview needs niri"));
         return;
     }
     const auto clients = h.windows();

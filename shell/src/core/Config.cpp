@@ -70,7 +70,7 @@ std::string Config::importFrom(const std::string& path) {
     const bool ours = std::ranges::any_of(data.items(), [](const auto& kv) {
         static const std::vector<std::string> known = {"bar", "statusBar", "dock", "appearance", "background", "lockscreen",
                                                        "notifications", "quickSettings", "launcher", "desktop", "weather",
-                                                       "clock", "idle", "screenshot", "quickshare", "calendar", "hyprland"};
+                                                       "clock", "idle", "screenshot", "quickshare", "calendar", "niri"};
         return std::ranges::find(known, kv.key()) != known.end();
     });
     if (!ours) return "That file doesn't hold Material3UI settings";

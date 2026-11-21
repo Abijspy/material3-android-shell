@@ -229,7 +229,7 @@ for tpl_name, entry in config.get("templates", {}).items():
     target = Path(entry["output_path"]).expanduser()
     if not source.is_file():
         continue
-    # wallpaper.txt / hyprlock image templates just need the image path
+    # wallpaper.txt-style templates just need the image path
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(render(source.read_text()))
     rendered += 1

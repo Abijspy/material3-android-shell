@@ -13,10 +13,9 @@ namespace m3 {
 // The compositor the shell runs on, as one model whichever it is: its
 // outputs, workspaces and windows, kept current from its events, and what
 // the shell asks of it (switch workspace, focus or close a window, screens
-// off, log out). Hyprland's backend (services/Hyprland, which also keeps
-// what only Hyprland has: its options, binds and layer rules), niri's
-// (services/Niri) or Umbriel's (services/Umbriel), as the session says.
-// What not every compositor can do is asked of can() first.
+// off, log out). niri's backend (services/Niri) is the one there is; the
+// interface keeps the rest of the shell apart from its IPC. What niri
+// can't do is asked of can() first.
 class Compositor {
 public:
     enum class Feature {
@@ -36,12 +35,12 @@ public:
         float x = 0, y = 0, w = 0, h = 0, scale = 1; // on the desktop, logical
     };
     struct Workspace {
-        int number = 0; // as shown and switched to: Hyprland's id, niri's place on its output
+        int number = 0; // as shown and switched to: its place on its output
         std::string name, output;
         int windows = 0;
     };
     struct Window {
-        std::string id; // Hyprland's address, niri's id
+        std::string id; // niri's id
         std::string appId, title, output;
         int workspace = 0; // its number (0 while minimised)
         std::string workspaceName;
@@ -52,14 +51,11 @@ public:
 
     // The one the shell runs on (a stand-in with nothing in it, outside any)
     static Compositor& get();
-    // Which that is, from the session's variables: "umbriel", "niri" or
-    // "hyprland" ("" outside all three). One started inside another passes
-    // the outer one's variable on: the one whose socket is this display's
-    // wins. The other backends stand down when it isn't theirs
+    // "niri" in a niri session ("" outside one)
     static std::string session();
     virtual ~Compositor() = default;
 
-    virtual std::string name() const = 0; // "Hyprland"
+    virtual std::string name() const = 0; // "niri"
     virtual bool available() const = 0;
     virtual std::string version() const = 0;
     virtual bool can(Feature feature) const = 0;
@@ -67,8 +63,7 @@ public:
     // Kept current
     virtual const std::vector<Output>& outputs() const = 0;
     virtual const std::vector<Workspace>& workspaces() const = 0;
-    // The ones a bar on `output` shows: every one where the numbers are the
-    // desktop's (Hyprland), that output's own where each has its own (niri)
+    // The ones a bar on `output` shows: that output's own
     virtual std::vector<Workspace> workspacesOn(const std::string& output) const = 0;
     virtual const std::string& activeTitle() const = 0;
     virtual const std::string& activeAppId() const = 0;
@@ -82,7 +77,7 @@ public:
     virtual std::optional<std::pair<float, float>> cursorPosition() const = 0;
 
     // Asked of it
-    // On `output` where each has its own numbers (niri); else the focused one
+    // On `output` (else the focused one)
     virtual void focusWorkspace(int number, const std::string& output = {}) = 0;
     virtual void focusWorkspaceRelative(int delta) = 0; // on the focused output, wrapping round
     virtual void focusWindow(const std::string& id) = 0; // a minimised one comes back
@@ -100,8 +95,8 @@ public:
     // With WindowCapture: the focused window to `path`; `done` with success
     virtual void captureWindow(const std::string& /*path*/, std::function<void(bool)> done) { done(false); }
 
-    // Keyboard layouts as the compositor names them ("English (US)"), where
-    // it says (niri, Umbriel), and the one in use (-1: none known)
+    // Keyboard layouts as the compositor names them ("English (US)"), and
+    // the one in use (-1: none known)
     virtual std::vector<std::string> keyboardLayouts() const { return {}; }
     virtual int keyboardLayout() const { return -1; }
     virtual void nextKeyboardLayout() {}

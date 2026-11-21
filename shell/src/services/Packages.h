@@ -64,8 +64,8 @@ public:
     void installAurHelper();
 
     // What an update left waiting for a restart: the computer (a new kernel,
-    // systemd, glibc, drivers, firmware), the session (Hyprland's own
-    // libraries) or just the shell (its program was replaced). Read from the
+    // systemd, glibc, drivers, firmware), the session (niri and
+    // Xwayland) or just the shell (its program was replaced). Read from the
     // system, so it holds whatever ran the update.
     struct Restart {
         bool system = false, session = false, shell = false;

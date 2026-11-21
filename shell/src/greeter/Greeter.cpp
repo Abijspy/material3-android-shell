@@ -55,12 +55,9 @@ std::vector<shell::LockView::Choice> sessions() {
             if (!hidden && !exec.empty()) out.push_back({exec, name.empty() ? e.path().stem().string() : name});
         }
     }
-    // Hyprland, niri, then Umbriel, first: the compositors this shell runs on
+    // niri first: the compositor this shell runs on
     auto rank = [](const shell::LockView::Choice& c) {
-        if (c.label.find("Hyprland") != std::string::npos) return 0;
-        if (c.label.find("Niri") != std::string::npos || c.label.find("niri") != std::string::npos) return 1;
-        if (c.label.find("Umbriel") != std::string::npos || c.label.find("umbriel") != std::string::npos) return 2;
-        return 3;
+        return c.label.find("Niri") != std::string::npos || c.label.find("niri") != std::string::npos ? 0 : 1;
     };
     std::ranges::stable_sort(out, [&](const auto& a, const auto& b) { return rank(a) < rank(b); });
     return out;

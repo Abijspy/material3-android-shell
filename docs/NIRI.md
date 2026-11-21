@@ -1,15 +1,16 @@
 # Material3UI on niri
 
-From 6.0, the shell also runs on [niri](https://github.com/YaLTeR/niri) 26.04 or newer, the scrollable-tiling compositor, as well as on Hyprland. It finds out which one it's on by itself: in a niri session it talks to niri, and in a Hyprland session to Hyprland.
+The shell runs on [niri](https://github.com/niri-wm/niri) 26.04 or newer, the scrollable-tiling compositor. From 6.0 it ran on niri as well as Hyprland (and from 6.4 Umbriel); from 7.0 niri is the only compositor it runs on.
 
-The whole desktop works on niri: the bar, the dock, the panels, notifications, the lock screen, the launcher and the rest, with niri's blur and overview. So do the settings that change niri itself: the touchpad and mouse, keyboard layouts, monitors, the cursor and night light in Settings, and in [Niri Settings](#niri-settings) how windows look and behave, your keys, window rules, startup apps and variables (see [What works](#what-works)). The installer sets niri up, and the login screen runs on it when Hyprland isn't installed.
+The whole desktop works on niri: the bar, the dock, the panels, notifications, the lock screen, the launcher and the rest, with niri's blur and overview. So do the settings that change niri itself: the touchpad and mouse, keyboard layouts, monitors, the cursor and night light in Settings, and in [Niri Settings](#niri-settings) how windows look and behave, your keys, window rules, startup apps and variables (see [What works](#what-works)). The installer sets niri up, and the login screen runs on it.
 
 ## Setting it up
 
-Run the installer and pick **niri** (or **both**, to choose at each login) when it asks for the compositor:
+Run the installer; its **niri** page asks how to set up your config:
 
 ```bash
-./install.sh --compositor niri      # or: --compositor both
+./install.sh                 # the full-screen installer
+./install.sh --niri include  # or the same, unattended with --yes
 ```
 
 It installs niri and its companions (xwayland-satellite runs X11 apps, and the GNOME portal handles screen sharing), then sets up `~/.config/niri`:
@@ -23,7 +24,7 @@ The old files are backed up, and `./install.sh --restore` puts them back. Pick `
 
 ### By hand
 
-With Material3UI already installed (on Hyprland, say), you can add niri without the installer:
+With the shell installed (`material3ui` from the package), you can set niri up without the installer:
 
 1. Install niri and its companions:
 
@@ -47,7 +48,7 @@ With Material3UI already installed (on Hyprland, say), you can add niri without 
 
 ## Keys
 
-`material3ui.kdl` binds <kbd>Super</kbd><kbd>Space</kbd> for Spotlight (niri can't bind <kbd>Super</kbd> on its own), <kbd>Super</kbd><kbd>N</kbd> for Quick Settings, <kbd>Super</kbd><kbd>A</kbd> for notifications, <kbd>Super</kbd><kbd>D</kbd> for the dashboard, <kbd>Super</kbd><kbd>I</kbd> for Settings, <kbd>Super</kbd><kbd>Tab</kbd> to switch windows, <kbd>Super</kbd><kbd>L</kbd> to lock, <kbd>Super</kbd><kbd>Return</kbd> (or <kbd>Super</kbd><kbd>T</kbd>) for your terminal, <kbd>Super</kbd><kbd>E</kbd> for files and <kbd>Super</kbd><kbd>B</kbd> for the browser, and the rest as on Hyprland. That takes over a few of niri's own default keys (<kbd>Super</kbd><kbd>D</kbd>, <kbd>Super</kbd><kbd>T</kbd>, <kbd>Super</kbd><kbd>V</kbd>…). To keep one, bind it again in `material3ui-user.kdl`, or add your own shortcuts in Settings → Keyboard.
+`material3ui.kdl` binds <kbd>Super</kbd><kbd>Space</kbd> for Spotlight (niri can't bind <kbd>Super</kbd> on its own), <kbd>Super</kbd><kbd>N</kbd> for Quick Settings, <kbd>Super</kbd><kbd>A</kbd> for notifications, <kbd>Super</kbd><kbd>D</kbd> for the dashboard, <kbd>Super</kbd><kbd>I</kbd> for Settings, <kbd>Super</kbd><kbd>Tab</kbd> to switch windows, <kbd>Super</kbd><kbd>L</kbd> to lock, <kbd>Super</kbd><kbd>Return</kbd> (or <kbd>Super</kbd><kbd>T</kbd>) for your terminal, <kbd>Super</kbd><kbd>E</kbd> for files and <kbd>Super</kbd><kbd>B</kbd> for the browser, and the rest as the README lists. That takes over a few of niri's own default keys (<kbd>Super</kbd><kbd>D</kbd>, <kbd>Super</kbd><kbd>T</kbd>, <kbd>Super</kbd><kbd>V</kbd>…). To keep one, bind it again in `material3ui-user.kdl`, or add your own shortcuts in Settings → Keyboard.
 
 ## What works
 
@@ -61,7 +62,7 @@ With Material3UI already installed (on Hyprland, say), you can add niri without 
 - **The lock screen and idle:** locking, the screens going off when you're away, and lock before sleep.
 - **Logging out**, restarting and shutting down from the power menu.
 - **Digital Wellbeing:** screen time per app, app timers and Focus mode.
-- **The login screen**, from 6.0-beta-3: without Hyprland installed, it runs in a minimal niri session, with your keyboard layout, cursor and monitors synced from your niri config. With both installed it stays on Hyprland. → [Login screen](GREETER.md)
+- **The login screen:** it runs in a minimal niri session, with your keyboard layout, cursor and monitors synced from your niri config. → [Login screen](GREETER.md)
 
 ### Settings that change niri
 
@@ -78,7 +79,7 @@ If niri can't read the shell's settings (`material3ui.kdl` isn't included, or ni
 
 ### Niri Settings
 
-On niri, the window that is Hyprland Settings on Hyprland is **Niri Settings**: in the launcher, from the card at the top of Settings' sidebar, or with `material3ui msg nirisettings`. Its changes apply as you make them:
+niri's own settings are in **Niri Settings**: in the launcher, from the card at the top of Settings' sidebar, or with `material3ui msg nirisettings`. Its changes apply as you make them:
 
 - **Windows & layout:** gaps, centring the focused column (never, when it won't fit, always), centring a lone column, how wide new windows open, and space kept free at each edge.
 - **Borders & shadows:** the focus ring and the border (on or off, their widths, in the wallpaper's colours), shadows (softness, spread, drop), window corners, and niri's blur (from 6.0-rc-1): on or off, passes, smoothness, noise and saturation.
@@ -93,7 +94,7 @@ The pages for how windows look and behave start each option from what your `conf
 
 ### Blur
 
-niri 26.04 blurs what's behind a surface that asks for it. From 6.0-rc-1 the shell sets it up as Hyprland's looks:
+niri 26.04 blurs what's behind a surface that asks for it. From 6.0-rc-1 the shell sets it up like this:
 
 - **The bar, panels, dock, notifications and OSD** ask niri for blur behind them, and the shell's rules make it niri's regular blur, showing the windows behind them softened, rather than its default *xray* blur, which shows only the wallpaper.
 - **The shell's windows** (Settings, Niri Settings, the welcome tour) are rounded and blurred by a rule of the shell's.
@@ -117,9 +118,9 @@ These come from niri itself, not from something the shell has yet to do:
 The shell can run a second time, for testing, inside a niri started in a window of your current session:
 
 ```bash
-env -u HYPRLAND_INSTANCE_SIGNATURE niri -c ~/.config/niri/config.kdl &
+niri -c ~/.config/niri/config.kdl &
 # niri's log names its sockets: "listening on Wayland socket: wayland-2", "IPC listening on: …"
-env -u HYPRLAND_INSTANCE_SIGNATURE WAYLAND_DISPLAY=wayland-2 NIRI_SOCKET=/run/user/1000/niri.wayland-2.<pid>.sock \
+WAYLAND_DISPLAY=wayland-2 NIRI_SOCKET=/run/user/1000/niri.wayland-2.<pid>.sock \
     M3_INSTANCE=niri material3ui &
 M3_INSTANCE=niri material3ui msg workspaces
 ```

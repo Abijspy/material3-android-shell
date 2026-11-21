@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Settings → Status bar: three columns, dropdown add, select/group/delete. Run via
-#   M3_SERVICES=1 M3_FAKE_HYPR=1 M3_SCRIPT="bash tools/test-bareditor.sh" tools/dev.sh shot
+#   M3_SERVICES=1 M3_SCRIPT="bash tools/test-bareditor.sh" tools/dev.sh shot
 M=./build/material3ui; P=./build/vpointer
 ui() { python3 tools/ui.py "$@"; }
 lay() { python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.config/material3ui/config.json')))['statusBar']['layout'])"; }

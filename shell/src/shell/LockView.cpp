@@ -53,14 +53,12 @@ public:
 };
 
 // One choice in a greeter menu: icon, title, optional subtitle and a check
-// A session's compositor logo (Hyprland's, niri's, Umbriel's, from the shell's data,
-// which the greeter user can read), by its command or name; else ""
+// A session's compositor logo (niri's, from the shell's data, which the
+// greeter user can read), by its command or name; else ""
 std::string sessionLogo(const std::string& exec, const std::string& label) {
     std::string both = exec + " " + label;
     for (auto& ch : both) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-    if (both.find("hyprland") != std::string::npos) return paths::dataFile("icons/hyprland-logo.svg");
     if (both.find("niri") != std::string::npos) return paths::dataFile("icons/niri-logo.svg");
-    if (both.find("umbriel") != std::string::npos) return paths::dataFile("icons/umbriel-logo.svg");
     return {};
 }
 
@@ -101,10 +99,7 @@ Button* menuItem(Flex* menu, const char* icon, const std::string& title, const s
 // A session's subtitle: what kind of session the command starts
 std::string sessionNote(const std::string& exec) {
     if (exec.find("uwsm") != std::string::npos) return "Started through uwsm (systemd units)";
-    if (exec.find("start-hyprland") != std::string::npos || exec.find("Hyprland") != std::string::npos)
-        return "Material3UI's home";
     if (exec.find("niri") != std::string::npos) return "Scrollable tiling, with Material3UI";
-    if (exec.find("umbriel") != std::string::npos) return "Scrolling, dwindle and master layouts, with Material3UI";
     return exec;
 }
 

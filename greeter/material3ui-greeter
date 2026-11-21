@@ -121,8 +121,7 @@ cmd_setup() {
     [[ "${1:-}" == --enable ]] && enable=1
     [[ -f "$SHARE/greet-run.sh" ]] || die "The greeter package is not installed; run: material3ui-greeter install"
     getent passwd greeter >/dev/null || die "The 'greeter' user is missing; reinstall greetd."
-    command -v Hyprland >/dev/null 2>&1 || command -v niri >/dev/null 2>&1 ||
-        die "The login screen runs in Hyprland or niri: install one of them first."
+    command -v niri >/dev/null 2>&1 || die "The login screen runs in niri: install it first."
 
     local user; user="$(target_user)"
     # Data dir: owned by greeter (it writes state.json); the desktop user gets
@@ -265,30 +264,11 @@ out["clock"] = {
     "dateFont": fonts.get("lockscreenDateFont") or main_font,
 }
 
-# Keyboard layout and monitor rules for the greeter's Hyprland session
-lua = []
-hypr = os.path.join(cfg_home, "hypr/material3ui")
-hypr_layout = ""
-try:
-    m = re.search(r'kb_layout\s*=\s*"([^"]*)"', open(os.path.join(hypr, "input.lua")).read())
-    if m:
-        hypr_layout = m.group(1)
-        lua.append('hl.config({ input = { kb_layout = "%s" } })' % hypr_layout)
+# An older install's file for the greeter's Hyprland session: not used any more
+try: os.remove(os.path.join(data, "hyprland-local.lua"))
 except OSError: pass
-try:
-    lua += [l.rstrip() for l in open(os.path.join(hypr, "user_persistence.lua")) if l.lstrip().startswith("hl.monitor(")]
-except OSError: pass
-# Hyprland Settings → Displays keeps its rules here, applied last: they win
-try:
-    for l in open(os.path.join(hypr, "hyprland_custom.lua")):
-        m = re.match(r"\s*pcall\(hl\.monitor, (\{.*\})\)\s*$", l)
-        if m: lua.append("hl.monitor(%s)" % m.group(1))
-except OSError: pass
-with open(os.path.join(data, "hyprland-local.lua.tmp"), "w") as f:
-    f.write("-- Synced from %s by material3ui-greeter\n%s\n" % (user, "\n".join(lua)))
-os.replace(os.path.join(data, "hyprland-local.lua.tmp"), os.path.join(data, "hyprland-local.lua"))
 
-# The desktop's cursor (Hyprland Settings → Cursor: Bibata unless another is
+# The desktop's cursor (Settings → Accessibility: Bibata unless another is
 # chosen, null for the system's), for greet-run.sh to set. Only a theme in
 # /usr/share/icons: the greeter can't read your home
 unset = object()
@@ -306,8 +286,8 @@ else:
     cursor = None
     if os.path.exists(cursor_file): os.remove(cursor_file)
 
-# The same for the greeter's niri session: the keyboard layout (Settings →
-# Keyboard on niri, else Hyprland's), the cursor, the touchpad and mouse
+# The greeter's niri session: the keyboard layout (Settings → Keyboard),
+# the cursor, the touchpad and mouse
 # (tap to click…) and the monitors as your niri config sets them
 def kdl_quote(s): return '"%s"' % s.replace("\\", "\\\\").replace('"', '\\"')
 
@@ -349,7 +329,7 @@ def niri_valid(text):
         except OSError: pass
 
 niri_dir = os.path.join(cfg_home, "niri")
-layouts = get(cfg, "keyboard", "layouts", default="") or hypr_layout
+layouts = get(cfg, "keyboard", "layouts", default="")
 options = get(cfg, "keyboard", "options", default="")
 kdl = ["input {", "    keyboard {"]
 if isinstance(layouts, str) and layouts:
@@ -434,7 +414,7 @@ cmd_outdated() {
     in_checkout || exit 1
     pacman -Qq material3ui-greeter >/dev/null 2>&1 || exit 0 # copied by hand: move to the package
     local f
-    for f in hyprland.lua niri.kdl greet.sh greet-hyprland.sh greet-niri.sh greet-run.sh; do
+    for f in niri.kdl greet.sh greet-niri.sh greet-run.sh; do
         cmp -s "$SRC/$f" "$SHARE/$f" || exit 0
     done
     cmp -s "$SRC/material3ui-greeter" "$BIN" || exit 0

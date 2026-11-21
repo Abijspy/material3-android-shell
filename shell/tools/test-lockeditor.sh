@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The full-screen lock screen editor. Run via
-#   M3_SERVICES=1 M3_FAKE_HYPR=1 M3_SCRIPT="bash tools/test-lockeditor.sh" tools/dev.sh shot
+#   M3_SERVICES=1 M3_SCRIPT="bash tools/test-lockeditor.sh" tools/dev.sh shot
 M=./build/material3ui; P=./build/vpointer
 ui() { python3 tools/ui.py "$@"; }
 for _ in $(seq 20); do [ -s ~/.local/state/material3ui/weather.json ] && break; sleep 1; done

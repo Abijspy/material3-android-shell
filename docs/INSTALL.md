@@ -1,10 +1,10 @@
 # Material3UI Shell Installation Guide
 
-Welcome! This guide will walk you through getting Material3UI Shell up and running on your system. It is specifically tailored for clean Arch Linux or CachyOS setups running Hyprland, niri or Umbriel.
+Welcome! This guide will walk you through getting Material3UI Shell up and running on your system. It is tailored for clean Arch Linux or CachyOS setups running [niri](https://github.com/niri-wm/niri).
 
 ## Understanding the Scope
 
-Before we dive in, let's clarify what Material3UI Shell actually is. It is a desktop shell for Hyprland, niri and Umbriel (see [Material3UI on niri](NIRI.md) and [on Umbriel](UMBRIEL.md)) that replaces your standard panels, notifications, and system controls. However, it is not a complete dotfiles package that overrides your entire system.
+Before we dive in, let's clarify what Material3UI Shell actually is. It is a desktop shell for niri (see [Material3UI on niri](NIRI.md)) that replaces your standard panels, notifications, and system controls. However, it is not a complete dotfiles package that overrides your entire system.
 
 **What you get:**
 * A universal dynamic island, status bar, and notification center.
@@ -14,8 +14,8 @@ Before we dive in, let's clarify what Material3UI Shell actually is. It is a des
 * Automatic Material 3 theme generation based on your wallpaper using Matugen.
 
 **What you need to configure yourself:**
-* File pickers and screen sharing dialogs. The dependencies install the required portals (`xdg-desktop-portal-hyprland` or, on niri, `xdg-desktop-portal-gnome`, and `xdg-desktop-portal-gtk`), but they remain your system's responsibility.
-* Window management keybinds. You will configure these directly in your `hyprland.lua`, or in niri's `config.kdl`.
+* File pickers and screen sharing dialogs. The dependencies install the required portals (`xdg-desktop-portal-gnome` for screen sharing on niri, and `xdg-desktop-portal-gtk`), but they remain your system's responsibility.
+* Window management keybinds. niri's own live in your `config.kdl`; the shell's in `material3ui.kdl`.
 * Your choice of terminal emulator and shell. We provide optional aesthetics for kitty, fish, and starship, but they are not strictly required.
 * A full desktop environment suite like a file manager or app store.
 
@@ -23,7 +23,7 @@ Before we dive in, let's clarify what Material3UI Shell actually is. It is a des
 
 Before running the installer, make sure your system meets these basic requirements:
 * You are running Arch Linux, CachyOS, or a similar Arch-based distribution.
-* Nothing for the compositor: the installer installs Hyprland, niri, Umbriel or several, whichever you pick. One you have already needs to be Hyprland 0.55 or newer, or niri 26.04 or newer; if it's older, the installer offers to update the system first. Umbriel comes from Noctalia's own AUR packages (`umbriel-git` and its screen-sharing portal), which build the latest Umbriel; one you have already is kept.
+* Nothing for the compositor: the installer installs niri. One you have already needs to be niri 26.04 or newer; if it's older, the installer offers to update the system first.
 * You have an AUR helper installed. If you do not have one, the installer will set up `yay` for you.
 * Standard build tools like `git`, `curl`, and `base-devel` are present on your system.
 
@@ -35,32 +35,42 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Abijspy/material3-androi
 
 When run this way the repository is cloned to `~/.local/src/material3ui` (change it with `--dir`) and the installer continues from the clone. You can also run `./install.sh` from any checkout.
 
-The installer asks everything first, shows one plan, and after you confirm it runs to the end without further questions:
+### The full-screen installer
 
-1. **Checks:** an Arch-based system, not root, and Hyprland and niri: installed (and new enough: Hyprland 0.55 for the Lua config, niri 26.04), and what your repositories have.
-2. **Your setup:**
-   - **The compositor first:** `hyprland`, `niri` or `both` (picked at each login). Each option says where it stands: installed with its version, "installs first" with the version it will get, or installed but too old. The default is what's installed already. Then how to handle Hyprland's config (`full`, `inject` or `skip`) and niri's (`include` or `skip`).
-   - **An old compositor:** if the one you picked is installed but older than the shell needs, the installer offers a full system update (`sudo pacman -Syu`) to bring the new one, since Arch doesn't do partial upgrades. If your repositories can't bring a new enough one, it says so.
-   - **Apps:** your terminal (Alacritty by default), file manager (Nemo) and browser (LibreWolf), and the update channel.
-   - **Extras:** fonts, NetworkManager/Bluetooth, KDE colours, fish + starship, and the login screen.
-   - **Re-runs:** when you install again, your previous choices are the defaults.
-3. **The plan:** everything in one place.
-   - **Packages:** what's missing (found with `pacman -T`), by group in the order they install: the compositor, the shell's own dependencies, tools and theming, your apps, and the extras.
-   - **Shell:** the build it will install.
-   - **Configs:** every config it will write. `+` is new, and `~` replaces a file, which is backed up first.
-   - **Left alone:** configs without the `# Material3UI Configuration` marker, such as your own Matugen or Alacritty setup.
-4. **Packages,** before the shell, with `yay` (set up first when it's missing or broken). sudo is asked for once and kept alive until the end.
-   - The system update, when you said yes to one.
-   - The compositor on its own: Hyprland with its portal, hyprlock, hypridle, hyprsunset and hyprpicker, or niri with xwayland-satellite and the GNOME portal.
-   - Then the shell's dependencies, your apps and the extras, and Google Sans Flex.
-   - Then a check that each compositor you picked is installed and new enough.
-5. **The shell:** first a check that everything the build needs is installed (even with `--skip-deps`, so a missing one stops here with the command to install it, not with a compiler error). Then it's built from `shell/` with meson and installed to `/usr`. The lock screen's PAM file goes to `/etc/pam.d`.
-6. **Configs:** the Matugen templates and theme hooks, Alacritty, and Hyprland or niri. niri's config is checked with `niri validate` afterwards. The v3 Quickshell shell and older helpers are backed up and removed.
-7. **Session:** NetworkManager and Bluetooth, other polkit agents turned off (the shell is the agent), default apps, and the login screen.
+The installer fills the terminal, in the shell's own Material 3 colours (the dark baseline: lavender primary, rose tertiary). It's plain bash, so it runs on a fresh install, and on the Linux console it switches the console's palette to the same colours and uses symbols the console font can draw, putting the old palette back when it exits. A step tracker under the header shows where you are:
 
-**Answering:** in a terminal, each list is a menu. ↑/↓ (or j/k) move, Enter picks, a number jumps straight to an option, and Home/End go to the ends. Yes/no questions take `y` or `n` at once, or ←/→ then Enter. Each answer folds into one line. Without a terminal (a pipe, or `--yes`), the installer takes typed answers or the defaults.
+1. **Welcome:** your Material3UI version, where niri stands (installed with its version, "installs first" with the version it will get, or too old), and what it found: your distribution, your login manager, and a Hyprland or Umbriel setup from before v7.0, which it leaves as it is. When you've installed before, it offers **Install again** with last time's choices, straight to the review, or **Change my choices**.
+2. **niri:**
+   - **Update the system first?** Only when your niri is older than 26.04: the new one comes with a full system update (`sudo pacman -Syu`), since Arch doesn't do partial upgrades.
+   - **Your niri config:** include the shell in `config.kdl`, or leave it alone (see [niri modes](#niri-modes)). The page says what it will do with the `config.kdl` you have.
+3. **Apps:** your terminal (Alacritty by default), file manager (Nemo) and browser (LibreWolf), one page each. The shell's keys open them, and **Settings → Default apps** changes them later.
+4. **Extras:** tick fonts, NetworkManager and Bluetooth, Material You colours for KDE/Qt apps, fish with starship, and the login screen. If iwd or systemd-networkd also manages your network, it asks whether to turn them off (they fight NetworkManager for the Wi-Fi). Then the update channel.
+5. **Review:** everything on one card: niri and its config, your apps, the extras, the channel, the system update, how many packages are missing (found with `pacman -T`, by group), the shell build, and how many configs it will write and back up. It warns when your `config.kdl` also starts something the shell replaces (a bar, a notification daemon, a wallpaper tool). **See every package and file** opens the full plan; **Install now** starts. Nothing changes before that.
+6. **Install:** it asks for your password once, in the open, before it starts (nothing can ask behind the full screen), and keeps sudo alive to the end. Each step shows as it runs, with Material 3 Expressive's wavy progress bar, the time taken and the latest log lines. Keys do nothing meanwhile, and <kbd>Ctrl</kbd><kbd>C</kbd> can't stop pacman halfway.
+7. **Done:** the main keys, notes from the run (anything it warned about), and, in a niri session, **Start the shell now**; with the login screen, **Reboot now**. If a step fails, the screen shows the errors from that step and where the full log is.
 
-**Progress:** a bar in the style of Material 3's wavy progress indicator follows the whole run: a solid line for what's done, a moving wave over the step that's running (its share weighted by how long such a step takes, so the build gets the most), then the percentage, the step and how long it's taken. The full output goes to `~/.cache/material3ui/install-<timestamp>.log`, and if a step fails you see the end of that log.
+| Key | Does |
+| :--- | :--- |
+| <kbd>↑</kbd> <kbd>↓</kbd> | Move (<kbd>Home</kbd> / <kbd>End</kbd> jump to the first / last) |
+| <kbd>Enter</kbd> | Go on with the highlighted choice |
+| <kbd>Space</kbd> | Tick or untick an extra |
+| <kbd>Backspace</kbd> or <kbd>←</kbd> | Back to the previous page |
+| <kbd>Esc</kbd> | Quit; nothing changes before **Install now** |
+
+It needs a terminal of at least 76×24. In a smaller one, with `--plain`, or with `--yes`, it asks the same questions as plain prompts: each list a menu (↑/↓ or j/k, Enter, or a number), yes/no questions taking `y` or `n` at once, then one plan to confirm. With `--plain`, package installs run in your terminal, where you can answer pacman's prompts.
+
+### What it does, in order
+
+1. **Packages,** before the shell, with `yay` (set up first when it's missing or broken):
+   - the system update, when you said yes to one;
+   - niri on its own, with xwayland-satellite and the GNOME portal;
+   - then the shell's dependencies, your apps and the extras, and Google Sans Flex;
+   - then a check that niri is installed and new enough.
+2. **The shell:** first a check that everything the build needs is installed (even with `--skip-deps`, so a missing one stops here with the command to install it, not with a compiler error). Then it's built from `shell/` with meson and installed to `/usr` as the `material3ui` pacman package. The lock screen's PAM file goes to `/etc/pam.d`.
+3. **Configs:** the Matugen templates and theme hooks, Alacritty, and niri's `material3ui.kdl`. niri's config is checked with `niri validate` afterwards. The v3 Quickshell shell and older helpers are backed up and removed. Configs without the `# Material3UI Configuration` marker, such as your own Matugen or Alacritty setup, are left alone.
+4. **Session:** NetworkManager and Bluetooth, other polkit agents turned off (the shell is the agent), default apps, and the login screen.
+
+The full output goes to `~/.cache/material3ui/install-<timestamp>.log`.
 
 ### Undo and uninstall
 
@@ -77,15 +87,10 @@ Every replaced file is copied to `~/.config/material3ui/backups/<timestamp>/`, a
 ```bash
 ./install.sh --yes                                   # accept every default
 ./install.sh --yes --terminal foot --file-manager thunar --browser firefox
-./install.sh --yes --hypr inject --channel release --skip-deps
-./install.sh --yes --compositor niri                 # niri only
+./install.sh --yes --niri skip --channel release --skip-deps
+./install.sh --plain                                 # the questions as plain prompts
 ./install.sh --dry-run                               # show the plan and every step, change nothing
 ```
-
-### Hyprland modes
-* **full** (default): `~/.config/hypr/hyprland.lua` is replaced by the Material3UI entry point, which loads modules from `~/.config/hypr/material3ui/`. Put your own settings in `material3ui/user.lua`.
-* **inject**: your `hyprland.lua` is kept; `require("material3ui.shell")`, `require("material3ui.colors")` and `require("material3ui.user_persistence")` are appended.
-* **skip**: Hyprland config is not touched.
 
 ### niri modes
 * **include** (default): `~/.config/niri/material3ui.kdl` (the shell, its keys and your apps) is written, and `include "material3ui.kdl"` is added at the end of your `config.kdl`, or of niri's default config when you have none. Put your own changes in `material3ui-user.kdl`, which is included last and never replaced. → [Material3UI on niri](NIRI.md)
@@ -94,7 +99,7 @@ Every replaced file is copied to `~/.config/material3ui/backups/<timestamp>/`, a
 ## Post-Installation Steps
 
 ### Starting the Shell
-Hyprland starts the shell from `shell.lua`, and niri from `material3ui.kdl`. To start or restart it by hand:
+niri starts the shell from `material3ui.kdl`. To start or restart it by hand:
 
 ```bash
 pkill -x material3ui; material3ui &
@@ -102,17 +107,17 @@ material3ui msg ping        # → pong
 ```
 
 ### Verifying Environment Portals
-For crucial features like screen sharing and file pickers to work, the desktop portals must be active. They usually start automatically with the compositor, but you can verify their status (on niri, `xdg-desktop-portal-gnome` in place of the Hyprland one):
+For crucial features like screen sharing and file pickers to work, the desktop portals must be active. They usually start automatically with niri, but you can verify their status:
 
 ```bash
-systemctl --user status xdg-desktop-portal-hyprland
+systemctl --user status xdg-desktop-portal-gnome
 systemctl --user status xdg-desktop-portal-gtk
 ```
 
 If they are not running, enable and start them manually:
 
 ```bash
-systemctl --user enable --now xdg-desktop-portal-hyprland
+systemctl --user enable --now xdg-desktop-portal-gnome
 systemctl --user enable --now xdg-desktop-portal-gtk
 ```
 
@@ -143,11 +148,11 @@ If you prefer the command line, you can run the update script directly:
 ### Packages
 The shell installs as the `material3ui` pacman package, and the login screen as `material3ui-greeter`. Every release carries both (`material3ui-<version>-1-x86_64.pkg.tar.zst` and `material3ui-greeter-<version>-1-any.pkg.tar.zst`). On the stable channel, updates download the release's package and install it with pacman, with no compiling. On the latest (git) channel, or for a release without a package for your architecture, the update builds the shell from the checkout and packages that build, so pacman owns the files either way (`pacman -Qi material3ui`). Build one by hand with `packaging/build-pkg.sh material3ui`.
 
-Whichever method you choose, updating is non-destructive. It safely overlays new files without deleting your existing configurations, so your personal Hyprland keybinds, Fish functions, and Kitty settings are always safe.
+Whichever method you choose, updating is non-destructive. Your `config.kdl` and `material3ui-user.kdl` are never replaced, `material3ui.kdl` keeps the apps you picked in Settings → Default apps, and your Fish functions and Kitty settings are always safe.
 
 ## Troubleshooting Common Issues
 
-**First step: Run a Dependency Check!** 
+**First step: Run a Dependency Check!**
 If something feels broken or missing, chances are a required package is not installed. When you first install the shell, the **Onboarding Panel** will automatically open to help you verify these dependencies. If you need to check them again later, simply navigate to **Material3UI Settings > About > Dependency Check**. This built in tool will tell you exactly what you are missing.
 
 If all dependencies are met and you still face issues, check these common solutions:
@@ -157,7 +162,8 @@ If all dependencies are met and you still face issues, check these common soluti
 | Icons show as squares or are missing | Install `ttf-material-symbols-variable-git` from the AUR. |
 | The font looks wrong or uses a fallback | Install Google Sans Flex via the install script. |
 | File picker popups do not appear | Make sure `xdg-desktop-portal-gtk` is running. |
-| Screen share dialogs do not appear | Make sure `xdg-desktop-portal-hyprland` is running. |
+| Screen share dialogs do not appear | Make sure `xdg-desktop-portal-gnome` is running. |
 | Terminal colors are not applying | Verify that `python3` is installed on your system. |
-| The shell refuses to start | Run `material3ui` from a terminal and check the output for errors. |
+| The shell refuses to start | Run `material3ui` from a terminal and check the output for errors. It needs a niri session. |
 | The shell does not build | Run `./install.sh` again without `--skip-deps`, or install the libraries in [DEPENDENCIES.md](DEPENDENCIES.md). |
+| The installer shows plain prompts | The terminal is smaller than 76×24: make it bigger, or answer the prompts. |

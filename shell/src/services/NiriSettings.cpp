@@ -215,7 +215,7 @@ std::string render(const Settings& s) {
     if (!layout.empty()) out += "\nlayout {\n" + layout + "}\n";
 
     // The shell's windows (Settings, Niri Settings…): rounded, and blurred,
-    // as on Hyprland; first, so a corner radius of yours below wins. They
+    // first, so a corner radius of yours below wins. They
     // don't speak xdg-decoration, so niri would draw their focus ring and
     // border as a solid fill behind them, showing through their translucent
     // background in place of the blur (all but full screen): a frame instead

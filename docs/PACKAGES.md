@@ -12,7 +12,7 @@
 | **AUR** | Search the AUR through its web API (no helper needed to search) and install with your AUR helper. Without one, the tab offers **Install yay**, built from the AUR in a terminal, where makepkg asks for your password. |
 | **Flatpak** | Search Flathub and your other remotes and install. Without Flatpak, the tab offers **Install Flatpak** in place of the search (Flathub is added with it, one password), and **Add Flathub** when Flatpak has no remote yet. |
 
-When an update needs a restart (a new kernel, systemd, drivers) or a new login (Hyprland's libraries), a banner says so and offers it.
+When an update needs a restart (a new kernel, systemd, drivers) or a new login (niri or Xwayland), a banner says so and offers it.
 
 ### Automatic updates
 

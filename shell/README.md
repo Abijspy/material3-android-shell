@@ -2,7 +2,7 @@
 
 Material3UI's shell: a Wayland shell drawn directly with EGL/OpenGL ES, with no Qt, QML, GTK or Quickshell underneath. It reads `~/.config/material3ui/config.json` and the Matugen palette.
 
-> **Status: the shell Material3UI ships (v4.0.0 onwards).** It replaced the Quickshell (QML) shell: the installer builds it, Hyprland starts it, and `material3ui msg` is the IPC.
+> **Status: the shell Material3UI ships (v4.0.0 onwards).** It replaced the Quickshell (QML) shell: the installer builds it, niri starts it, and `material3ui msg` is the IPC. niri is the only compositor it runs on (since v7.0).
 
 ## Why native
 
@@ -10,7 +10,7 @@ Material3UI's shell: a Wayland shell drawn directly with EGL/OpenGL ES, with no 
 | :--- | :--- |
 | System access goes through Quickshell's bindings, or shells out to `hyprctl`, `pacman`, Python | Direct Unix sockets, inotify, sysfs, D-Bus (sd-bus), PipeWire (libpulse) and PAM |
 | JavaScript inside QML is untyped and hard to refactor | C++20, compiled with warnings on |
-| Every Quickshell release can break the shell | Depends only on libwayland, EGL/GLES2, Pango/Cairo, xkbcommon, libsystemd, libpulse, librsvg, gdk-pixbuf, PAM, polkit-agent, nlohmann-json and toml++ |
+| Every Quickshell release can break the shell | Depends only on libwayland, EGL/GLES2, Pango/Cairo, xkbcommon, libsystemd, libpulse, librsvg, gdk-pixbuf, PAM, polkit-agent and nlohmann-json |
 
 ## Architecture
 
@@ -31,7 +31,7 @@ src/
              Tween/ColorTween (M3 easing), Theme (Matugen roles, live)
   dbus/      Bus: sd-bus on the event loop, async calls, signals, properties,
              D-Bus values as JSON
-  services/  Hyprland, Audio (libpulse), Network (NetworkManager, Wi-Fi list and
+  services/  Niri, Audio (libpulse), Network (NetworkManager, Wi-Fi list and
              connect), Bluetooth, Power (UPower), Brightness, Mpris, Tray (SNI +
              DBusMenu), Notifications (daemon), Search (apps, maths, emoji,
              cliphist, fd), Session (logind), Idle (ext-idle-notify), Auth (PAM),
@@ -56,7 +56,7 @@ The overall approach (a poll loop, direct Wayland, a GLES scene graph, Pango tex
 
 ## Building
 
-Dependencies: `meson`, `wayland`, `wayland-protocols`, `wlr-protocols`, `mesa` (EGL/GLES2), `pango`, `cairo`, `libxkbcommon`, `systemd-libs` (sd-bus), `libpulse` (talks to `pipewire-pulse`), `librsvg`, `gdk-pixbuf2`, `pam`, `polkit`, `nlohmann-json`, `tomlplusplus`. At runtime, optionally: `matugen` (palette), `cliphist` + `wl-clipboard` (clipboard history), `fd` (file search), `hyprsunset` (night light).
+Dependencies: `meson`, `wayland`, `wayland-protocols`, `wlr-protocols`, `mesa` (EGL/GLES2), `pango`, `cairo`, `libxkbcommon`, `systemd-libs` (sd-bus), `libpulse` (talks to `pipewire-pulse`), `librsvg`, `gdk-pixbuf2`, `pam`, `polkit`, `nlohmann-json`. At runtime, optionally: `matugen` (palette), `cliphist` + `wl-clipboard` (clipboard history), `fd` (file search), `hyprsunset` (night light).
 
 `meson install` also installs `/etc/pam.d/material3ui` (the lock screen's PAM service; it includes `login`).
 
@@ -71,7 +71,6 @@ No Arch box handy? `tools/dev.sh` builds in an Arch container, and `tools/dev.sh
 
 | Variable | Effect |
 | :--- | :--- |
-| `M3_FAKE_HYPR=1` | Serve a fake Hyprland with workspaces and windows (`tools/fake-hyprland.py`) |
 | `M3_SERVICES=1` | Start a session bus, a stand-in system bus, PipeWire with two stereo null sinks, and mock NetworkManager, UPower, BlueZ, an MPRIS player and tray items (`tools/mock-services.py`) |
 | `M3_SCRIPT="…"` | Commands to run before the screenshot (`material3ui msg …`, `wtype` for typing, extra `grim` shots) |
 | `M3_SCALE=1.5` | Output scale, to check fractional scaling |
@@ -83,9 +82,9 @@ Pointer tests drive a `wlr-virtual-pointer` device (`build/vpointer move X Y cli
 
 ```bash
 # Hover, clicks, drags, Wi-Fi taps, tray menus (mock services)
-M3_SERVICES=1 M3_FAKE_HYPR=1 M3_WAIT=4 M3_SCRIPT='bash tools/test-mouse.sh' tools/dev.sh shot
-# Settings: keybind remap, a config chip, live AUR search
-M3_SERVICES=1 M3_FAKE_HYPR=1 M3_WAIT=4 M3_SCRIPT='bash tools/test-settings.sh' tools/dev.sh shot
+M3_SERVICES=1 M3_WAIT=4 M3_SCRIPT='bash tools/test-mouse.sh' tools/dev.sh shot
+# Settings: a config chip, live AUR search
+M3_SERVICES=1 M3_WAIT=4 M3_SCRIPT='bash tools/test-settings.sh' tools/dev.sh shot
 # polkit end to end: real polkitd authenticates "alice" through the shell's agent
 M3_USER=alice M3_SETUP='source tools/polkit-setup.sh' M3_WAIT=3 M3_SCRIPT='bash tools/test-polkit.sh' tools/dev.sh shot
 ```

@@ -397,7 +397,7 @@ void Packages::checkRestart() {
         r.shell = true;
         r.why.push_back("material3ui");
     }
-    // Upgrades since boot (or since Hyprland started), from pacman's log:
+    // Upgrades since boot (or since niri started), from pacman's log:
     // its last 512 KB is plenty
     std::time_t boot = 0;
     {
@@ -405,7 +405,7 @@ void Packages::checkRestart() {
         for (std::string l; std::getline(st, l);)
             if (l.starts_with("btime ")) boot = std::atoll(l.c_str() + 6);
     }
-    const std::time_t session = pacmanlog::processStart("Hyprland");
+    const std::time_t session = pacmanlog::processStart("niri");
     std::ifstream log("/var/log/pacman.log");
     log.seekg(0, std::ios::end);
     const auto size = static_cast<long long>(log.tellg());
@@ -415,8 +415,7 @@ void Packages::checkRestart() {
                p.starts_with("linux") || p.starts_with("nvidia") || p.ends_with("-ucode");
     };
     auto sessionPkg = [](const std::string& p) {
-        return p == "hyprland" || p == "aquamarine" || p.starts_with("hyprutils") || p.starts_with("hyprlang") ||
-               p.starts_with("hyprgraphics") || p == "xorg-xwayland" || p == "wayland";
+        return p == "niri" || p == "xwayland-satellite" || p == "xorg-xwayland" || p == "wayland";
     };
     for (std::string line; std::getline(log, line);) {
         pacmanlog::Upgrade up;

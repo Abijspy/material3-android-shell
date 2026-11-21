@@ -49,7 +49,7 @@ private:
     xdg_surface* m_xdgSurface = nullptr;
     xdg_toplevel* m_toplevel = nullptr;
     int m_pendingW = 0, m_pendingH = 0;
-    bool m_maximized = false; // as last asked for (Hyprland's states can't tell)
+    bool m_maximized = false; // as last asked for (the compositor's states can't tell)
 };
 
 } // namespace m3::wl

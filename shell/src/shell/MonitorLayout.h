@@ -9,7 +9,7 @@
 namespace m3::shell {
 
 // The monitors' arrangement, to scale: each a card that drags to a new
-// place, snapping to the others' edges. Positions are in Hyprland's layout
+// place, snapping to the others' edges. Positions are in niri's layout
 // coordinates (logical pixels).
 class MonitorLayout : public ui::Node {
 public:

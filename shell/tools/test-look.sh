@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Look & feel, status bar and network details. Run via
-#   M3_SERVICES=1 M3_FAKE_HYPR=1 M3_WAIT=4 M3_SCRIPT="bash tools/test-look.sh" tools/dev.sh shot
+#   M3_SERVICES=1 M3_WAIT=4 M3_SCRIPT="bash tools/test-look.sh" tools/dev.sh shot
 M=./build/material3ui; P=./build/vpointer
 # Traffic on the loopback, which the NM mock reports as the Wi-Fi interface
 python3 -c "

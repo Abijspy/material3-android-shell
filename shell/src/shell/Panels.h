@@ -44,8 +44,8 @@ void settings(ui::Flex* card, Popup& popup, const std::string& page);
 // The rounded card itself, not whatever refreshes it: what a desktop widget
 // blurs behind
 ui::Node* dashboardWidget(ui::Node* parent, const std::string& id);
-// Hyprland Settings: the compositor's options, a window of its own
-void hyprSettings(ui::Flex* card, Popup& popup, const std::string& page);
+// Niri Settings: niri's options, a window of its own
+void niriSettings(ui::Flex* card, Popup& popup, const std::string& page);
 // The open Settings app: show a page; forget it once its window closes
 void settingsPage(const std::string& id);
 // Every Settings page and setting, by name (Spotlight): built once, out of view
@@ -56,10 +56,12 @@ struct SettingsHit {
 const std::vector<SettingsHit>& settingsIndex(Popup& popup);
 // Settings at `page`, `setting` (a row's title, or "") scrolled to and lit up
 void openSetting(const std::string& page, const std::string& setting);
-void settingsClosed(bool hypr = false);
+void settingsClosed(bool niriApp = false);
 void clipboard(ui::Flex* card, Popup& popup);
 // A to-do list (Notes), and its card for the desktop (what blurs behind it)
 void notes(ui::Flex* card, Popup& popup);
+// The playing song's lyrics, scrolling along, and Identify (services/Lyrics)
+void lyrics(ui::Flex* card, Popup& popup);
 // Floating panels beside the bar's chips (Flyouts.cpp): what Settings
 // would be opened for, at hand, with the page a tap away
 void phone(ui::Flex* card, Popup& popup);

@@ -49,7 +49,7 @@ public:
     void launch(const App& app);
     void launch(const App& app, const App::Action& action); // one of its shortcuts
     int launches(const std::string& id) const;
-    // Icon for a window class (Hyprland's "class"), via StartupWMClass or the desktop id
+    // Icon for a window's app id, via StartupWMClass or the desktop id
     std::string iconForClass(const std::string& cls) const;
     // The app a window class belongs to (StartupWMClass, else the desktop id); null when none
     const App* forClass(const std::string& cls) const;

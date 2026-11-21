@@ -13,8 +13,6 @@
 #include "render/Images.h"
 #include "render/Renderer.h"
 #include "render/Text.h"
-#include "services/HyprOptions.h"
-#include "services/Hyprland.h"
 #include "services/Niri.h"
 #include "services/Compositor.h"
 #include "services/Alarms.h"
@@ -32,6 +30,7 @@
 #include "services/Clipboard.h"
 #include "services/Search.h"
 #include "services/Effects.h"
+#include "services/Lyrics.h"
 #include "services/Mpris.h"
 #include "services/Network.h"
 #include "services/DarkSchedule.h"
@@ -162,8 +161,7 @@ bool Shell::start() {
         if (changed && m_osd) m_osd->show("keyboard", -1, now);
     });
     // The airplane key: the shell's where the compositor's config sends it
-    // here (material3ui.kdl, material3ui.toml, keybinds.lua), else the
-    // kernel's toggle stays
+    // here (material3ui.kdl), else the kernel's toggle stays
     {
         auto binds = [](const std::filesystem::path& file) {
             std::ifstream in(file);
@@ -171,11 +169,7 @@ bool Shell::start() {
             return text.find("XF86RFKill") != std::string::npos;
         };
         const auto config = std::filesystem::path(paths::configDir()).parent_path();
-        const std::string session = Compositor::session();
-        if (session == "niri"      ? binds(config / "niri" / "material3ui.kdl")
-            : session == "umbriel" ? binds(config / "umbriel" / "material3ui.toml")
-                                   : binds(config / "hypr" / "material3ui" / "keybinds.lua"))
-            Airplane::get().takeKey();
+        if (binds(config / "niri" / "material3ui.kdl")) Airplane::get().takeKey();
     }
     // Locking: IPC, loginctl lock-session, idle timeout, before suspend
     panels::lock = [] { EventLoop::get().defer([] { LockScreen::get().lock(); }); };
@@ -333,8 +327,8 @@ void Shell::holdDocks(bool held) {
 }
 
 void Shell::openSettings(const std::string& page) {
-    // The compositor's own pages live in Hyprland (or Niri) Settings
-    if (page.starts_with("hypr-") || page.starts_with("niri-") || page.starts_with("umbriel-")) return openHyprSettings(page);
+    // niri's own pages live in Niri Settings
+    if (page.starts_with("niri-")) return openNiriSettings(page);
     if (m_settings && !m_settings->closing()) {
         if (!page.empty()) panels::settingsPage(page);
         // Raised, and back from minimised if it was
@@ -358,20 +352,15 @@ void Shell::openSettings(const std::string& page) {
     };
 }
 
-void Shell::openHyprSettings(const std::string& page) {
-    // The compositor's own options: Hyprland's, niri's in Niri Settings, or
-    // Umbriel's in Umbriel Settings
-    const bool umbriel = Compositor::session() == "umbriel";
-    const bool niri = !umbriel && !Hyprland::get().available() && Niri::get().available();
-    if (!Hyprland::get().available() && !niri && !umbriel) {
-        log::info("Hyprland Settings: not on Hyprland, niri or Umbriel");
+void Shell::openNiriSettings(const std::string& page) {
+    // niri's own options, in an app of their own
+    if (!Niri::get().available()) {
+        log::info("Niri Settings: not on niri");
         return;
     }
-    // Another compositor's page asked for (an old link): the app's first
-    const std::string own = umbriel ? "umbriel-" : niri ? "niri-" : "hypr-";
-    const std::string want = page.empty() || page.starts_with(own) ? page : "";
-    const std::string appId = umbriel ? "material3ui-umbriel" : niri ? "material3ui-niri" : "material3ui-hyprland";
-    if (m_hyprSettings && !m_hyprSettings->closing()) {
+    const std::string want = page.starts_with("niri-") ? page : "";
+    const std::string appId = "material3ui-niri";
+    if (m_niriSettings && !m_niriSettings->closing()) {
         if (!want.empty()) panels::settingsPage(want);
         auto& c = Compositor::get();
         for (const auto& w : c.windows(true))
@@ -380,15 +369,15 @@ void Shell::openHyprSettings(const std::string& page) {
     }
     if (m_popup) m_popup->close();
     Popup::Options opts;
-    opts.name = "hyprsettings";
+    opts.name = "nirisettings";
     opts.window = true;
     opts.appId = appId; // its own .desktop file and dock icon
-    opts.title = umbriel ? "Umbriel Settings" : niri ? "Niri Settings" : "Hyprland Settings";
+    opts.title = "Niri Settings";
     opts.icon = "tune";
-    m_hyprSettings = std::make_unique<Popup>(nullptr, opts, [want](ui::Flex* card, Popup& p) { panels::hyprSettings(card, p, want); });
-    m_hyprSettings->onClosed = [this] {
+    m_niriSettings = std::make_unique<Popup>(nullptr, opts, [want](ui::Flex* card, Popup& p) { panels::niriSettings(card, p, want); });
+    m_niriSettings->onClosed = [this] {
         panels::settingsClosed(true);
-        EventLoop::get().defer([this] { m_hyprSettings.reset(); });
+        EventLoop::get().defer([this] { m_niriSettings.reset(); });
     };
 }
 
@@ -424,8 +413,8 @@ void Shell::greet(bool freshInstall) {
 void Shell::togglePopup(const std::string& name, wl::Output* output, float anchor, const std::string& arg) {
     if (name == "settings") return openSettings(arg);
     if (name == "welcome") return openWelcome();
-    // The compositor's settings app: Hyprland's, or niri's on niri (either name)
-    if (name == "hyprsettings" || name == "nirisettings" || name == "umbrielsettings") return openHyprSettings(arg);
+    // niri's settings app
+    if (name == "nirisettings") return openNiriSettings(arg);
     if (name == "desktopedit") return desktopeditor::open(output ? output : focusedOutput());
     // The compositor's own overview where it has one (niri's)
     if (name == "overview" && Compositor::get().can(Compositor::Feature::NativeOverview)) {
@@ -532,6 +521,11 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
         opts.anchor = -1;
         opts.centredVertically = true;
         build = panels::notes;
+    } else if (name == "lyrics") {
+        opts.width = 520;
+        opts.anchor = -1;
+        opts.centredVertically = true;
+        build = panels::lyrics;
     } else if (name == "clipboard") {
         opts.width = 560;
         opts.anchor = -1;
@@ -723,10 +717,10 @@ void Shell::registerIpc() {
         EventLoop::get().defer([this, file] { togglePopup("imageeditor", focusedOutput(), -1, file); });
         return std::string("editing");
     });
-    ipc.add("keyboard", "keyboard [next|list]: the keyboard layout in use, or the next (niri, Umbriel)", [](const IpcServer::Args& a) {
+    ipc.add("keyboard", "keyboard [next|list]: the keyboard layout in use, or the next", [](const IpcServer::Args& a) {
         auto& c = Compositor::get();
         const auto layouts = c.keyboardLayouts();
-        if (layouts.empty()) return std::string("error: the compositor doesn't say its keyboard layouts (niri and Umbriel do)");
+        if (layouts.empty()) return std::string("error: niri doesn't say its keyboard layouts (not on niri?)");
         if (!a.empty() && a[0] == "next") {
             c.nextKeyboardLayout(); // it says so in a moment: the list would still show the old one
             return std::string("switching to the next layout");
@@ -828,81 +822,6 @@ void Shell::registerIpc() {
         return std::format("{} {}%{} balance {:+.2f} [{}]", s->description, std::lround(s->volume() * 100),
                            s->muted ? " muted" : "", s->balance(), chans);
     });
-    ipc.add("zoom", "zoom in|out|reset: the magnifier (Accessibility)", [](const IpcServer::Args& a) {
-        const std::string cmd = a.empty() ? "" : a[0];
-        double z = Config::get().value<double>("/accessibility/zoom", 1.0);
-        z = cmd == "in" ? z + 0.5 : cmd == "out" ? z - 0.5 : 1.0;
-        z = std::clamp(z, 1.0, 4.0);
-        Config::get().set("/accessibility/zoom", z);
-        return std::format("zoom {:.1f}×", z);
-    });
-    ipc.add("hypr", "hypr options | get <name> | set <name> <json> | reset <name> | undo | profile list|apply|next|previous|save|delete: Hyprland Settings",
-            [](const IpcServer::Args& a) {
-        auto& h = HyprOptions::get();
-        if (!h.loaded()) h.load();
-        const std::string cmd = a.empty() ? "options" : a[0];
-        if (cmd == "options") {
-            std::map<int, int> kinds;
-            int custom = 0;
-            for (const auto& o : h.options()) {
-                ++kinds[static_cast<int>(o.kind)];
-                custom += o.custom;
-            }
-            static const char* names[] = {"bool", "int", "float", "text", "choice", "color", "gradient", "vec2", "gaps"};
-            std::string out = std::format("{} options, {} set in Settings:", h.options().size(), custom);
-            for (auto [k, n] : kinds) out += std::format(" {} {}", n, names[k]);
-            return out;
-        }
-        if (cmd == "profile") {
-            const std::string sub = a.size() > 1 ? a[1] : "list";
-            std::string name;
-            for (size_t i = 2; i < a.size(); ++i) name += (i > 2 ? " " : "") + a[i];
-            if (sub == "list") {
-                std::string out;
-                for (const auto& p : h.profiles()) out += (p == h.activeProfile() ? "* " : "  ") + p + "\n";
-                return out.empty() ? std::string("no profiles (save one in Hyprland Settings → Profiles)") : out;
-            }
-            if (sub == "apply") {
-                const auto err = h.applyProfile(name);
-                return err.empty() ? "applied " + h.activeProfile() : "error: " + err;
-            }
-            if (sub == "next" || sub == "previous" || sub == "prev") {
-                const auto p = h.cycleProfile(sub == "next" ? 1 : -1);
-                return p.empty() ? std::string("no profiles") : "applied " + p;
-            }
-            if (sub == "save" && !name.empty()) {
-                h.saveProfile(name);
-                return "saved " + name;
-            }
-            if (sub == "delete" && !name.empty()) {
-                h.deleteProfile(name);
-                return "deleted " + name;
-            }
-            return std::string("usage: hypr profile list|apply <name>|next|previous|save <name>|delete <name>");
-        }
-        if (cmd == "undo") {
-            const std::string name = h.undo();
-            return name.empty() ? std::string("nothing to undo") : std::format("undid {} = {}", name, h.find(name)->value.dump());
-        }
-        if (a.size() < 2) return std::string("error: name needed");
-        const auto* o = h.find(a[1]);
-        if (!o) return std::string("error: no option ") + a[1];
-        if (cmd == "get")
-            return std::format("{} = {} (default {}){}", o->name, o->value.dump(), o->fallback.dump(), o->custom ? " [Settings]" : "");
-        std::string err;
-        if (cmd == "set" && a.size() > 2) {
-            std::string text;
-            for (size_t i = 2; i < a.size(); ++i) text += (i > 2 ? " " : "") + a[i];
-            try {
-                err = h.set(a[1], nlohmann::json::parse(text));
-            } catch (const std::exception&) {
-                err = h.set(a[1], text); // a bare string
-            }
-        } else if (cmd == "reset") {
-            err = h.reset(a[1]);
-        }
-        return err.empty() ? std::format("{} = {}", o->name, h.find(a[1])->value.dump()) : "error: " + err;
-    });
     ipc.add("brightness", "brightness up|down|set <0-100>", [](const IpcServer::Args& a) {
         auto& b = Brightness::get();
         if (!b.available()) return std::string("error: no backlight");
@@ -911,6 +830,27 @@ void Shell::registerIpc() {
         else if (cmd == "down") b.step(-0.05f);
         else if (cmd == "set" && a.size() > 1) b.set(std::stof(a[1]) / 100);
         return std::format("{}%", std::lround(b.value() * 100));
+    });
+    ipc.add("lyrics", "lyrics [show|identify|status]: the playing song's lyrics; identify listens and recognises the song", [this](const IpcServer::Args& a) {
+        auto& ly = Lyrics::get();
+        const std::string cmd = a.empty() ? "show" : a[0];
+        if (cmd == "identify") {
+            if (!ly.enabled()) return std::string("error: lyrics are off (Settings → Sound)");
+            ly.identify();
+            return std::string("listening");
+        }
+        if (cmd == "status") {
+            static const char* states[] = {"idle", "searching", "listening", "found", "none"};
+            std::string out = std::format("{}{}{}\t{}", ly.title(), ly.artist().empty() ? "" : " — ", ly.artist(), states[static_cast<int>(ly.state())]);
+            if (ly.heard()) out += "\theard";
+            if (!ly.source().empty()) out += std::format("\t{} {}", ly.source(), ly.synced() ? "synced" : "plain");
+            const int i = ly.lineAt(ly.position());
+            if (i >= 0) out += "\n" + ly.lines()[static_cast<size_t>(i)].text;
+            return out;
+        }
+        if (cmd != "show") return std::string("usage: lyrics [show|identify|status]");
+        EventLoop::get().defer([this] { togglePopup("lyrics", focusedOutput(), -1, ""); });
+        return std::string("lyrics");
     });
     ipc.add("media", "media play-pause|next|previous|status", [](const IpcServer::Args& a) {
         auto& m = Mpris::get();
@@ -949,21 +889,10 @@ void Shell::registerIpc() {
         }
         return std::string("usage: desktop edit|menu");
     });
-    ipc.add("hyprsettings", "hyprsettings [hypr-monitors|hypr-windows|hypr-decoration|hypr-animations|hypr-keybinds|hypr-startup|hypr-environment|hypr-layouts|hypr-input|hypr-gestures|"
-                            "hypr-cursor|hypr-groups|hypr-misc|hypr-render|hypr-debug]: Hyprland Settings",
-            [this](const IpcServer::Args& a) {
-        openHyprSettings(a.empty() ? "" : a[0]);
-        return std::string(m_hyprSettings && !m_hyprSettings->closing() ? "open" : "closed");
-    });
     ipc.add("nirisettings", "nirisettings [niri-layout|niri-decoration|niri-animations|niri-behaviour|niri-keys|niri-rules|niri-startup|niri-environment]: Niri Settings",
             [this](const IpcServer::Args& a) {
-        openHyprSettings(a.empty() ? "" : a[0]);
-        return std::string(m_hyprSettings && !m_hyprSettings->closing() ? "open" : "closed");
-    });
-    ipc.add("umbrielsettings", "umbrielsettings [umbriel-layout|umbriel-decoration|umbriel-animations|umbriel-effects|umbriel-monitors|umbriel-input|umbriel-behaviour|umbriel-keys|umbriel-rules|umbriel-startup|umbriel-all]: Umbriel Settings",
-            [this](const IpcServer::Args& a) {
-        openHyprSettings(a.empty() ? "" : a[0]);
-        return std::string(m_hyprSettings && !m_hyprSettings->closing() ? "open" : "closed");
+        openNiriSettings(a.empty() ? "" : a[0]);
+        return std::string(m_niriSettings && !m_niriSettings->closing() ? "open" : "closed");
     });
     ipc.add("wallpaper", "wallpaper [next|prev|set <path>|pick]", [this](const IpcServer::Args& a) {
         auto& w = Wallpaper::get();
@@ -1460,7 +1389,7 @@ void Shell::registerIpc() {
     });
     ipc.add("workspaces", "List the compositor's workspaces as the shell sees them", [](const auto&) {
         auto& c = Compositor::get();
-        if (!c.available()) return std::string("error: not running under a compositor the shell knows (Hyprland, niri or Umbriel)");
+        if (!c.available()) return std::string("error: not running under a compositor the shell knows (niri)");
         std::string out;
         for (const auto& w : c.workspaces())
             out += std::format("{}\t{}\t{} windows{}\n", w.number, w.output, w.windows,

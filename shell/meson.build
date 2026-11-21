@@ -1,5 +1,5 @@
 project('material3ui', 'cpp', 'c',
-  version: '6.4.2',
+  version: '7.0.0',
   license: 'MIT',
   meson_version: '>= 1.1',
   default_options: ['cpp_std=c++20', 'warning_level=2', 'buildtype=debugoptimized'])
@@ -13,7 +13,6 @@ glesv2 = dependency('glesv2')
 pangocairo = dependency('pangocairo', version: '>= 1.50')
 cairo = dependency('cairo')
 json = dependency('nlohmann_json', version: '>= 3.10')
-toml = dependency('tomlplusplus', version: '>= 3.3') # Umbriel's config, read and edited in place
 xkbcommon = dependency('xkbcommon')
 libsystemd = dependency('libsystemd', version: '>= 246') # sd-bus
 libcrypto = dependency('libcrypto', version: '>= 3.0') # Quick Share's encryption
@@ -58,7 +57,6 @@ configure_file(output: 'build_config.h', configuration: conf)
 sources = files(
   'src/main.cpp',
   'src/greeter/Greeter.cpp',
-  'src/share/SharePicker.cpp',
   'src/quickshare/Ble.cpp',
   'src/quickshare/Crypto.cpp',
   'src/quickshare/Mdns.cpp',
@@ -86,8 +84,6 @@ sources = files(
   'src/services/Clipboard.cpp',
   'src/services/Compositor.cpp',
   'src/services/Effects.cpp',
-  'src/services/Hyprland.cpp',
-  'src/services/HyprOptions.cpp',
   'src/services/Idle.cpp',
   'src/services/Kdl.cpp',
   'src/services/TimeZones.cpp',
@@ -108,16 +104,11 @@ sources = files(
   'src/services/LockKeys.cpp',
   'src/services/LauncherEntries.cpp',
   'src/services/Privacy.cpp',
-  'src/services/TomlEdit.cpp',
-  'src/services/UmbrielConfig.cpp',
-  'src/services/UmbrielShaders.cpp',
   'src/services/Trash.cpp',
-  'src/services/Umbriel.cpp',
   'src/services/DataUsage.cpp',
   'src/services/Notes.cpp',
   'src/services/KdeConnect.cpp',
   'src/services/DarkSchedule.cpp',
-  'src/services/Keybinds.cpp',
   'src/services/HookEvents.cpp',
   'src/services/Hooks.cpp',
   'src/services/Lyrics.cpp',
@@ -162,6 +153,7 @@ sources = files(
   'src/shell/Osd.cpp',
   'src/shell/ColorPicker.cpp',
   'src/shell/NotesPanel.cpp',
+  'src/shell/LyricsPanel.cpp',
   'src/shell/Flyouts.cpp',
   'src/shell/MessagesPanel.cpp',
   'src/shell/LiveWallpaper.cpp',
@@ -179,8 +171,6 @@ sources = files(
   'src/shell/EventEditor.cpp',
   'src/shell/FilePicker.cpp',
   'src/shell/DesktopItems.cpp',
-  'src/shell/HyprPages.cpp',
-  'src/shell/KeyCapture.cpp',
   'src/shell/MonitorLayout.cpp',
   'src/shell/TimeZoneMap.cpp',
   'src/shell/NiriPages.cpp',
@@ -192,7 +182,6 @@ sources = files(
   'src/shell/SoftwarePages.cpp',
   'src/shell/Tools.cpp',
   'src/shell/Switcher.cpp',
-  'src/shell/UmbrielPages.cpp',
   'src/shell/Welcome.cpp',
   'src/shell/WidgetStyles.cpp',
   'src/shell/Tooltip.cpp',
@@ -215,21 +204,21 @@ sources = files(
 
 install_data('data/pam/material3ui', install_dir: get_option('sysconfdir') / 'pam.d')
 # The Settings app: a launcher entry and its icon
-install_data('data/material3ui-settings.desktop', 'data/material3ui-hyprland.desktop', 'data/material3ui-niri.desktop', 'data/material3ui-umbriel.desktop', 'data/material3ui-quickshare.desktop', 'data/material3ui-print.desktop', install_dir: get_option('datadir') / 'applications')
-install_data('data/icons/material3ui-settings.svg', 'data/icons/material3ui-hyprland.svg', 'data/icons/material3ui-niri.svg', 'data/icons/material3ui-umbriel.svg', 'data/icons/material3ui-quickshare.svg', install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps')
+install_data('data/material3ui-settings.desktop', 'data/material3ui-niri.desktop', 'data/material3ui-quickshare.desktop', 'data/material3ui-print.desktop', install_dir: get_option('datadir') / 'applications')
+install_data('data/icons/material3ui-settings.svg', 'data/icons/material3ui-niri.svg', 'data/icons/material3ui-quickshare.svg', install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps')
 install_data('data/icons/material3ui-settings.svg', 'data/icons/quickshare-symbol.svg', install_dir: get_option('datadir') / 'material3ui/icons')
 # Shipped data: emoji list, logo, wallpapers
-install_data('data/emojis.txt', 'data/umbriel-known-options.txt', install_dir: get_option('datadir') / 'material3ui')
+install_data('data/emojis.txt', install_dir: get_option('datadir') / 'material3ui')
 # Default profile pictures (Settings → Users → Change picture)
 install_subdir('data/avatars', install_dir: get_option('datadir') / 'material3ui')
 # What's new, the welcome tour and About → Changelog read it
 install_data('../CHANGELOG.md', install_dir: get_option('datadir') / 'material3ui')
 # One password per update: the root helper Settings starts, and its client
-install_data('data/update/material3ui-update-root', 'data/update/material3ui-root', 'data/share/material3ui-share-picker',
+install_data('data/update/material3ui-update-root', 'data/update/material3ui-root',
   install_dir: get_option('prefix') / 'lib/material3ui', install_mode: 'rwxr-xr-x')
 install_data('data/update/io.github.abijspy.material3ui.update.policy',
   install_dir: get_option('datadir') / 'polkit-1/actions')
-install_data('data/icons/Material3UI.svg', 'data/icons/hyprland-logo.svg', 'data/icons/niri-logo.svg', 'data/icons/umbriel-logo.svg', install_dir: get_option('datadir') / 'material3ui/icons')
+install_data('data/icons/Material3UI.svg', 'data/icons/niri-logo.svg', install_dir: get_option('datadir') / 'material3ui/icons')
 # The world's land, for Settings → System's time zone map
 install_data('data/maps/world.svg', install_dir: get_option('datadir') / 'material3ui/maps')
 # The package's icon (no .desktop file: the shell is not an app to launch)
@@ -248,7 +237,7 @@ install_data('data/wallpapers/default_wallpaper.png', 'data/wallpapers/midnight-
 
 executable('material3ui', sources, protocol_sources,
   include_directories: include_directories('src'),
-  dependencies: [wayland_client, wayland_egl, egl, glesv2, pangocairo, cairo, json, toml, xkbcommon, libsystemd, libpulse, librsvg, gdk_pixbuf, polkit_agent, pam, libcrypto],
+  dependencies: [wayland_client, wayland_egl, egl, glesv2, pangocairo, cairo, json, xkbcommon, libsystemd, libpulse, librsvg, gdk_pixbuf, polkit_agent, pam, libcrypto],
   # Function names in crash.log's backtraces
   link_args: ['-rdynamic'],
   install: true)
@@ -262,8 +251,6 @@ test('lyrics', executable('lyrics_test', 'tests/lyrics_test.cpp', 'src/services/
   include_directories: include_directories('src'), dependencies: [json]))
 test('alarms', executable('alarms_test', 'tests/alarms_test.cpp', 'src/services/AlarmsParse.cpp',
   include_directories: include_directories('src')))
-test('toml-edit', executable('toml_edit_test', 'tests/toml_edit_test.cpp', 'src/services/TomlEdit.cpp',
-  include_directories: include_directories('src'), dependencies: [json, toml]))
 test('pacman-conf', executable('pacman_conf_test', 'tests/pacman_conf_test.cpp', 'src/services/PacmanConf.cpp',
   include_directories: include_directories('src')))
 test('firmware', executable('firmware_test', 'tests/firmware_test.cpp', 'src/services/FirmwareParse.cpp',

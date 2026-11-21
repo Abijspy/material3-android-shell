@@ -308,9 +308,9 @@ void wellbeingPage(Flex* page, Popup&) {
                                  : duration(secs) + " today";
         };
         auto& cfg = Config::get();
-        std::string shape = std::format("{}|{}|{}|{}|{}|{}|{}", w.focus(), w.bedtime(), cfg.value<bool>("/wellbeing/bedtime/enabled", false),
+        std::string shape = std::format("{}|{}|{}|{}|{}|{}", w.focus(), w.bedtime(), cfg.value<bool>("/wellbeing/bedtime/enabled", false),
                                         cfg.value<std::string>("/wellbeing/bedtime/start", ""), cfg.value<std::string>("/wellbeing/bedtime/end", ""),
-                                        cfg.value<bool>("/wellbeing/bedtime/grayscale", true), cfg.value<bool>("/wellbeing/bedtime/dnd", true));
+                                        cfg.value<bool>("/wellbeing/bedtime/dnd", true));
         for (const auto& d : w.focusApps()) shape += "|f:" + d;
         auto& notif = Notifications::get();
         shape += std::format("|{}|{}|{}", w.breakEvery(), w.goal(), notif.doNotDisturb());
@@ -369,7 +369,7 @@ void wellbeingPage(Flex* page, Popup&) {
         }
 
         // Bedtime
-        auto* bed = group(live, "Bedtime mode", "Winds the evening down: the screen in greyscale and Do not disturb, on a schedule");
+        auto* bed = group(live, "Bedtime mode", "Winds the evening down: Do not disturb, on a schedule");
         auto now = row(bed, "bedtime", "Bedtime now", w.bedtime() ? "On" : "Off");
         pillButton(now.row, w.bedtime() ? "Stop" : "Start now", !w.bedtime(), [on = w.bedtime()] { Wellbeing::get().setBedtimeNow(!on); },
                    w.bedtime() ? "wb_sunny" : "bedtime");
@@ -387,11 +387,6 @@ void wellbeingPage(Flex* page, Popup&) {
         auto end = row(endItem, "wb_twilight", "Ends at", "");
         dropdown(end.row, endItem, cfg.value<std::string>("/wellbeing/bedtime/end", "07:00"), halfHours(4 * 60, 11 * 60),
                  [](const std::string& v) { Config::get().set("/wellbeing/bedtime/end", v); });
-        auto grey = row(bed, "filter_b_and_w", "Greyscale at bedtime",
-                        w.bedtime() ? "Colours fade while Bedtime is on" : "Colours fade during Bedtime: Start now to see it");
-        auto* gsw = grey.row->add<Switch>();
-        gsw->setChecked(cfg.value<bool>("/wellbeing/bedtime/grayscale", true), false);
-        gsw->onToggled = [](bool on) { Config::get().set("/wellbeing/bedtime/grayscale", on); };
         auto dnd = row(bed, "do_not_disturb_on", "Do not disturb at bedtime", "Only critical notifications pop up");
         auto* dsw = dnd.row->add<Switch>();
         dsw->setChecked(cfg.value<bool>("/wellbeing/bedtime/dnd", true), false);

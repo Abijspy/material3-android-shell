@@ -430,7 +430,7 @@ private:
 };
 
 // The firewall: a shield, struck through while it's off
-// The keyboard layout in use ("US", "DE"), on niri or Umbriel with more
+// The keyboard layout in use ("US", "DE"), on niri with more
 // than one; a click switches to the next
 class KeyboardChip : public Chip {
 public:
@@ -525,7 +525,7 @@ const std::vector<Bar::Module>& Bar::modules() {
         {"alarms", "alarm", "Alarms & timers", "A timer counting down, or the next alarm; opens the clock"},
         {"weather", "partly_cloudy_day", "Weather", "Live temperature and sky"},
         {"media", "music_note", "Media", "Now playing; click to pause, scroll to skip"},
-        {"lyrics", "lyrics", "Lyrics", "The line being sung, as music plays (synced lyrics)"},
+        {"lyrics", "lyrics", "Lyrics", "The line being sung, in any language, as music plays; a click shows the whole song"},
         {"netspeed", "swap_vert", "Network speed", "Live download and upload"},
         {"sysmon", "memory", "CPU & memory", "Usage now; opens the system monitor"},
         {"tray", "more_horiz", "System tray", "App icons and their menus"},
@@ -539,7 +539,7 @@ const std::vector<Bar::Module>& Bar::modules() {
         {"quickshare", quickShare.c_str(), "Quick Share", "Transfers' progress; opens Send files"},
         {"firewall", "shield_lock", "Firewall", "On or off; opens Firewall settings"},
         {"phone", "smartphone", "Phone", "Your phone's battery (KDE Connect); opens its settings"},
-        {"keyboard", "keyboard", "Keyboard layout", "The layout in use (with more than one, on niri or Umbriel); a click switches"},
+        {"keyboard", "keyboard", "Keyboard layout", "The layout in use (with more than one); a click switches"},
         {"printers", "print", "Printers", "Jobs waiting; opens Printers"},
         {"updates", "system_update_alt", "Updates", "How many are waiting; opens Software & updates"},
         {"quicksettings", "tune", "Quick Settings", "Opens Quick Settings"},

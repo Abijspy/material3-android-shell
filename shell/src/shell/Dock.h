@@ -36,10 +36,8 @@ public:
     // dock.pinned: desktop ids, in order
     static std::vector<std::string> pinned();
     static void setPinned(const std::vector<std::string>& ids);
-    // The app a pin stands for here: the compositor's settings app is one pin
-    // (material3ui-hyprland or material3ui-niri, whichever was pinned) that
-    // is Hyprland Settings on Hyprland and Niri Settings on niri; each one's
-    // launcher entry shows only in its own session (Umbriel Settings too)
+    // The app a pin stands for here: a pin of the old Hyprland or Umbriel
+    // Settings apps stands for Niri Settings
     static std::string shown(const std::string& pinnedId);
 
 private:

@@ -25,19 +25,15 @@ std::string settingsDir() {
 }
 
 // What a settings backup holds, relative to the home folder: the shell's
-// settings, and the Hyprland settings Settings writes (not shell.lua and the
-// others, which updates own)
+// settings (niri's from Settings among them, which material3ui-settings.kdl
+// is written from), and your own niri file (not material3ui.kdl, which
+// updates own)
 std::vector<std::string> members() {
     std::vector<std::string> out;
     std::error_code ec;
     const fs::path home = paths::home();
-    for (const char* f : {".config/material3ui/config.json", ".config/material3ui/keybinds.json", ".config/material3ui/hyprland-profiles"})
+    for (const char* f : {".config/material3ui/config.json", ".config/niri/material3ui-user.kdl"})
         if (fs::exists(home / f, ec)) out.push_back(f);
-    for (const auto& e : fs::directory_iterator(home / ".config/hypr/material3ui", ec)) {
-        const std::string name = e.path().filename().string();
-        if (name.ends_with("_custom.lua") || name == "user.lua" || name == "user_persistence.lua")
-            out.push_back(".config/hypr/material3ui/" + name);
-    }
     return out;
 }
 
@@ -104,7 +100,9 @@ void Backups::restore(const Entry& entry, std::function<void(bool)> done) {
         bool safe = code == 0 && !out.empty();
         for (std::string l; safe && std::getline(ss, l);)
             safe = l.find("..") == std::string::npos && !l.starts_with("/") &&
-                   (l.starts_with(".config/material3ui/") || l.starts_with(".config/hypr/material3ui/"));
+                   (l.starts_with(".config/material3ui/") || l == ".config/niri/material3ui-user.kdl" ||
+                    // Archives from before niri was the only compositor: their Hyprland files are inert
+                    l.starts_with(".config/hypr/material3ui/"));
         if (!safe) {
             if (done) done(false);
             return;
@@ -119,7 +117,7 @@ void Backups::restoreChecked(const std::string& path, std::function<void(bool)> 
         changed.emit();
         run({"tar", "-xzf", path, "-C", paths::home()}, [this, done](int code, const std::string&) {
             m_busy = false;
-            // The shell and Hyprland pick the restored settings up
+            // The shell and niri pick the restored settings up
             Config::get().reload();
             Compositor::get().reload();
             changed.emit();

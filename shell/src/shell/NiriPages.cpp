@@ -532,7 +532,7 @@ void niriBehaviourPage(Flex* page, Popup&) {
            "On in your config.kdl (niri can't switch it off from here)");
     switchRow(focus, "swap_horiz", "Back and forth", "Going to the workspace you're on goes back to the one before", kLook + "backAndForth",
               kdl::flag(doc, {"input", "workspace-auto-back-and-forth"}).value_or(false));
-    // Takes only "off", like Hyprland 0.57's input:tablet:enabled
+    // niri's config takes only "off"
     oneWay(focus, "stylus_note", "Drawing tablets", "Pens and tablets move the pointer and draw",
            kdl::flag(doc, {"input", "tablet", "off"}).value_or(false), "tablets", true,
            "Off in your config.kdl (niri can't switch them on from here)");

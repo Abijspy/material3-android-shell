@@ -13,7 +13,7 @@ namespace m3 {
 // thumbnail cache; a copied picture or video file (a file:// URI, as file
 // managers copy) gets a thumbnail too, a video's from one of its frames.
 // The wl-paste watchers that feed cliphist are started here when nothing
-// else (Hyprland's autostart) runs them.
+// else (your niri config's spawn-at-startup) runs them.
 class Clipboard {
 public:
     struct Entry {

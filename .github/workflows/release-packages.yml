@@ -29,10 +29,10 @@ jobs:
           ref: ${{ env.TAG }}
           fetch-depth: 0
       - name: Build dependencies
-        # The libraries the shell links against; runtime-only ones are skipped
+        # The libraries the shell links against; runtime-only ones (niri) are skipped
         run: |
           source packaging/material3ui/PKGBUILD
-          pacman -S --needed --noconfirm "${makedepends[@]}" $(printf '%s\n' "${depends[@]}" | grep -vx hyprland)
+          pacman -S --needed --noconfirm "${makedepends[@]}" $(printf '%s\n' "${depends[@]}" | grep -vx niri)
       - name: Build
         # makepkg refuses to run as root
         run: |

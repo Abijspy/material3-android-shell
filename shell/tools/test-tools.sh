@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Scrollbar, clipboard history and screenshots. Run with M3_SCALE=1.25 so the
 # Settings window has to scroll:
-#   M3_SERVICES=1 M3_FAKE_HYPR=1 M3_SCALE=1.25 M3_SCRIPT="bash tools/test-tools.sh" tools/dev.sh shot
+#   M3_SERVICES=1 M3_SCALE=1.25 M3_SCRIPT="bash tools/test-tools.sh" tools/dev.sh shot
 M=./build/material3ui; P=./build/vpointer
 echo "== settings scrollbar"
 $M msg settings style; sleep 1.5; grim /src/tools-scroll.png

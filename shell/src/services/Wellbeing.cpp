@@ -4,7 +4,6 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Process.h"
-#include "services/Effects.h"
 #include "services/Compositor.h"
 #include "services/Idle.h"
 #include "services/Notifications.h"
@@ -103,7 +102,7 @@ void Wellbeing::start() {
     // Stepping away (or back): what came before counts, the gap doesn't
     Idle::get().changed.connectForever([this] { flush(m_current); });
     m_timer = EventLoop::get().addTimer(10000, [this] { tick(); }, true);
-    // Settings changing (the schedule, greyscale, Focus): applied at once,
+    // Settings changing (the schedule, Focus): applied at once,
     // not at the next tick
     Config::get().changed.connectForever([this] {
         applyBedtime();
@@ -287,8 +286,7 @@ void Wellbeing::applyBedtime() {
     lastScheduled = scheduled;
     const bool on = m_bedtimeByHand ? m_handOn : scheduled;
     const auto& c = Config::get();
-    const bool grey = c.value<bool>("/wellbeing/bedtime/grayscale", true), dnd = c.value<bool>("/wellbeing/bedtime/dnd", true);
-    Effects::get().setTemporaryFilter(on && grey ? "grayscale" : "");
+    const bool dnd = c.value<bool>("/wellbeing/bedtime/dnd", true);
     auto& n = Notifications::get();
     if (on && dnd && !n.doNotDisturb()) {
         n.setDoNotDisturb(true);

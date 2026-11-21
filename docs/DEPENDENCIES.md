@@ -4,23 +4,21 @@ The installer reads `data/dependencies.json`, checks what is missing with `pacma
 
 ### Compositor
 
-The installer asks which compositor the shell runs on (`--compositor hyprland`, `niri`, `umbriel`, `both`, `all` or a list) and installs only their packages:
+The shell runs on niri, which the installer installs first:
 
 | Compositor | Packages | Description |
 | :--- | :--- | :--- |
-| **Hyprland** | `hyprland` `xdg-desktop-portal-hyprland` `hypridle` `hyprlock` `hyprsunset` `hyprpicker` | Hyprland 0.55 or newer; screen sharing with the shell's picker, the idle daemon and fallback lock screen its config starts, night light and a colour picker. |
 | **niri** | `niri` `xwayland-satellite` `xdg-desktop-portal-gnome` | niri 26.04 or newer, X11 apps, and screen sharing. Night light needs nothing more: the shell warms the screens itself. |
-| **Umbriel** | `umbriel-git` `xdg-desktop-portal-umbriel-git` (AUR, maintained by Noctalia), `xorg-xwayland` `xdg-desktop-portal` | Umbriel and its portal, built from the latest source when installed, X11 apps, and screen sharing. An Umbriel you have already is kept. |
 
 ### Core Components
 
 | Component | Package | Description |
 | :--- | :--- | :--- |
 | **Shell** | built from `shell/` | The native C++ shell (`material3ui`), built with `meson` and `ninja` (`base-devel`) by the installer. |
-| **Shell libraries** | `wayland` `wayland-protocols` `wlr-protocols` `mesa` `pango` `cairo` `librsvg` `gdk-pixbuf2` `libxkbcommon` `nlohmann-json` `tomlplusplus` `libpulse` `polkit` `pam` | Wayland and layer shell, OpenGL ES, text, icons and wallpapers, keyboard, JSON and TOML, audio, the polkit agent and the lock screen. |
+| **Shell libraries** | `wayland` `wayland-protocols` `wlr-protocols` `mesa` `pango` `cairo` `librsvg` `gdk-pixbuf2` `libxkbcommon` `nlohmann-json` `libpulse` `polkit` `pam` | Wayland and layer shell, OpenGL ES, text, icons and wallpapers, keyboard, JSON, audio, the polkit agent and the lock screen. |
 | **Theme** | `matugen` | Material 3 theme generation from wallpapers. |
 | **GTK Theme** | `adw-gtk-theme` | Libadwaita-like theme for GTK3 applications. |
-| **Cursor** | `bibata-cursor-theme-bin` | Bibata Modern Classic, the default cursor (AUR). Another can be picked in Hyprland Settings → Cursor, or Settings → Mouse & touchpad on niri. |
+| **Cursor** | `bibata-cursor-theme-bin` | Bibata Modern Classic, the default cursor (AUR). Another can be picked in Settings → Accessibility. |
 | **Scripting** | `python3` | Used by terminal color scripts and utilities. |
 | **JSON** | `jq` | Command-line JSON processor for configs and state. |
 
@@ -50,7 +48,7 @@ The installer asks which compositor the shell runs on (`--compositor hyprland`, 
 | **Sound** | `ffmpeg` | System sounds playback via `ffplay`. |
 | **Clipboard** | `wl-clipboard` | Wayland clipboard operations. |
 | **Clip. Hist.** | `cliphist` | Clipboard history management in Spotlight. |
-| **Recognition** | `songrec` | Shazam-like music recognition feature. |
+| **Recognition** | `songrec` | Recognises the song playing (Shazam), so its lyrics can be found when the player doesn't say what it is. The sound is captured with `parec` (libpulse). |
 | **Visualizer** | `cava` | Audio visualization in the shell. |
 | **System info** | `fastfetch` | The device's details in Settings → About: model, CPU, GPU, memory, disk, displays, packages, uptime and battery. |
 | **Wallpaper Eng.** | `linux-wallpaperengine-git` | Steam Wallpaper Engine support (Optional). |

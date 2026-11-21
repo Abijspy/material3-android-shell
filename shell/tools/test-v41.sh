@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # v4.1: weather, bar widgets, lock screen widgets, greeter sync. Run via
-#   M3_SERVICES=1 M3_FAKE_HYPR=1 M3_SCRIPT="bash tools/test-v41.sh" tools/dev.sh shot
+#   M3_SERVICES=1 M3_SCRIPT="bash tools/test-v41.sh" tools/dev.sh shot
 M=./build/material3ui; P=./build/vpointer
 cfg() { python3 - "$@" <<'PY'
 import json, os, sys

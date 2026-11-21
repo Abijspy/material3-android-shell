@@ -9,8 +9,8 @@
 
 namespace m3 {
 
-// Screenshots with grim: a region picked with slurp, the active window (from
-// Hyprland) or a whole output. Saved as PNG, optionally copied to the
+// Screenshots with grim: a region picked with slurp, the active window (niri
+// captures it) or a whole output. Saved as PNG, optionally copied to the
 // clipboard and opened in an editor (swappy or satty).
 class Screenshot {
 public:

@@ -88,7 +88,7 @@ void Apps::reload() {
     m_apps.clear();
     std::set<std::string> seen; // the first directory wins (user overrides system)
     const char* desktopEnv = std::getenv("XDG_CURRENT_DESKTOP");
-    const std::string desktop = desktopEnv ? desktopEnv : "Hyprland";
+    const std::string desktop = desktopEnv ? desktopEnv : "niri";
     for (const auto& dir : applicationDirs()) {
         std::error_code ec;
         for (auto it = fs::recursive_directory_iterator(dir, ec); it != fs::recursive_directory_iterator(); it.increment(ec)) {

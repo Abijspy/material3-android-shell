@@ -4,8 +4,8 @@
 #include <utility>
 #include <vector>
 
-// Settings' pages on niri, where they'd send you to Hyprland Settings on
-// Hyprland: the touchpad and mouse, keyboard layouts and keys, monitors.
+// Settings' pages for what niri sets: the touchpad and mouse, keyboard
+// layouts and keys, monitors.
 // They write the shell's settings for niri (services/NiriConfig)
 namespace m3::ui {
 class Flex;
@@ -24,7 +24,7 @@ void niriMonitors(ui::Flex* page);
 // included, or niri refused the file): why, and what to do
 void niriNotice(ui::Flex* page);
 
-// Niri Settings, the window Hyprland Settings is on Hyprland: how windows
+// Niri Settings, the compositor's own window: how windows
 // look and behave. Each option shows what's set here, else your
 // config.kdl's value, else niri's default
 void niriLayoutPage(ui::Flex* page, Popup&);

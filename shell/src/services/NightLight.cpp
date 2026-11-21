@@ -3,7 +3,6 @@
 #include "core/Config.h"
 #include "core/Log.h"
 #include "core/Process.h"
-#include "services/Hyprland.h"
 #include "wayland/Display.h"
 
 #include "wlr-gamma-control-unstable-v1-client-protocol.h"
@@ -83,21 +82,9 @@ int NightLight::temperature() const {
     return std::clamp(Config::get().value<int>("/nightLight/temperature", 4500), 1000, 6500);
 }
 
-bool NightLight::native() const {
-    return !Hyprland::get().available();
-}
-
 void NightLight::start() {
     // Settings (and the Quick Settings tile) change the config: follow it
     Config::get().changed.connectForever([this] { apply(); });
-    if (!native()) {
-        // hyprsunset outlives the shell: started only when it isn't running,
-        // and left alone (yours, maybe) until night light is switched
-        m_appliedOn = on() ? 1 : 0;
-        m_appliedK = temperature();
-        if (on()) spawn(std::format("pgrep -x hyprsunset >/dev/null || hyprsunset -t {}", m_appliedK));
-        return;
-    }
     apply();
 }
 
@@ -114,9 +101,7 @@ void NightLight::apply() {
     if (now == m_appliedOn && (!now || k == m_appliedK)) return;
     m_appliedOn = now;
     m_appliedK = k;
-    if (native()) applyGamma(now);
-    else if (now) spawn(std::format("pkill -x hyprsunset; hyprsunset -t {}", k));
-    else spawn("pkill -x hyprsunset");
+    applyGamma(now);
     changed.emit();
 }
 
@@ -147,7 +132,7 @@ void NightLight::applyGamma(bool enabled) {
 }
 
 void NightLight::outputsChanged() {
-    if (native() && on()) applyGamma(true);
+    if (on()) applyGamma(true);
 }
 
 void NightLight::forget(wl::Output* output) {

@@ -20,13 +20,13 @@ static void expect(bool ok, const char* what) {
 int main() {
     Upgrade u;
     // 20:09:51 at +05:30 is 14:39:51 UTC
-    expect(parseUpgrade("[2026-10-23T20:09:51+0530] [ALPM] upgraded hyprutils (0.14.2-1 -> 0.14.3-1)", u), "parses an upgrade");
-    expect(u.package == "hyprutils", "package name");
+    expect(parseUpgrade("[2026-10-23T20:09:51+0530] [ALPM] upgraded niri (26.04-1 -> 26.04-2)", u), "parses an upgrade");
+    expect(u.package == "niri", "package name");
     expect(u.when == 1792766391, "+0530 converted to UTC");
     expect(parseUpgrade("[2026-10-23T09:09:51-0500] [ALPM] upgraded linux (6.17.1-1 -> 6.17.2-1)", u) && u.when == 1792764591,
            "-0500 converted to UTC");
     expect(parseUpgrade("[2026-10-23T14:39:51+0000] [ALPM] upgraded mesa (1 -> 2)", u) && u.when == 1792766391, "UTC");
-    expect(!parseUpgrade("[2026-10-23T20:09:51+0530] [ALPM] installed hyprutils (0.14.3-1)", u), "installs are not upgrades");
+    expect(!parseUpgrade("[2026-10-23T20:09:51+0530] [ALPM] installed niri (26.04-2)", u), "installs are not upgrades");
     expect(!parseUpgrade("[2026-10-23T20:09:51+0530] [PACMAN] Running 'pacman -Syu'", u), "other lines");
     expect(!parseUpgrade("", u), "empty line");
 

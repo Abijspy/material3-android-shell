@@ -5,21 +5,16 @@
 
 namespace m3 {
 
-// Compositor-side effects for the shell's layers (on niri, what Settings
-// changes there goes to services/NiriConfig instead). Blur on Hyprland is a
-// layer rule, not something a client can ask for: this writes the rules (and
-// the blur strength) from config.json into effects_custom.lua, which
-// shell.lua reads, and reloads Hyprland when they change. Hyprland shapes
-// that blur by the layers' alpha, so they send it no region; compositors
-// with only ext-background-effect get per-surface regions from wl::Surface.
+// Compositor-side effects for the shell's layers and apps: what Settings
+// changes there (blur, the cursor, apps blurred behind) goes into niri's
+// own config through services/NiriConfig, re-applied as config.json and
+// the installed packages change. The shell's surfaces send niri their blur
+// regions through ext-background-effect (wl::Surface).
 class Effects {
 public:
     static Effects& get();
-    // A colour filter over the Accessibility one for a while ("grayscale"
-    // at bedtime); "" ends it
-    void setTemporaryFilter(const std::string& filter);
 
-    // The cursor theme in use: the one chosen (Hyprland Settings → Cursor),
+    // The cursor theme in use: the one chosen (Settings → Accessibility),
     // or Bibata when none is (if it's installed); "" for the system's own,
     // chosen or not
     static std::string cursorTheme();
@@ -27,29 +22,17 @@ public:
     static bool cursorInstalled(const std::string& theme);
 
     // Settings → Look & feel → Blur behind apps (/appearance/appBlur): the
-    // apps made a little see-through for the compositor's blur to show, as a
-    // regex each for their class (Hyprland) or app id (niri), and how opaque
-    // (focused; unfocused a little less). Hyprland blurs see-through windows
-    // by itself; niri gets background-effect rules (services/NiriConfig)
+    // apps made a little see-through for niri's blur to show, as a regex
+    // each for their app id, and how opaque. niri gets background-effect
+    // rules for them (services/NiriConfig)
     static std::vector<std::string> blurredApps();
     static double appOpacity();
-    // The regex matching exactly these classes or app ids
+    // The regex matching exactly these app ids
     static std::string classRegex(const std::vector<std::string>& classes);
 
 private:
-    std::string m_temporaryFilter;
     Effects();
     void apply();
-
-    std::string m_applied; // legacy configs: what the keywords last set
-    int m_cursor = 0;          // the cursor size last applied
-    std::string m_cursorTheme; // what setcursor last applied
-    void applyCursor();
-    void applyInput();     // Settings → Mouse & touchpad, as input_custom.lua
-    void applyAccessibility(); // the magnifier and colour correction
-    void applySharing();       // Settings → Tools → Screen sharing, as xdph.conf
-    std::string m_a11yApplied;
-    std::string m_inputApplied; // legacy configs: what the keywords last set
 };
 
 } // namespace m3

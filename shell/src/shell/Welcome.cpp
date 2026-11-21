@@ -37,10 +37,6 @@ bool onNiri() {
     return Compositor::get().name() == "niri";
 }
 
-bool onUmbriel() {
-    return Compositor::session() == "umbriel";
-}
-
 struct Release {
     std::string version, date;
     std::vector<std::pair<std::string, std::string>> notes; // the bold lead, the rest
@@ -152,16 +148,11 @@ void tourLayout(Flex* page) {
 }
 
 void tourKeys(Flex* page) {
-    const bool niri = onNiri() || onUmbriel(); // neither binds a tap of Super to the shell
-    pageHead(page, "keyboard", "Keys worth knowing",
-             onUmbriel() ? "Super is the Windows key. Change these, or add your own, in ~/.config/umbriel/material3ui.toml."
-             : niri      ? "Super is the Windows key. Add your own keys, or change these, in Niri Settings → Keys."
-                         : "Super is the Windows key. Every shortcut can be changed in Hyprland Settings → Keybinds.");
+    pageHead(page, "keyboard", "Keys worth knowing", "Super is the Windows key. Add your own keys, or change these, in Niri Settings → Keys.");
     auto* g = group(page, "Shortcuts");
     const std::vector<std::tuple<std::string, std::string, std::string>> keys = {
         // niri can't bind Super on its own
-        niri ? std::tuple<std::string, std::string, std::string>{"search", "Super + Space", "Search apps, files and settings"}
-             : std::tuple<std::string, std::string, std::string>{"search", "Super", "Search apps, files and settings (tap)"},
+        {"search", "Super + Space", "Search apps, files and settings"},
         {"tab", "Super + Tab", "Switch windows; hold Super, tap Tab"},
         {"grid_view", "Super + `", "Overview of every workspace"},
         {"toggle_on", "Super + N", "Quick Settings"},
@@ -185,13 +176,13 @@ void tourDone(Flex* page) {
     pillButton(s.row, "Open", false, [] {
         if (open) open("settings");
     });
-    // The compositor's app (hyprsettings opens Niri Settings on niri, Umbriel Settings on Umbriel)
-    auto h = onUmbriel() ? row(g, "tune", "Umbriel Settings", "Layouts, gaps, borders, blur, animations and input")
-             : onNiri()  ? row(g, "tune", "Niri Settings", "Gaps, borders, blur, animations, keys and window rules")
-                         : row(g, "tune", "Hyprland Settings", "Windows, animations, input, keybinds and more");
-    pillButton(h.row, "Open", false, [] {
-        if (open) open("hyprsettings");
-    });
+    // niri's own app
+    if (onNiri()) {
+        auto h = row(g, "tune", "Niri Settings", "Gaps, borders, blur, animations, keys and window rules");
+        pillButton(h.row, "Open", false, [] {
+            if (open) open("nirisettings");
+        });
+    }
     auto d = row(g, "dashboard_customize", "Desktop widgets", "A clock, weather, music and app shortcuts on the wallpaper");
     pillButton(d.row, "Edit", false, [] {
         if (open) open("desktopedit");
@@ -278,8 +269,8 @@ void welcome(Flex* card, Popup& popup) {
             hero->setSpacing(14)->setPadding({24, 0})->setAlignItems(Align::Center);
             logo(hero, 132);
             hero->add<Label>("Welcome to Material3UI")->setSize(34)->setWeight(600);
-            para(hero, std::string("A Material 3 Expressive desktop for ") + (onUmbriel() ? "Umbriel" : onNiri() ? "niri" : "Hyprland") + ", version " M3_VERSION
-                           ". A few quick choices and you're ready; nothing here is final, and all of it is in Settings later.",
+            para(hero, std::string("A Material 3 Expressive desktop for niri, version " M3_VERSION
+                                   ". A few quick choices and you're ready; nothing here is final, and all of it is in Settings later."),
                  620, 16)->setCentered(true);
             break;
         }

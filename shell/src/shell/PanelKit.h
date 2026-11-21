@@ -234,6 +234,9 @@ public:
     LyricsLine(float size, bool keepRoom, bool turned = false);
     ~LyricsLine() override;
     LyricsLine* setMaxWidth(float w);
+    // A click opens the lyrics panel
+    bool interactive() const override { return true; }
+    void onClick(uint32_t button) override;
 
 private:
     void sync();

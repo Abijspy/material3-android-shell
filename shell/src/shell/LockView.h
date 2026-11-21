@@ -62,8 +62,8 @@ private:
     void buildBottomBar();
     void openMenu(Menu menu);
     void closeMenu();
-    // The chosen session on its chip: its compositor's logo (Hyprland's,
-    // niri's), else the glyph
+    // The chosen session on its chip: its compositor's logo (niri's),
+    // else the glyph
     void showSession();
 
     Options m_options;

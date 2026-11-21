@@ -10,12 +10,11 @@
 
 namespace m3 {
 
-// Settings backups: the shell's settings and the Hyprland settings it
-// writes, kept as timestamped archives in
-// ~/.config/material3ui/backups/settings (made from Settings, and before
-// each update, restore and reset). Only these: the installer's backups
-// beside them undo an install (the first one's deletes the whole Hyprland
-// config), so they are never offered here.
+// Settings backups: the shell's settings and your own niri file, kept as
+// timestamped archives in ~/.config/material3ui/backups/settings (made
+// from Settings, and before each update, restore and reset). Only these:
+// the installer's backups beside them undo an install, so they are never
+// offered here.
 class Backups {
 public:
     struct Entry {

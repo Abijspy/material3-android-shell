@@ -20,9 +20,9 @@ const xdg_surface_listener kXdgSurface = {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 const xdg_toplevel_listener kToplevel = {
-    // The states aren't read: Hyprland marks every window it may tile as
-    // maximised (so apps drop their shadows), which says nothing about the
-    // maximise button. The window tracks what it asked for itself.
+    // The states aren't read: a tiling compositor may mark every tiled
+    // window maximised (so apps drop their shadows), which says nothing
+    // about the maximise button. The window tracks what it asked for itself.
     .configure = [](void* data, xdg_toplevel*, int32_t w, int32_t h, wl_array*) {
         m3::guard("a Wayland event", [&] { static_cast<Window*>(data)->toplevelConfigure(w, h); });
     },

@@ -20,27 +20,21 @@ CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 STATE_FILE="$CONFIG_HOME/material3ui/install_state.json"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOT="$PROJECT_ROOT/dotfiles/.config"
-HYPR="$CONFIG_HOME/hypr"
-HYPR_PRESERVE=(apps.lua user.lua user_persistence.lua colors.lua)
 
 [[ -f "$STATE_FILE" ]] || { echo "install_state.json not found; run install.sh first." >&2; exit 1; }
 state() { grep -oP "\"$1\": \"\\K[^\"]*" "$STATE_FILE" || true; }
 
 INSTALL_DIR="$(state install_dir)"; INSTALL_DIR="${INSTALL_DIR:-$PROJECT_ROOT}"
 CHANNEL="${CHANNEL:-$(state channel)}"; CHANNEL="${CHANNEL:-stable}"
-HYPR_MODE="$(state hypr_mode)"
-if [[ -z "$HYPR_MODE" ]]; then
-    grep -q '"inject": true' "$STATE_FILE" && HYPR_MODE=inject || HYPR_MODE=full
-fi
-# Installs from before 6.0 set up Hyprland only
+# Installs from before 7.0 may have set up Hyprland or Umbriel only: niri's
+# config isn't theirs to write, and the shell no longer runs on those
 NIRI_MODE="$(state niri_mode)"; NIRI_MODE="${NIRI_MODE:-skip}"
 NIRI="$CONFIG_HOME/niri"
-UMBRIEL_MODE="$(state umbriel_mode)"; UMBRIEL_MODE="${UMBRIEL_MODE:-skip}"
-UMB="$CONFIG_HOME/umbriel"
-# A compositor uninstalled since: its config isn't written for it any more
-if [[ "$HYPR_MODE" != skip ]] && ! command -v Hyprland >/dev/null && ! command -v hyprland >/dev/null; then HYPR_MODE=skip; HYPR_GONE=1; fi
+OLD_COMPOSITORS=""
+case ",$(state compositor)," in *,hyprland,*|*,umbriel,*) OLD_COMPOSITORS=1 ;; esac
+[[ -n "$(state compositor)" ]] || OLD_COMPOSITORS=1 # before 6.0: Hyprland
+# niri uninstalled since: its config isn't written for it any more
 if [[ "$NIRI_MODE" != skip ]] && ! command -v niri >/dev/null; then NIRI_MODE=skip; NIRI_GONE=1; fi
-if [[ "$UMBRIEL_MODE" != skip ]] && ! command -v umbriel >/dev/null; then UMBRIEL_MODE=skip; UMBRIEL_GONE=1; fi
 
 case "$MODE" in all|shell) ;; *) echo "Usage: $0 [all|shell] [stable|canary] [--force]" >&2; exit 2 ;; esac
 
@@ -69,12 +63,6 @@ else
 fi
 
 ours() { [[ ! -e "$1" ]] || grep -qs "# Material3UI Configuration" "$1"; }
-# replace SRC DST: a whole copy renamed into place, so Hyprland, which reads
-# its config again as soon as a file of it changes, never finds a module
-# missing or half written (its emergency mode)
-replace() {
-    cp "$1" "$(dirname "$2")/.$(basename "$2").m3new" && mv -f "$(dirname "$2")/.$(basename "$2").m3new" "$2"
-}
 
 # The shell installs as the material3ui pacman package: a release's own
 # package on the stable channel, else one made from a build of the checkout
@@ -95,7 +83,7 @@ if [[ "$CHANNEL" == stable && -n "${tag:-}" ]]; then
 fi
 if [[ -z "$PKG" ]]; then
     # What the build needs and isn't here yet: a release can add one
-    # (tomlplusplus in 6.4), and a missing one would stop meson
+    # (as tomlplusplus did in 6.4), and a missing one would stop meson
     deps="$INSTALL_DIR/data/dependencies.json"
     if command -v jq >/dev/null && [[ -f "$deps" ]]; then
         lacking=()
@@ -156,40 +144,33 @@ if [[ "$MODE" == all ]]; then
         cp "$DOT/alacritty/alacritty.toml" "$CONFIG_HOME/alacritty/alacritty.toml"
     fi
 
-    [[ -z "${HYPR_GONE:-}" ]] || echo "Hyprland isn't installed: its config is left as it is."
     [[ -z "${NIRI_GONE:-}" ]] || echo "niri isn't installed: its config is left as it is."
-    [[ -z "${UMBRIEL_GONE:-}" ]] || echo "Umbriel isn't installed: its config is left as it is."
-    if [[ "$HYPR_MODE" != skip ]]; then
-        echo "Updating Hyprland modules ($HYPR_MODE)..."
-        mkdir -p "$HYPR/material3ui"
-        rm -f "$HYPR/material3ui/material3ui.lua"
-        for f in "$DOT/hypr/material3ui/"*.lua; do
-            name="$(basename "$f")"
-            [[ " ${HYPR_PRESERVE[*]} " == *" $name "* && -e "$HYPR/material3ui/$name" ]] && continue
-            replace "$f" "$HYPR/material3ui/$name"
-        done
-        [[ "$HYPR_MODE" == full ]] && replace "$DOT/hypr/hyprland.lua" "$HYPR/hyprland.lua"
-    fi
-
-    # niri's material3ui.kdl, with the apps picked at install (config.kdl
-    # and material3ui-user.kdl are yours: left alone)
+    # niri's material3ui.kdl, with your apps: the ones it names now (Settings
+    # → Default apps may have changed them since), else those picked at
+    # install (config.kdl and material3ui-user.kdl are yours: left alone)
     if [[ "$NIRI_MODE" == include ]]; then
         echo "Updating niri's material3ui.kdl..."
         term="$(state terminal)" files="$(state file_manager)" web="$(state browser)"
         mkdir -p "$NIRI"
         sed -e "s/\"alacritty\"/\"${term:-alacritty}\"/g" -e "s/\"nemo\"/\"${files:-nemo}\"/g" -e "s/\"librewolf\"/\"${web:-librewolf}\"/g" \
             "$DOT/niri/material3ui.kdl" >"$NIRI/material3ui.kdl.tmp"
+        if [[ -f "$NIRI/material3ui.kdl" ]]; then
+            python3 -I - "$NIRI/material3ui.kdl" "$NIRI/material3ui.kdl.tmp" <<'PY' || true
+import re, sys
+old, new = (open(f).read() for f in sys.argv[1:3])
+# The apps' variables and the keys that start them, as the current file has them
+for key in ("TERMINAL", "BROWSER", r"Mod\+Return", r"Mod\+T", r"Mod\+E", r"Mod\+B"):
+    pat = re.compile(r"^[ \t]*" + key + r"[ \t].*$", re.M)
+    mine, theirs = pat.search(old), pat.search(new)
+    if mine and theirs: new = new[:theirs.start()] + mine.group(0) + new[theirs.end():]
+open(sys.argv[2], "w").write(new)
+PY
+        fi
         mv "$NIRI/material3ui.kdl.tmp" "$NIRI/material3ui.kdl"
     fi
-    # Umbriel's material3ui.toml, the same way (config.toml is yours: left
-    # alone; Umbriel reloads as the file changes)
-    if [[ "$UMBRIEL_MODE" == include ]]; then
-        echo "Updating Umbriel's material3ui.toml..."
-        term="$(state terminal)" files="$(state file_manager)" web="$(state browser)"
-        mkdir -p "$UMB"
-        sed -e "s/spawn alacritty/spawn ${term:-alacritty}/g" -e "s/spawn nemo/spawn ${files:-nemo}/g" -e "s/spawn librewolf/spawn ${web:-librewolf}/g" \
-            "$DOT/umbriel/material3ui.toml" >"$UMB/material3ui.toml.tmp"
-        mv "$UMB/material3ui.toml.tmp" "$UMB/material3ui.toml"
+    if [[ -n "$OLD_COMPOSITORS" && "$NIRI_MODE" != include ]]; then
+        echo "! Material3UI runs on niri only from 7.0 (Hyprland and Umbriel support is gone)."
+        echo "  Run $INSTALL_DIR/install.sh to set niri up, then log into niri."
     fi
 fi
 
@@ -216,15 +197,8 @@ if [[ -d /usr/share/material3ui-greeter ]] && "$PROJECT_ROOT/greeter/material3ui
 fi
 
 # Swap the running shell for the new build
-if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
-    hyprctl reload >/dev/null || true
-    pkill -x material3ui || true
-    sleep 0.3
-    # Detached, so it outlives this script (and Lua configs need no dispatch syntax)
-    setsid -f material3ui >/dev/null 2>&1 </dev/null
-    echo "Shell restarted."
-elif [[ -n "${NIRI_SOCKET:-}" || -n "${UMBRIEL_SOCKET:-}" ]]; then
-    # niri and Umbriel read their config again by themselves
+if [[ -n "${NIRI_SOCKET:-}" ]]; then
+    # niri reads its config again by itself; detached, so the shell outlives this script
     pkill -x material3ui || true
     sleep 0.3
     setsid -f material3ui >/dev/null 2>&1 </dev/null

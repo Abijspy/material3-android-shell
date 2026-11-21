@@ -16,8 +16,7 @@ using wl::LayerSurface;
 
 namespace {
 
-// A strip the compositor blurs behind (where it takes regions: Hyprland
-// blurs by the frame's alpha, corners and all)
+// A strip the compositor blurs behind (ext-background-effect regions)
 class BlurStrip : public Node {
 protected:
     SizeF doMeasure(SizeF) override { return {}; }

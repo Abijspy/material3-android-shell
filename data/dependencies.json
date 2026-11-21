@@ -81,11 +81,6 @@
       "description": "JSON (build only)"
     },
     {
-      "name": "tomlplusplus",
-      "command": "",
-      "description": "TOML, for Umbriel Settings (build only)"
-    },
-    {
       "name": "libpulse",
       "command": "pactl",
       "description": "Audio (PipeWire through pipewire-pulse)"
@@ -99,38 +94,6 @@
       "name": "pam",
       "command": "",
       "description": "Lock screen authentication"
-    }
-  ],
-  "hyprland": [
-    {
-      "name": "hyprland",
-      "command": "hyprctl",
-      "description": "Wayland compositor (Base)"
-    },
-    {
-      "name": "xdg-desktop-portal-hyprland",
-      "command": "/usr/lib/xdg-desktop-portal-hyprland",
-      "description": "Screen sharing support"
-    },
-    {
-      "name": "hyprpicker",
-      "command": "hyprpicker",
-      "description": "Color picker"
-    },
-    {
-      "name": "hyprlock",
-      "command": "hyprlock",
-      "description": "System locker"
-    },
-    {
-      "name": "hyprsunset",
-      "command": "hyprsunset",
-      "description": "Blue light filter"
-    },
-    {
-      "name": "hypridle",
-      "command": "hypridle",
-      "description": "Idle daemon the Hyprland config starts"
     }
   ],
   "niri": [
@@ -148,28 +111,6 @@
       "name": "xdg-desktop-portal-gnome",
       "command": "/usr/lib/xdg-desktop-portal-gnome",
       "description": "Screen sharing on niri"
-    }
-  ],
-  "umbriel": [
-    {
-      "name": "umbriel-git",
-      "command": "umbriel",
-      "description": "Wayland compositor: Noctalia's (AUR, by noctalia-dev; builds the latest)"
-    },
-    {
-      "name": "xdg-desktop-portal-umbriel-git",
-      "command": "/usr/lib/xdg-desktop-portal-umbriel",
-      "description": "Screen sharing and screenshots for apps on Umbriel (AUR, by noctalia-dev)"
-    },
-    {
-      "name": "xorg-xwayland",
-      "command": "Xwayland",
-      "description": "X11 apps on Umbriel"
-    },
-    {
-      "name": "xdg-desktop-portal",
-      "command": "/usr/lib/xdg-desktop-portal",
-      "description": "Screen sharing on Umbriel, through its portal"
     }
   ],
   "services": [
@@ -298,7 +239,7 @@
     {
       "name": "fastfetch",
       "command": "fastfetch",
-      "description": "The device's details in Settings \u2192 About"
+      "description": "The device's details in Settings → About"
     }
   ],
   "theming": [
@@ -334,7 +275,7 @@
     },
     {
       "name": "bibata-cursor-theme-bin",
-      "command": "hyprctl",
+      "command": "",
       "description": "Bibata cursors, the default cursor theme (AUR)"
     }
   ],

@@ -7,7 +7,7 @@ material3ui msg <command> [args]
 material3ui msg help        # every command, from the running shell
 ```
 
-Hyprland binds, scripts and other programs all use the same commands. The defaults live in [`shell.lua`](../dotfiles/.config/hypr/material3ui/shell.lua).
+niri binds, scripts and other programs all use the same commands. The defaults live in [`material3ui.kdl`](../dotfiles/.config/niri/material3ui.kdl).
 
 **A second shell, for testing.** With `M3_INSTANCE=<name>` set, a shell runs beside the one you use, for example on a nested compositor started inside your session. It gets its own socket (`$XDG_RUNTIME_DIR/material3ui-<name>/`), and leaves what a session has only one of to your shell: Quick Share, the polkit agent, update checks, the clipboard history's watchers and your hooks (its events are still recorded). `material3ui msg` and `material3ui events` reach it when the same variable is set:
 
@@ -25,9 +25,8 @@ M3_INSTANCE=test material3ui msg workspaces
 | `popup notifications` · `dashboard` · `overview` · `sysmon` · `power` | The notification centre, dashboard, workspace overview, system monitor and power menu |
 | `popup audio` · `network` · `bluetooth` · `run` | The small status panels and the run dialog |
 | `settings [page]` | Settings. Pages: `network`, `vpn`, `bluetooth`, `printers`, `defaults`, `notifications`, `tools`, `spotlight`, `wellbeing`, `calendar`, `weather`, `battery`, `storage`, `monitor`, `sound`, `display`, `appearance`, `style`, `bar`, `dock`, `lockscreen`, `accessibility`, `lock`, `firewall`, `users`, `system`, `mouse`, `keybinds`, `hooks`, `packages`, `firmware`, `about` |
-| `hyprsettings [page]` | Hyprland Settings (pages `hypr-…`); on niri, Niri Settings |
 | `nirisettings [page]` | Niri Settings, on niri. Pages: `niri-layout`, `niri-decoration`, `niri-animations`, `niri-behaviour`, `niri-keys`, `niri-rules`, `niri-startup`, `niri-environment` |
-| `umbrielsettings [page]` | Umbriel Settings, on Umbriel. Pages: `umbriel-layout`, `umbriel-decoration`, `umbriel-animations`, `umbriel-effects`, `umbriel-monitors`, `umbriel-input`, `umbriel-behaviour`, `umbriel-keys`, `umbriel-rules`, `umbriel-startup`, `umbriel-all` |
+| `lyrics` | The playing song's lyrics, scrolling along, with Identify |
 | `clipboard` | Clipboard history |
 | `screenshot` | The screenshot tool |
 | `wallpaper pick` | The wallpaper picker |
@@ -43,7 +42,8 @@ Running a panel command again closes the panel.
 | `screenshot region\|window\|screen [delay]` | Captures at once (delay in seconds). It saves to `~/Pictures/Screenshots`, and copies to the clipboard, opens an editor or notifies, depending on Settings → Tools. |
 | `edit <file>` | A picture in the image editor: draw, arrows, boxes, highlight, text, pixelate, crop; then copy or save |
 | `screenshot ocr` | Copies the text in a picked region (tesseract) |
-| `keyboard [next\|list]` | The keyboard layouts (niri, Umbriel), or the next one |
+| `keyboard [next\|list]` | The keyboard layouts, or the next one |
+| `lyrics identify` · `lyrics status` | Listens to what's playing and recognises the song (Shazam, through songrec), then shows its lyrics; `status`: the song, where its lyrics came from and the line being sung |
 | `pomodoro [start\|pause\|resume\|skip\|stop\|status]` | The focus timer (the clock panel's Focus tab); with nothing after it, opens the tab |
 | `messages` | Your phone's text messages (KDE Connect): the conversations, replies and new ones |
 | `notes [list\|add <text>\|done <n>\|remove <n>\|clear]` | The to-do list (Notes); with nothing after it, opens the panel |
@@ -79,7 +79,7 @@ Running a panel command again closes the panel.
 | :--- | :--- |
 | `ping` · `version` | `pong`, and the shell version |
 | `status` | A summary of every service (audio, network, Bluetooth, battery, media…) |
-| `outputs` · `workspaces` · `tray` | What the shell sees (`workspaces`: Hyprland's or niri's, each with its monitor) |
+| `outputs` · `workspaces` · `tray` | What the shell sees (`workspaces`: niri's, each with its monitor) |
 | `debug` | Every surface's node tree with positions (used by the UI tests) |
 | `layout check` | Anything drawn outside its box (the card or pill around it) or off its surface, on every open surface: `ok: …` when there's none. A test can open each panel and check it, at any text size |
 

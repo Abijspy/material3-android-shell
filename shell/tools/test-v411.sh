@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # v4.1.1: on-bar edit mode and the lock screen grid editor. Run via
-#   M3_SERVICES=1 M3_FAKE_HYPR=1 M3_SCRIPT="bash tools/test-v411.sh" tools/dev.sh shot
+#   M3_SERVICES=1 M3_SCRIPT="bash tools/test-v411.sh" tools/dev.sh shot
 M=./build/material3ui; P=./build/vpointer
 ui() { python3 tools/ui.py "$@"; }
 echo "== bar edit mode"

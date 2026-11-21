@@ -17,7 +17,7 @@ namespace m3 {
 // wellbeing; app timers that close an app for the rest of the day once
 // its time is up (a minute's warning first); Focus mode, which keeps
 // distracting apps closed while it's on; and Bedtime, which turns the
-// screen grey and Do not disturb on, on a schedule or by hand.
+// Do not disturb on, on a schedule or by hand.
 class Wellbeing {
 public:
     struct Day {
@@ -28,7 +28,7 @@ public:
     };
 
     static Wellbeing& get();
-    void start(); // after Hyprland and the lock screen are up
+    void start(); // after niri and the lock screen are up
 
     const Day& today() const { return m_today; }
     Day day(int daysAgo) const; // 0 today, from disk for the rest

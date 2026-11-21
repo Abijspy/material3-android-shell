@@ -13,9 +13,9 @@ struct Output;
 }
 
 // Night light: warmer colours (Settings → Display, Quick Settings), at
-// /nightLight/temperature while /nightLight/enabled. On Hyprland through
-// hyprsunset, as before; elsewhere (niri) the shell sets each screen's gamma
-// itself (wlr-gamma-control), which goes back to normal when it stops.
+// /nightLight/temperature while /nightLight/enabled. The shell sets each
+// screen's gamma itself (wlr-gamma-control), which goes back to normal when
+// it stops.
 class NightLight {
 public:
     static NightLight& get();
@@ -39,7 +39,6 @@ public:
 
 private:
     NightLight() = default;
-    bool native() const; // the gamma ourselves, not hyprsunset
     void apply();
     void applyGamma(bool on);
     std::vector<std::unique_ptr<Control>> m_controls;

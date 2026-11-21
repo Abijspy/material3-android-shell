@@ -269,7 +269,7 @@ std::vector<std::string> Dock::pinned() {
             if (v.is_string()) out.push_back(v.get<std::string>());
         // Both settings apps join the dock once (v5); unpinned later, they stay off
         if (!Config::get().value<bool>("/dock/settingsAppsPinned", false)) {
-            for (const char* id : {"material3ui-settings", "material3ui-hyprland"})
+            for (const char* id : {"material3ui-settings", "material3ui-niri"})
                 if (std::ranges::find(out, id) == out.end()) out.push_back(id);
             Config::get().set("/dock/settingsAppsPinned", true);
             Config::get().set("/dock/pinned", out);
@@ -282,7 +282,7 @@ std::vector<std::string> Dock::pinned() {
         if (findApp(id) && out.size() < 4) out.push_back(bareId(findApp(id)->id));
     // And the two settings apps
     out.push_back("material3ui-settings");
-    out.push_back("material3ui-hyprland");
+    out.push_back("material3ui-niri");
     // Saved, so this runs once: unsaved, every call wrote the config, and
     // each write rebuilt the dock, which called this again (a reload loop)
     Config::get().set("/dock/settingsAppsPinned", true);
@@ -295,9 +295,9 @@ void Dock::setPinned(const std::vector<std::string>& ids) {
 }
 
 std::string Dock::shown(const std::string& pinnedId) {
-    if (pinnedId != "material3ui-hyprland" && pinnedId != "material3ui-niri" && pinnedId != "material3ui-umbriel") return pinnedId;
-    if (Compositor::session() == "umbriel") return "material3ui-umbriel";
-    return Compositor::get().name() == "niri" ? "material3ui-niri" : "material3ui-hyprland";
+    // Pinned before niri was the only compositor: the compositor's settings app is Niri Settings now
+    if (pinnedId == "material3ui-hyprland" || pinnedId == "material3ui-umbriel") return "material3ui-niri";
+    return pinnedId;
 }
 
 void Dock::rebuild() {

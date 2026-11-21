@@ -1,4 +1,5 @@
 #include "shell/PanelKit.h"
+#include "shell/Panels.h"
 
 #include "quickshare/Qr.h"
 
@@ -348,7 +349,13 @@ LyricsLine::LyricsLine(float size, bool keepRoom, bool turned) : Flex(Direction:
         sync();
     });
     m_media = Mpris::get().changed.connect([this] { sync(); }); // played, paused, sought
+    tooltip = "Lyrics";
     sync();
+}
+
+void LyricsLine::onClick(uint32_t button) {
+    // The whole song's lyrics, scrolling along
+    if (button == BTN_LEFT && panels::open) panels::open("lyrics");
 }
 
 LyricsLine::~LyricsLine() {
@@ -377,17 +384,18 @@ void LyricsLine::show(const std::string& text) {
 void LyricsLine::sync() {
     if (m_timer) EventLoop::get().cancel(m_timer);
     m_timer = 0;
-    const auto& lines = Lyrics::get().lines();
-    const auto* p = Mpris::get().active();
-    if (lines.empty() || !p) {
+    // What's playing: the player's track, or a song heard with no player
+    const auto& ly = Lyrics::get();
+    const auto& lines = ly.lines();
+    if (lines.empty() || !ly.hasTrack()) {
         m_now->setText("");
         m_shown = -2;
         setVisible(m_keepRoom);
         return;
     }
     setVisible(true);
-    const long long at = p->positionNow();
-    const int i = Lyrics::get().lineAt(at);
+    const long long at = ly.position();
+    const int i = ly.lineAt(at);
     if (i != m_shown) {
         m_shown = i;
         // Before the first line, and in the breaks: a note
@@ -397,7 +405,7 @@ void LyricsLine::sync() {
         m_now->setOpacity(1); // each line fades in
     }
     // Woken when the next line starts, while it plays
-    if (p->status == "Playing" && static_cast<size_t>(i + 1) < lines.size()) {
+    if (ly.playing() && static_cast<size_t>(i + 1) < lines.size()) {
         const long long wait = lines[static_cast<size_t>(i + 1)].at - at;
         m_timer = EventLoop::get().addTimer(static_cast<int>(std::max(30LL, wait / 1000 + 15)), [this] {
             m_timer = 0;

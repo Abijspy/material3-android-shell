@@ -12,11 +12,8 @@
 #include "quickshare/QuickShare.h"
 #include "services/Clipboard.h"
 #include "services/Hooks.h"
-#include "services/HyprOptions.h"
 #include "services/Compositor.h"
-#include "services/Hyprland.h"
 #include "services/Niri.h"
-#include "services/Keybinds.h"
 #include "services/Network.h"
 #include "services/Notifications.h"
 #include "services/Packages.h"
@@ -43,15 +40,12 @@
 #include "services/Weather.h"
 #include "shell/ClockPanel.h"
 #include "shell/Dock.h"
-#include "shell/HyprPages.h"
 #include "shell/PrintersPage.h"
 #include "shell/SecurityPages.h"
 #include "shell/SoftwarePages.h"
 #include "shell/TimeZoneMap.h"
 #include "shell/WellbeingPage.h"
-#include "shell/KeyCapture.h"
 #include "shell/NiriPages.h"
-#include "shell/UmbrielPages.h"
 #include "shell/LockLayout.h"
 #include "shell/PanelKit.h"
 #include "shell/SettingsKit.h"
@@ -93,30 +87,18 @@ namespace {
 // apart, large outer and small inner corners), choices are connected button
 // groups, and pressed controls spring into a tighter shape.
 
-// The compositor's own app: Hyprland Settings, or Niri Settings on niri
+// niri's own app, Niri Settings: there in a niri session
 bool onNiri() {
-    return !Hyprland::get().available() && Niri::get().available();
+    return Niri::get().available();
 }
 
-bool onUmbriel() {
-    return Compositor::session() == "umbriel";
-}
-
-// On Umbriel what the compositor sets is in its config file (it reloads as
-// you save): where, and a button to open it
-void umbrielConfig(Flex* page, const char* icon, const std::string& title, const std::string& what, const char* file = "config.toml") {
-    auto* g = group(page, title, what);
-    auto r = row(g, icon, "In Umbriel's config", std::string("~/.config/umbriel/") + file + ": Umbriel reloads it as you save");
-    const std::string name = file;
-    pillButton(r.row, "Open", true, [name] { spawn("xdg-open \"${XDG_CONFIG_HOME:-$HOME/.config}/umbriel/" + name + "\""); }, "open_in_new");
-}
-// A page of that app ("hypr-…", "niri-…", "umbriel-…") rather than Settings'
+// A page of that app ("niri-…") rather than Settings'
 bool compositorPage(std::string_view id) {
-    return id.starts_with("hypr-") || id.starts_with("niri-") || id.starts_with("umbriel-");
+    return id.starts_with("niri-");
 }
 
 // Rebuilds a page by id (after a reset, so its controls show the defaults)
-// One for each app: [0] Settings, [1] Hyprland (or Niri) Settings
+// One for each app: [0] Settings, [1] Niri Settings
 std::function<void(const std::string&)> reshow[2];
 // Types into the open Settings' search (`msg settings search:<words>`)
 std::function<void(const std::string&)> searchFor[2];
@@ -124,23 +106,19 @@ std::function<void(const std::string&)> searchFor[2];
 std::function<void(const std::string& page, const std::string& setting)> reveal[2];
 // Rebuilds a page in whichever app shows it
 void reshowPage(const std::string& id) {
-    const bool hypr = compositorPage(id);
-    if (reshow[hypr]) reshow[hypr](id);
+    const bool niriApp = compositorPage(id);
+    if (reshow[niriApp]) reshow[niriApp](id);
 }
 
 // Config-bound controls: switchRow, choiceRow, sliderRow, textRow (SettingsKit)
 
-// A setting the compositor owns: kept in its own app only (no copy here to
-// disagree with it), and this row takes you there. On niri, to Niri
-// Settings' page for it, when it has one (`niriSub` its own words for it)
-void hyprLink(Node* g, const std::string& icon, const std::string& title, const std::string& sub, const std::string& hyprPage,
-              const std::string& niriPage = {}, const std::string& niriSub = {}) {
-    const bool niri = onNiri();
-    if (!Hyprland::get().available() && !(niri && !niriPage.empty())) return;
-    auto r = row(g, icon, title, niri ? niriSub : sub);
-    const std::string page = niri ? niriPage : hyprPage;
-    pillButton(r.row, niri ? "Niri Settings" : "Hyprland Settings", false, [page] {
-        if (open) open("hyprsettings " + page);
+// A setting niri owns: kept in Niri Settings only (no copy here to
+// disagree with it), and this row takes you to its page there
+void niriLink(Node* g, const std::string& icon, const std::string& title, const std::string& sub, const std::string& niriPage) {
+    if (!onNiri()) return;
+    auto r = row(g, icon, title, sub);
+    pillButton(r.row, "Niri Settings", false, [niriPage] {
+        if (open) open("nirisettings " + niriPage);
     }, "open_in_new");
 }
 
@@ -779,8 +757,18 @@ void soundPage(Flex* page, Popup& popup) {
             });
     }
     auto* media = group(page, "Music");
-    switchRow(media, "lyrics", "Synced lyrics", "The line being sung, in the media player. Looks the song up on lrclib.net, a free lyrics library",
+    switchRow(media, "lyrics", "Synced lyrics",
+              "The line being sung, in the media player and the bar, in the song's own language. Looks the song up on lrclib.net, a free lyrics library",
               "/media/lyrics", true);
+    switchRow(media, "graphic_eq", "Recognise songs",
+              "When there are no lyrics for what's playing, or a song plays with no player saying what it is, listen for ten seconds and ask "
+              "Shazam (with a fingerprint of the sound, not the sound). Only what the speakers play, never the microphone, and never during a call",
+              "/media/recognize", true);
+    if (!haveCommand("songrec")) row(media, "info", "Recognising songs needs songrec", "Install it from Software & updates");
+    auto words = row(media, "lyrics", "Lyrics", "The whole song, scrolling along as it plays");
+    pillButton(words.row, "Show", false, [] {
+        if (open) open("lyrics");
+    }, "open_in_new");
 }
 
 void displayPage(Flex* page, Popup&) {
@@ -795,8 +783,7 @@ void displayPage(Flex* page, Popup&) {
         row(g, "brightness_medium", "No adjustable backlight", "External monitors are controlled from their own menus");
     }
 
-    // NightLight follows the config: hyprsunset on Hyprland, the screens'
-    // gamma itself elsewhere
+    // NightLight follows the config: the screens' gamma, set by the shell
     auto* night = group(page, "Night light", "Warmer colours in the evening");
     {
         auto r = row(night, "nightlight", "Night light");
@@ -821,26 +808,8 @@ void displayPage(Flex* page, Popup&) {
               [](double v) { return std::format("{:.0f} K", v); });
 
     if (Niri::get().available()) return niriMonitors(page);
-    if (onUmbriel()) {
-        auto* mons = group(page, "Monitors");
-        for (const auto& o : Compositor::get().outputs())
-            row(mons, "monitor", o.name,
-                std::format("{:.0f}×{:.0f} · scale {:.2f}{}", o.w, o.h, o.scale, o.focused ? " · focused" : ""));
-        return umbrielConfig(page, "tune", "Resolution, scale and position", "Each monitor's [output.<name>]: mode, scale, position, VRR and HDR");
-    }
-    auto* mons = group(page, "Monitors", "Arrange them and set their resolution, scale, rotation, VRR and HDR in Hyprland Settings");
-    if (auto j = Hyprland::get().requestJson("monitors"); j && j->is_array()) {
-        for (const auto& m : *j)
-            row(mons, "monitor", m.value("description", "").empty() ? m.value("name", "") : std::format("{}  ·  {}", m.value("name", ""), m.value("description", "")),
-                std::format("{}×{} at {:.0f} Hz · scale {:.2f}{}", m.value("width", 0), m.value("height", 0),
-                            m.value("refreshRate", 0.0), m.value("scale", 1.0), m.value("focused", false) ? " · focused" : ""));
-    } else {
-        row(mons, "monitor", "Monitor details need Hyprland");
-    }
-    auto arrange = row(mons, "desktop_windows", "Arrangement and modes");
-    pillButton(arrange.row, "Open", false, [] {
-        if (open) open("hyprsettings hypr-monitors");
-    }, "open_in_new");
+    auto* mons = group(page, "Monitors");
+    row(mons, "monitor", "Monitor settings need niri");
 }
 
 // Installed font families from fontconfig, read once (monospace or all)
@@ -962,8 +931,6 @@ void appThemingRows(Flex* page) {
         std::vector<std::string> found; // a command or a path (~/…) that means it's here
     };
     const std::vector<App> known = {
-        {{"hyprland"}, "space_dashboard", "Hyprland", "Window borders and group colours", {}},
-        {{"hyprlock"}, "lock", "hyprlock", "The fallback lock screen", {"hyprlock"}},
         {{"gtk3", "gtk4"}, "widgets", "GTK apps", "GNOME and other GTK 3 and 4 apps", {}},
         {{"kde_colors"}, "apps", "Qt and KDE apps", "Through the system colour scheme", {}},
         {{"terminal"}, "terminal", "Terminals (live)", "Colours sent to open terminals", {}},
@@ -1171,8 +1138,7 @@ void appearancePage(Flex* page, Popup& popup) {
 
 void stylePage(Flex* page, Popup&) {
     auto* fx = group(page, "Blur & transparency", "Panels let the desktop show through, softened by the compositor's blur");
-    switchRow(fx, "blur_on", "Blur", Hyprland::get().available() ? "Behind the bar, panels, notifications and OSD"
-                                                                  : "Needs Hyprland, or a compositor with ext-background-effect",
+    switchRow(fx, "blur_on", "Blur", "Behind the bar, panels, notifications and OSD (niri's blur)",
               "/appearance/blur/enabled", true);
     switchRow(fx, "wallpaper", "Blur behind widgets", "On the desktop, the lock screen and the login screen", "/appearance/blur/widgets", true);
     sliderRow(fx, "blur_circular", "Widget blur strength", "/appearance/blur/widgetRadius", 6, 2, 24, 1,
@@ -1182,39 +1148,9 @@ void stylePage(Flex* page, Popup&) {
               "/appearance/glass", false);
     sliderRow(fx, "toolbar", "Bar opacity", "/appearance/transparency/bar", 0.7, 0.3, 1, 0.05, percent);
     sliderRow(fx, "select_window", "Panel opacity", "/appearance/transparency/panels", 0.72, 0.3, 1, 0.05, percent);
-    // Hyprland 0.57's blur styles (glass, frost, acrylic…) and wobbly
-    // windows: for the shell's panels too, since the blur is shared
-    if (Hyprland::get().available()) {
-        auto& h = HyprOptions::get();
-        if (!h.loaded()) h.load();
-        if (const auto* variant = h.find("decoration:blur:variant"); variant && !variant->choices.empty()) {
-            auto r = row(fx, "blur_linear", "Blur style", "Behind the panels and windows; the animated ones use more power");
-            std::string shown = "Classic";
-            std::vector<std::pair<std::string, std::string>> items;
-            for (const auto& [v, l] : variant->choices) {
-                const std::string label = l == "Kawase" ? "Classic" : l;
-                items.push_back({v.dump(), label});
-                if (v == variant->value) shown = label;
-            }
-            dropdown(r.row, fx, shown, items, [](const std::string& v) {
-                try {
-                    HyprOptions::get().set("decoration:blur:variant", nlohmann::json::parse(v));
-                } catch (...) {
-                }
-            });
-        }
-        if (const auto* wobble = h.find("decoration:wobble:enabled")) {
-            auto r = row(fx, "waves", "Wobbly windows", "Windows wobble as you move and resize them");
-            auto* sw = r.row->add<Switch>();
-            sw->setChecked(wobble->value.is_boolean() && wobble->value.get<bool>(), false);
-            sw->onToggled = [](bool on) { HyprOptions::get().set("decoration:wobble:enabled", on); };
-        }
-    }
-    // The blur itself (shared with windows) and windows' own look are Hyprland's
-    hyprLink(fx, "blur_medium", "Blur strength and look", "Size, passes, noise, contrast, brightness and vibrancy", "hypr-decoration",
-             "niri-decoration", "Passes, smoothness, noise and saturation");
-    hyprLink(fx, "select_window", "Window opacity, shadows and corners", "Active and inactive windows", "hypr-decoration", "niri-decoration",
-             "Borders, the focus ring, shadows and corners");
+    // The blur itself (shared with windows) and windows' own look are niri's
+    niriLink(fx, "blur_medium", "Blur strength and look", "Passes, smoothness, noise and saturation", "niri-decoration");
+    niriLink(fx, "select_window", "Window opacity, shadows and corners", "Borders, the focus ring, shadows and corners", "niri-decoration");
 
     // Text size: the shell's (Accessibility's), and each part's on top of it
     // Blur behind apps: the installed apps that look right see-through
@@ -1224,14 +1160,9 @@ void stylePage(Flex* page, Popup&) {
     appBlur->setSpacing(0);
     appBlur->sync = [appBlur] {
         appBlur->clearChildren();
-        auto* g = group(appBlur, "Blur behind apps",
-                        Niri::get().available() ? "A little see-through, with niri's blur behind them"
-                                                : "A little see-through, with Hyprland's blur behind them (Hyprland Settings → Decoration sets its look)");
-        // Hyprland's rule takes a second, unfocused opacity; niri's one
-        const bool dimmer = !Niri::get().available();
-        sliderRow(g, "opacity", "How see-through", "/appearance/appBlur/opacity", 0.92, 0.7, 0.98, 0.01, [dimmer](double v) {
-            return dimmer ? std::format("{:.0f}% opaque, a little less unfocused", v * 100) : std::format("{:.0f}% opaque", v * 100);
-        });
+        auto* g = group(appBlur, "Blur behind apps", "A little see-through, with niri's blur behind them");
+        sliderRow(g, "opacity", "How see-through", "/appearance/appBlur/opacity", 0.92, 0.7, 0.98, 0.01,
+                  [](double v) { return std::format("{:.0f}% opaque", v * 100); });
         const auto list = Config::get().value<nlohmann::json>("/appearance/appBlur/apps", nlohmann::json::array());
         auto bare = [](std::string id) { return id.ends_with(".desktop") ? id.substr(0, id.size() - 8) : id; };
         auto lower = [](std::string t) {
@@ -1271,8 +1202,8 @@ void stylePage(Flex* page, Popup&) {
                              return t->id;
                          }),
                          0);
-            // Its window's class (Hyprland) and app id (niri): the class it
-            // declares, its desktop id, and their lower-case spellings
+            // Its window's app id: the class it declares, its desktop id, and
+            // their lower-case spellings
             std::vector<std::string> classes;
             for (const auto& c : {app ? app->wmClass : std::string(), id, app ? lower(app->wmClass) : std::string(), lower(id)})
                 if (!c.empty() && std::ranges::find(classes, c) == classes.end()) classes.push_back(c);
@@ -1341,8 +1272,7 @@ void stylePage(Flex* page, Popup&) {
                       {{0.35, "Sharp"}, {0.7, "Soft"}, {1.0, "Round"}, {1.3, "Extra"}});
     choiceRow<double>(shape, "animation", "Animation speed", "The shell's panels and pages", "/appearance/animationSpeed", 1.0,
                       {{0.0, "Off"}, {0.6, "Fast"}, {1.0, "Normal"}, {1.5, "Relaxed"}});
-    hyprLink(shape, "animation", "Window animations", "Each animation's speed, curve and style", "hypr-animations", "niri-animations",
-             "Their speed, and each one's curve or spring");
+    niriLink(shape, "animation", "Window animations", "Their speed, and each one's curve or spring", "niri-animations");
     switchRow(shape, "palette", "Themed icons", "Settings' icons take on your wallpaper's colours, as Android's do", "/appearance/themedIcons", true);
 
     auto* reset = group(page, "Defaults");
@@ -2506,86 +2436,18 @@ void accessibilityPage(Flex* page, Popup&) {
         Config::get().set("/appearance/blur/enabled", on ? nlohmann::json(false) : nlohmann::json(nullptr));
     };
 
-    // Colour correction and the magnifier are Hyprland's (its shaders, its zoom)
-    if (!Hyprland::get().available()) {
-        auto* g = group(page, "Colour correction and magnifier");
-        row(g, "visibility", "On Hyprland only", "Screen filters and zoom need Hyprland; this compositor has neither yet");
-        auto* pointer = group(page, "Pointer");
-        choiceRow<int>(pointer, "mouse", "Cursor size", "", "/accessibility/cursorSize", 24,
-                       {{24, "Default"}, {32, "Large"}, {48, "Larger"}, {64, "Largest"}});
-        return;
-    }
-    // Colour correction: one filter over the whole screen (Hyprland shaders)
-    auto* colour = page->add<Live>();
-    colour->setSpacing(6);
-    colour->sync = [colour] {
-        colour->clearChildren();
-        auto* g = group(colour, "Colour correction", "A filter over the whole screen, apps included");
-        const std::string now = Config::get().value<std::string>("/accessibility/colorFilter", "none");
-        const std::tuple<const char*, const char*, const char*, const char*> filters[] = {
-            {"none", "invert_colors_off", "Off", "Colours as they are"},
-            {"grayscale", "filter_b_and_w", "Grayscale", "Shades of grey only"},
-            {"invert", "invert_colors", "Invert colours", "Light becomes dark and dark light"},
-            {"protanopia", "palette", "Red-weak (protanopia)", "Shifts reds into colours you can tell apart"},
-            {"deuteranopia", "palette", "Green-weak (deuteranopia)", "The most common colour blindness"},
-            {"tritanopia", "palette", "Blue-weak (tritanopia)", "Shifts blues and yellows apart"},
-            {"dim", "brightness_4", "Extra dim", "Darker than the lowest brightness, for dark rooms"},
-        };
-        for (const auto& [id, icon, title, sub] : filters) {
-            const bool on = now == id;
-            auto* b = g->add<Button>(Flex::Direction::Row);
-            b->setPadding({20, 12})->setSpacing(16);
-            b->pressedRadius = 10;
-            b->add<Icon>(icon, 22)->setColor(on ? "primary" : "on_surface_variant", false);
-            auto* texts = b->add<Flex>(Flex::Direction::Column);
-            texts->setAlignItems(Align::Start)->setSpacing(1);
-            texts->grow = true;
-            texts->add<Label>(title)->setSize(15)->setWeight(on ? 600 : 500);
-            texts->add<Label>(sub)->setSize(13)->setColor("on_surface_variant", false);
-            if (on) b->add<Icon>("check", 22)->setColor("primary", false);
-            const std::string value = id;
-            b->onClicked = [value](uint32_t button) {
-                if (button != BTN_LEFT) return;
-                Config::get().set("/accessibility/colorFilter", value == "none" ? nlohmann::json(nullptr) : nlohmann::json(value));
-            };
-        }
-    };
-    colour->conns.push_back(Config::get().changed.connect([colour] { colour->syncSoon(); }));
-    colour->sync();
-
-    // The magnifier: Hyprland's zoom around the pointer
-    auto* zoom = group(page, "Magnifier", "Zooms in around the pointer. Super+= zooms in, Super+- out, Super+Backspace resets");
-    hyprLink(zoom, "zoom_in", "Zoom level and how it follows", "Hyprland's cursor zoom", "hypr-cursor");
-
     auto* pointer = group(page, "Pointer");
     choiceRow<int>(pointer, "mouse", "Cursor size", "", "/accessibility/cursorSize", 24,
                    {{24, "Default"}, {32, "Large"}, {48, "Larger"}, {64, "Largest"}});
-    hyprLink(pointer, "arrow_selector_tool", "More cursor options", "Hiding, warping and hardware cursors", "hypr-cursor");
 }
 
 // ── Mouse & touchpad ──
 
-// Touchpad and pointer options are Hyprland's: kept in Hyprland Settings
-// only, linked from here
+// Touchpad and pointer options: set here, as niri's own config
 void mousePage(Flex* page, Popup&) {
-    if (Niri::get().available()) return niriMouse(page); // set here, as niri's own config
-    if (onUmbriel()) {
-        auto* g = group(page, "Mouse & touchpad", "Tap to click, natural scrolling, speed and the pointer live in Umbriel Settings");
-        auto t = row(g, "touch_app", "Touchpad, mouse and pointer", "In Umbriel Settings → Input devices");
-        pillButton(t.row, "Open", true, [] {
-            if (open) open("hyprsettings umbriel-input");
-        }, "open_in_new");
-        auto* shell = group(page, "In the shell");
-        auto r = row(shell, "swipe_vertical", "Scrolling in the shell", "Smooth scrolling, speed and touchpad glide");
-        pillButton(r.row, "Look & feel", false, [] { settingsPage("style"); }, "open_in_new");
-        return;
-    }
-    auto* g = group(page, "Mouse & touchpad", "Tap to click, natural scrolling, pointer speed and gestures live in Hyprland Settings");
-    hyprLink(g, "touch_app", "Touchpad", "Tap to click, natural scrolling, ignore while typing, click with fingers", "hypr-input");
-    hyprLink(g, "speed", "Pointer", "Speed and acceleration, for the touchpad and mice", "hypr-input");
-    hyprLink(g, "swipe", "Gestures", "Workspace swipes", "hypr-gestures");
-    auto r = row(g, "swipe_vertical", "Scrolling in the shell", "Smooth scrolling, speed and touchpad glide");
-    pillButton(r.row, "Look & feel", false, [] { settingsPage("style"); }, "open_in_new");
+    if (Niri::get().available()) return niriMouse(page);
+    auto* g = group(page, "Mouse & touchpad");
+    row(g, "touch_app", "Touchpad and mouse settings need niri");
 }
 
 // ── System ──
@@ -2614,7 +2476,7 @@ void confirmStrip(Node* parent, const std::string& text, const std::string& acti
 // restore or delete one (each asked first, under its row; a restore saves
 // what's there now before it)
 void backupRows(Flex* page) {
-    auto* head = group(page, "Backups", "Your shell and Hyprland settings, also saved before each update, restore and reset");
+    auto* head = group(page, "Backups", "Your shell and niri settings, also saved before each update, restore and reset");
     auto now = row(head, "backup", "Back up now", "Saved with today's date and time");
     auto* status = now.subtitle;
     pillButton(now.row, "Back up", true, [status] {
@@ -2754,8 +2616,6 @@ void systemPage(Flex* page, Popup&) {
 
     auto* more = group(page, "More");
     auto kb = row(more, "keyboard", "Keyboard", "Layouts, typing and shortcuts");
-    // The Keyboard page here (re-showing Hyprland Settings' page did
-    // nothing unless that app was already open)
     pillButton(kb.row, "Open", false, [] { EventLoop::get().defer([] { settingsPage("keybinds"); }); });
     auto up = row(more, "system_update", "Software & updates", "Updates, repositories and mirrors, the AUR and Flathub");
     pillButton(up.row, "Open", false, [] {
@@ -2791,14 +2651,15 @@ void systemPage(Flex* page, Popup&) {
 // ── Default apps ──
 //
 // File types go through xdg-mime (~/.config/mimeapps.list). The browser,
-// file manager and terminal are also the apps.lua entries Hyprland's binds
-// and $TERMINAL / $BROWSER use, so picking one rewrites that file too.
+// file manager and terminal are also what niri's material3ui.kdl starts
+// (its keys, and $TERMINAL / $BROWSER), so picking one rewrites that file
+// too; niri reads it again by itself.
 
 struct DefaultKind {
     const char* icon;
     const char* title;
     std::vector<std::string> mimes; // empty: the terminal, by category
-    const char* luaKey;             // apps.lua entry, or null
+    const char* appKey;             // "terminal", "browser" or "file_manager" in material3ui.kdl, or null
 };
 
 const std::vector<DefaultKind>& defaultKinds() {
@@ -2831,43 +2692,70 @@ std::vector<const Apps::App*> candidates(const DefaultKind& kind) {
     return out;
 }
 
-std::string appsLuaFile() {
+std::string appsKdlFile() {
     const char* xdg = std::getenv("XDG_CONFIG_HOME");
-    return (xdg && *xdg ? std::string(xdg) : paths::home() + "/.config") + "/hypr/material3ui/apps.lua";
+    return (xdg && *xdg ? std::string(xdg) : paths::home() + "/.config") + "/niri/material3ui.kdl";
 }
 
-std::string appsLuaValue(const std::string& key) {
-    std::ifstream in(appsLuaFile());
-    const std::string text((std::istreambuf_iterator<char>(in)), {});
-    std::smatch m;
-    if (!std::regex_search(text, m, std::regex("\\b" + key + "\\s*=\\s*\"((?:[^\"\\\\]|\\\\.)*)\""))) return "";
-    // Unescape \\ and \"
+// Where material3ui.kdl names each app: its variable (TERMINAL, BROWSER),
+// and the keys that start it
+const char* kKdlString = "\"((?:[^\"\\\\]|\\\\.)*)\"";
+std::string appEnvVar(const std::string& key) {
+    return key == "terminal" ? "TERMINAL" : key == "browser" ? "BROWSER" : "";
+}
+std::string appKeys(const std::string& key) {
+    return key == "terminal" ? "Mod\\+Return|Mod\\+T" : key == "browser" ? "Mod\\+B" : "Mod\\+E";
+}
+std::regex appSpawn(const std::string& key) {
+    // Mod+E hotkey-overlay-title="Files" { spawn "nemo"; } (or spawn-sh)
+    return std::regex("((?:^|\\n)\\s*(?:" + appKeys(key) + ")\\s[^\\n{]*\\{\\s*)spawn(?:-sh)?((?:\\s+" + kKdlString +
+                      ")+)(\\s*;)");
+}
+std::string unquote(const std::string& raw) {
     std::string out;
-    const std::string raw = m[1].str();
     for (size_t i = 0; i < raw.size(); ++i) out += raw[i] == '\\' && i + 1 < raw.size() ? raw[++i] : raw[i];
     return out;
 }
 
-// Rewrites (or adds) one entry; false when apps.lua is not in use
-bool setAppsLuaValue(const std::string& key, const std::string& command) {
-    std::ifstream in(appsLuaFile());
+std::string appsKdlValue(const std::string& key) {
+    std::ifstream in(appsKdlFile());
+    const std::string text((std::istreambuf_iterator<char>(in)), {});
+    std::smatch m;
+    if (const auto var = appEnvVar(key);
+        !var.empty() && std::regex_search(text, m, std::regex("(?:^|\\n)\\s*" + var + "\\s+" + kKdlString))) return unquote(m[1].str());
+    if (std::regex_search(text, m, appSpawn(key)) && std::regex_search(m[2].first, m[2].second, m, std::regex(kKdlString)))
+        return unquote(m[1].str());
+    return "";
+}
+
+// Rewrites one app's variable and keys; false when material3ui.kdl is not in use
+bool setAppsKdlValue(const std::string& key, std::string command) {
+    std::ifstream in(appsKdlFile());
     if (!in) return false;
     std::string text((std::istreambuf_iterator<char>(in)), {});
     in.close();
-    std::string quoted;
+    // A desktop entry's field codes (%U, %f) are for its launcher
+    command = std::regex_replace(command, std::regex("\\s+%[a-zA-Z]"), "");
+    std::string quoted = "\"";
     for (char c : command) {
         if (c == '\\' || c == '"') quoted += '\\';
         quoted += c;
     }
-    const std::regex entry("(\\b" + key + "\\s*=\\s*)\"(?:[^\"\\\\]|\\\\.)*\"");
-    if (std::regex_search(text, entry)) text = std::regex_replace(text, entry, "$1\"" + std::regex_replace(quoted, std::regex("\\$"), "$$$$") + "\"");
-    else if (const auto end = text.rfind('}'); end != std::string::npos) text.insert(end, "\t" + key + " = \"" + quoted + "\",\n");
-    else return false;
-    std::ofstream(appsLuaFile()) << text;
-    return true;
+    quoted += '"';
+    const std::string safe = std::regex_replace(quoted, std::regex("\\$"), "$$$$");
+    const std::string before = text;
+    if (const auto var = appEnvVar(key); !var.empty())
+        text = std::regex_replace(text, std::regex("((?:^|\\n)\\s*" + var + "\\s+)" + kKdlString), "$1" + safe);
+    text = std::regex_replace(text, appSpawn(key), "$1spawn-sh " + safe + "$4");
+    if (text == before) return false;
+    const std::string tmp = appsKdlFile() + ".m3new";
+    std::ofstream(tmp) << text;
+    std::error_code ec;
+    std::filesystem::rename(tmp, appsKdlFile(), ec); // whole, or not at all: niri reads it as it changes
+    return !ec;
 }
 
-// The app an apps.lua command launches: by its Exec, or its id
+// The app a command launches: by its Exec, or its id
 const Apps::App* appForCommand(const std::vector<const Apps::App*>& apps, const std::string& command) {
     if (command.empty()) return nullptr;
     const std::string bin = command.substr(0, command.find(' '));
@@ -3146,7 +3034,7 @@ void defaultAppsPage(Flex* page, Popup&) {
     auto query = [state](size_t i) {
         const auto& kind = defaultKinds()[i];
         if (kind.mimes.empty()) {
-            const auto* app = appForCommand(candidates(kind), appsLuaValue(kind.luaKey));
+            const auto* app = appForCommand(candidates(kind), appsKdlValue(kind.appKey));
             state->current[i] = app ? app->id : "";
             return;
         }
@@ -3169,11 +3057,10 @@ void defaultAppsPage(Flex* page, Popup&) {
             argv.insert(argv.end(), kind.mimes.begin(), kind.mimes.end());
             m3::run(argv, [query, i](int, const std::string&) { query(i); });
         }
-        if (kind.luaKey && setAppsLuaValue(kind.luaKey, app.exec)) {
-            // Our own launches follow at once; Hyprland's binds and env on reload
-            if (std::string(kind.luaKey) == "terminal") setenv("TERMINAL", app.exec.c_str(), 1);
-            if (std::string(kind.luaKey) == "browser") setenv("BROWSER", app.exec.c_str(), 1);
-            m3::run({"hyprctl", "reload"}, nullptr);
+        if (kind.appKey && setAppsKdlValue(kind.appKey, app.exec)) {
+            // Our own launches follow at once; niri's keys as it reads the file
+            if (std::string(kind.appKey) == "terminal") setenv("TERMINAL", app.exec.c_str(), 1);
+            if (std::string(kind.appKey) == "browser") setenv("BROWSER", app.exec.c_str(), 1);
         }
     };
 
@@ -3565,14 +3452,6 @@ void spotlightPage(Flex* page, Popup&) {
 }
 
 void toolsPage(Flex* page, Popup& popup) {
-    // Screen sharing: what apps (browsers, calls) see, asked through the portal
-    auto* share = group(page, "Screen sharing", "When an app asks to share your screen, a window or a part of it");
-    switchRow(share, "screen_share", "Material3UI picker", "Choose a screen, a window or a region in the shell's own dialog",
-              "/share/picker", true);
-    switchRow(share, "history", "Remember apps by default", "Apps may share again without asking (each time, the picker can change it)",
-              "/share/remember", false);
-    choiceRow<int>(share, "speed", "Frame rate", "At most", "/share/maxFps", 60, {{30, "30"}, {60, "60"}, {120, "120"}});
-
     // The colour picker, and the colours picked lately (a tap copies one)
     auto* colours = group(page, "Colour picker", "Any colour on screen, copied as #rrggbb (Super+Shift+C)");
     auto pick = row(colours, "colorize", "Pick a colour", "A loupe follows the pointer; click to copy, Escape to stop");
@@ -4037,309 +3916,6 @@ void lockPage(Flex* page, Popup&) {
     });
 }
 
-// Key capture: click, then press a key
-// Modifier chips plus the key, with live conflict warnings. Pressing the
-// shortcut (KeyCapture) fills in both; the chips still toggle by hand.
-struct ComboEditor {
-    Flex* root;
-    std::shared_ptr<std::array<bool, 4>> mods;
-    std::shared_ptr<std::string> key;
-    std::string combo() const {
-        static const char* names[] = {"SUPER", "CTRL", "ALT", "SHIFT"};
-        std::string c;
-        for (int i = 0; i < 4; ++i)
-            if ((*mods)[static_cast<size_t>(i)]) c += std::string(names[i]) + " + ";
-        return c + *key;
-    }
-};
-
-ComboEditor comboEditor(Node* parent, const std::string& initial, const std::string& exceptId) {
-    auto* col = parent->add<Flex>(Flex::Direction::Column);
-    col->setAlignItems(Align::Stretch)->setSpacing(8)->setPadding({20, 6});
-    auto* rowFlex = col->add<Flex>(Flex::Direction::Row);
-    rowFlex->setSpacing(6);
-    auto mods = std::make_shared<std::array<bool, 4>>();
-    auto key = std::make_shared<std::string>();
-    static const char* names[] = {"SUPER", "CTRL", "ALT", "SHIFT"};
-    static const char* labels[] = {"Super", "Ctrl", "Alt", "Shift"};
-    // Splits a combo into the chips and the key
-    auto load = [mods, key](const std::string& combo) {
-        const std::string norm = Keybinds::normalize(combo);
-        const auto cut = norm.rfind(" + ");
-        *key = norm.substr(cut == std::string::npos ? 0 : cut + 3);
-        for (int i = 0; i < 4; ++i) (*mods)[static_cast<size_t>(i)] = norm.find(names[i]) != std::string::npos;
-        for (const char* n : names)
-            if (*key == n) key->clear();
-    };
-    load(initial.empty() ? "SUPER + " : initial);
-    auto* warn = col->add<Label>();
-    warn->setSize(12)->setColor("error", false)->setMaxWidth(600);
-    ComboEditor ed{col, mods, key};
-    auto refresh = [warn, ed, exceptId] {
-        const auto hits = ed.key->empty() ? std::vector<std::string>{} : Keybinds::get().conflictsFor(ed.combo(), exceptId);
-        std::string text;
-        for (const auto& h : hits) text += (text.empty() ? "" : ", ") + h;
-        warn->setText(hits.empty() ? "" : "Also used by: " + text + ". Both will run.");
-        warn->setVisible(!hits.empty());
-    };
-    auto paints = std::make_shared<std::vector<std::function<void()>>>();
-    for (int i = 0; i < 4; ++i) {
-        auto* chip = rowFlex->add<Button>();
-        pill(chip)->setPadding({14, 8});
-        auto* l = chip->add<Label>(labels[i]);
-        l->setSize(13)->setWeight(500);
-        auto paint = [chip, l, mods, i] {
-            const bool on = (*mods)[static_cast<size_t>(i)];
-            chip->setBackground(on ? ColorRef("secondary_container") : ColorRef("surface_container_highest"));
-            l->setColor(on ? "on_secondary_container" : "on_surface");
-        };
-        paint();
-        paints->push_back(paint);
-        chip->onClicked = [mods, i, paint, refresh](uint32_t) {
-            (*mods)[static_cast<size_t>(i)] = !(*mods)[static_cast<size_t>(i)];
-            paint();
-            refresh();
-        };
-    }
-    rowFlex->add<Label>("+")->setSize(15)->setColor("on_surface_variant", false);
-    auto* capture = rowFlex->add<KeyCapture>(initial);
-    capture->grow = true;
-    capture->onCaptured = [load, paints, refresh](const std::string& combo) {
-        load(combo);
-        for (auto& p : *paints) p();
-        refresh();
-    };
-    refresh();
-    return ed;
-}
-
-// What a custom bind can do. `lua` takes one "%s" for its argument; `arg`
-// says which: none, a command, a direction, a workspace or a name
-struct BindAction {
-    const char* group;
-    const char* label;
-    const char* lua; // "" runs a command
-    enum Arg { None, Command, Direction, Workspace, Name } arg = None;
-    bool mouse = false;
-};
-const std::vector<BindAction>& bindActions() {
-    static const std::vector<BindAction> all = {
-        {"Apps", "Run a command", "", BindAction::Command},
-        {"Windows", "Close the window", "hl.dsp.window.close()"},
-        {"Windows", "Force-quit the window", "hl.dsp.window.kill()"},
-        {"Windows", "Fullscreen", "hl.dsp.window.fullscreen(\"fullscreen\")"},
-        {"Windows", "Maximize", "hl.dsp.window.fullscreen(\"maximized\")"},
-        {"Windows", "Float or tile", "hl.dsp.window.float({ action = \"toggle\" })"},
-        {"Windows", "Pin on every workspace", "hl.dsp.window.pin()"},
-        {"Windows", "Centre the window", "hl.dsp.window.center()"},
-        {"Windows", "Pseudo-tile", "hl.dsp.window.pseudo({ action = \"toggle\" })"},
-        {"Windows", "Switch the split", "hl.dsp.layout(\"togglesplit\")"},
-        {"Windows", "Next window", "hl.dsp.window.cycle_next()"},
-        {"Focus", "Focus in a direction", "hl.dsp.focus({ direction = \"%s\" })", BindAction::Direction},
-        {"Focus", "Focus the urgent or last window", "hl.dsp.focus({ urgent_or_last = true })"},
-        {"Focus", "Focus the next monitor", "hl.dsp.focus({ monitor = \"+1\" })"},
-        {"Move", "Move the window in a direction", "hl.dsp.window.move({ direction = \"%s\" })", BindAction::Direction},
-        {"Move", "Swap with the window in a direction", "hl.dsp.window.swap({ direction = \"%s\" })", BindAction::Direction},
-        {"Move", "Move the window to a workspace", "hl.dsp.window.move({ workspace = \"%s\" })", BindAction::Workspace},
-        {"Move", "Move the window to the next monitor", "hl.dsp.window.move({ monitor = \"+1\" })"},
-        {"Workspaces", "Go to a workspace", "hl.dsp.focus({ workspace = \"%s\" })", BindAction::Workspace},
-        {"Workspaces", "Next workspace", "hl.dsp.focus({ workspace = \"e+1\" })"},
-        {"Workspaces", "Previous workspace", "hl.dsp.focus({ workspace = \"e-1\" })"},
-        {"Workspaces", "Show or hide a special workspace", "hl.dsp.workspace.toggle_special(\"%s\")", BindAction::Name},
-        {"Workspaces", "Send the window to a special workspace", "hl.dsp.window.move({ workspace = \"special:%s\" })", BindAction::Name},
-        {"Groups", "Group or ungroup", "hl.dsp.group.toggle()"},
-        {"Groups", "Next tab in the group", "hl.dsp.group.next()"},
-        {"Mouse", "Drag the window", "hl.dsp.window.drag()", BindAction::None, true},
-        {"Mouse", "Resize the window", "hl.dsp.window.resize()", BindAction::None, true},
-        {"Session", "Turn the screens off or on", "hl.dsp.dpms(\"toggle\")"},
-        {"Session", "Leave Hyprland", "hl.dsp.exit()"},
-    };
-    return all;
-}
-
-// The new-bind form, kept while the page rebuilds around it
-struct BindForm {
-    size_t action = 0;
-    std::string name, arg = "left", mouseButton = "mouse:272";
-};
-
-void keybindsPage(Flex* page, Popup&) {
-    auto& kb = Keybinds::get();
-    if (!kb.supported()) {
-        auto* g = group(page, "Keybinds");
-        row(g, "info", "The keybind editor needs Hyprland's Lua config (0.55+)", "Edit binds in your hyprland.conf instead");
-        return;
-    }
-    auto* live = page->add<Live>();
-    auto editing = std::make_shared<std::string>(); // id being edited, "+" for a new custom bind
-    auto form = std::make_shared<BindForm>();
-    live->sync = [live, editing, form] {
-        live->clearChildren();
-        auto& kb = Keybinds::get();
-        auto* intro = live->add<Label>("Click a bind to change its keys. Changes apply at once and survive updates.");
-        intro->setSize(13)->setColor("on_surface_variant", false);
-        intro->alignSelf = Align::Start;
-
-        std::vector<std::string> groups;
-        for (const auto& b : kb.binds())
-            if (std::ranges::find(groups, b.group) == groups.end()) groups.push_back(b.group);
-        for (const auto& name : groups) {
-            auto* g = group(live, name);
-            for (const auto& b : kb.binds()) {
-                if (b.group != name) continue;
-                auto* r = g->add<Button>(Flex::Direction::Row);
-                r->setPadding({20, 10})->setSpacing(12);
-                r->minHeight = 52;
-                auto* t = r->add<Label>(b.action);
-                t->setSize(15);
-                t->grow = true;
-                if (b.conflict) r->add<Icon>("warning", 18)->setColor("error", false);
-                if (b.changed) r->add<Icon>("edit", 16)->setColor("primary", false);
-                r->add<Label>(Keybinds::pretty(b.combo))->setSize(13)->setWeight(500)->setColor("on_surface_variant", false);
-                const auto bind = b;
-                r->onClicked = [live, editing, bind](uint32_t) {
-                    *editing = *editing == bind.id ? "" : bind.id;
-                    live->syncSoon();
-                };
-                if (*editing != b.id) continue;
-                auto ed = comboEditor(g, b.combo, b.id);
-                auto* actions = ed.root->add<Flex>(Flex::Direction::Row);
-                actions->setSpacing(8)->setJustify(Align::End);
-                pillButton(actions, "Disable", false, [bind, editing] {
-                    editing->clear();
-                    Keybinds::get().disable(bind.id, bind.label);
-                });
-                if (b.changed) pillButton(actions, "Reset", false, [bind, editing] {
-                    editing->clear();
-                    Keybinds::get().reset(bind.id);
-                });
-                pillButton(actions, "Save", true, [ed, bind, editing] {
-                    if (ed.key->empty()) return;
-                    editing->clear();
-                    Keybinds::get().remap(bind.id, ed.combo(), bind.label);
-                });
-            }
-        }
-
-        const auto disabled = kb.disabled();
-        if (!disabled.empty()) {
-            auto* g = group(live, "Disabled");
-            for (const auto& d : disabled) {
-                auto r = row(g, "block", d.action, d.group);
-                pillButton(r.row, "Enable", false, [id = d.id] { Keybinds::get().reset(id); });
-            }
-        }
-
-        auto* custom = group(live, "Your binds", "Any action or command, from a key combination or a mouse drag");
-        for (size_t i = 0; i < kb.custom().size(); ++i) {
-            const auto& c = kb.custom()[i];
-            auto r = row(custom, c.mouse ? "mouse" : c.action.empty() ? "terminal" : "bolt", c.label,
-                         (c.action.empty() ? c.command : std::string()) + (c.action.empty() ? "  ·  " : "") + Keybinds::pretty(c.keys));
-            confirmButton(r.row, "bind:" + c.keys, "delete", [i] { Keybinds::get().removeCustom(i); });
-        }
-        if (*editing == "+") {
-            const auto& actions = bindActions();
-            const BindAction& act = actions[form->action];
-            auto* box = custom->add<Flex>(Flex::Direction::Column);
-            box->setAlignItems(Align::Stretch)->setSpacing(10)->setPadding({20, 10});
-            auto* name = box->add<TextField>();
-            name->setPlaceholder("Name (e.g. Pin the window)");
-            name->setText(form->name);
-            name->onChanged = [form](const std::string& t) { form->name = t; };
-
-            // The action, in groups
-            auto* pick = box->add<Flex>(Flex::Direction::Row);
-            pick->setSpacing(10);
-            pick->add<Label>("Does")->setSize(14)->setColor("on_surface_variant", false);
-            auto* drop = pick->add<Button>(Flex::Direction::Row);
-            pill(drop->setBackground("secondary_container", false))->setPadding({14, 8})->setSpacing(6);
-            drop->add<Label>(act.label)->setSize(14)->setWeight(500)->setColor("on_secondary_container", false);
-            drop->add<Icon>("expand_more", 18)->setColor("on_secondary_container", false);
-            auto* menu = box->add<Flex>(Flex::Direction::Column);
-            menu->setSpacing(2)->setAlignItems(Align::Stretch)->setVisible(false);
-            std::string lastGroup;
-            for (size_t i = 0; i < actions.size(); ++i) {
-                if (lastGroup != actions[i].group) {
-                    lastGroup = actions[i].group;
-                    menu->add<Label>(lastGroup)->setSize(12)->setWeight(600)->setColor("primary", false);
-                }
-                auto* item = menu->add<Button>(Flex::Direction::Row);
-                pill(item)->setPadding({14, 7});
-                item->add<Label>(actions[i].label)->setSize(14);
-                item->onClicked = [form, live, i](uint32_t button) {
-                    if (button != BTN_LEFT) return;
-                    form->action = i;
-                    const auto kind = bindActions()[i].arg;
-                    form->arg = kind == BindAction::Direction ? "left" : kind == BindAction::Workspace ? "1" : kind == BindAction::Name ? "magic" : "";
-                    live->syncSoon();
-                };
-            }
-            drop->onClicked = [menu](uint32_t button) {
-                if (button == BTN_LEFT) menu->setVisible(!menu->visible());
-            };
-
-            // Its argument
-            if (act.arg == BindAction::Direction) {
-                connectedGroup<std::string>(box, form->arg, {{"left", "Left"}, {"right", "Right"}, {"up", "Up"}, {"down", "Down"}},
-                                            [form](std::string v) { form->arg = v; });
-            } else if (act.arg != BindAction::None) {
-                auto* f = box->add<TextField>();
-                f->setPlaceholder(act.arg == BindAction::Command ? "Command (e.g. code)" : act.arg == BindAction::Workspace ? "Workspace (e.g. 3)" : "Name (e.g. magic)");
-                f->setText(form->arg);
-                f->onChanged = [form](const std::string& t) { form->arg = t; };
-            }
-
-            // The keys, or for a drag, the modifiers and a mouse button
-            auto ed = comboEditor(box, act.mouse ? "SUPER + " + form->mouseButton : "", "");
-            if (act.mouse) {
-                connectedGroup<std::string>(box, form->mouseButton,
-                                            {{"mouse:272", "Left button"}, {"mouse:273", "Right button"}, {"mouse:274", "Middle button"}},
-                                            [form, ed](std::string v) {
-                                                form->mouseButton = v;
-                                                *ed.key = v;
-                                            });
-            }
-            auto* buttons = box->add<Flex>(Flex::Direction::Row);
-            buttons->setSpacing(8)->setJustify(Align::End);
-            pillButton(buttons, "Cancel", false, [editing, live] {
-                editing->clear();
-                live->syncSoon();
-            });
-            pillButton(buttons, "Add", true, [ed, form, editing] {
-                const BindAction& a = bindActions()[form->action];
-                if (ed.key->empty() || (a.arg != BindAction::None && form->arg.empty())) return;
-                std::string lua = a.lua;
-                if (const auto at = lua.find("%s"); at != std::string::npos) lua.replace(at, 2, form->arg);
-                const std::string label = form->name.empty() ? a.label : form->name;
-                editing->clear();
-                if (a.arg == BindAction::Command) Keybinds::get().addCustom(ed.combo(), form->arg, label);
-                else Keybinds::get().addCustom(ed.combo(), "", label, lua, a.mouse);
-                *form = BindForm{};
-            });
-        } else {
-            auto r = row(custom, "add", "Add a bind", "Press the keys you want; Hyprland's own binds pause while you do");
-            pillButton(r.row, "Add", true, [editing, live] {
-                *editing = "+";
-                live->syncSoon();
-            });
-        }
-
-        if (!kb.others().empty()) {
-            auto* g = group(live, "Other binds", "From user.lua or other configs; edit them there");
-            for (const auto& o : kb.others()) {
-                auto r = row(g, "", o.label);
-                r.title->setSize(13)->setColor("on_surface_variant", false);
-                r.row->add<Label>(Keybinds::pretty(o.combo))->setSize(13)->setColor("on_surface_variant", false);
-            }
-        }
-        auto* footer = live->add<Flex>(Flex::Direction::Row);
-        footer->setJustify(Align::End);
-        pillButton(footer, "Reset all to defaults", false, [] { Keybinds::get().resetAll(); }, "restart_alt");
-    };
-    live->watch(kb.changed);
-    kb.refresh();
-}
-
 // Flatpak has somewhere to get apps from: a remote in the system's or your
 // installation (read from their configs: no wait for flatpak)
 bool flatpakRemotes() {
@@ -4621,7 +4197,7 @@ void aboutPage(Flex* page, Popup&) {
         auto num = [](const nlohmann::json& j, const char* key) {
             return j.is_object() && j.contains(key) && j[key].is_number() ? j[key].get<double>() : 0.0;
         };
-        // The distribution's, Hyprland's and niri's logos, in place of the
+        // The distribution's and niri's logos, in place of the
         // glyphs, where there is one
         auto useLogo = [](const Row& r, const std::string& nameOrPath) {
             r.row->remove(r.row->children()[0].get());
@@ -4663,10 +4239,7 @@ void aboutPage(Flex* page, Popup&) {
         auto& comp = Compositor::get();
         const std::string compositor = comp.available() ? comp.name() + " " + comp.version() : comp.name() + " (not running)";
         auto wm = row(sys, "grid_view", compositor, "Compositor");
-        const std::string mark = comp.name() == "Hyprland" ? "icons/hyprland-logo.svg"
-                               : comp.name() == "niri"     ? "icons/niri-logo.svg"
-                               : comp.name() == "Umbriel"  ? "icons/umbriel-logo.svg"
-                                                           : "";
+        const std::string mark = comp.name() == "niri" ? "icons/niri-logo.svg" : "";
         if (const auto path = mark.empty() ? std::string() : paths::dataFile(mark); !path.empty()) useLogo(wm, path);
 
         auto& stats = SystemStats::get();
@@ -4767,39 +4340,13 @@ void aboutPage(Flex* page, Popup&) {
     row(credits, "auto_awesome", "end-4, DankMaterialShell, Ambxst, pC, P3DROVFX, Vynx", "Design and interaction references");
 }
 
-// Settings' Keyboard entry: shortcuts are Hyprland's, in Hyprland Settings
+// Settings' Keyboard entry: layouts, typing and the keys, as niri's own config
 void keyboardPage(Flex* page, Popup&) {
     auto* locks = group(page, "Lock keys");
     switchRow(locks, "keyboard_capslock", "Show Caps Lock and Num Lock", "A brief note on screen as they turn on or off", "/osd/lockKeys", true);
     if (Niri::get().available()) return niriKeyboard(page);
-    if (onUmbriel()) {
-        // The layouts it has, the one in use marked
-        const auto layouts = Compositor::get().keyboardLayouts();
-        if (!layouts.empty()) {
-            auto* g = group(page, "Layouts", layouts.size() > 1 ? "The keyboard layout widget in the bar switches between them" : "");
-            for (size_t i = 0; i < layouts.size(); ++i)
-                row(g, static_cast<int>(i) == Compositor::get().keyboardLayout() ? "radio_button_checked" : "radio_button_unchecked", layouts[i],
-                    Compositor::layoutShortName(layouts[i]));
-        }
-        auto* typing = group(page, "Layouts & typing", "Keyboard layouts, repeat rate and delay");
-        auto t = row(typing, "keyboard_alt", "Layouts & typing", "In Umbriel Settings → Input devices");
-        pillButton(t.row, "Open", true, [] {
-            if (open) open("hyprsettings umbriel-input");
-        }, "open_in_new");
-        umbrielConfig(page, "keyboard_command_key", "Keyboard shortcuts", "The shell's keys, under [keybinds]; a key your config.toml binds too stays yours",
-                      "material3ui.toml");
-        return;
-    }
-    auto* typing = group(page, "Layouts & typing", "Keyboard layouts, switching between them, repeat rate and delay");
-    auto t = row(typing, "keyboard_alt", "Layouts & typing", "In Hyprland Settings → Input devices");
-    pillButton(t.row, "Open", true, [] {
-        if (open) open("hyprsettings hypr-input");
-    }, "open_in_new");
-    auto* g = group(page, "Keyboard shortcuts", "Remap the shell's shortcuts and add your own: actions, commands and mouse drags");
-    auto r = row(g, "keyboard_command_key", "Keybinds", "In Hyprland Settings → Keybinds");
-    pillButton(r.row, "Open", true, [] {
-        if (open) open("hyprsettings hypr-keybinds");
-    }, "open_in_new");
+    auto* g = group(page, "Keyboard");
+    row(g, "keyboard_alt", "Layouts and keys need niri");
 }
 
 // Android 16's settings icons: Material Symbols in a tinted circle, each
@@ -4816,18 +4363,17 @@ HueChip categoryColours(const std::string& id) {
     };
     static const Pair blue{"#bae6fa", "#004a63"}, apps{"#cddff6", "#1a4a8a"}, pink{"#f6d8ee", "#7a1e5a"},
         orange{"#fad8bc", "#6a3a0a"}, yellow{"#fcde7a", "#5c4300"}, green{"#c0e4ba", "#0c4c23"}, grey{"#dedede", "#424242"},
-        teal{"#a8eafa", "#00505f"}, red{"#fcd2d2", "#6a1e1e"}, purple{"#ecdcfc", "#4c258e"};
+        teal{"#a8eafa", "#00505f"}, purple{"#ecdcfc", "#4c258e"};
     static const std::vector<std::pair<std::vector<std::string>, const Pair*>> table = {
-        {{"network", "vpn", "bluetooth", "printers", "weather", "hypr-windows", "hypr-layouts", "hypr-groups", "niri-layout", "umbriel-layout"}, &blue},
-        {{"defaults", "hypr-input", "niri-behaviour", "umbriel-behaviour", "umbriel-input"}, &apps},
-        {{"notifications", "sound", "hypr-animations", "niri-animations", "umbriel-animations", "umbriel-effects"}, &pink},
-        {{"display", "appearance", "style", "bar", "dock", "hypr-decoration", "hypr-monitors", "niri-decoration", "umbriel-decoration", "umbriel-monitors"}, &orange},
-        {{"storage", "monitor", "calendar", "clock", "hypr-render", "umbriel-all"}, &yellow},
-        {{"battery", "packages", "firmware", "wellbeing", "hypr-startup", "niri-startup", "umbriel-startup"}, &green},
-        {{"lock", "firewall", "lockscreen", "users", "hypr-window-rules", "hypr-layer-rules", "hypr-workspace-rules", "hypr-profiles", "niri-rules", "umbriel-rules", "umbriel-keys"},
+        {{"network", "vpn", "bluetooth", "printers", "weather", "niri-layout"}, &blue},
+        {{"defaults", "niri-behaviour"}, &apps},
+        {{"notifications", "sound", "niri-animations"}, &pink},
+        {{"display", "appearance", "style", "bar", "dock", "niri-decoration"}, &orange},
+        {{"storage", "monitor", "calendar", "clock"}, &yellow},
+        {{"battery", "packages", "firmware", "wellbeing", "niri-startup"}, &green},
+        {{"lock", "firewall", "lockscreen", "users", "niri-rules"},
          &teal},
-        {{"hypr-debug"}, &red},
-        {{"accessibility", "tools", "spotlight", "hooks", "hypr-plugins"}, &purple},
+        {{"accessibility", "tools", "spotlight", "hooks"}, &purple},
     };
     const Pair* pair = &grey; // the rest: system, about, keyboard, mouse…
     for (const auto& [ids, p] : table)
@@ -4909,32 +4455,11 @@ const PageDef kPages[] = {
     {"bar", "toolbar", "Status bar", "Position, widgets and the island", barPage},
     {"dock", "dock_to_bottom", "Dock", "Pinned apps, running apps and auto-hide", dockPage},
     {"lockscreen", "lock_person", "Lock screen", "Clock, widgets and the login screen", lockScreenPage},
-    {"accessibility", "accessibility_new", "Accessibility", "Text, colour correction, magnifier and motion", accessibilityPage},
+    {"accessibility", "accessibility_new", "Accessibility", "Text, motion and the pointer", accessibilityPage},
     {"lock", "security", "Security & privacy", "Screen lock, idle and sleep", lockPage},
     {"firewall", "shield_lock", "Firewall", "Which devices on the network may connect", firewallPage},
     {"users", "account_circle", "Users", "Your profile, password, administrators and new profiles", usersPage},
     {"system", "settings_suggest", "System", "Date & time, languages and reset", systemPage},
-    // Hyprland itself: every compositor option, live
-    {"hypr-windows", "space_dashboard", "Windows & borders", "Gaps, borders, their colours and snapping", hyprWindowsPage},
-    {"hypr-decoration", "auto_awesome", "Decoration", "Corners, opacity, blur, shadows and glow", hyprDecorationPage},
-    {"hypr-monitors", "desktop_windows", "Displays", "Arrangement, resolution, scale, rotation, VRR and HDR", hyprMonitorsPage},
-    {"hypr-animations", "animation", "Animations", "Every animation's length, curve and style, and a curve editor", hyprAnimationsPage},
-    {"hypr-keybinds", "keyboard_command_key", "Keybinds", "Press a shortcut to set it; any action or command, mouse drags too", keybindsPage},
-    {"hypr-window-rules", "rule", "Window rules", "Float, size and place apps' windows; per-app opacity and more", hyprWindowRulesPage},
-    {"hypr-layer-rules", "layers", "Layer rules", "Blur and animations for bars, launchers and notifications", hyprLayerRulesPage},
-    {"hypr-workspace-rules", "view_carousel", "Workspace rules", "Which monitor each workspace is on, its gaps and layout", hyprWorkspaceRulesPage},
-    {"hypr-startup", "rocket_launch", "Startup apps", "Apps and commands to run when Hyprland starts", hyprStartupPage},
-    {"hypr-environment", "data_object", "Environment", "Variables for the session's apps", hyprEnvironmentPage},
-    {"hypr-layouts", "dashboard", "Layouts", "Dwindle, master and scrolling tiling", hyprLayoutsPage},
-    {"hypr-input", "keyboard_alt", "Input devices", "Keyboard layouts, pointer, touchpad, touch and tablets", hyprInputPage},
-    {"hypr-gestures", "swipe", "Gestures", "Workspace swipes and the scrolling layout", hyprGesturesPage},
-    {"hypr-cursor", "arrow_selector_tool", "Cursor", "Hiding, warping, zoom and hardware cursors", hyprCursorPage},
-    {"hypr-groups", "tab_group", "Window groups", "Tabbed groups and the group bar", hyprGroupsPage},
-    {"hypr-misc", "tune", "Behaviour", "Focus, swallowing, keybind and XWayland behaviour", hyprMiscPage},
-    {"hypr-plugins", "extension", "Plugins", "Loaded plugins, hyprpm and plugin files", hyprPluginsPage},
-    {"hypr-profiles", "switch_account", "Profiles", "Save and switch whole setups by name", hyprProfilesPage},
-    {"hypr-render", "memory", "Rendering", "Direct scanout, colour management and OpenGL", hyprRenderPage},
-    {"hypr-debug", "bug_report", "Debug", "Logs, overlays and damage tracking", hyprDebugPage},
     {"niri-layout", "view_week", "Windows & layout", "Gaps, centring, new windows' width and space at the edges", niriLayoutPage},
     {"niri-decoration", "auto_awesome", "Borders & shadows", "The focus ring, borders, shadows and corners", niriDecorationPage},
     {"niri-animations", "animation", "Animations", "Their speed, and each one's curve or spring", niriAnimationsPage},
@@ -4943,17 +4468,6 @@ const PageDef kPages[] = {
     {"niri-rules", "rule", "Window rules", "Float, maximise, size and hide apps' windows", niriRulesPage},
     {"niri-startup", "rocket_launch", "Startup apps", "Apps and commands to run when niri starts", niriStartupPage},
     {"niri-environment", "data_object", "Environment", "Variables for the apps niri starts", niriEnvironmentPage},
-    {"umbriel-layout", "view_quilt", "Windows & layout", "Layouts, gaps, the scrolling strip and master", umbrielLayoutPage},
-    {"umbriel-decoration", "auto_awesome", "Borders & effects", "Borders, corners, title bars, blur and shadows", umbrielDecorationPage},
-    {"umbriel-animations", "animation", "Animations", "Windows opening, closing and moving, and workspaces", umbrielAnimationsPage},
-    {"umbriel-input", "touchpad_mouse", "Input devices", "Keyboard layouts and repeat, the touchpad, mouse and pointer", umbrielInputPage},
-    {"umbriel-behaviour", "tune", "Behaviour", "Focus, maximising, the overview and the session", umbrielBehaviourPage},
-    {"umbriel-effects", "auto_fix_high", "Effects", "Community shaders for borders, windows, the pointer and animations", umbrielEffectsPage},
-    {"umbriel-monitors", "monitor", "Monitors", "Resolution, scale, rotation and variable refresh rate", umbrielMonitorsPage},
-    {"umbriel-keys", "keyboard_command_key", "Keys", "Keys for Umbriel's actions or any command, beside the shell's", umbrielKeysPage},
-    {"umbriel-rules", "rule", "Window rules", "How an app's windows open: floating, on a workspace, see-through…", umbrielRulesPage},
-    {"umbriel-startup", "rocket_launch", "Startup apps", "Apps and commands to run when Umbriel starts", umbrielStartupPage},
-    {"umbriel-all", "settings_suggest", "All options", "Every option your Umbriel has, from its own schema: new ones appear as it adds them", umbrielAllPage},
     {"mouse", "touchpad_mouse", "Mouse & touchpad", "Touchpad, pointer, scrolling and gestures", mousePage},
     {"keybinds", "keyboard", "Keyboard", "Layouts, typing and shortcuts", keyboardPage},
     {"hooks", "webhook", "Hooks", "Your own commands when things happen, such as locking, a new wallpaper or a low battery", hooksPage},
@@ -4963,36 +4477,24 @@ const PageDef kPages[] = {
 };
 
 // Android's grouping of the settings list
-// The pages each app shows: Hyprland's own options in Hyprland Settings
-// (niri's in Niri Settings, on niri), everything else in Settings
-const std::vector<PageDef>& pagesOf(bool hypr) {
-    static const auto pick = [](const char* prefix) {
+// The pages each app shows: niri's own options in Niri Settings,
+// everything else in Settings
+const std::vector<PageDef>& pagesOf(bool niriApp) {
+    static const auto pick = [](bool own) {
         std::vector<PageDef> out;
         for (const auto& p : kPages)
-            if (prefix ? std::string_view(p.id).starts_with(prefix) : !compositorPage(p.id)) out.push_back(p);
+            if (compositorPage(p.id) == own) out.push_back(p);
         return out;
     };
-    static const std::vector<PageDef> shell = pick(nullptr), hyprland = pick("hypr-"), niri = pick("niri-"), umbriel = pick("umbriel-");
-    if (!hypr) return shell;
-    return onUmbriel() ? umbriel : onNiri() ? niri : hyprland;
+    static const std::vector<PageDef> shell = pick(false), niri = pick(true);
+    return niriApp ? niri : shell;
 }
 
 int pageGroup(const std::string& id) {
-    // Umbriel Settings: how it looks, how it behaves, then your lists
-    if (id == "umbriel-input" || id == "umbriel-behaviour") return 1;
-    if (id == "umbriel-startup" || id == "umbriel-keys" || id == "umbriel-rules") return 3;
-    if (id == "umbriel-all") return 2;
-    if (id.starts_with("umbriel-")) return 0;
     // Niri Settings: how it looks, how it behaves, then your lists
     if (id == "niri-behaviour") return 1;
     if (id == "niri-keys" || id == "niri-rules" || id == "niri-startup" || id == "niri-environment") return 3;
     if (id.starts_with("niri-")) return 0;
-    // Hyprland Settings: how it looks, how windows behave, the internals
-    if (id == "hypr-monitors" || id == "hypr-windows" || id == "hypr-decoration" || id == "hypr-animations") return 0;
-    if (id == "hypr-layouts" || id == "hypr-input" || id == "hypr-gestures" || id == "hypr-cursor" || id == "hypr-groups")
-        return 1;
-    if (id == "hypr-keybinds" || id == "hypr-startup" || id == "hypr-environment" || id.ends_with("-rules")) return 3;
-    if (id.starts_with("hypr-")) return 2;
     if (id == "network" || id == "vpn" || id == "bluetooth" || id == "printers") return 0;
     if (id == "defaults" || id == "notifications" || id == "wellbeing" || id == "tools" || id == "calendar" || id == "clock" || id == "weather") return 1;
     if (id == "battery" || id == "storage" || id == "monitor" || id == "sound" || id == "display") return 2;
@@ -5008,19 +4510,18 @@ void settingsPage(const std::string& id) {
         if (searchFor[0]) searchFor[0](id.substr(7));
         return;
     }
-    const bool hypr = compositorPage(id);
-    if (reshow[hypr]) reshow[hypr](id);
+    const bool niriApp = compositorPage(id);
+    if (reshow[niriApp]) reshow[niriApp](id);
 }
 
 const std::vector<SettingsHit>& settingsIndex(Popup& popup) {
-    // Every page of both apps (the shell's, and Hyprland's or niri's), built
-    // out of view once: their titles, and their rows' titles and headings
+    // Every page of both apps (the shell's, and niri's), built out of view
+    // once: their titles, and their rows' titles and headings
     static std::vector<SettingsHit> index;
     if (!index.empty()) return index;
-    const bool niri = (!Hyprland::get().available() && Niri::get().available()) || onUmbriel();
-    for (bool hypr : {false, true}) {
-        if (hypr && !niri && !Hyprland::get().available()) continue;
-        for (const auto& p : pagesOf(hypr)) {
+    for (bool niriApp : {false, true}) {
+        if (niriApp && !onNiri()) continue;
+        for (const auto& p : pagesOf(niriApp)) {
             index.push_back({p.title, p.id, p.title, p.icon, p.blurb, true});
             // What's new and update notes aren't settings
             if (std::string_view(p.id) == "about" || std::string_view(p.id) == "packages") continue;
@@ -5042,31 +4543,24 @@ const std::vector<SettingsHit>& settingsIndex(Popup& popup) {
 }
 
 void openSetting(const std::string& page, const std::string& setting) {
-    const bool hypr = compositorPage(page);
-    if (open) open((hypr ? "hyprsettings " : "settings ") + page);
+    const bool niriApp = compositorPage(page);
+    if (open) open((niriApp ? "nirisettings " : "settings ") + page);
     // Once it's open (the request above runs first): the setting lit up
-    EventLoop::get().defer([page, setting, hypr] {
-        EventLoop::get().defer([page, setting, hypr] {
-            if (reveal[hypr]) reveal[hypr](page, setting);
+    EventLoop::get().defer([page, setting, niriApp] {
+        EventLoop::get().defer([page, setting, niriApp] {
+            if (reveal[niriApp]) reveal[niriApp](page, setting);
         });
     });
 }
 
-void settingsClosed(bool hypr) {
-    reshow[hypr] = nullptr; // its pages are gone
-    searchFor[hypr] = nullptr;
-    reveal[hypr] = nullptr;
+void settingsClosed(bool niriApp) {
+    reshow[niriApp] = nullptr; // its pages are gone
+    searchFor[niriApp] = nullptr;
+    reveal[niriApp] = nullptr;
 }
 
-template <bool Hypr>
+template <bool NiriApp>
 void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
-    // Ctrl+Z steps back through Hyprland option changes
-    popup.onKey = [](const KeyEvent& e) {
-        if (!e.ctrl() || (e.sym != XKB_KEY_z && e.sym != XKB_KEY_Z) || !HyprOptions::get().canUndo()) return false;
-        const std::string name = HyprOptions::get().undo();
-        if (!name.empty()) m3::run({"notify-send", "-a", "Settings", "-t", "2500", "Undone", name}, nullptr);
-        return true;
-    };
     // As an app window it fills the window and follows its size
     const bool window = popup.isWindow();
     card->setPadding(Insets(12))->setSpacing(0);
@@ -5082,22 +4576,22 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
     sideScroll->fixedWidth = 280;
     auto* side = sideScroll->add<Flex>(Flex::Direction::Column);
     side->setAlignItems(Align::Stretch)->setSpacing(10)->setPadding({4, 10, 4, 8});
-    const bool niri = onNiri(), umbriel = onUmbriel();
-    auto* brand = side->add<Label>(Hypr ? (umbriel ? "Umbriel" : niri ? "niri" : "Hyprland") : "Settings");
+    const bool niri = onNiri();
+    auto* brand = side->add<Label>(NiriApp ? "niri" : "Settings");
     brand->setSize(34)->setWeight(400);
     brand->alignSelf = Align::Start;
     auto* searchBox = side->add<Flex>(Flex::Direction::Row);
     pill(searchBox->setBackground(ColorRef("on_surface", 0.1f), false))->setPadding({16, 4, 8, 4})->setSpacing(8);
     searchBox->add<Icon>("search", 20)->setColor("on_surface_variant", false);
     auto* search = searchBox->add<TextField>();
-    search->setPlaceholder(Hypr ? (umbriel ? "Search Umbriel options" : niri ? "Search niri options" : "Search Hyprland options") : "Search settings");
+    search->setPlaceholder(NiriApp ? "Search niri options" : "Search settings");
     // Ctrl+F: to the search, from anywhere in the app
-    popup.onKey = [undo = popup.onKey, search](const KeyEvent& e) {
+    popup.onKey = [search](const KeyEvent& e) {
         if (e.ctrl() && (e.sym == XKB_KEY_f || e.sym == XKB_KEY_F)) {
             search->focus();
             return true;
         }
-        return undo && undo(e);
+        return false;
     };
     search->bare = true;
     search->grow = true;
@@ -5107,21 +4601,21 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
     auto* other = side->add<Button>(Flex::Direction::Row);
     pill(other->setBackground("secondary_container", false))->setPadding({16, 12, 14, 12})->setSpacing(12);
     other->pressedRadius = 12;
-    other->add<Icon>(Hypr ? "settings" : "tune", 20)->setColor("on_secondary_container", false);
+    other->add<Icon>(NiriApp ? "settings" : "tune", 20)->setColor("on_secondary_container", false);
     auto* otherTexts = other->add<Flex>(Flex::Direction::Column);
     otherTexts->setAlignItems(Align::Start)->setSpacing(1);
     otherTexts->grow = true;
-    otherTexts->add<Label>(Hypr ? "Material3UI Settings" : umbriel ? "Umbriel Settings" : niri ? "Niri Settings" : "Hyprland Settings")
+    otherTexts->add<Label>(NiriApp ? "Material3UI Settings" : "Niri Settings")
         ->setSize(15)->setWeight(600)->setColor("on_secondary_container", false);
-    otherTexts->add<Label>(Hypr ? "The shell: bar, dock, network, sound…"
-                                : niri || umbriel ? "How windows look and behave" : "Every compositor option, animations and more")
+    otherTexts->add<Label>(NiriApp ? "The shell: bar, dock, network, sound…"
+                                : "How windows look and behave")
         ->setSize(12)->setColor("on_secondary_container", false)->setMaxWidth(170)->setMaxLines(ui::kAllLines);
     other->add<Icon>("open_in_new", 18)->setColor("on_secondary_container", false);
     other->onClicked = [](uint32_t button) {
-        if (button == BTN_LEFT && open) open(Hypr ? "settings" : "hyprsettings");
+        if (button == BTN_LEFT && open) open(NiriApp ? "settings" : "nirisettings");
     };
-    // The compositor's app is there on Hyprland, niri and Umbriel
-    other->setVisible(Hypr || Hyprland::get().available() || niri || umbriel);
+    // Niri Settings is there on niri
+    other->setVisible(NiriApp || niri);
 
     // The page: a fixed header with the close button, then what scrolls
     auto* right = columns->add<Flex>(Flex::Direction::Column);
@@ -5169,7 +4663,7 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
     auto shown = std::make_shared<size_t>(0);
     *show = [content, scroll, items, heroTitle, heroBlurb, sideScroll, side, shown, &popup](size_t index) {
         *shown = index;
-        const auto& def = pagesOf(Hypr)[index];
+        const auto& def = pagesOf(NiriApp)[index];
         content->clearChildren();
         heroTitle->setText(def.title);
         heroBlurb->setText(def.blurb);
@@ -5207,29 +4701,29 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
         seg->collapseWhenEmpty = true; // searching can empty it
         groups.push_back(seg);
     }
-    for (size_t i = 0; i < pagesOf(Hypr).size(); ++i) {
-        auto* b = groups[static_cast<size_t>(pageGroup(pagesOf(Hypr)[i].id))]->add<Button>(Flex::Direction::Row);
+    for (size_t i = 0; i < pagesOf(NiriApp).size(); ++i) {
+        auto* b = groups[static_cast<size_t>(pageGroup(pagesOf(NiriApp)[i].id))]->add<Button>(Flex::Direction::Row);
         b->setPadding({10, 10, 12, 10})->setSpacing(12);
         b->pressedRadius = 10;
         auto* chip = b->add<Flex>(Flex::Direction::Row);
         pill(chip)->setJustify(Align::Center);
         chip->fixedWidth = chip->fixedHeight = 38;
-        auto* icon = chip->add<Icon>(pagesOf(Hypr)[i].icon, 20);
+        auto* icon = chip->add<Icon>(pagesOf(NiriApp)[i].icon, 20);
         auto* texts = b->add<Flex>(Flex::Direction::Column);
         texts->setAlignItems(Align::Start)->setSpacing(1);
         texts->grow = true;
-        auto* label = texts->add<Label>(pagesOf(Hypr)[i].title);
+        auto* label = texts->add<Label>(pagesOf(NiriApp)[i].title);
         label->setSize(15)->setWeight(500)->setMaxWidth(190);
         // Wraps to a second line, as Android's summaries do, rather than
         // cutting off in the narrow sidebar
-        auto* summary = texts->add<Label>(pagesOf(Hypr)[i].blurb);
+        auto* summary = texts->add<Label>(pagesOf(NiriApp)[i].blurb);
         summary->setSize(12)->setMaxWidth(190)->setMaxLines(ui::kAllLines);
         b->onClicked = [show, i](uint32_t) {
             // The page rebuild must not run inside the click that asked for it
             EventLoop::get().defer([show, i] { (*show)(i); });
         };
-        items->push_back({b, chip, icon, label, summary, pagesOf(Hypr)[i].id});
-        if (initial == pagesOf(Hypr)[i].id) first = i;
+        items->push_back({b, chip, icon, label, summary, pagesOf(NiriApp)[i].id});
+        if (initial == pagesOf(NiriApp)[i].id) first = i;
     }
     // A new wallpaper (or theme) recolours the icons at once, as Android's do
     auto* recolour = side->add<Live>();
@@ -5253,9 +4747,9 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
     auto index = std::make_shared<std::vector<Hit>>();
     auto buildIndex = [index, &popup] {
         if (!index->empty()) return;
-        for (size_t i = 0; i < pagesOf(Hypr).size(); ++i) {
+        for (size_t i = 0; i < pagesOf(NiriApp).size(); ++i) {
             Flex scratch(Flex::Direction::Column);
-            pagesOf(Hypr)[i].build(&scratch, popup);
+            pagesOf(NiriApp)[i].build(&scratch, popup);
             std::set<std::string> seen;
             std::function<void(const Node&)> walk = [&](const Node& n) {
                 const auto* l = dynamic_cast<const Label*>(&n);
@@ -5317,8 +4811,8 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
         std::vector<size_t> pages;
         std::vector<const Hit*> settings;
         std::set<size_t> withHits;
-        for (size_t i = 0; i < pagesOf(Hypr).size(); ++i)
-            if (lower(pagesOf(Hypr)[i].title).find(q) != std::string::npos || lower(pagesOf(Hypr)[i].blurb).find(q) != std::string::npos) {
+        for (size_t i = 0; i < pagesOf(NiriApp).size(); ++i)
+            if (lower(pagesOf(NiriApp)[i].title).find(q) != std::string::npos || lower(pagesOf(NiriApp)[i].blurb).find(q) != std::string::npos) {
                 pages.push_back(i);
                 withHits.insert(i);
             }
@@ -5351,48 +4845,48 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
             };
             if (!pages.empty()) {
                 auto* g = group(content, "Pages");
-                for (size_t i : pages) result(g, pagesOf(Hypr)[i].icon, pagesOf(Hypr)[i].title, pagesOf(Hypr)[i].blurb, i, "");
+                for (size_t i : pages) result(g, pagesOf(NiriApp)[i].icon, pagesOf(NiriApp)[i].title, pagesOf(NiriApp)[i].blurb, i, "");
             }
             if (!settings.empty()) {
                 auto* g = group(content, "Settings");
                 for (size_t k = 0; k < settings.size() && k < 40; ++k)
-                    result(g, pagesOf(Hypr)[settings[k]->page].icon, settings[k]->text, pagesOf(Hypr)[settings[k]->page].title,
+                    result(g, pagesOf(NiriApp)[settings[k]->page].icon, settings[k]->text, pagesOf(NiriApp)[settings[k]->page].title,
                            settings[k]->page, settings[k]->text);
             }
             scroll->scrollTo(0, false);
         });
     };
-    searchFor[Hypr] = [search](const std::string& t) {
+    searchFor[NiriApp] = [search](const std::string& t) {
         search->setText(t);
         if (search->onChanged) search->onChanged(t);
     };
-    reveal[Hypr] = [openAt](const std::string& id, const std::string& setting) {
-        for (size_t i = 0; i < pagesOf(Hypr).size(); ++i)
-            if (pagesOf(Hypr)[i].id == id) return openAt(i, setting);
+    reveal[NiriApp] = [openAt](const std::string& id, const std::string& setting) {
+        for (size_t i = 0; i < pagesOf(NiriApp).size(); ++i)
+            if (pagesOf(NiriApp)[i].id == id) return openAt(i, setting);
     };
     search->onSubmit = [=](const std::string& t) {
         const std::string q = lower(t);
         if (q.empty()) return;
         buildIndex();
-        for (size_t i = 0; i < pagesOf(Hypr).size(); ++i)
-            if (lower(pagesOf(Hypr)[i].title).find(q) != std::string::npos) return openAt(i, "");
+        for (size_t i = 0; i < pagesOf(NiriApp).size(); ++i)
+            if (lower(pagesOf(NiriApp)[i].title).find(q) != std::string::npos) return openAt(i, "");
         for (const auto& h : *index)
             if (lower(h.text).find(q) != std::string::npos) return openAt(h.page, h.text);
     };
     // Only called from inside this popup (a page's reset button)
-    reshow[Hypr] = [show](const std::string& id) {
-        for (size_t i = 0; i < pagesOf(Hypr).size(); ++i)
-            if (id == pagesOf(Hypr)[i].id) (*show)(i);
+    reshow[NiriApp] = [show](const std::string& id) {
+        for (size_t i = 0; i < pagesOf(NiriApp).size(); ++i)
+            if (id == pagesOf(NiriApp)[i].id) (*show)(i);
     };
     (*show)(first);
-    if (initial.starts_with("search:")) EventLoop::get().defer([q = initial.substr(7)] { if (searchFor[Hypr]) searchFor[Hypr](q); });
+    if (initial.starts_with("search:")) EventLoop::get().defer([q = initial.substr(7)] { if (searchFor[NiriApp]) searchFor[NiriApp](q); });
 }
 
 void settings(Flex* card, Popup& popup, const std::string& initial) {
     settingsApp<false>(card, popup, initial);
 }
 
-void hyprSettings(Flex* card, Popup& popup, const std::string& initial) {
+void niriSettings(Flex* card, Popup& popup, const std::string& initial) {
     settingsApp<true>(card, popup, initial);
 }
 

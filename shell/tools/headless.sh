@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Runs inside the dev container: headless Sway, optionally a fake Hyprland,
+# Runs inside the dev container: headless Sway,
 # the shell, an optional command script, then a screenshot.
-#   headless.sh <out.png>   env: M3_FAKE_HYPR=1, M3_SCRIPT="…", M3_WAIT=seconds
+#   headless.sh <out.png>   env: M3_SCRIPT="…", M3_WAIT=seconds
 set -u
 out="${1:-shot.png}"
 [ -d build ] || meson setup build >/dev/null
@@ -49,12 +49,6 @@ if [ -n "${M3_SERVICES:-}" ]; then
         sink_properties=device.description=Headphones >/dev/null
     pactl set-default-sink speakers
     sleep 0.5
-fi
-
-if [ -n "${M3_FAKE_HYPR:-}" ]; then
-    export HYPRLAND_INSTANCE_SIGNATURE=fake
-    python3 tools/fake-hyprland.py &
-    sleep 0.3
 fi
 
 [ -n "${M3_SETUP:-}" ] && eval "$M3_SETUP"

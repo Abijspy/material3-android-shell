@@ -1,8 +1,6 @@
 #include "services/Compositor.h"
 
-#include "services/Hyprland.h"
 #include "services/Niri.h"
-#include "services/Umbriel.h"
 
 #include <algorithm>
 #include <cctype>
@@ -12,32 +10,15 @@ namespace m3 {
 
 std::string Compositor::session() {
     static const std::string kind = [] {
-        auto env = [](const char* name) {
-            const char* v = std::getenv(name);
-            return std::string(v ? v : "");
-        };
-        const std::string display = env("WAYLAND_DISPLAY"), umbriel = env("UMBRIEL_SOCKET"), niri = env("NIRI_SOCKET");
-        // Its socket says whose display this is: umbriel-wayland-1.sock,
-        // niri.wayland-1.1234.sock
-        if (!display.empty() && umbriel.ends_with("/umbriel-" + display + ".sock")) return std::string("umbriel");
-        if (!display.empty() && niri.find("/niri." + display + ".") != std::string::npos) return std::string("niri");
-        if (!umbriel.empty()) return std::string("umbriel");
-        if (!niri.empty()) return std::string("niri");
-        if (!env("HYPRLAND_INSTANCE_SIGNATURE").empty()) return std::string("hyprland");
-        return std::string();
+        const char* niri = std::getenv("NIRI_SOCKET");
+        return std::string(niri && *niri ? "niri" : "");
     }();
     return kind;
 }
 
 Compositor& Compositor::get() {
-    // Hyprland's backend outside the other two, which outside Hyprland too
-    // stands in with nothing in it
-    static Compositor& chosen = []() -> Compositor& {
-        if (session() == "umbriel") return Umbriel::get();
-        if (session() == "niri") return Niri::get();
-        return Hyprland::get();
-    }();
-    return chosen;
+    // niri's backend, which outside niri stands in with nothing in it
+    return Niri::get();
 }
 
 std::string Compositor::keyboardLayoutShort() const {

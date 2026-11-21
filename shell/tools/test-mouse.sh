@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pointer-driven UI test: run via
-#   M3_SERVICES=1 M3_FAKE_HYPR=1 M3_WAIT=4 M3_SCRIPT="bash tools/test-mouse.sh" tools/dev.sh shot
+#   M3_SERVICES=1 M3_WAIT=4 M3_SCRIPT="bash tools/test-mouse.sh" tools/dev.sh shot
 M=./build/material3ui; P=./build/vpointer
 at() { python3 tools/ui.py "$@"; }
 echo "== island hover, then skip (one device: a new one would send a leave)"

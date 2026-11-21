@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Dock (autohide, then always) and the bar layout editor. Run via
-#   M3_SERVICES=1 M3_FAKE_HYPR=1 M3_SCRIPT="bash tools/test-dock.sh" tools/dev.sh shot
+#   M3_SERVICES=1 M3_SCRIPT="bash tools/test-dock.sh" tools/dev.sh shot
 M=./build/material3ui; P=./build/vpointer
 echo "== autohide: hidden over windows, back at the edge"
 grim /src/dock-hidden.png

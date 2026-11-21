@@ -68,7 +68,7 @@ struct Settings {
         std::vector<Animation> anims;
     } look;
 
-    // The shell's own surfaces, as Hyprland shows them: its windows rounded
+    // The shell's own surfaces: its windows rounded
     // (and blurred, with `shellBlur`), its bar, panels and notifications
     // blurring the windows behind them rather than only the wallpaper (niri's
     // default "xray" blur), and with `blurredBackdrop` the overview's

@@ -41,7 +41,7 @@ private:
     // The Settings app window: opened, or raised (and restored from
     // minimised) with `page` shown
     void openSettings(const std::string& page);
-    void openHyprSettings(const std::string& page);
+    void openNiriSettings(const std::string& page);
     // The first-run tour window
     void openWelcome();
     // A new install gets the tour, an update What's new (once each version)
@@ -52,7 +52,7 @@ private:
     std::unique_ptr<Popup> m_popup;
     std::string m_popupArg; // what the open popup shows (a transfer, an event…)
     std::unique_ptr<Popup> m_settings; // an app window, beside the popups
-    std::unique_ptr<Popup> m_hyprSettings; // Hyprland Settings, the same
+    std::unique_ptr<Popup> m_niriSettings; // Niri Settings, the same
     std::unique_ptr<Popup> m_welcome; // the tour window
     std::map<wl::Output*, std::unique_ptr<Desktop>> m_desktops;
     std::map<wl::Output*, std::unique_ptr<Dock>> m_docks;

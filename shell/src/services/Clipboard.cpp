@@ -228,7 +228,7 @@ void Clipboard::wipe() {
 void Clipboard::ensureWatchers() {
     if (!Config::get().value<bool>("/clipboard/history", true)) return;
     run({"pgrep", "-f", "wl-paste.*cliphist"}, [](int code, const std::string&) {
-        if (code == 0) return; // Hyprland's autostart already feeds cliphist
+        if (code == 0) return; // something else already feeds cliphist
         log::info("clipboard: starting the cliphist watchers");
         spawn("wl-paste --type text --watch cliphist store");
         spawn("wl-paste --type image --watch cliphist store");

@@ -1,7 +1,7 @@
 #pragma once
 
 // Building blocks shared by the Settings pages (Settings.cpp and the
-// Hyprland pages): M3 Expressive segmented lists, rows and button groups.
+// niri pages): M3 Expressive segmented lists, rows and button groups.
 #include "core/Config.h"
 #include "shell/PanelKit.h"
 #include "ui/Controls.h"
