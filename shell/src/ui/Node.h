@@ -47,6 +47,13 @@ public:
     void adopt(std::unique_ptr<Node> child);
     void adopt(std::unique_ptr<Node> child, size_t index);
     void remove(Node* child);
+    // The top of the tree this node is in (its surface's root): what floats
+    // over everything, such as a dropdown's menu, goes there
+    Node* root() {
+        Node* n = this;
+        while (n->m_parent) n = n->m_parent;
+        return n;
+    }
     // Taken out, to live on elsewhere (a toast flying off over the others)
     std::unique_ptr<Node> release(Node* child);
     void clearChildren();

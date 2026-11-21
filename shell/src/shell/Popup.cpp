@@ -2,6 +2,7 @@
 
 #include "core/Config.h"
 #include "services/Compositor.h"
+#include "shell/SettingsKit.h"
 #include "shell/bar/Bar.h"
 #include "shell/bar/Frame.h"
 #include "shell/bar/Widgets.h"
@@ -139,7 +140,11 @@ Popup::Popup(wl::Output* output, Options options, const std::function<void(Flex*
         if (initialFocus) m_window->setFocus(initialFocus);
         m_window->onCloseRequested = [this] { close(); };
         // Keys nothing in it took: the app's own (Ctrl+F, Ctrl+Z)
-        m_window->onKey = [this](const KeyEvent& e) { return onKey && onKey(e); };
+        m_window->onKey = [this](const KeyEvent& e) {
+            // Escape closes an open dropdown first
+            if (e.sym == XKB_KEY_Escape && panels::closeOpenDropdown()) return true;
+            return onKey && onKey(e);
+        };
         m_window->onStateChanged = [this] {
             if (m_maxIcon) m_maxIcon->setText(m_window->maximized() ? "filter_none" : "crop_square");
         };
@@ -239,6 +244,7 @@ Popup::Popup(wl::Output* output, Options options, const std::function<void(Flex*
 
     m_surface->onEmptyClick = [this](float, float) { close(); };
     m_surface->onKey = [this](const KeyEvent& e) {
+        if (e.sym == XKB_KEY_Escape && panels::closeOpenDropdown()) return true;
         if (onKey && onKey(e)) return true;
         if (e.sym != XKB_KEY_Escape) return false;
         close();

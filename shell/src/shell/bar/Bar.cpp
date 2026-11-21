@@ -534,7 +534,7 @@ const std::vector<Bar::Module>& Bar::modules() {
         {"notifications", "notifications", "Notifications", "Bell with a count; opens the centre"},
         {"screentime", "digital_wellbeing", "Screen time", "Today's total; opens Digital Wellbeing"},
         {"focus", "self_improvement", "Focus mode", "Pauses distracting apps; click to switch"},
-        {"bedtime", "bedtime", "Bedtime", "Greyscale and Do not disturb; click to switch"},
+        {"bedtime", "bedtime", "Bedtime", "Do not disturb for the night; click to switch"},
         {"vpn", "vpn_key", "VPN", "The VPN in use; click to connect or disconnect"},
         {"quickshare", quickShare.c_str(), "Quick Share", "Transfers' progress; opens Send files"},
         {"firewall", "shield_lock", "Firewall", "On or off; opens Firewall settings"},

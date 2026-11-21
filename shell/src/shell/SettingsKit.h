@@ -102,10 +102,14 @@ bool serviceOff(Node* parent, const std::string& which, bool compact = false);
 void missingTool(Node* group, const std::string& icon, const std::string& title, const std::string& why,
                  std::vector<std::string> commands, std::vector<std::string> packages, std::function<void()> after = {});
 
-// A dropdown: a pill showing the choice, opening a list of items inside
-// `g` (below the row it sits in); `lead` adds something before each item
+// A dropdown: a pill showing the choice, opening its items as a menu
+// floating over the page, under the pill (the choice ticked, the list
+// scrolling when long); `lead` adds something before each item. `g` is no
+// longer used: the list used to unfold there
 Button* dropdown(Node* tail, Node* g, const std::string& shown, const std::vector<std::pair<std::string, std::string>>& items,
                  std::function<void(const std::string&)> pick, std::function<Node*(Node*, const std::string&)> lead = {});
+// Closes the dropdown menu that's open, if one is (Escape); true if one was
+bool closeOpenDropdown();
 
 // M3 Expressive connected button group: segments a hairline apart with tight
 // inner corners; the selected one turns primary and rounds off completely.

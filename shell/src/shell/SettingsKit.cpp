@@ -473,28 +473,167 @@ Button* pillButton(Node* parent, const std::string& label, bool primary, std::fu
 }
 
 
-Button* dropdown(Node* tail, Node* g, const std::string& shown, const std::vector<std::pair<std::string, std::string>>& items,
-                 std::function<void(const std::string&)> pick, std::function<Node*(Node*, const std::string&)> lead) {
-    auto* drop = tail->add<Button>(Flex::Direction::Row);
-    pill(drop->setBackground("surface_container_highest", false))->setPadding({14, 8})->setSpacing(6);
-    drop->add<Label>(shown)->setSize(14)->setWeight(500);
-    auto* chevron = drop->add<Icon>("expand_more", 18);
-    auto* menu = g->add<Flex>(Flex::Direction::Column);
-    menu->setPadding({20, 4, 20, 12})->setSpacing(2)->setAlignItems(Align::Stretch);
-    menu->setVisible(false);
+// ── Dropdowns ──
+//
+// The list floats over the page as a menu, under the pill (above it when
+// there's no room below), rather than unfolding inside the page. It hangs
+// off the surface's root, so no scroll view clips it and it takes clicks
+// anywhere; a see-through layer under it closes it on a click or scroll
+// outside, as does Escape. One is open at a time. Its rows' callbacks may
+// rebuild the page the pill is on: the menu goes on the next loop turn,
+// never under its own feet, and never outlives the pill.
+
+namespace {
+
+struct OpenMenu {
+    Node* root = nullptr;
+    Node* menu = nullptr;
+    Node* layer = nullptr;
+    Node* owner = nullptr; // the pill
+    Icon* chevron = nullptr;
+};
+OpenMenu g_menu;
+unsigned g_menuGeneration = 0;
+
+void closeMenu() {
+    const OpenMenu open = g_menu;
+    g_menu = {};
+    if (open.chevron) open.chevron->setText("expand_more");
+    if (!open.root) return;
+    if (open.menu) open.root->remove(open.menu);
+    if (open.layer) open.root->remove(open.layer);
+    open.root->requestRedraw();
+}
+
+void closeMenuSoon() {
+    EventLoop::get().defer([generation = g_menuGeneration] {
+        if (generation == g_menuGeneration) closeMenu();
+    });
+}
+
+// Under the menu, over everything else: a click or scroll there closes it
+class MenuLayer : public Node {
+public:
+    ~MenuLayer() override {
+        if (g_menu.layer == this) g_menu.layer = nullptr;
+    }
+    bool interactive() const override { return true; }
+    void onClick(uint32_t) override { closeMenuSoon(); }
+    bool onScroll(int) override {
+        closeMenuSoon();
+        return true;
+    }
+    bool onScrollPixels(float, bool) override {
+        closeMenuSoon();
+        return true;
+    }
+};
+
+class MenuCard : public Flex {
+public:
+    MenuCard() : Flex(Direction::Column) {}
+    ~MenuCard() override {
+        if (g_menu.menu == this) g_menu.menu = g_menu.root = nullptr; // the window's going
+    }
+};
+
+class DropButton : public Button {
+public:
+    using Button::Button;
+    ~DropButton() override {
+        if (g_menu.owner != this) return;
+        g_menu.owner = nullptr;
+        g_menu.chevron = nullptr;
+        closeMenuSoon();
+    }
+};
+
+void openMenu(DropButton* drop, Icon* chevron, const std::string& shown, const std::vector<std::pair<std::string, std::string>>& items,
+              const std::function<void(const std::string&)>& pick, const std::function<Node*(Node*, const std::string&)>& lead) {
+    closeMenu();
+    ++g_menuGeneration;
+    // The tree's top: the surface's (a panel's or an app window's)
+    Node* root = drop->root();
+    const RectF area = root->rect(), at = drop->rect();
+
+    auto* layer = root->add<MenuLayer>();
+    layer->floating = true;
+    auto* card = root->add<MenuCard>();
+    card->floating = true;
+    card->setBackground("surface_container_high", false)->setRadius(Radii(20))->setPadding(Insets(6));
+    card->setAlignItems(Align::Stretch);
+    auto* scroll = card->add<ScrollView>();
+    auto* list = scroll->add<Flex>(Flex::Direction::Column);
+    list->setSpacing(2)->setAlignItems(Align::Stretch);
+    Node* chosen = nullptr;
     for (const auto& [value, label] : items) {
-        auto* item = menu->add<Button>(Flex::Direction::Row);
-        pill(item)->setPadding({14, 8})->setSpacing(12);
+        const bool on = label == shown || value == shown;
+        auto* item = list->add<Button>(Flex::Direction::Row);
+        item->setPadding({14, 10})->setSpacing(12)->setRadius(Radii(14));
+        if (on) item->setBackground("secondary_container", false);
         if (lead) lead(item, value);
-        item->add<Label>(label)->setSize(14);
+        auto* text = item->add<Label>(label);
+        text->setSize(14)->setWeight(on ? 600 : 400)->setColor(on ? "on_secondary_container" : "on_surface", false);
+        text->grow = true;
+        if (on) {
+            item->add<Icon>("check", 18)->setColor("on_secondary_container", false);
+            chosen = item;
+        }
         item->onClicked = [pick, value = value](uint32_t button) {
-            if (button == BTN_LEFT) pick(value);
+            if (button != BTN_LEFT || !g_menu.owner) return;
+            closeMenuSoon(); // not now: this row is in it
+            pick(value);
         };
     }
-    drop->onClicked = [menu, chevron](uint32_t button) {
+
+    // Under the pill, lined up with its left edge, as wide as it at least;
+    // above it when there's more room there; the list scrolls past the room
+    constexpr float kGap = 6, kMargin = 12;
+    const float below = area.y + area.h - (at.y + at.h) - kGap - kMargin, above = at.y - area.y - kGap - kMargin;
+    const bool up = below < 220 && above > below;
+    const float room = std::max(120.0f, up ? above : below);
+    const SizeF natural = card->measure({std::min(420.0f, area.w - 2 * kMargin), 1e6f});
+    const float w = std::clamp(std::max(natural.w, at.w), std::min(200.0f, area.w - 2 * kMargin), std::min(420.0f, area.w - 2 * kMargin));
+    const float h = std::min(natural.h, std::min(room, 420.0f));
+    scroll->maxHeight = h - 12;
+    const float x = std::clamp(at.x, area.x + kMargin, area.x + area.w - kMargin - w);
+    const float y = up ? at.y - kGap - h : at.y + at.h + kGap;
+    layer->arrange(area);
+    card->arrange({x, y, w, h});
+    if (chosen) EventLoop::get().defer([scroll, chosen, generation = g_menuGeneration] {
+        if (generation == g_menuGeneration && g_menu.menu) scroll->reveal(chosen->rect());
+    });
+    // Unfolds from the pill
+    card->setOpacity(0, false);
+    card->setTranslateY(up ? 8.0f : -8.0f, false);
+    card->setOpacity(1);
+    card->setTranslateY(0);
+    chevron->setText("expand_less");
+    g_menu = {root, card, layer, drop, chevron};
+    root->requestRedraw();
+}
+
+} // namespace
+
+bool closeOpenDropdown() {
+    if (!g_menu.menu) return false;
+    closeMenuSoon();
+    return true;
+}
+
+Button* dropdown(Node* tail, Node* /*g: where the list once unfolded*/, const std::string& shown,
+                 const std::vector<std::pair<std::string, std::string>>& items, std::function<void(const std::string&)> pick,
+                 std::function<Node*(Node*, const std::string&)> lead) {
+    auto* drop = tail->add<DropButton>(Flex::Direction::Row);
+    pill(drop->setBackground("surface_container_highest", false))->setPadding({14, 8})->setSpacing(6);
+    drop->pressedRadius = 10;
+    drop->add<Label>(shown)->setSize(14)->setWeight(500);
+    auto* chevron = drop->add<Icon>("expand_more", 18);
+    drop->onClicked = [drop, chevron, shown, items, pick = std::move(pick), lead = std::move(lead)](uint32_t button) {
         if (button != BTN_LEFT) return;
-        menu->setVisible(!menu->visible());
-        chevron->setText(menu->visible() ? "expand_less" : "expand_more");
+        // The same pill again closes it
+        if (g_menu.owner == drop) return closeMenu();
+        openMenu(drop, chevron, shown, items, pick, lead);
     };
     return drop;
 }

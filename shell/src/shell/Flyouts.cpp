@@ -325,7 +325,7 @@ void wellbeing(Flex* card, Popup& popup) {
             sw->onToggled = std::move(fn);
         };
         toggle("self_improvement", "Focus mode", "Pauses distracting apps", w.focus(), [](bool on) { Wellbeing::get().setFocus(on); });
-        toggle("bedtime", "Bedtime", "Greyscale and Do not disturb", w.bedtime(), [](bool on) { Wellbeing::get().setBedtimeNow(on); });
+        toggle("bedtime", "Bedtime", "Do not disturb for the night", w.bedtime(), [](bool on) { Wellbeing::get().setBedtimeNow(on); });
     };
     live->watch(Wellbeing::get().changed);
     live->sync();
