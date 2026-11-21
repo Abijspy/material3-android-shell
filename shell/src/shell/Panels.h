@@ -62,6 +62,16 @@ void clipboard(ui::Flex* card, Popup& popup);
 void notes(ui::Flex* card, Popup& popup);
 // The playing song's lyrics, scrolling along, and Identify (services/Lyrics)
 void lyrics(ui::Flex* card, Popup& popup);
+// Files, the shell's file manager (an app window), at `start` (a folder, or
+// a file to show selected); with it open, filesGo goes elsewhere
+void files(ui::Flex* card, Popup& popup, const std::string& start);
+extern std::function<void(const std::string&)> filesGo;
+void filesClosed();
+// The image viewer (an app window) at `file`, the folder's other pictures
+// a key away; with it open, viewerGo shows another
+void viewer(ui::Flex* card, Popup& popup, const std::string& file);
+extern std::function<void(const std::string&)> viewerGo;
+void viewerClosed();
 // Floating panels beside the bar's chips (Flyouts.cpp): what Settings
 // would be opened for, at hand, with the page a tap away
 void phone(ui::Flex* card, Popup& popup);

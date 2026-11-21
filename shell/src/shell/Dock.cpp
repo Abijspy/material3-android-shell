@@ -277,9 +277,14 @@ std::vector<std::string> Dock::pinned() {
         return out;
     }
     // First run: a browser, the files and a terminal, whichever are installed
-    for (const char* id : {"firefox", "librewolf", "chromium", "org.gnome.Nautilus", "nemo", "thunar", "Alacritty",
-                           "kitty", "org.wezfurlong.wezterm", "foot"})
+    // The shell's own Files ahead of any other file manager
+    const bool ownFiles = findApp("material3ui-files") != nullptr;
+    for (const char* id : {"firefox", "librewolf", "chromium", "material3ui-files", "org.gnome.Nautilus", "nemo", "thunar", "Alacritty",
+                           "kitty", "org.wezfurlong.wezterm", "foot"}) {
+        const std::string_view v = id;
+        if (ownFiles && (v == "org.gnome.Nautilus" || v == "nemo" || v == "thunar")) continue;
         if (findApp(id) && out.size() < 4) out.push_back(bareId(findApp(id)->id));
+    }
     // And the two settings apps
     out.push_back("material3ui-settings");
     out.push_back("material3ui-niri");

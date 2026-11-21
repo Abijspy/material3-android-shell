@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Files
+GenericName=File Manager
+Comment=Browse and manage your files: folders, drives and the trash
+Exec=material3ui msg files %U
+Icon=material3ui-files
+Terminal=false
+Categories=System;FileTools;FileManager;Core;
+Keywords=folder;file;manager;explorer;browse;trash;drive;
+MimeType=inode/directory;
+StartupNotify=false
+StartupWMClass=material3ui-files

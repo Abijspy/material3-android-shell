@@ -111,6 +111,24 @@ Button* dropdown(Node* tail, Node* g, const std::string& shown, const std::vecto
 // Closes the dropdown menu that's open, if one is (Escape); true if one was
 bool closeOpenDropdown();
 
+// A menu floating over the surface, under `from` (above it when there's no
+// room below), as dropdowns open theirs: a right-click menu, a "more"
+// button's. Closes on a pick, a click or scroll outside, or Escape
+struct MenuItem {
+    MenuItem() = default;
+    MenuItem(std::string icon_, std::string label_, std::string hint_, std::function<void()> action_, bool checked_ = false,
+             bool danger_ = false, bool enabled_ = true, bool separatorBefore_ = false)
+        : icon(std::move(icon_)), label(std::move(label_)), hint(std::move(hint_)), action(std::move(action_)), checked(checked_),
+          danger(danger_), enabled(enabled_), separatorBefore(separatorBefore_) {}
+    std::string icon, label, hint; // hint: on the right (a shortcut)
+    std::function<void()> action;
+    bool checked = false, danger = false, enabled = true, separatorBefore = false;
+    std::function<void(Node*)> lead; // drawn first in place of the icon
+};
+void floatingMenu(Node* from, const std::vector<MenuItem>& items);
+// The same at a point on the surface (where a right click was)
+void floatingMenuAt(Node* within, float x, float y, const std::vector<MenuItem>& items);
+
 // M3 Expressive connected button group: segments a hairline apart with tight
 // inner corners; the selected one turns primary and rounds off completely.
 template <typename T>

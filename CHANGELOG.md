@@ -1,5 +1,29 @@
 # Changelog
 
+## v7.1.0 — 2026-11-21
+
+- **Files, the shell's own file manager.** There's no file manager to install now. Files (<kbd>Super</kbd><kbd>E</kbd>, or `material3ui msg files`) opens in an app window of its own, in the shell's Material 3 look:
+  - **Side bar:** your folders, drives and the trash.
+  - **Bar:** back, forward and up, with the path along it (the folders above it a click away), search and the view.
+  - **Grid or list:** pictures show as previews and videos as their first frame. Folders come first, and names with numbers sort as people count. Hidden files stay hidden unless you ask (Ctrl+H).
+  - **Selecting:** a click selects, Ctrl-click adds, Shift-click takes a range, and Ctrl+A takes the lot. A double click opens: folders in Files, pictures in the image viewer, the rest in their app.
+  - **Right-click menu:** Open with, cut, copy and paste (to and from other apps too), rename, a new folder, move to the trash or delete for good, copy the path, set as wallpaper, edit, Quick Share and a terminal here. A pasted copy never overwrites; it takes "name (2)".
+  - **The trash:** the one other file managers share. Restore files to where they were, or empty it.
+  - **Preview and properties:** a pane beside the folder (F9, or Properties in the right-click menu, Alt+Enter).
+    - **Preview:** a picture, a video's frame or the start of a text file.
+    - **Properties:** size (a folder's worked out in the background, with its file count), where it is, when it was modified, opened and created, type, owner, permissions and the free space on its drive.
+    - **Actions:** a switch to let a script or program run, and Open, Open with and Extract.
+    - **Space:** opens a picture in the viewer.
+  - **ZIP and unzip:** Compress to ZIP makes a ZIP of what's selected. Extract here unpacks ZIP, tar (gz, xz, zst, bz2), 7z, rar, ISO and more into a folder named for the archive. All through bsdtar, which every Arch system has.
+  - **Drives:** USB sticks, cards and other disks show in the side bar. A click opens one that isn't mounted yet, and Eject unmounts it and powers it off, so it's safe to take out.
+  - **Servers:** Connect to server opens FTP, SFTP and WebDAV servers (`ftp://`, `sftp://you@host`, `davs://`), with a name and password or anonymously. They show under Network, each with Disconnect (through gvfs).
+  - **Fits the window:** in a narrow window, the side bar folds away when the pane is open, and the path keeps the current folder with the ones above behind "…".
+  - **Live:** the folder follows what changes in it, and copies run in the background.
+- **An image viewer.** Pictures open in the shell's own viewer. It fits them to the window, and zooms with the wheel, +/−, 0 and 1 or a double click, dragging to look around. It steps through the folder's pictures with the arrows, and shows the picture's size and details. Its bar edits the picture, sets it as the wallpaper, shows it in Files or moves it to the trash.
+- **The installer offers Files as the file manager** (the default, with nothing to install), and makes the image viewer the default for pictures.
+- **Dropdowns open as a floating menu over the page,** under their button, rather than unfolding the whole list inside it. The choice is ticked, long lists scroll and open at the choice, and Escape or a click outside closes them. Files' right-click menus are the same.
+- Bedtime no longer mentions greyscale, which went in 7.0.
+
 ## v7.0.0 — 2026-11-21
 
 - **Material3UI runs on niri only.** Hyprland and Umbriel support is gone, so the shell, its settings and its installer can be built around one compositor. Hyprland Settings and Umbriel Settings are removed, along with what only they offered: the Hyprland keybind editor, the magnifier and colour filters (Accessibility), greyscale at bedtime, the shell's own screen-sharing picker (`material3ui share-picker`) and `material3ui toml`. Screen sharing goes through the GNOME portal, as it did on niri. If you used Hyprland or Umbriel, run `./install.sh` to set niri up: your old config is left as it was, and `update.sh` reminds you. See docs/MIGRATION.md.

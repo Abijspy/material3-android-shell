@@ -45,7 +45,7 @@ ORIG_ARGS=("$@")
 
 # The choices, "value:description", the first the default
 readonly TERMINALS=("alacritty:GPU terminal, recoloured with the wallpaper" "kitty:feature-rich" "foot:minimal and fast" "ghostty:modern GPU terminal")
-readonly FILE_MANAGERS=("nemo:Cinnamon's" "thunar:light, from Xfce" "nautilus:GNOME Files" "dolphin:KDE's")
+readonly FILE_MANAGERS=("files:the shell's own Files: built in, nothing to install" "nemo:Cinnamon's" "thunar:light, from Xfce" "nautilus:GNOME Files" "dolphin:KDE's")
 readonly BROWSERS=("librewolf:privacy-minded Firefox" "firefox:Mozilla Firefox" "chromium:open-source Chromium" "zen-browser:Zen (AUR)")
 readonly CHANNELS=("latest:follow main" "release:tagged releases only")
 readonly NIRI_MODES=("include:keep your config.kdl (or niri's default), include the shell's at its end" "skip:leave niri's config alone")
@@ -406,12 +406,13 @@ previous() { [[ -f "$STATE_FILE" ]] && grep -oP "\"$1\": \"\\K[^\"]*" "$STATE_FI
 
 # ── Packages ─────────────────────────────────────────────────────────────────
 # LibreWolf is in [extra] now (librewolf-bin left the AUR); Zen is still AUR-only
-pkg_for() { case "$1" in zen-browser) echo zen-browser-bin ;; *) echo "$1" ;; esac; }
+# The shell's own Files is in the shell: no package
+pkg_for() { case "$1" in zen-browser) echo zen-browser-bin ;; files) ;; *) echo "$1" ;; esac; }
 desktop_for() {
     case "$1" in
         alacritty) echo Alacritty.desktop ;; ghostty) echo com.mitchellh.ghostty.desktop ;;
         nautilus) echo org.gnome.Nautilus.desktop ;; dolphin) echo org.kde.dolphin.desktop ;;
-        zen-browser) echo zen.desktop ;; *) echo "$1.desktop" ;;
+        zen-browser) echo zen.desktop ;; files) echo material3ui-files.desktop ;; *) echo "$1.desktop" ;;
     esac
 }
 # The packages by what they're for, in the order they install: niri first,
@@ -964,7 +965,10 @@ run_install() {
 
     # niri: material3ui.kdl (your apps in it), included at the end of config.kdl
     niri_kdl() {
-        sed -e "s/\"alacritty\"/\"$TERMINAL\"/g" -e "s/\"nemo\"/\"$FILE_MANAGER\"/g" -e "s/\"librewolf\"/\"$BROWSER\"/g" \
+        # The shell's own Files: Mod+E asks the shell to open it
+        local fm="\"$FILE_MANAGER\""
+        [[ "$FILE_MANAGER" != files ]] || fm='"material3ui" "msg" "files"'
+        sed -e "s/\"alacritty\"/\"$TERMINAL\"/g" -e "s/\"nemo\"/$fm/g" -e "s/\"librewolf\"/\"$BROWSER\"/g" \
             "$DOT/niri/material3ui.kdl"
     }
     if [[ "$NIRI_MODE" == include ]]; then
@@ -1057,11 +1061,13 @@ EOF
     done
     if command -v xdg-mime >/dev/null; then
         do_ xdg-mime default "$(desktop_for "$FILE_MANAGER")" inode/directory
+        # Pictures open in the shell's own image viewer
+        do_ xdg-mime default material3ui-viewer.desktop image/png image/jpeg image/webp image/gif image/bmp image/svg+xml image/tiff image/avif
         do_ xdg-settings set default-web-browser "$(desktop_for "$BROWSER")" 2>/dev/null || warn "Couldn't make $BROWSER the default browser"
         if [[ "$FILE_MANAGER" == nemo ]] && command -v gsettings >/dev/null; then
             do_ gsettings set org.cinnamon.desktop.default-applications.terminal exec "$TERMINAL" 2>/dev/null || true
         fi
-        ok "Default apps: $FILE_MANAGER, $BROWSER"; lines=1
+        ok "Default apps: $([[ "$FILE_MANAGER" == files ]] && echo "Files (built in)" || echo "$FILE_MANAGER"), $BROWSER, the image viewer for pictures"; lines=1
     fi
     if [[ "$GREETER" == 1 ]]; then
         # The material3ui-greeter package brings greetd with it

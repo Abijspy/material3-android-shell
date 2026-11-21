@@ -548,13 +548,14 @@ public:
     }
 };
 
-void openMenu(DropButton* drop, Icon* chevron, const std::string& shown, const std::vector<std::pair<std::string, std::string>>& items,
-              const std::function<void(const std::string&)>& pick, const std::function<Node*(Node*, const std::string&)>& lead) {
+// The menu itself, under (or above) `from`; `owner` and `chevron` (the
+// dropdown's pill, its arrow) may be null
+void openMenu(Node* from, RectF at, Node* owner, Icon* chevron, const std::vector<MenuItem>& items) {
     closeMenu();
     ++g_menuGeneration;
     // The tree's top: the surface's (a panel's or an app window's)
-    Node* root = drop->root();
-    const RectF area = root->rect(), at = drop->rect();
+    Node* root = from->root();
+    const RectF area = root->rect();
 
     auto* layer = root->add<MenuLayer>();
     layer->floating = true;
@@ -566,35 +567,44 @@ void openMenu(DropButton* drop, Icon* chevron, const std::string& shown, const s
     auto* list = scroll->add<Flex>(Flex::Direction::Column);
     list->setSpacing(2)->setAlignItems(Align::Stretch);
     Node* chosen = nullptr;
-    for (const auto& [value, label] : items) {
-        const bool on = label == shown || value == shown;
+    for (const auto& it : items) {
+        if (it.separatorBefore && !list->children().empty()) {
+            auto* line = list->add<Flex>(Flex::Direction::Row);
+            line->fixedHeight = 1;
+            line->setBackground(ColorRef("outline_variant", 0.6f), false);
+        }
         auto* item = list->add<Button>(Flex::Direction::Row);
         item->setPadding({14, 10})->setSpacing(12)->setRadius(Radii(14));
-        if (on) item->setBackground("secondary_container", false);
-        if (lead) lead(item, value);
-        auto* text = item->add<Label>(label);
-        text->setSize(14)->setWeight(on ? 600 : 400)->setColor(on ? "on_secondary_container" : "on_surface", false);
+        if (it.checked) item->setBackground("secondary_container", false);
+        const char* ink = it.checked ? "on_secondary_container" : it.danger ? "error" : "on_surface";
+        if (it.lead) it.lead(item);
+        else if (!it.icon.empty()) item->add<Icon>(it.icon, 20)->setColor(it.danger ? "error" : "on_surface_variant", false);
+        auto* text = item->add<Label>(it.label);
+        text->setSize(14)->setWeight(it.checked ? 600 : 400)->setColor(ink, false);
         text->grow = true;
-        if (on) {
+        if (!it.hint.empty()) item->add<Label>(it.hint)->setSize(12)->setColor("on_surface_variant", false);
+        if (it.checked) {
             item->add<Icon>("check", 18)->setColor("on_secondary_container", false);
             chosen = item;
         }
-        item->onClicked = [pick, value = value](uint32_t button) {
-            if (button != BTN_LEFT || !g_menu.owner) return;
+        item->setOpacity(it.enabled ? 1.0f : 0.4f, false);
+        item->onClicked = [action = it.action, enabled = it.enabled, generation = g_menuGeneration](uint32_t button) {
+            if (button != BTN_LEFT || !enabled || generation != g_menuGeneration || !g_menu.menu) return;
             closeMenuSoon(); // not now: this row is in it
-            pick(value);
+            if (action) action();
         };
     }
 
-    // Under the pill, lined up with its left edge, as wide as it at least;
+    // Under `from`, lined up with its left edge, as wide as it at least;
     // above it when there's more room there; the list scrolls past the room
     constexpr float kGap = 6, kMargin = 12;
     const float below = area.y + area.h - (at.y + at.h) - kGap - kMargin, above = at.y - area.y - kGap - kMargin;
     const bool up = below < 220 && above > below;
     const float room = std::max(120.0f, up ? above : below);
     const SizeF natural = card->measure({std::min(420.0f, area.w - 2 * kMargin), 1e6f});
-    const float w = std::clamp(std::max(natural.w, at.w), std::min(200.0f, area.w - 2 * kMargin), std::min(420.0f, area.w - 2 * kMargin));
-    const float h = std::min(natural.h, std::min(room, 420.0f));
+    const float w = std::clamp(std::max(natural.w, std::min(at.w, 420.0f)), std::min(200.0f, area.w - 2 * kMargin),
+                               std::min(420.0f, area.w - 2 * kMargin));
+    const float h = std::min(natural.h, std::min(room, 460.0f));
     scroll->maxHeight = h - 12;
     const float x = std::clamp(at.x, area.x + kMargin, area.x + area.w - kMargin - w);
     const float y = up ? at.y - kGap - h : at.y + at.h + kGap;
@@ -603,13 +613,13 @@ void openMenu(DropButton* drop, Icon* chevron, const std::string& shown, const s
     if (chosen) EventLoop::get().defer([scroll, chosen, generation = g_menuGeneration] {
         if (generation == g_menuGeneration && g_menu.menu) scroll->reveal(chosen->rect());
     });
-    // Unfolds from the pill
+    // Unfolds from where it was opened
     card->setOpacity(0, false);
     card->setTranslateY(up ? 8.0f : -8.0f, false);
     card->setOpacity(1);
     card->setTranslateY(0);
-    chevron->setText("expand_less");
-    g_menu = {root, card, layer, drop, chevron};
+    if (chevron) chevron->setText("expand_less");
+    g_menu = {root, card, layer, owner, chevron};
     root->requestRedraw();
 }
 
@@ -619,6 +629,14 @@ bool closeOpenDropdown() {
     if (!g_menu.menu) return false;
     closeMenuSoon();
     return true;
+}
+
+void floatingMenu(Node* from, const std::vector<MenuItem>& items) {
+    if (from) openMenu(from, from->rect(), nullptr, nullptr, items);
+}
+
+void floatingMenuAt(Node* within, float x, float y, const std::vector<MenuItem>& items) {
+    if (within) openMenu(within, {x, y, 0, 0}, nullptr, nullptr, items);
 }
 
 Button* dropdown(Node* tail, Node* /*g: where the list once unfolded*/, const std::string& shown,
@@ -633,7 +651,16 @@ Button* dropdown(Node* tail, Node* /*g: where the list once unfolded*/, const st
         if (button != BTN_LEFT) return;
         // The same pill again closes it
         if (g_menu.owner == drop) return closeMenu();
-        openMenu(drop, chevron, shown, items, pick, lead);
+        std::vector<MenuItem> rows;
+        for (const auto& [value, label] : items) {
+            MenuItem m;
+            m.label = label;
+            m.checked = label == shown || value == shown;
+            m.action = [pick, value = value] { pick(value); };
+            if (lead) m.lead = [lead, value = value](Node* row) { lead(row, value); };
+            rows.push_back(std::move(m));
+        }
+        openMenu(drop, drop->rect(), drop, chevron, rows);
     };
     return drop;
 }

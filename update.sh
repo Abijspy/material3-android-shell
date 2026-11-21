@@ -152,7 +152,9 @@ if [[ "$MODE" == all ]]; then
         echo "Updating niri's material3ui.kdl..."
         term="$(state terminal)" files="$(state file_manager)" web="$(state browser)"
         mkdir -p "$NIRI"
-        sed -e "s/\"alacritty\"/\"${term:-alacritty}\"/g" -e "s/\"nemo\"/\"${files:-nemo}\"/g" -e "s/\"librewolf\"/\"${web:-librewolf}\"/g" \
+        fm="\"${files:-nemo}\""
+        [[ "$files" != files ]] || fm='"material3ui" "msg" "files"'
+        sed -e "s/\"alacritty\"/\"${term:-alacritty}\"/g" -e "s/\"nemo\"/$fm/g" -e "s/\"librewolf\"/\"${web:-librewolf}\"/g" \
             "$DOT/niri/material3ui.kdl" >"$NIRI/material3ui.kdl.tmp"
         if [[ -f "$NIRI/material3ui.kdl" ]]; then
             python3 -I - "$NIRI/material3ui.kdl" "$NIRI/material3ui.kdl.tmp" <<'PY' || true

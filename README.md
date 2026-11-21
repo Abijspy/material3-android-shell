@@ -184,12 +184,26 @@ From the moment the machine boots:
 
 **11 · Grab part of the screen.** <kbd>Super</kbd><kbd>G</kbd> opens the screenshot tool, which captures a region, a window or the whole screen, with a delay. Shots are copied to the clipboard and can open in an editor. <kbd>Super</kbd><kbd>Shift</kbd><kbd>S</kbd> grabs a region straight away. <kbd>Super</kbd><kbd>Shift</kbd><kbd>X</kbd> copies the text in a region (OCR), and <kbd>Super</kbd><kbd>Shift</kbd><kbd>R</kbd> starts or stops a screen recording. Its Record tab records a region or a screen as MP4, WebM, MKV or GIF, at the resolution, frame rate and quality you pick, with system sound or the microphone.
 
+**12 · Your files, without another app.** **Files** (<kbd>Super</kbd><kbd>E</kbd>) is the shell's own file manager, in the same Material 3 look:
+
+- **Browsing:** your folders, drives and the trash down the side, and back, forward, up and the path along the top.
+- **Views:** a grid with pictures as previews and videos as their first frame, or a list with dates and sizes.
+- **Searching:** within the folder, with Ctrl+F.
+- **Selecting:** a click selects, Ctrl-click adds, Shift-click takes a range, and a double click opens.
+- **Right-click menu:** Open with, cut, copy, paste, rename, the trash, Quick Share and the wallpaper.
+- **The trash:** shared with other file managers. Restore files from it, or empty it.
+- **Preview and properties:** a pane (F9) previews pictures, videos and text, and lists size, dates, type, owner, permissions and free space. A switch lets a script run.
+- **ZIP and unzip:** compress to ZIP, or extract ZIP, tar, 7z, rar and ISO files.
+- **Drives and servers:** open USB drives from the side bar, and eject them safely. Connect to FTP, SFTP and WebDAV servers.
+
+Pictures open in the shell's **image viewer**. Zoom with the wheel or +/−, step through the folder with the arrow keys, and edit, set as wallpaper or move to the trash from its bar. The installer makes both the defaults; Settings → Default apps can pick others.
+
 ## Keys worth learning
 
 | | Open | | Do |
 | :--- | :--- | :--- | :--- |
 | <kbd>Super</kbd><kbd>Space</kbd> | Spotlight | <kbd>Super</kbd><kbd>Return</kbd> | Terminal |
-| <kbd>Super</kbd><kbd>`</kbd> | Overview | <kbd>Super</kbd><kbd>E</kbd> | File manager |
+| <kbd>Super</kbd><kbd>`</kbd> | Overview | <kbd>Super</kbd><kbd>E</kbd> | Files |
 | <kbd>Super</kbd><kbd>N</kbd> | Quick Settings | <kbd>Super</kbd><kbd>B</kbd> | Browser |
 | <kbd>Super</kbd><kbd>A</kbd> | Notifications | <kbd>Super</kbd><kbd>V</kbd> | Clipboard history |
 | <kbd>Super</kbd><kbd>D</kbd> | Dashboard | <kbd>Super</kbd><kbd>.</kbd> | Emoji |

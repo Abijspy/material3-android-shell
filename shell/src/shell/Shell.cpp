@@ -381,6 +381,58 @@ void Shell::openNiriSettings(const std::string& page) {
     };
 }
 
+// An app window of the shell's own, once: asked again, it's raised (and
+// shown `arg`, through `go`); closed, it's let go
+namespace {
+void raise(const std::string& appId) {
+    auto& c = Compositor::get();
+    for (const auto& w : c.windows(true))
+        if (w.appId == appId) c.focusWindow(w.id);
+}
+} // namespace
+
+void Shell::openFiles(const std::string& path) {
+    if (m_files && !m_files->closing()) {
+        if (!path.empty() && panels::filesGo) panels::filesGo(path);
+        return raise("material3ui-files");
+    }
+    if (m_popup) m_popup->close();
+    Popup::Options opts;
+    opts.name = "files";
+    opts.window = true;
+    opts.appId = "material3ui-files";
+    opts.title = "Files";
+    opts.icon = "folder";
+    opts.windowWidth = 1120;
+    opts.windowHeight = 720;
+    m_files = std::make_unique<Popup>(nullptr, opts, [path](ui::Flex* card, Popup& p) { panels::files(card, p, path); });
+    m_files->onClosed = [this] {
+        panels::filesClosed();
+        EventLoop::get().defer([this] { m_files.reset(); });
+    };
+}
+
+void Shell::openViewer(const std::string& file) {
+    if (file.empty()) return;
+    if (m_viewer && !m_viewer->closing()) {
+        if (panels::viewerGo) panels::viewerGo(file);
+        return raise("material3ui-viewer");
+    }
+    Popup::Options opts;
+    opts.name = "viewer";
+    opts.window = true;
+    opts.appId = "material3ui-viewer";
+    opts.title = "Image Viewer";
+    opts.icon = "image";
+    opts.windowWidth = 1100;
+    opts.windowHeight = 760;
+    m_viewer = std::make_unique<Popup>(nullptr, opts, [file](ui::Flex* card, Popup& p) { panels::viewer(card, p, file); });
+    m_viewer->onClosed = [this] {
+        panels::viewerClosed();
+        EventLoop::get().defer([this] { m_viewer.reset(); });
+    };
+}
+
 void Shell::openWelcome() {
     if (m_welcome && !m_welcome->closing()) {
         auto& c = Compositor::get();
@@ -415,6 +467,8 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
     if (name == "welcome") return openWelcome();
     // niri's settings app
     if (name == "nirisettings") return openNiriSettings(arg);
+    if (name == "files") return openFiles(arg);
+    if (name == "viewer") return openViewer(arg);
     if (name == "desktopedit") return desktopeditor::open(output ? output : focusedOutput());
     // The compositor's own overview where it has one (niri's)
     if (name == "overview" && Compositor::get().can(Compositor::Feature::NativeOverview)) {
@@ -830,6 +884,38 @@ void Shell::registerIpc() {
         else if (cmd == "down") b.step(-0.05f);
         else if (cmd == "set" && a.size() > 1) b.set(std::stof(a[1]) / 100);
         return std::format("{}%", std::lround(b.value() * 100));
+    });
+    // file:// URIs (an app's "show in folder") as paths
+    auto localPath = [](std::string p) {
+        if (p.starts_with("file://")) {
+            std::string out;
+            for (size_t i = 7; i < p.size(); ++i) {
+                if (p[i] == '%' && i + 2 < p.size()) {
+                    out += static_cast<char>(std::strtol(p.substr(i + 1, 2).c_str(), nullptr, 16));
+                    i += 2;
+                } else {
+                    out += p[i];
+                }
+            }
+            p = out;
+        }
+        std::error_code ec;
+        return p.empty() ? p : std::filesystem::absolute(p, ec).string();
+    };
+    ipc.add("files", "files [folder|file]: the Files app, at a folder (or a file, selected)", [this, localPath](const IpcServer::Args& a) {
+        std::string path;
+        for (size_t i = 0; i < a.size(); ++i) path += (i ? " " : "") + a[i];
+        path = localPath(path);
+        EventLoop::get().defer([this, path] { openFiles(path); });
+        return std::string("files");
+    });
+    ipc.add("view", "view <file>: a picture in the image viewer", [this, localPath](const IpcServer::Args& a) {
+        std::string path;
+        for (size_t i = 0; i < a.size(); ++i) path += (i ? " " : "") + a[i];
+        path = localPath(path);
+        if (path.empty() || !std::filesystem::exists(path)) return std::string("error: no such file");
+        EventLoop::get().defer([this, path] { openViewer(path); });
+        return std::string("viewing");
     });
     ipc.add("lyrics", "lyrics [show|identify|status]: the playing song's lyrics; identify listens and recognises the song", [this](const IpcServer::Args& a) {
         auto& ly = Lyrics::get();

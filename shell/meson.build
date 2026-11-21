@@ -1,5 +1,5 @@
 project('material3ui', 'cpp', 'c',
-  version: '7.0.0',
+  version: '7.1.0',
   license: 'MIT',
   meson_version: '>= 1.1',
   default_options: ['cpp_std=c++20', 'warning_level=2', 'buildtype=debugoptimized'])
@@ -112,6 +112,7 @@ sources = files(
   'src/services/HookEvents.cpp',
   'src/services/Hooks.cpp',
   'src/services/Lyrics.cpp',
+  'src/services/FileOps.cpp',
   'src/services/LyricsParse.cpp',
   'src/services/Mpris.cpp',
   'src/services/Niri.cpp',
@@ -154,6 +155,8 @@ sources = files(
   'src/shell/ColorPicker.cpp',
   'src/shell/NotesPanel.cpp',
   'src/shell/LyricsPanel.cpp',
+  'src/shell/FilesApp.cpp',
+  'src/shell/ImageViewer.cpp',
   'src/shell/Flyouts.cpp',
   'src/shell/MessagesPanel.cpp',
   'src/shell/LiveWallpaper.cpp',
@@ -204,8 +207,8 @@ sources = files(
 
 install_data('data/pam/material3ui', install_dir: get_option('sysconfdir') / 'pam.d')
 # The Settings app: a launcher entry and its icon
-install_data('data/material3ui-settings.desktop', 'data/material3ui-niri.desktop', 'data/material3ui-quickshare.desktop', 'data/material3ui-print.desktop', install_dir: get_option('datadir') / 'applications')
-install_data('data/icons/material3ui-settings.svg', 'data/icons/material3ui-niri.svg', 'data/icons/material3ui-quickshare.svg', install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps')
+install_data('data/material3ui-settings.desktop', 'data/material3ui-niri.desktop', 'data/material3ui-files.desktop', 'data/material3ui-viewer.desktop', 'data/material3ui-quickshare.desktop', 'data/material3ui-print.desktop', install_dir: get_option('datadir') / 'applications')
+install_data('data/icons/material3ui-settings.svg', 'data/icons/material3ui-niri.svg', 'data/icons/material3ui-files.svg', 'data/icons/material3ui-viewer.svg', 'data/icons/material3ui-quickshare.svg', install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps')
 install_data('data/icons/material3ui-settings.svg', 'data/icons/quickshare-symbol.svg', install_dir: get_option('datadir') / 'material3ui/icons')
 # Shipped data: emoji list, logo, wallpapers
 install_data('data/emojis.txt', install_dir: get_option('datadir') / 'material3ui')

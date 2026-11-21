@@ -240,6 +240,21 @@
       "name": "fastfetch",
       "command": "fastfetch",
       "description": "The device's details in Settings → About"
+    },
+    {
+      "name": "udisks2",
+      "command": "udisksctl",
+      "description": "Opening and ejecting drives in Files"
+    },
+    {
+      "name": "gvfs",
+      "command": "gio",
+      "description": "FTP, SFTP and WebDAV servers in Files"
+    },
+    {
+      "name": "libarchive",
+      "command": "bsdtar",
+      "description": "ZIP and unzip in Files"
     }
   ],
   "theming": [

@@ -92,6 +92,8 @@ public:
     // The held modifiers changed (ui::Modifier bits): the app switcher ends
     // when Super is let go
     std::function<void(uint32_t mods)> onModifiers;
+    // The modifiers held now (ui::Modifier bits): Ctrl- and Shift-clicks
+    uint32_t heldModifiers() const { return m_heldMods; }
     void pointerAxisSource(uint32_t source);
     void pointerAxisStop(uint32_t axis);
     void keymap(int fd, uint32_t size);
@@ -105,6 +107,7 @@ private:
     Display() = default;
 
     wl_display* m_display = nullptr;
+    uint32_t m_heldMods = 0;
     wl_registry* m_registry = nullptr;
     wl_compositor* m_compositor = nullptr;
     zwlr_layer_shell_v1* m_layerShell = nullptr;
