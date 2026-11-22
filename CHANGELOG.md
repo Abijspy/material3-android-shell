@@ -1,5 +1,28 @@
 # Changelog
 
+## v7.1.3 — 2026-11-22
+
+- **Eight new apps**, each a package of its own with Settings and About pages:
+  - **Music** (`material3ui-music`): your library by album, artist and song, playlists and a queue, with covers from the folders or the files.
+  - **Disks** (`material3ui-disks`): drives and partitions, health, mounting, renaming, checking and formatting (never the system's own), and what fills the space.
+  - **Camera** (`material3ui-camera`): photos (with a timer) and videos from the webcam, mirrored if you like.
+  - **Backups** (`material3ui-backups`): dated snapshots of your folders onto another drive, unchanged files hard-linked, kept by age, on a timer if you want.
+  - **Sound Recorder** (`material3ui-recorder`): voice notes in Opus, MP3, FLAC or WAV, with the level live.
+  - **Calculator** (`material3ui-calculator`): the answer as you type, scientific keys, history and a unit converter.
+  - **Fonts** (`material3ui-fonts`): every font in its own face, a family's styles and characters, and font files to look at and install.
+  - **Image Writer** (`material3ui-imagewriter`): ISO and disk images (also `.img.xz`) onto USB drives and memory cards, checked against their SHA-256 and read back afterwards. It never offers the system's drive.
+- **Clock, Calendar and Weather** open as windows: a month view with holidays and your events, the hourly and 10-day forecast, and alarms and timers.
+- **Settings → Material3UI apps** lists the shell's apps and reinstalls the ones you removed.
+- **Drag and drop** between apps: drop files on the Text Editor, PDF, Photos, Videos or Music to open them, on a folder in Files to move or copy them, on the terminal to type their paths, or a picture on a note. Files and Photos drag out to other apps too.
+- **Files:** tabs (Ctrl+T), two folders side by side (F3), PDF pages as previews, and font files and disk images open in their apps.
+- **Photos:** favourites (F), albums that don't move your files, and a fullscreen slideshow (F5).
+- **Notes:** reminders that notify you even with Notes closed, and pictures pasted or added from a file.
+- **Terminal:** split panes (Ctrl+Shift+E side by side, Ctrl+Shift+O stacked, Alt+arrows between them).
+- **Text Editor:** syntax highlighting for C and C++, Python, shell, JavaScript, Rust, Go and more.
+- **PDF:** the contents (its outline) beside the pages, and tabs for several PDFs.
+- **Spotlight** finds your notes, and `?` searches inside your documents and PDFs.
+- **Dock:** right-click an app for the files it opened lately.
+
 ## v7.1.2 — 2026-11-22
 
 - **Settings and About in every app.** Files, Photos, Videos, the Task Manager, the terminal, Notes, PDF and the Text Editor each have a gear in their title bar (or <kbd>Ctrl</kbd><kbd>,</kbd>). Settings apply as you change them:
