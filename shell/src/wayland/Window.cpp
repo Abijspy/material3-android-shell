@@ -67,6 +67,16 @@ void Window::setTitle(const std::string& title) {
     if (m_toplevel) xdg_toplevel_set_title(m_toplevel, title.c_str());
 }
 
+void Window::setFullscreen(bool fullscreen) {
+    if (!m_toplevel || fullscreen == m_fullscreen) return;
+    m_fullscreen = fullscreen;
+    if (onStateChanged) onStateChanged();
+    if (fullscreen)
+        xdg_toplevel_set_fullscreen(m_toplevel, nullptr);
+    else
+        xdg_toplevel_unset_fullscreen(m_toplevel);
+}
+
 void Window::setMaximized(bool maximized) {
     if (!m_toplevel || maximized == m_maximized) return;
     m_maximized = maximized;

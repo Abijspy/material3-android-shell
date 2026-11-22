@@ -3,8 +3,10 @@
 // zoom (Ctrl+0 back to fitting, 1 to the picture's own pixels, a double
 // click between the two); dragging moves a zoomed picture. Its bar edits it
 // (the shell's image editor), makes it the wallpaper, shows it in Files or
-// moves it to the trash. Files opens pictures here; it's also the
-// `material3ui-viewer` app for picture files.
+// moves it to the trash. Favourites (F) and albums keep pictures where they
+// are; a slideshow (F5) shows a folder's, an album's or the favourites,
+// fullscreen. Files opens pictures here; it's also the `material3ui-viewer`
+// app for picture files.
 #include "shell/Panels.h"
 
 #include "core/Config.h"
@@ -23,6 +25,7 @@
 
 #include <GLES2/gl2.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -30,8 +33,10 @@
 #include <cmath>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <linux/input-event-codes.h>
 #include <memory>
+#include <random>
 #include <sys/stat.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
@@ -46,6 +51,95 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
+// Favourites and albums: lists of pictures where they are (nothing is
+// copied or moved), in $XDG_DATA_HOME/material3ui/photos/library.json
+struct Library {
+    std::vector<std::string> favourites;
+    std::vector<std::pair<std::string, std::vector<std::string>>> albums;
+
+    static std::string path() {
+        const char* x = std::getenv("XDG_DATA_HOME");
+        return (x && *x ? std::string(x) : paths::home() + "/.local/share") + "/material3ui/photos/library.json";
+    }
+    void load() {
+        favourites.clear();
+        albums.clear();
+        std::ifstream in(path());
+        if (!in) return;
+        try {
+            const auto j = nlohmann::json::parse(in);
+            for (const auto& f : j.value("favourites", nlohmann::json::array())) favourites.push_back(f.get<std::string>());
+            for (const auto& a : j.value("albums", nlohmann::json::array())) {
+                std::vector<std::string> pics;
+                for (const auto& p : a.value("pictures", nlohmann::json::array())) pics.push_back(p.get<std::string>());
+                albums.emplace_back(a.value("name", "Album"), std::move(pics));
+            }
+        } catch (...) {
+        }
+    }
+    void save() const {
+        nlohmann::json j;
+        j["favourites"] = favourites;
+        auto arr = nlohmann::json::array();
+        for (const auto& [name, pics] : albums) arr.push_back({{"name", name}, {"pictures", pics}});
+        j["albums"] = arr;
+        std::error_code ec;
+        fs::create_directories(fs::path(path()).parent_path(), ec);
+        paths::writeFile(path() + ".tmp", j.dump(1));
+        fs::rename(path() + ".tmp", path(), ec);
+    }
+    bool favourite(const std::string& p) const { return std::ranges::find(favourites, p) != favourites.end(); }
+    void toggleFavourite(const std::string& p) {
+        if (favourite(p)) std::erase(favourites, p);
+        else favourites.insert(favourites.begin(), p);
+        save();
+    }
+    std::vector<std::string>* album(const std::string& name) {
+        for (auto& [n, pics] : albums)
+            if (n == name) return &pics;
+        return nullptr;
+    }
+    void addTo(const std::string& name, const std::string& p) {
+        if (!album(name)) albums.emplace_back(name, std::vector<std::string>{});
+        auto* a = album(name);
+        if (std::ranges::find(*a, p) == a->end()) a->push_back(p);
+        save();
+    }
+    void removeFrom(const std::string& name, const std::string& p) {
+        if (auto* a = album(name)) std::erase(*a, p), save();
+    }
+    void removeAlbum(const std::string& name) {
+        std::erase_if(albums, [&](const auto& a) { return a.first == name; });
+        save();
+    }
+    // A collection's pictures still there: "fav" or "album:<name>"
+    std::vector<std::string> pictures(const std::string& collection) {
+        std::vector<std::string> src;
+        if (collection == "fav") src = favourites;
+        else if (collection.starts_with("album:"))
+            if (auto* a = album(collection.substr(6))) src = *a;
+        std::error_code ec;
+        std::erase_if(src, [&](const std::string& p) { return !fs::exists(p, ec); });
+        return src;
+    }
+};
+
+Library& library() {
+    static Library lib = [] {
+        Library l;
+        l.load();
+        return l;
+    }();
+    return lib;
+}
+
+std::string canonical(const std::string& p) {
+    std::error_code ec;
+    const auto c = fs::weakly_canonical(p, ec);
+    return ec ? p : c.string();
+}
+
+
 // The picture, fitted or zoomed, and moved about when it's bigger than the
 // room. Any format: what gdk-pixbuf reads (PNG, JPEG, WebP, AVIF, HEIC, JXL,
 // TIFF, EXR, QOI…) as it is, the rest (PSD, XCF, camera RAW, JPEG 2000…)
@@ -54,6 +148,7 @@ using Clock = std::chrono::steady_clock;
 class ZoomView : public Node {
 public:
     std::function<void()> changed; // zoomed or moved: the bar's percentage
+    std::function<bool()> tapped;  // a press, first: true takes it (a slideshow ends)
 
     ZoomView() {
         m_note = add<Label>("");
@@ -125,6 +220,7 @@ public:
         return true;
     }
     void onPress(uint32_t button, float x, float y) override {
+        if (tapped && tapped()) return;
         if (button != BTN_LEFT) return;
         const auto now = Clock::now();
         if (now - m_lastPress < std::chrono::milliseconds(400)) {
@@ -291,6 +387,16 @@ struct ViewerState {
     std::string galleryDir;
     std::function<void()> showGallery;
     EventLoop::TimerId thumbTimer = 0;
+    // Favourites and albums: what the gallery shows when not a folder
+    std::string collection; // "" (a folder), "fav", "album:<name>"
+    std::vector<std::string> galleryPics; // the gallery's, in its order
+    Flex *albumsRow = nullptr, *ask = nullptr;
+    Icon* favIcon = nullptr;
+    Button *prev = nullptr, *next = nullptr;
+    Popup* popup = nullptr;
+    Flex* card = nullptr;
+    bool sliding = false, paused = false; // the slideshow
+    EventLoop::TimerId slideTimer = 0;
     std::shared_ptr<bool> alive = std::make_shared<bool>(true);
 };
 
@@ -315,7 +421,8 @@ void viewing(const std::shared_ptr<ViewerState>& st, bool on) {
     st->infoBar->setVisible(on && Config::get().value<bool>("/viewer/info", false));
 }
 
-void showAt(const std::shared_ptr<ViewerState>& st, std::string file) {
+// `within`: the pictures to step through (an album's), else the folder's
+void showAt(const std::shared_ptr<ViewerState>& st, std::string file, const std::vector<std::string>* within = nullptr) {
     std::error_code ec;
     if (fs::is_directory(file, ec)) {
         st->galleryDir = file;
@@ -325,7 +432,8 @@ void showAt(const std::shared_ptr<ViewerState>& st, std::string file) {
     if (!fs::exists(file, ec)) return;
     viewing(st, true);
     file = fs::weakly_canonical(file, ec).string();
-    st->pictures = siblings(file);
+    if (within && std::ranges::find(*within, file) != within->end()) st->pictures = *within;
+    else st->pictures = siblings(file);
     st->index = static_cast<size_t>(std::ranges::find(st->pictures, file) - st->pictures.begin());
     st->view->show(file);
     st->refresh();
@@ -368,6 +476,8 @@ public:
         m_st->refresh = nullptr;
         m_st->showGallery = nullptr;
         if (m_st->thumbTimer) EventLoop::get().cancel(m_st->thumbTimer);
+        if (m_st->slideTimer) EventLoop::get().cancel(m_st->slideTimer);
+        m_st->popup = nullptr;
         m_st->view = nullptr;
     }
 
@@ -381,6 +491,10 @@ private:
 } // namespace
 
 std::function<void(const std::string&)> viewerGo;
+
+void buildGallery(const std::shared_ptr<ViewerState>& st);
+void buildAlbumsRow(std::shared_ptr<ViewerState> st);
+void pictureMenu(const std::shared_ptr<ViewerState>& st, Node* from, const std::string& path);
 
 // The folders a gallery offers: the usual places pictures gather
 std::vector<std::pair<std::string, std::string>> galleryPlaces() {
@@ -400,6 +514,21 @@ std::vector<std::pair<std::string, std::string>> galleryPlaces() {
     return out;
 }
 
+// A gallery picture, with a heart in its corner when it's a favourite
+class Thumb : public Button {
+public:
+    Icon* heart = nullptr;
+
+protected:
+    void doArrange() override {
+        Button::doArrange();
+        if (!heart) return;
+        const auto& b = rect();
+        const SizeF m = heart->measure({b.w, b.h});
+        heart->arrange({b.x + b.w - m.w - 8, b.y + 8, m.w, m.h});
+    }
+};
+
 void buildGallery(const std::shared_ptr<ViewerState>& st) {
     auto* g = st->grid;
     g->clearChildren();
@@ -408,23 +537,32 @@ void buildGallery(const std::shared_ptr<ViewerState>& st) {
         const auto places = galleryPlaces();
         st->galleryDir = places.empty() ? paths::home() : places.front().second;
     }
-    st->galleryTitle->setText(fileops::displayPath(st->galleryDir));
     struct Pic {
         std::string path;
         std::time_t when;
     };
     std::vector<Pic> pics;
-    for (const auto& e : fileops::list(st->galleryDir, false))
-        if (!e.dir && fileops::isPicture(e.path)) pics.push_back({e.path, e.modified});
-    if (Config::get().value<std::string>("/viewer/sort", "date") == "name")
+    if (!st->collection.empty()) {
+        // Favourites (newest first) or an album (in the order they were added)
+        st->galleryTitle->setText(st->collection == "fav" ? "Favourites" : st->collection.substr(6));
+        for (const auto& p : library().pictures(st->collection)) pics.push_back({p, 0});
+    } else {
+        st->galleryTitle->setText(fileops::displayPath(st->galleryDir));
+        for (const auto& e : fileops::list(st->galleryDir, false))
+            if (!e.dir && fileops::isPicture(e.path)) pics.push_back({canonical(e.path), e.modified});
+    }
+    if (!st->collection.empty()) {
+    } else if (Config::get().value<std::string>("/viewer/sort", "date") == "name")
         std::ranges::sort(pics, [](const Pic& a, const Pic& b) { return strverscmp(fs::path(a.path).filename().c_str(), fs::path(b.path).filename().c_str()) < 0; });
     else
         std::ranges::sort(pics, std::greater{}, &Pic::when);
     if (pics.size() > 600) pics.resize(600);
+    st->galleryPics.clear();
+    for (const auto& pic : pics) st->galleryPics.push_back(pic.path);
     auto* flow = g->add<Flow>();
     flow->spacing = 8;
     for (const auto& pic : pics) {
-        auto* b = flow->add<Button>();
+        auto* b = flow->add<Thumb>();
         b->setPadding(Insets(0))->setRadius(Radii(14));
         b->tooltip = fs::path(pic.path).filename().string();
         std::string shown = pic.path.ends_with(".svg") ? pic.path : "";
@@ -454,16 +592,212 @@ void buildGallery(const std::shared_ptr<ViewerState>& st) {
             v->radius = 14;
         }
         const std::string path = pic.path;
-        b->onClicked = [st, path](uint32_t button) {
-            if (button == BTN_LEFT) showAt(st, path);
+        if (library().favourite(path)) {
+            // A heart in its corner
+            auto* heart = b->add<Icon>("favorite", 18);
+            heart->setFill(true)->setColor(ColorRef(Color{1, 1, 1, 0.95f}), false);
+            heart->floating = true;
+            b->heart = heart;
+        }
+        b->onClicked = [st, path, b](uint32_t button) {
+            if (button == BTN_LEFT) showAt(st, path, st->collection.empty() ? nullptr : &st->galleryPics);
+            if (button == BTN_RIGHT) pictureMenu(st, b, path);
         };
     }
-    if (pics.empty()) caption(g, "No pictures in this folder");
+    if (pics.empty())
+        caption(g, st->collection == "fav"             ? "No favourites yet: open a picture and press F, or right click one"
+                   : !st->collection.empty()            ? "This album is empty: right click a picture, or use the album button over one"
+                                                        : "No pictures in this folder");
+}
+
+// ── Favourites, albums and the slideshow ──
+
+static ColorRef stageColor() {
+    return Config::get().value<std::string>("/viewer/backdrop", "theme") == "black" ? ColorRef(Color{0, 0, 0, 1}) : ColorRef("surface_container_lowest", 0.6f);
+}
+
+void albumsChanged(std::shared_ptr<ViewerState> st) {
+    if (st->gallery->visible()) buildGallery(st);
+    if (st->refresh) st->refresh();
+    buildAlbumsRow(st);
+}
+
+// A name for a new album, asked for over the window; the picture (if any) goes in it
+void askAlbum(const std::shared_ptr<ViewerState>& st, const std::string& picture) {
+    auto* a = st->ask;
+    a->clearChildren();
+    a->setVisible(true);
+    a->add<Icon>("photo_album", 20);
+    auto* f = a->add<TextField>();
+    f->bare = true;
+    f->grow = true;
+    f->setPlaceholder(picture.empty() ? "The new album's name" : "The new album's name (this picture goes in it)");
+    auto done = [st, f, picture] {
+        std::string name = f->text();
+        while (!name.empty() && name.back() == ' ') name.pop_back();
+        st->ask->setVisible(false);
+        if (name.empty()) return;
+        auto& lib = library();
+        if (!lib.album(name)) lib.albums.emplace_back(name, std::vector<std::string>{});
+        if (!picture.empty()) lib.addTo(name, picture);
+        else lib.save();
+        if (picture.empty()) st->collection = "album:" + name; // a new, empty album: shown
+        albumsChanged(st);
+    };
+    f->onSubmit = [done](const std::string&) { done(); };
+    pillButton(a, "Create", true, done);
+    iconButton(a, "close", [st] { st->ask->setVisible(false); }, 18);
+    EventLoop::get().defer([st, f] {
+        if (*st->alive) f->focus();
+    });
+}
+
+std::vector<MenuItem> albumItems(const std::shared_ptr<ViewerState>& st, const std::string& path) {
+    std::vector<MenuItem> items;
+    auto& lib = library();
+    bool first = true;
+    for (const auto& [name, pics] : lib.albums) {
+        const bool in = std::ranges::find(pics, path) != pics.end();
+        items.emplace_back("photo_album", (in ? "In " : "Add to ") + name, "", [st, path, name, in] {
+            if (in) library().removeFrom(name, path);
+            else library().addTo(name, path);
+            albumsChanged(st);
+        }, in, false, true, first);
+        first = false;
+    }
+    items.emplace_back("add", "New album…", "", [st, path] { askAlbum(st, path); }, false, false, true, first);
+    return items;
+}
+
+void pictureMenu(const std::shared_ptr<ViewerState>& st, Node* from, const std::string& path) {
+    auto& lib = library();
+    std::vector<MenuItem> items;
+    const bool fav = lib.favourite(path);
+    items.emplace_back(fav ? "heart_minus" : "favorite", fav ? "Remove from favourites" : "Add to favourites", "F", [st, path] {
+        library().toggleFavourite(path);
+        albumsChanged(st);
+    });
+    for (auto& i : albumItems(st, path)) items.push_back(std::move(i));
+    if (st->collection.starts_with("album:")) {
+        const std::string name = st->collection.substr(6);
+        items.emplace_back("remove", "Take out of " + name, "", [st, path, name] {
+            library().removeFrom(name, path);
+            albumsChanged(st);
+        }, false, true, true, true);
+    }
+    items.emplace_back("folder_open", "Show in Files", "", [path] {
+        if (open) open("files " + path);
+    }, false, false, true, true);
+    floatingMenu(from, items);
+}
+
+void buildAlbumsRow(std::shared_ptr<ViewerState> st) {
+    auto* row = st->albumsRow;
+    if (!row) return;
+    row->clearChildren();
+    auto chip = [&](const std::string& icon, const std::string& label, const std::string& collection) {
+        auto* c = row->add<Button>(Flex::Direction::Row);
+        const bool on = st->collection == collection && !collection.empty();
+        pill(c->setBackground(on ? ColorRef("secondary_container") : ColorRef("surface_container_high"), false))->setPadding({10, 6, 12, 6})->setSpacing(6)->setAlignItems(Align::Center);
+        c->add<Icon>(icon, 16)->setFill(on);
+        c->add<Label>(label)->setSize(13)->setWeight(500);
+        return c;
+    };
+    auto& lib = library();
+    auto* fav = chip("favorite", std::format("Favourites  {}", lib.pictures("fav").size()), "fav");
+    fav->onClicked = [st](uint32_t b) {
+        if (b != BTN_LEFT) return;
+        st->collection = "fav";
+        buildGallery(st);
+        buildAlbumsRow(st); // last: it rebuilds this chip (st is copied in)
+    };
+    for (const auto& [name, pics] : lib.albums) {
+        auto* c = chip("photo_album", std::format("{}  {}", name, pics.size()), "album:" + name);
+        c->onClicked = [st, name, c](uint32_t b) {
+            if (b == BTN_LEFT) {
+                st->collection = "album:" + name;
+                buildGallery(st);
+                buildAlbumsRow(st); // last: it rebuilds this chip
+            } else if (b == BTN_RIGHT) {
+                floatingMenu(c, {MenuItem("delete", "Delete the album", "Its pictures stay where they are", [st, name] {
+                                     library().removeAlbum(name);
+                                     if (st->collection == "album:" + name) st->collection.clear();
+                                     albumsChanged(st);
+                                 }, false, true)});
+            }
+        };
+    }
+    auto* add = chip("add", "New album", "");
+    add->onClicked = [st](uint32_t b) {
+        if (b == BTN_LEFT) askAlbum(st, "");
+    };
+}
+
+void stopSlideshow(const std::shared_ptr<ViewerState>& st) {
+    if (!st->sliding) return;
+    st->sliding = false;
+    if (st->slideTimer) EventLoop::get().cancel(st->slideTimer), st->slideTimer = 0;
+    if (st->popup) st->popup->setFullscreen(false);
+    st->bar->setVisible(true);
+    st->prev->setVisible(true);
+    st->next->setVisible(true);
+    st->stage->setBackground(stageColor(), false);
+    st->stage->setRadius(Radii(22));
+    st->card->setPadding(Insets(10));
+    st->infoBar->setVisible(Config::get().value<bool>("/viewer/info", false));
+    if (st->refresh) st->refresh();
+}
+
+void slideNext(const std::shared_ptr<ViewerState>& st) {
+    if (st->slideTimer) EventLoop::get().cancel(st->slideTimer), st->slideTimer = 0;
+    if (!st->sliding || st->paused) return;
+    const int secs = std::max(1, Config::get().value<int>("/viewer/slideSeconds", 5));
+    st->slideTimer = EventLoop::get().addTimer(secs * 1000, [st] {
+        st->slideTimer = 0;
+        if (!*st->alive || !st->sliding) return;
+        // The end, with wrapping off: the show's over
+        if (st->index + 1 >= st->pictures.size() && !Config::get().value<bool>("/viewer/loop", true)) return stopSlideshow(st);
+        step(st, 1);
+        slideNext(st);
+    });
+}
+
+// The pictures one after another, the whole screen, nothing else
+void startSlideshow(const std::shared_ptr<ViewerState>& st, const std::vector<std::string>& from = {}) {
+    if (!from.empty()) showAt(st, from.front(), &from);
+    if (st->pictures.empty() || st->sliding) return;
+    if (Config::get().value<bool>("/viewer/slideShuffle", false) && st->pictures.size() > 2) {
+        const std::string now = st->pictures[st->index];
+        static std::mt19937 rng{std::random_device{}()};
+        std::ranges::shuffle(st->pictures, rng);
+        std::iter_swap(st->pictures.begin(), std::ranges::find(st->pictures, now));
+        st->index = 0;
+    }
+    st->sliding = true;
+    st->paused = false;
+    viewing(st, true);
+    st->bar->setVisible(false);
+    st->infoBar->setVisible(false);
+    st->ask->setVisible(false);
+    st->prev->setVisible(false);
+    st->next->setVisible(false);
+    st->stage->setBackground(ColorRef(Color{0, 0, 0, 1}), false);
+    st->stage->setRadius(Radii(0));
+    st->card->setPadding(Insets(0));
+    if (st->popup) st->popup->setFullscreen(true);
+    st->view->zoomTo(0);
+    slideNext(st);
 }
 
 void viewer(Flex* card, Popup& popup, const std::string& file) {
     auto st = std::make_shared<ViewerState>();
+    st->popup = &popup;
+    st->card = card;
     card->setPadding(Insets(10))->setSpacing(8);
+    // A new album's name, asked for over the gallery or the picture
+    st->ask = card->add<Flex>(Flex::Direction::Row);
+    pill(st->ask->setBackground("surface_container_high", false))->setPadding({14, 4, 6, 4})->setSpacing(8)->setAlignItems(Align::Center);
+    st->ask->setVisible(false);
 
     // The bar: which picture, and what to do with it
     // The gallery (no picture yet, or the grid button)
@@ -487,12 +821,18 @@ void viewer(Flex* card, Popup& popup, const std::string& file) {
             chip->onClicked = [st, d = dir](uint32_t b) {
                 if (b != BTN_LEFT) return;
                 st->galleryDir = d;
+                st->collection.clear();
+                buildAlbumsRow(st);
                 buildGallery(st);
             };
         }
+        iconButton(head, "slideshow", [st] { startSlideshow(st, st->galleryPics); }, 22)->tooltip = "Slideshow (F5)";
         iconButton(head, "folder_open", [st] {
             if (open) open("files " + st->galleryDir);
         }, 22)->tooltip = "Open this folder in Files";
+        st->albumsRow = st->gallery->add<Flex>(Flex::Direction::Row);
+        st->albumsRow->setSpacing(6)->setAlignItems(Align::Center)->setPadding({8, 0});
+        buildAlbumsRow(st);
         auto* scroll = st->gallery->add<ScrollView>();
         scroll->maxHeight = 1e6f;
         scroll->grow = true;
@@ -533,6 +873,20 @@ void viewer(Flex* card, Popup& popup, const std::string& file) {
     };
     iconButton(bar, "zoom_in", [st] { st->view->zoomBy(1.25f); }, 22)->tooltip = "Zoom in (+)";
     bar->add<Node>()->fixedWidth = 8;
+    auto* fav = iconButton(bar, "favorite", [st] {
+        if (st->pictures.empty()) return;
+        library().toggleFavourite(st->pictures[st->index]);
+        albumsChanged(st);
+    }, 22);
+    fav->tooltip = "Favourite (F)";
+    for (auto& ch : fav->children())
+        if (auto* i = dynamic_cast<Icon*>(ch.get())) st->favIcon = i;
+    Button* alb = iconButton(bar, "photo_album", [] {}, 22);
+    alb->onClicked = [st, alb](uint32_t b) {
+        if (b == BTN_LEFT && !st->pictures.empty()) floatingMenu(alb, albumItems(st, st->pictures[st->index]));
+    };
+    alb->tooltip = "Add to an album";
+    iconButton(bar, "slideshow", [st] { startSlideshow(st); }, 22)->tooltip = "Slideshow (F5)";
     iconButton(bar, "brush", [st] {
         if (!st->pictures.empty() && open) open("imageeditor " + st->pictures[st->index]);
     }, 22)->tooltip = "Edit";
@@ -552,10 +906,12 @@ void viewer(Flex* card, Popup& popup, const std::string& file) {
     stage->setBackground(Config::get().value<std::string>("/viewer/backdrop", "theme") == "black" ? ColorRef(Color{0, 0, 0, 1}) : ColorRef("surface_container_lowest", 0.6f), false);
     stage->grow = true;
     auto* prev = iconButton(stage, "chevron_left", [st] { step(st, -1); }, 30);
+    st->prev = prev;
     prev->tooltip = "Previous (←)";
     st->view = stage->add<ZoomView>();
     st->view->grow = true;
     auto* next = iconButton(stage, "chevron_right", [st] { step(st, 1); }, 30);
+    st->next = next;
     next->tooltip = "Next (→)";
 
     st->infoBar = card->add<Flex>(Flex::Direction::Row);
@@ -581,6 +937,12 @@ void viewer(Flex* card, Popup& popup, const std::string& file) {
         st->info->setText(std::format("{}  ·  {} × {} px{}  ·  {}  ·  {}", fileops::kindName(fileops::Kind::Picture, f), w, h,
                                       st->view->animated() ? "  ·  animated" : "", fileops::humanSize(size), when));
         st->zoom->setText(st->view->fitted() ? "Fit" : std::format("{:.0f}%", st->view->scale() * 100));
+        if (st->favIcon) st->favIcon->setFill(library().favourite(f))->setColor(library().favourite(f) ? "error" : "on_surface", false);
+    };
+    st->view->tapped = [st] {
+        if (!st->sliding) return false;
+        stopSlideshow(st);
+        return true;
     };
     st->view->changed = [st] {
         if (st->refresh) st->zoom->setText(st->view->fitted() ? "Fit" : std::format("{:.0f}%", st->view->scale() * 100));
@@ -588,9 +950,23 @@ void viewer(Flex* card, Popup& popup, const std::string& file) {
     card->add<ViewerKeeper>(st);
 
     popup.onKey = [st, &p](const KeyEvent& e) {
-        // The gallery: Escape closes, nothing else is the viewer's
+        // The slideshow: arrows step, space pauses, anything else ends it
+        if (st->sliding) {
+            switch (e.sym) {
+            case XKB_KEY_Left: step(st, -1); slideNext(st); return true;
+            case XKB_KEY_Right: step(st, 1); slideNext(st); return true;
+            case XKB_KEY_space:
+                st->paused = !st->paused;
+                slideNext(st);
+                return true;
+            default: stopSlideshow(st); return true;
+            }
+        }
+        if (e.sym == XKB_KEY_Escape && st->ask->visible()) return st->ask->setVisible(false), true;
+        // The gallery: Escape closes, F5 plays it, nothing else is the viewer's
         if (st->gallery->visible()) {
             if (e.sym == XKB_KEY_Escape) return p.close(), true;
+            if (e.sym == XKB_KEY_F5) return startSlideshow(st, st->galleryPics), true;
             return false;
         }
         if (e.sym == XKB_KEY_Escape) {
@@ -614,6 +990,13 @@ void viewer(Flex* card, Popup& popup, const std::string& file) {
         case XKB_KEY_Delete: trashCurrent(st, p); return true;
         case XKB_KEY_i:
         case XKB_KEY_I: st->infoBar->setVisible(!st->infoBar->visible()); return true;
+        case XKB_KEY_f:
+        case XKB_KEY_F:
+            if (!st->pictures.empty()) library().toggleFavourite(st->pictures[st->index]), albumsChanged(st);
+            return true;
+        case XKB_KEY_s:
+        case XKB_KEY_S:
+        case XKB_KEY_F5: startSlideshow(st); return true;
         case XKB_KEY_Escape: p.close(); return true;
         default: return false;
         }
@@ -644,6 +1027,9 @@ void viewerSettings(Flex* page) {
     switchRow(v, "info", "Show the details bar", "Size, dimensions and date under the picture (I)", "/viewer/info", false);
     switchRow(v, "repeat", "Wrap around", "Past the last picture, back to the first", "/viewer/loop", true);
     choiceRow<std::string>(v, "contrast", "Backdrop", "Behind the picture", "/viewer/backdrop", "theme", {{"theme", "Theme"}, {"black", "Black"}});
+    auto* s = group(page, "Slideshow", "F5 or S; arrows step, space pauses, a click or any other key ends it");
+    choiceRow<int>(s, "timer", "Each picture for", "Before the next one", "/viewer/slideSeconds", 5, {{3, "3 seconds"}, {5, "5 seconds"}, {10, "10 seconds"}, {20, "20 seconds"}});
+    switchRow(s, "shuffle", "Shuffle", "The pictures in a random order", "/viewer/slideShuffle", false);
 }
 
 } // namespace m3::shell::panels

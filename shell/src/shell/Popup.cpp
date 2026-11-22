@@ -259,6 +259,7 @@ Popup::~Popup() {
 
 void Popup::buildTitleBar(Flex* card) {
     auto* bar = card->add<Flex>(Flex::Direction::Row);
+    m_titleBar = bar;
     bar->setPadding({18, 8, 10, 4})->setSpacing(6);
     if (!m_options.icon.empty()) bar->add<Icon>(m_options.icon, 20)->setColor("primary", false);
     bar->add<Label>(m_options.title)->setSize(14)->setWeight(500)->setColor("on_surface_variant", false);
@@ -299,6 +300,16 @@ void Popup::minimize() {
 
 void Popup::toggleMaximized() {
     if (m_window) m_window->setMaximized(!m_window->maximized());
+}
+
+void Popup::setFullscreen(bool on) {
+    if (!m_window) return;
+    m_window->setFullscreen(on);
+    if (m_titleBar) m_titleBar->setVisible(!on);
+}
+
+bool Popup::fullscreen() const {
+    return m_window && m_window->fullscreen();
 }
 
 void Popup::dismiss() {

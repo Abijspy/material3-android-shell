@@ -28,6 +28,8 @@ public:
     void setTitle(const std::string& title);
     void setMaximized(bool maximized);
     bool maximized() const { return m_maximized; }
+    void setFullscreen(bool fullscreen);
+    bool fullscreen() const { return m_fullscreen; }
     // Starts an interactive move (call from a pointer press on the title bar)
     void startMove();
 
@@ -50,6 +52,7 @@ private:
     xdg_toplevel* m_toplevel = nullptr;
     int m_pendingW = 0, m_pendingH = 0;
     bool m_maximized = false; // as last asked for (the compositor's states can't tell)
+    bool m_fullscreen = false;
 };
 
 } // namespace m3::wl

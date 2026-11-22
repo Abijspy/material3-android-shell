@@ -56,6 +56,9 @@ public:
     void dismiss();
     void minimize();
     void toggleMaximized();
+    // The whole screen, its title bar hidden (a slideshow, a video)
+    void setFullscreen(bool on);
+    bool fullscreen() const;
     bool isWindow() const { return m_window != nullptr; }
     wl::Window* window() const { return m_window.get(); }
     bool closing() const { return m_closing; }
@@ -74,6 +77,7 @@ private:
     std::unique_ptr<wl::LayerSurface> m_surface;
     std::unique_ptr<wl::Window> m_window;
     ui::Icon* m_maxIcon = nullptr;
+    ui::Flex* m_titleBar = nullptr;
     void buildTitleBar(ui::Flex* card);
     ui::Flex* m_card = nullptr;
     bool m_closing = false;
