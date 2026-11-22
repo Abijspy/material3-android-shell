@@ -150,6 +150,12 @@ std::map<std::string, std::vector<std::function<void()>>> g_thumbWaiters;
 std::set<std::string> g_thumbFailed;
 bool g_thumbRunning = false;
 
+bool isPdf(const std::string& path) {
+    std::string ext = fs::path(path).extension().string();
+    for (auto& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return ext == ".pdf";
+}
+
 void nextThumb() {
     if (g_thumbRunning || g_thumbQueue.empty()) return;
     const auto [video, png] = g_thumbQueue.front();
@@ -157,8 +163,14 @@ void nextThumb() {
     g_thumbRunning = true;
     std::error_code ec;
     fs::create_directories(fs::path(png).parent_path(), ec);
-    // A frame a few seconds in (past a black start), 320 px wide
-    run({"timeout", "20", "ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-ss", "3", "-i", video, "-frames:v", "1", "-vf", "scale=320:-2", png},
+    // A PDF's first page; a video's frame a few seconds in (past a black
+    // start); 320 px
+    const bool pdf = isPdf(video);
+    std::vector<std::string> cmd = pdf ? std::vector<std::string>{"timeout", "20", "pdftoppm", "-png", "-f", "1", "-l", "1", "-scale-to", "320", "-singlefile", video,
+                                                                  png.substr(0, png.size() - 4)}
+                                       : std::vector<std::string>{"timeout", "20", "ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-ss", "3", "-i", video,
+                                                                  "-frames:v", "1", "-vf", "scale=320:-2", png};
+    run(cmd,
         [video, png](int code, const std::string&) {
             g_thumbRunning = false;
             std::error_code ec2;
@@ -366,7 +378,7 @@ std::string thumbnail(const std::string& path, bool make, std::function<void()> 
     std::error_code ec;
     // Fresh: newer than the video
     if (fs::exists(png, ec) && fs::last_write_time(png, ec) >= fs::last_write_time(path, ec)) return png;
-    if (!make || g_thumbFailed.contains(path) || !haveCommand("ffmpeg")) return "";
+    if (!make || g_thumbFailed.contains(path) || !haveCommand(isPdf(path) ? "pdftoppm" : "ffmpeg")) return "";
     auto& waiters = g_thumbWaiters[path];
     const bool queued = !waiters.empty() || std::ranges::any_of(g_thumbQueue, [&](const auto& q) { return q.first == path; });
     waiters.push_back(std::move(ready));

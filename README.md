@@ -189,12 +189,12 @@ From the moment the machine boots:
 **12 · Your files, without another app.** **Files** (<kbd>Super</kbd><kbd>E</kbd>) is the shell's own file manager, in the same Material 3 look:
 
 - **Browsing:** your folders, drives and the trash down the side, and back, forward, up and the path along the top.
-- **Views:** a grid with pictures as previews and videos as their first frame, or a list with dates and sizes.
+- **Views:** a grid with pictures as previews, videos as their first frame and PDFs as their first page, or a list with dates and sizes.
 - **Searching:** within the folder, with Ctrl+F.
 - **Selecting:** a click selects, Ctrl-click adds, Shift-click takes a range, and a double click opens.
 - **Right-click menu:** Open with, cut, copy, paste, rename, the trash, Quick Share and the wallpaper.
 - **The trash:** shared with other file managers. Restore files from it, or empty it.
-- **Preview and properties:** a pane (F9) previews pictures, videos and text, and lists size, dates, type, owner, permissions and free space. A switch lets a script run.
+- **Preview and properties:** a pane (F9) previews pictures, videos, PDFs and text, and lists size, dates, type, owner, permissions and free space. A switch lets a script run.
 - **ZIP and unzip:** compress to ZIP, or extract ZIP, tar, 7z, rar and ISO files.
 - **Drives and servers:** open USB drives from the side bar, and eject them safely. Connect to FTP, SFTP and WebDAV servers.
 

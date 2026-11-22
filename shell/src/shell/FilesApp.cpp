@@ -771,7 +771,8 @@ void art(const std::shared_ptr<State>& st, Node* parent, const Entry& e, float w
             });
         });
     }
-    if (kind == Kind::Video) {
+    const bool pdf = !e.dir && fs::path(e.path).extension() == ".pdf";
+    if (kind == Kind::Video || (pdf && Config::get().value<bool>("/files/pdfThumbnails", true))) {
         auto alive = st->alive;
         picture = fileops::thumbnail(e.path, big, [st, alive] {
             if (!*alive) return;
@@ -787,7 +788,7 @@ void art(const std::shared_ptr<State>& st, Node* parent, const Entry& e, float w
             tw = t->width, th = t->height;
             return t->id;
         });
-        v->cover = true;
+        v->cover = !pdf; // a page shows whole
         v->radius = big ? 14 : 6;
         return;
     }
@@ -1307,7 +1308,8 @@ std::shared_ptr<State> filesPane(Flex* card, Popup& popup, const std::string& st
             if (st->details) st->details();
         };
         std::string picture = kind == Kind::Picture ? (target.ends_with(".svg") ? target : fileops::renderable(target, again))
-                            : kind == Kind::Video ? fileops::thumbnail(target, true, [st, alive = st->alive] {
+                            : kind == Kind::Video || (fs::path(target).extension() == ".pdf" && Config::get().value<bool>("/files/pdfThumbnails", true))
+                                ? fileops::thumbnail(target, true, [st, alive = st->alive] {
             if (!*alive) return;
             st->paneFor.clear();
             if (st->details) st->details();
@@ -1705,6 +1707,7 @@ void filesSettings(Flex* page) {
     choiceRow<std::string>(g, "sort", "Sort by", "Folders always come first", "/files/sort", "name",
                            {{"name", "Name"}, {"date", "Date"}, {"size", "Size"}, {"kind", "Kind"}});
     switchRow(g, "vertical_split", "Preview and properties", "The pane beside the folder (F9)", "/files/preview", true);
+    switchRow(g, "picture_as_pdf", "PDF previews", "A PDF's first page as its picture in the grid (pdftoppm)", "/files/pdfThumbnails", true);
     auto* o = group(page, "Open with Material3UI's apps", "Off: the file's own default app opens it");
     switchRow(o, "image", "Pictures in Photos", "", "/files/viewer", true);
     switchRow(o, "library_music", "Songs in Music", "", "/files/music", true);
