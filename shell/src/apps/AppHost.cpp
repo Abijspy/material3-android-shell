@@ -7,6 +7,7 @@
 #include "core/Process.h"
 #include "render/Renderer.h"
 #include "services/Compositor.h"
+#include "services/Search.h"
 #include "shell/Panels.h"
 #include "shell/Popup.h"
 #include "wayland/Display.h"
@@ -407,6 +408,16 @@ int run(const App& app, int argc, char** argv) {
         askShell(cmd);
     };
 
+    // Files it's asked to open go in the recent list (the dock's menu,
+    // Spotlight, other apps' "Recent")
+    auto remember = [&app](const std::vector<std::string>& files) {
+        if (app.id == "terminal") return; // its arguments are a command
+        std::error_code ec;
+        for (const auto& f : files)
+            if (!f.starts_with("-") && std::filesystem::is_regular_file(f, ec)) search::recordRecent(f, app.title, app.appId);
+    };
+    remember(args);
+
     shell::Popup::Options opts;
     opts.name = app.id;
     opts.window = true;
@@ -420,7 +431,8 @@ int run(const App& app, int argc, char** argv) {
         if (app.closed) app.closed();
         EventLoop::get().defer([] { EventLoop::get().quit(0); });
     };
-    Listener listener(socketPath(app.id), [&app](std::vector<std::string> more) {
+    Listener listener(socketPath(app.id), [&app, remember](std::vector<std::string> more) {
+        remember(more);
         if (app.go) app.go(more);
         raise(app.appId);
     });

@@ -3,11 +3,13 @@
 #include "shell/PanelKit.h"
 #include "shell/SettingsKit.h"
 
+#include "core/Config.h"
 #include "core/Process.h"
 #include "core/Signal.h"
 #include "render/Images.h"
 #include "services/Audio.h"
 #include "services/Compositor.h"
+#include "services/FileOps.h"
 #include "services/Search.h"
 #include "shell/Dock.h"
 #include "services/Network.h"
@@ -15,6 +17,7 @@
 #include "ui/Controls.h"
 
 #include <cmath>
+#include <filesystem>
 #include <format>
 #include <linux/input-event-codes.h>
 
@@ -611,6 +614,30 @@ void dockMenu(Flex* card, Popup& popup, const std::string& arg) {
             for (auto& c : n) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
             if (!windows.empty() && n.find("new window") != std::string::npos) continue;
             item("bolt", a.name, false, [copy, a] { Apps::get().launch(copy, a); });
+        }
+    }
+    // Files it opened lately (or of the kinds it opens): one click opens one in it
+    if (app && Config::get().value<bool>("/dock/recentFiles", true)) {
+        const auto recent = search::recentFor(*app, 5);
+        if (!recent.empty()) {
+            auto* hr = card->add<Flex>(Flex::Direction::Row);
+            hr->setPadding({14, 10, 14, 2});
+            hr->add<Label>("Recent")->setSize(12)->setWeight(600)->setColor("primary", false);
+            const Apps::App copy = *app;
+            for (const auto& f : recent) {
+                auto* b = card->add<Button>(Flex::Direction::Row);
+                pill(b)->setPadding({14, 8})->setSpacing(12)->setAlignItems(Align::Center);
+                b->pressedRadius = 10;
+                b->tooltip = fileops::displayPath(f);
+                b->add<Icon>(fileops::kindIcon(fileops::kindOf(f), f), 20)->setColor("on_surface_variant", false);
+                b->add<Label>(std::filesystem::path(f).filename().string())->setSize(14)->setMaxWidth(200)->setColor("on_surface", false);
+                b->onClicked = [copy, f, &popup](uint32_t button) {
+                    if (button != BTN_LEFT) return;
+                    Apps::get().launchWith(copy, f);
+                    popup.close();
+                };
+            }
+            card->add<Node>()->fixedHeight = 4;
         }
     }
     item(pinned ? "keep_off" : "keep", pinned ? "Unpin from dock" : "Pin to dock", false, [id, pinned] {

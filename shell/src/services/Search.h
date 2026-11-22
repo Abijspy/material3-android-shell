@@ -48,6 +48,7 @@ public:
     Signal<> changed; // the list reloaded: apps were installed or removed
     void launch(const App& app);
     void launch(const App& app, const App::Action& action); // one of its shortcuts
+    void launchWith(const App& app, const std::string& file); // opening a file
     int launches(const std::string& id) const;
     // Icon for a window's app id, via StartupWMClass or the desktop id
     std::string iconForClass(const std::string& cls) const;
@@ -79,6 +80,12 @@ namespace search {
 const std::vector<std::pair<std::string, std::string>>& engines();
 std::string webSearchUrl(const std::string& engine, const std::string& q);
 std::vector<SearchResult> query(const std::string& text);
+
+// Files lately opened with an app, or of a kind it opens, newest first (from
+// recently-used.xbel, which GTK apps write too)
+std::vector<std::string> recentFor(const Apps::App& app, size_t max = 5);
+// Adds a file there as opened by an app ("Text Editor", "material3ui-text")
+void recordRecent(const std::string& path, const std::string& appName, const std::string& exec);
 // Providers that run a process report back asynchronously
 void queryAsync(const std::string& text, std::function<void(std::vector<SearchResult>)> done);
 // A query answered by a lookup (a definition: "define <word>"), as # and @ are

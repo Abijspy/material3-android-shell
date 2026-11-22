@@ -1734,6 +1734,7 @@ void dockPage(Flex* page, Popup&) {
     switchRow(g, "apps", "Running apps", "Apps that are open but not pinned, after a divider", "/dock/showRunning", true);
     switchRow(g, "delete", "Trash", "At the end: click to open it, right-click to empty it", "/dock/trash", true);
     switchRow(g, "counter_1", "Badges and progress", "Unread counts and downloads that apps report, on their icons", "/dock/badges", true);
+    switchRow(g, "history", "Recent files", "In an app's right-click menu: files it opened lately", "/dock/recentFiles", true);
     auto* dlook = group(page, "Look", "How the dock sits on what's behind it");
     switchRow(dlook, "blur_on", "Blur behind the dock", Theme::get().blur() ? "" : "Blur is off in Look & feel", "/dock/blur", true);
     sliderRow(dlook, "opacity", "Opacity", "/dock/opacity", Theme::get().panelOpacity(), 0.2, 1, 0.05, percent);

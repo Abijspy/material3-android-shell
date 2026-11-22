@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <format>
+#include <cstring>
 #include <fstream>
 #include <map>
 #include <nlohmann/json.hpp>
@@ -493,12 +494,74 @@ namespace {
 // newest first, only those still there; read again when the file changes
 struct Recent {
     std::string path;
-    std::string when; // ISO time, sorts as text
+    std::string when;                // ISO time, sorts as text
+    std::string mime;                // as recorded
+    std::vector<std::string> apps;   // who opened it: names and programs, lower case
 };
+
+std::string recentFile() {
+    const char* x = std::getenv("XDG_DATA_HOME");
+    return (x && *x ? std::string(x) : paths::home() + "/.local/share") + "/recently-used.xbel";
+}
+
+std::string unescapeXml(std::string s) {
+    for (const auto& [from, to] : {std::pair{"&apos;", "'"}, {"&quot;", "\""}, {"&lt;", "<"}, {"&gt;", ">"}, {"&amp;", "&"}}) {
+        for (size_t at = 0; (at = s.find(from, at)) != std::string::npos; at += std::strlen(to)) s.replace(at, std::strlen(from), to);
+    }
+    return s;
+}
+
+std::string escapeXml(const std::string& s) {
+    std::string out;
+    for (char c : s) {
+        switch (c) {
+        case '&': out += "&amp;"; break;
+        case '<': out += "&lt;"; break;
+        case '>': out += "&gt;"; break;
+        case '"': out += "&quot;"; break;
+        case '\'': out += "&apos;"; break;
+        default: out += c;
+        }
+    }
+    return out;
+}
+
+// A program's name from an Exec line: "'/usr/bin/gedit %U'" → "gedit"
+std::string programOf(std::string exec) {
+    exec = unescapeXml(exec);
+    std::erase(exec, '\'');
+    std::erase(exec, '"');
+    const auto sp = exec.find(' ');
+    if (sp != std::string::npos) exec.resize(sp);
+    return lower(fs::path(exec).filename().string());
+}
+
+std::string uriDecode(const std::string& raw) {
+    std::string path;
+    for (size_t i = 0; i < raw.size(); ++i) {
+        if (raw[i] == '%' && i + 2 < raw.size() && std::isxdigit(static_cast<unsigned char>(raw[i + 1])) && std::isxdigit(static_cast<unsigned char>(raw[i + 2]))) {
+            path += static_cast<char>(std::stoi(raw.substr(i + 1, 2), nullptr, 16));
+            i += 2;
+        } else {
+            path += raw[i];
+        }
+    }
+    return path;
+}
+
+std::string uriEncode(const std::string& path) {
+    std::string out = "file://";
+    for (unsigned char c : path) {
+        if (std::isalnum(c) || std::strchr("/-_.~!$&'()*+,;=:@", c)) out += static_cast<char>(c);
+        else out += std::format("%{:02X}", c);
+    }
+    return out;
+}
+
 const std::vector<Recent>& recentFiles() {
     static std::vector<Recent> list;
     static fs::file_time_type seen{};
-    const std::string file = paths::home() + "/.local/share/recently-used.xbel";
+    const std::string file = recentFile();
     std::error_code ec;
     const auto mtime = fs::last_write_time(file, ec);
     if (ec || mtime == seen) return list;
@@ -506,24 +569,26 @@ const std::vector<Recent>& recentFiles() {
     list.clear();
     std::ifstream in(file);
     const std::string xml((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    static const std::regex bookmark(R"re(<bookmark\s[^>]*href="file://([^"]+)"[^>]*>)re");
+    static const std::regex href(R"re(href="file://([^"]+)")re");
     static const std::regex stamp(R"re((?:visited|modified)="([^"]+)")re");
-    for (auto it = std::sregex_iterator(xml.begin(), xml.end(), bookmark); it != std::sregex_iterator(); ++it) {
-        std::string path;
-        // %20 and the like, as URIs write them
-        const std::string raw = (*it)[1].str();
-        for (size_t i = 0; i < raw.size(); ++i) {
-            if (raw[i] == '%' && i + 2 < raw.size() && std::isxdigit(static_cast<unsigned char>(raw[i + 1])) && std::isxdigit(static_cast<unsigned char>(raw[i + 2]))) {
-                path += static_cast<char>(std::stoi(raw.substr(i + 1, 2), nullptr, 16));
-                i += 2;
-            } else {
-                path += raw[i];
-            }
+    static const std::regex mime(R"re(<mime:mime-type\s+type="([^"]+)")re");
+    static const std::regex app(R"re(<bookmark:application\s+name="([^"]*)"\s+exec="([^"]*)")re");
+    for (size_t at = 0; (at = xml.find("<bookmark ", at)) != std::string::npos;) {
+        const size_t end = std::min(xml.find("</bookmark>", at), xml.size());
+        const std::string block = xml.substr(at, end - at);
+        at = end;
+        const std::string tag = block.substr(0, block.find('>'));
+        std::smatch m;
+        if (!std::regex_search(tag, m, href)) continue;
+        Recent r;
+        r.path = uriDecode(m[1].str());
+        for (auto s = std::sregex_iterator(tag.begin(), tag.end(), stamp); s != std::sregex_iterator(); ++s) r.when = std::max(r.when, (*s)[1].str());
+        if (std::regex_search(block, m, mime)) r.mime = m[1].str();
+        for (auto a = std::sregex_iterator(block.begin(), block.end(), app); a != std::sregex_iterator(); ++a) {
+            r.apps.push_back(lower(unescapeXml((*a)[1].str())));
+            r.apps.push_back(programOf((*a)[2].str()));
         }
-        std::string when;
-        const std::string tag = (*it)[0].str();
-        for (auto s = std::sregex_iterator(tag.begin(), tag.end(), stamp); s != std::sregex_iterator(); ++s) when = std::max(when, (*s)[1].str());
-        if (fs::is_regular_file(path, ec)) list.push_back({path, when});
+        if (fs::is_regular_file(r.path, ec)) list.push_back(std::move(r));
     }
     std::ranges::sort(list, std::greater{}, &Recent::when);
     return list;
@@ -947,6 +1012,118 @@ void queryAsync(const std::string& raw, std::function<void(std::vector<SearchRes
     done({});
 }
 
+// ── Recent files, by app ──
+
+std::vector<std::string> recentFor(const Apps::App& app, size_t max) {
+    std::vector<std::string> out;
+    std::vector<std::string> names = {lower(app.name), programOf(app.exec)};
+    std::string id = app.id.ends_with(".desktop") ? app.id.substr(0, app.id.size() - 8) : app.id;
+    names.push_back(lower(id));
+    if (!app.wmClass.empty()) names.push_back(lower(app.wmClass));
+    std::erase(names, std::string{});
+    const std::string kinds = ";" + app.mimeTypes + ";";
+    for (const auto& r : recentFiles()) {
+        const bool by = std::ranges::any_of(r.apps, [&](const std::string& a) { return std::ranges::find(names, a) != names.end(); });
+        const bool kind = !r.mime.empty() && kinds.find(";" + r.mime + ";") != std::string::npos;
+        if (!by && !kind) continue;
+        out.push_back(r.path);
+        if (out.size() >= max) break;
+    }
+    return out;
+}
+
+namespace {
+// The MIME type the recent list records, from the name (the common kinds)
+std::string mimeFor(const std::string& path) {
+    std::string ext = fs::path(path).extension().string();
+    if (!ext.empty()) ext = lower(ext.substr(1));
+    static const std::pair<const char*, const char*> table[] = {
+        {"txt", "text/plain"}, {"md", "text/markdown"}, {"c", "text/x-csrc"}, {"h", "text/x-chdr"}, {"cpp", "text/x-c++src"},
+        {"hpp", "text/x-c++hdr"}, {"py", "text/x-python"}, {"sh", "application/x-shellscript"}, {"js", "text/javascript"},
+        {"json", "application/json"}, {"html", "text/html"}, {"css", "text/css"}, {"xml", "application/xml"}, {"rs", "text/rust"},
+        {"go", "text/x-go"}, {"java", "text/x-java"}, {"toml", "application/toml"}, {"yaml", "application/x-yaml"}, {"yml", "application/x-yaml"},
+        {"ini", "text/plain"}, {"conf", "text/plain"}, {"log", "text/x-log"}, {"csv", "text/csv"}, {"pdf", "application/pdf"},
+        {"png", "image/png"}, {"jpg", "image/jpeg"}, {"jpeg", "image/jpeg"}, {"webp", "image/webp"}, {"gif", "image/gif"},
+        {"avif", "image/avif"}, {"heic", "image/heif"}, {"jxl", "image/jxl"}, {"svg", "image/svg+xml"}, {"tif", "image/tiff"},
+        {"tiff", "image/tiff"}, {"bmp", "image/bmp"}, {"mp4", "video/mp4"}, {"mkv", "video/x-matroska"}, {"webm", "video/webm"},
+        {"mov", "video/quicktime"}, {"avi", "video/x-msvideo"}, {"mp3", "audio/mpeg"}, {"flac", "audio/flac"}, {"ogg", "audio/ogg"},
+        {"opus", "audio/ogg"}, {"m4a", "audio/mp4"}, {"wav", "audio/x-wav"}, {"ttf", "font/ttf"}, {"otf", "font/otf"},
+        {"woff", "font/woff"}, {"woff2", "font/woff2"}};
+    for (const auto& [e, m] : table)
+        if (ext == e) return m;
+    return "application/octet-stream";
+}
+
+std::string isoNow() {
+    const std::time_t t = std::time(nullptr);
+    char b[40];
+    std::strftime(b, sizeof b, "%Y-%m-%dT%H:%M:%SZ", std::gmtime(&t));
+    return b;
+}
+} // namespace
+
+// Recorded as GTK records it, so other apps' recent lists show it too. An
+// entry already there is touched (its times, and this app among those that
+// opened it); the file is written whole, then moved into place
+void recordRecent(const std::string& path, const std::string& appName, const std::string& exec) {
+    std::error_code ec;
+    if (path.empty() || !fs::is_regular_file(path, ec)) return;
+    const std::string file = recentFile();
+    std::string xml;
+    if (std::ifstream in(file); in) xml.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    const size_t close = xml.rfind("</xbel>");
+    if (xml.find("<xbel") == std::string::npos || close == std::string::npos) {
+        if (!xml.empty()) return; // not a list we understand: left alone
+        xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xbel version=\"1.0\"\n      xmlns:bookmark=\"http://www.freedesktop.org/standards/desktop-bookmarks\"\n"
+              "      xmlns:mime=\"http://www.freedesktop.org/standards/shared-mime-info\"\n>\n</xbel>\n";
+    }
+    const std::string now = isoNow(), uri = uriEncode(path);
+    const std::string appLine = std::format("          <bookmark:application name=\"{}\" exec=\"{}\" modified=\"{}\" count=\"1\"/>\n",
+                                            escapeXml(appName), escapeXml("'" + exec + " %u'"), now);
+    const size_t at = xml.find("href=\"" + escapeXml(uri) + "\"");
+    if (at != std::string::npos) {
+        // There: its times now, and this app in its list
+        const size_t tagStart = xml.rfind("<bookmark ", at), tagEnd = xml.find('>', at);
+        const size_t end = xml.find("</bookmark>", at);
+        if (tagStart == std::string::npos || tagEnd == std::string::npos || end == std::string::npos) return;
+        std::string tag = xml.substr(tagStart, tagEnd - tagStart);
+        static const std::regex times(R"re((modified|visited)="[^"]*")re");
+        tag = std::regex_replace(tag, times, "$1=\"" + now + "\"");
+        std::string block = xml.substr(tagEnd, end - tagEnd);
+        if (block.find("name=\"" + escapeXml(appName) + "\"") == std::string::npos) {
+            const size_t apps = block.find("</bookmark:applications>");
+            if (apps != std::string::npos) block.insert(apps, appLine);
+        }
+        xml = xml.substr(0, tagStart) + tag + block + xml.substr(end);
+    } else {
+        const std::string entry = std::format(
+            "  <bookmark href=\"{}\" added=\"{}\" modified=\"{}\" visited=\"{}\">\n    <info>\n      <metadata owner=\"http://freedesktop.org\">\n"
+            "        <mime:mime-type type=\"{}\"/>\n        <bookmark:applications>\n{}        </bookmark:applications>\n      </metadata>\n    </info>\n  </bookmark>\n",
+            escapeXml(uri), now, now, now, mimeFor(path), appLine);
+        xml.insert(xml.rfind("</xbel>"), entry);
+    }
+    fs::create_directories(fs::path(file).parent_path(), ec);
+    const std::string tmp = file + ".m3tmp";
+    {
+        std::ofstream out(tmp, std::ios::trunc);
+        out << xml;
+        if (!out) return;
+    }
+    fs::rename(tmp, file, ec);
+}
+
+
 } // namespace search
+
+void Apps::launchWith(const App& app, const std::string& file) {
+    std::string quoted = "'";
+    for (char c : file) quoted += c == '\'' ? std::string("'\\''") : std::string(1, c);
+    quoted += "'";
+    App as = app;
+    as.exec = app.exec + " " + quoted;
+    launch(as);
+}
+
+
 
 } // namespace m3
