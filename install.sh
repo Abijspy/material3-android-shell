@@ -45,7 +45,7 @@ ORIG_ARGS=("$@")
 
 # The choices, "value:description", the first the default
 readonly TERMINALS=("material3ui-terminal:the shell's own: Material You colours, tabs" "alacritty:GPU terminal, recoloured with the wallpaper" "kitty:feature-rich" "foot:minimal and fast" "ghostty:modern GPU terminal")
-readonly FILE_MANAGERS=("files:the shell's own Files: built in, nothing to install" "nemo:Cinnamon's" "thunar:light, from Xfce" "nautilus:GNOME Files" "dolphin:KDE's")
+readonly FILE_MANAGERS=("files:the shell's own Files (its own package, installed with the shell)" "nemo:Cinnamon's" "thunar:light, from Xfce" "nautilus:GNOME Files" "dolphin:KDE's")
 readonly BROWSERS=("librewolf:privacy-minded Firefox" "firefox:Mozilla Firefox" "chromium:open-source Chromium" "zen-browser:Zen (AUR)")
 readonly CHANNELS=("latest:follow main" "release:tagged releases only")
 readonly NIRI_MODES=("include:keep your config.kdl (or niri's default), include the shell's at its end" "skip:leave niri's config alone")

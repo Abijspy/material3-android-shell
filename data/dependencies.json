@@ -270,6 +270,16 @@
       "name": "libarchive",
       "command": "bsdtar",
       "description": "ZIP and unzip in Files"
+    },
+    {
+      "name": "qpdf",
+      "command": "qpdf",
+      "description": "Rotating, moving, deleting and extracting pages in the PDF editor"
+    },
+    {
+      "name": "yt-dlp",
+      "command": "yt-dlp",
+      "description": "Web videos in Videos (material3ui msg play <URL>)"
     }
   ],
   "theming": [
@@ -359,12 +369,12 @@
     {
       "name": "alacritty",
       "command": "alacritty",
-      "description": "Default terminal emulator"
+      "description": "Another terminal (the shell has its own, material3ui-terminal)"
     },
     {
       "name": "nemo",
       "command": "nemo",
-      "description": "Default file manager"
+      "description": "Another file manager (the shell has its own, Files)"
     },
     {
       "name": "librewolf",

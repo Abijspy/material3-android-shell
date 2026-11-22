@@ -20,6 +20,14 @@ When you move to Material3UI Shell, you are only replacing the "shell" portion o
 | Display settings | Built-in Display settings: brightness, night light, and each monitor's resolution, scale and place |
 | Bluetooth and Wi-Fi settings | Built-in controls within the Quick Settings and main Settings panel |
 | System monitor | A built-in Task Manager (<kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd>) |
+| File manager | **Files** (<kbd>Super</kbd><kbd>E</kbd>): drives, servers, archives, trash, previews |
+| Image viewer | **Photos**, with a gallery and an editor |
+| Video player | **Videos** (mpv): every format, subtitles |
+| Terminal | The shell's own terminal (<kbd>Super</kbd><kbd>Return</kbd>), with tabs |
+| PDF viewer | **PDF**: reading, annotating, signing and forms |
+| Text editor | **Text Editor**, for .txt files and code |
+| Notes app | **Notes**: notes and checklists |
+| Icon theme | The Material You icon theme (Settings → Look & feel) |
 | Dock | A dock with pinned and running apps |
 
 ### What Material3UI Does Not Replace
@@ -30,8 +38,8 @@ Material3UI relies on standard Linux portals and your own choice of apps for the
 | :--- | :--- |
 | **File picker dialogs** | `xdg-desktop-portal-gtk` or your portal of choice |
 | **Screen sharing dialogs** | `xdg-desktop-portal-gnome` (niri's screen sharing goes through it) |
-| **File manager** | Dolphin, Nautilus, Thunar, or any manager you prefer |
-| **Text editor or IDE** | Your existing favorite editor |
+| **Office suite, browser, IDE** | Your own: LibreOffice, a browser, VS Code or any editor you prefer |
+| **Other file managers or terminals** | Optional: the shell's own are the defaults, and Settings → Default apps picks Dolphin, Nautilus, kitty or any other |
 | **GTK and Qt theming** | Matugen generates GTK CSS, but you might want `nwg-look` or `qt6ct` for fine tuning |
 | **Authentication prompts** | Material3UI includes its own Polkit agent |
 | **Clipboard manager** | Built in (<kbd>Super</kbd><kbd>V</kbd>), using `cliphist` and `wl-clipboard` |

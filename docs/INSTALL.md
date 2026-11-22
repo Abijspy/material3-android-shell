@@ -43,7 +43,7 @@ The installer fills the terminal, in the shell's own Material 3 colours (the dar
 2. **niri:**
    - **Update the system first?** Only when your niri is older than 26.04: the new one comes with a full system update (`sudo pacman -Syu`), since Arch doesn't do partial upgrades.
    - **Your niri config:** include the shell in `config.kdl`, or leave it alone (see [niri modes](#niri-modes)). The page says what it will do with the `config.kdl` you have.
-3. **Apps:** your terminal (Alacritty by default), file manager (the shell's own **Files** by default: built in, nothing to install; or Nemo, Thunar, Nautilus or Dolphin) and browser (LibreWolf), one page each. Pictures open in the shell's own image viewer. The shell's keys open them, and **Settings → Default apps** changes them later.
+3. **Apps:** your terminal (the shell's own by default; or Alacritty, kitty, foot or Ghostty), file manager (the shell's own **Files** by default; or Nemo, Thunar, Nautilus or Dolphin) and browser (LibreWolf by default; or Firefox, Chromium or Zen), one page each. The shell's own apps (Files, Photos, Videos, the terminal, PDF, the text editor, Notes and the Task Manager) are installed as packages of their own either way; pictures, videos, PDFs and text open in them. The shell's keys open them, and **Settings → Default apps** changes them later.
 4. **Extras:** tick fonts, NetworkManager and Bluetooth, Material You colours for KDE/Qt apps, fish with starship, and the login screen. If iwd or systemd-networkd also manages your network, it asks whether to turn them off (they fight NetworkManager for the Wi-Fi). Then the update channel.
 5. **Review:** everything on one card: niri and its config, your apps, the extras, the channel, the system update, how many packages are missing (found with `pacman -T`, by group), the shell build, and how many configs it will write and back up. It warns when your `config.kdl` also starts something the shell replaces (a bar, a notification daemon, a wallpaper tool). **See every package and file** opens the full plan; **Install now** starts. Nothing changes before that.
 6. **Install:** it asks for your password once, in the open, before it starts (nothing can ask behind the full screen), and keeps sudo alive to the end. Each step shows as it runs, with Material 3 Expressive's wavy progress bar, the time taken and the latest log lines. Keys do nothing meanwhile, and <kbd>Ctrl</kbd><kbd>C</kbd> can't stop pacman halfway.
@@ -66,8 +66,8 @@ It needs a terminal of at least 76×24. In a smaller one, with `--plain`, or wit
    - niri on its own, with xwayland-satellite and the GNOME portal;
    - then the shell's dependencies, your apps and the extras, and Google Sans Flex;
    - then a check that niri is installed and new enough.
-2. **The shell:** first a check that everything the build needs is installed (even with `--skip-deps`, so a missing one stops here with the command to install it, not with a compiler error). Then it's built from `shell/` with meson and installed to `/usr` as the `material3ui` pacman package. The lock screen's PAM file goes to `/etc/pam.d`.
-3. **Configs:** the Matugen templates and theme hooks, Alacritty, and niri's `material3ui.kdl`. niri's config is checked with `niri validate` afterwards. The v3 Quickshell shell and older helpers are backed up and removed. Configs without the `# Material3UI Configuration` marker, such as your own Matugen or Alacritty setup, are left alone.
+2. **The shell:** first a check that everything the build needs is installed (even with `--skip-deps`, so a missing one stops here with the command to install it, not with a compiler error). Then it's built from `shell/` with meson and installed to `/usr` as pacman packages: `material3ui` (the shell and the library its apps share), and one for each app (`material3ui-files`, `-viewer`, `-player`, `-tasks`, `-terminal`, `-notes`, `-pdf`, `-text`), in one transaction. The lock screen's PAM file goes to `/etc/pam.d`.
+3. **Configs:** the Matugen templates and theme hooks, Alacritty's config (when you picked it), and niri's `material3ui.kdl`. niri's config is checked with `niri validate` afterwards. The v3 Quickshell shell and older helpers are backed up and removed. Configs without the `# Material3UI Configuration` marker, such as your own Matugen or Alacritty setup, are left alone.
 4. **Session:** NetworkManager and Bluetooth, other polkit agents turned off (the shell is the agent), default apps, and the login screen.
 
 The full output goes to `~/.cache/material3ui/install-<timestamp>.log`.
@@ -154,7 +154,7 @@ Since 7.1 each built-in app is a package of its own, built from the same compile
 | :--- | :--- | :--- |
 | `material3ui` | The shell, and `libmaterial3ui` (in `/usr/lib/material3ui`), which it shares with its apps | |
 | `material3ui-files` | Files (`material3ui-files`) | udisks2, gvfs, libarchive |
-| `material3ui-viewer` | The image viewer (`material3ui-viewer`) | |
+| `material3ui-viewer` | Photos, the image viewer (`material3ui-viewer`) | |
 | `material3ui-player` | Videos (`material3ui-player`) | mpv |
 | `material3ui-tasks` | The Task Manager (`material3ui-tasks`) | |
 | `material3ui-terminal` | The terminal (`material3ui-terminal`) | libvterm |

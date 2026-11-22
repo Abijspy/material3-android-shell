@@ -6,7 +6,7 @@
 
 | Tab | What it does |
 | :--- | :--- |
-| **Updates** | Pending updates from the official repos (`checkupdates`, which never touches pacman's own databases), the AUR (`yay -Qua`, or `paru -Qua`) and Flatpak, plus Material3UI's own. **Update now** installs them all in the background with one password: the shell's polkit dialog asks once. If pacman has a question a background run can't answer, **Use a terminal** runs the update there instead. |
+| **Updates** | Pending updates from the official repos (`checkupdates`, which never touches pacman's own databases), the AUR (`yay -Qua`, or `paru -Qua`) and Flatpak, plus Material3UI's own (the shell and each of its app packages). **Update now** installs them all in the background with one password: the shell's polkit dialog asks once. If pacman has a question a background run can't answer, **Use a terminal** runs the update there instead. |
 | **Repositories** | pacman's repositories, mirrors, downloads and held-back packages, and Flatpak's remotes (see below). |
 | **Official** | Search the Arch repositories and install. |
 | **AUR** | Search the AUR through its web API (no helper needed to search) and install with your AUR helper. Without one, the tab offers **Install yay**, built from the AUR in a terminal, where makepkg asks for your password. |

@@ -40,7 +40,9 @@ Most Linux desktops are a patchwork. The bar comes from one project, the lock sc
 
 **Made for niri.** The shell runs on [niri](https://github.com/niri-wm/niri), the scrollable-tiling compositor, with its own Niri Settings app, niri's blur behind the bar and panels, and keys set up for you. Your `config.kdl` stays yours. → [On niri](#on-niri)
 
-**It's native.** The shell is one C++ program that talks to Wayland, D-Bus, PipeWire and PAM directly, and to niri over its own IPC. It renders every pixel itself with OpenGL ES and leaves the blur to the compositor. There's no Qt, QML or Quickshell.
+**It's native.** The shell is a C++ program that talks to Wayland, D-Bus, PipeWire and PAM directly, and to niri over its own IPC. It renders every pixel itself with OpenGL ES and leaves the blur to the compositor. There's no Qt, QML or Quickshell.
+
+**It brings its own apps.** Files, Photos, Videos, a terminal, a PDF viewer and editor, a text editor, Notes and a Task Manager, in the same look and colours. Each is a program and a pacman package of its own, on the library the shell is built from, so you keep the ones you want. → [A tour](#a-tour)
 
 **It's light on your machine.** Sitting idle, the whole shell (bar, dock, desktop and every service behind them) uses **under 0.1% of one CPU core** and draws about 20 frames a minute, when the clock or a status icon changes. It uses **about 75 MB of memory**, 25 MB of it its own; the rest is its share of the graphics libraries every app loads. [How it's measured](#how-its-measured).
 
@@ -119,7 +121,7 @@ The installer adds niri's xwayland-satellite (for X11 apps) and the GNOME portal
 | `--yes` | Accept all defaults, for scripted or repeat installs |
 | `--plain` | Plain prompts instead of the full-screen installer |
 | `--niri include` · `skip` | `include` adds the shell to the end of your niri `config.kdl` (or niri's default config). `skip` leaves niri alone. |
-| `--terminal` · `--file-manager` · `--browser` | Your apps. The defaults are Alacritty, Nemo and LibreWolf. |
+| `--terminal` · `--file-manager` · `--browser` | Your apps. The defaults are the shell's own terminal (`material3ui-terminal`) and Files (`files`), and LibreWolf. |
 | `--greeter` | Also install the greetd login screen (asks for sudo) |
 | `--channel latest` · `release` | Follow `main` (default), or the latest tagged release |
 | `--skip-deps` | Don't install packages; only build the shell and deploy the configs |
@@ -163,7 +165,7 @@ From the moment the machine boots:
 - **Clock:** alarms, once or on the days you pick, and timers counting down in rings. When one goes off, a card at the top of the screen (or on the lock screen) snoozes or stops it. The bar, the desktop and the lock screen each have an Alarms & timers widget.
 - **Overview:** every workspace at a glance, in niri's own overview with your wallpaper blurred behind the workspaces.
 
-**5 · Change the wallpaper.** Ten wallpapers ship with the shell, eight of them drawn from Material 3 Expressive shapes (<kbd>Ctrl</kbd><kbd>Super</kbd><kbd>T</kbd>). Pick one or your own image and Matugen builds a new Material 3 palette from it, or seed the palette from an accent colour you choose. The whole desktop recolours: GTK, KDE, Alacritty and kitty, and niri's focus ring.
+**5 · Change the wallpaper.** Ten wallpapers ship with the shell, eight of them drawn from Material 3 Expressive shapes (<kbd>Ctrl</kbd><kbd>Super</kbd><kbd>T</kbd>). Pick one or your own image and Matugen builds a new Material 3 palette from it, or seed the palette from an accent colour you choose. The whole desktop recolours: GTK, KDE, the shell's terminal, Alacritty and kitty, niri's focus ring, and (with it on) the Material You icon theme.
 
 **6 · Sing along.** Play a song and the line being sung shows in the media player and, if you add it, the bar, in the song's own language and script: Tamil, Hindi, Japanese, Korean, Arabic or any other. Click it for the whole song, scrolling along. Lyrics come from [LRCLIB](https://lrclib.net), synced where it has them. When the player doesn't say what's playing (a video titled "Song | Movie | Composer", a game, a stream), the shell listens for ten seconds and recognises the song with Shazam (through songrec), only from what the speakers play and never during a call, then finds its lyrics and keeps them in time. Settings → Sound turns either off.
 
@@ -180,7 +182,7 @@ From the moment the machine boots:
 
 → [Software, updates and firmware](docs/PACKAGES.md)
 
-**10 · Something feels slow.** <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd> opens the system monitor: CPU, memory, disks and processes, read straight from `/proc`.
+**10 · Something feels slow.** <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd> opens the **Task Manager**. It lists apps with every process they started, then your background processes and the system's, to stop, end or force kill. It has live graphs of CPU (each core), memory, disks, the network and the GPU, a switch for each app that starts at login, and systemd's services to start, stop, enable or disable.
 
 **11 · Grab part of the screen.** <kbd>Super</kbd><kbd>G</kbd> opens the screenshot tool, which captures a region, a window or the whole screen, with a delay. Shots are copied to the clipboard and can open in an editor. <kbd>Super</kbd><kbd>Shift</kbd><kbd>S</kbd> grabs a region straight away. <kbd>Super</kbd><kbd>Shift</kbd><kbd>X</kbd> copies the text in a region (OCR), and <kbd>Super</kbd><kbd>Shift</kbd><kbd>R</kbd> starts or stops a screen recording. Its Record tab records a region or a screen as MP4, WebM, MKV or GIF, at the resolution, frame rate and quality you pick, with system sound or the microphone.
 
@@ -196,21 +198,24 @@ From the moment the machine boots:
 - **ZIP and unzip:** compress to ZIP, or extract ZIP, tar, 7z, rar and ISO files.
 - **Drives and servers:** open USB drives from the side bar, and eject them safely. Connect to FTP, SFTP and WebDAV servers.
 
-Pictures open in the shell's **image viewer**, in any format: everyday ones, HEIC, AVIF, JPEG XL and OpenEXR, and also Photoshop, GIMP and camera RAW files, plus animated GIFs. Zoom with the wheel or +/−, step through the folder with the arrow keys, and edit, set as wallpaper or move to the trash from its bar.
+Pictures open in **Photos**, the shell's image viewer, in any format: everyday ones, HEIC, AVIF, JPEG XL and OpenEXR, and also Photoshop, GIMP and camera RAW files, plus animated GIFs. From the app list it opens to a gallery of your pictures, newest first. Zoom with the wheel or +/−, step through the folder with the arrow keys, and edit, set as wallpaper or move to the trash from its bar.
 
-Its **editor** marks pictures up: pen, shapes, arrows, text, numbered steps, and pixelate or blur to hide. It rotates, flips, resizes and crops to an aspect ratio, and adjusts exposure, contrast, colour, warmth, sharpness and vignette, with nine filters. Everything can be undone, and it saves as PNG, JPEG, WebP or AVIF. The installer makes both the defaults; Settings → Default apps can pick others.
+Its **editor** marks pictures up: pen, shapes, arrows, text, numbered steps, and pixelate or blur to hide. It rotates, flips, resizes and crops to an aspect ratio, and adjusts exposure, contrast, colour, warmth, sharpness and vignette, with nine filters. Everything can be undone, and it saves as PNG, JPEG, WebP or AVIF.
 
-Each of these apps is its own **pacman package** (`material3ui-files`, `-viewer`, `-player`, `-tasks`, `-terminal`, `-notes`, `-pdf`, `-text`), sharing one library with the shell. The installer adds them all; remove any with `pacman -R` and the rest keep working.
+**13 · Its own apps.** Besides Files and Photos, the shell brings:
 
-**Notes** keeps notes and checklists as tinted cards with labels, pins, search, an archive and a trash. **PDF** reads PDFs and marks them up: highlight, draw, add shapes, text boxes and sticky notes, sign, and fill in forms. The **Text Editor** opens .txt files and code in tabs, with find and replace.
+| App | What it does |
+| :--- | :--- |
+| **Videos** (`material3ui-player`) | Plays every video and audio format through mpv, with hardware decoding and web videos (yt-dlp). Subtitles of every kind load by themselves and can be shifted, resized and moved; it also picks audio tracks, sets the speed, plays the folder as a playlist and goes full screen. |
+| **Terminal** (`material3ui-terminal`) | Tabs, 10,000 lines of scrollback, mouse support and colours from your wallpaper. Full-screen apps like vim and htop work as in any xterm (<kbd>Super</kbd><kbd>Return</kbd>). |
+| **PDF** (`material3ui-pdf`) | Reads PDFs, with page thumbnails, search, text selection, links, passwords and a night mode. It marks them up too: highlight, underline, strike out, draw, add shapes, arrows, text boxes and sticky notes, sign, fill in forms, and rotate, move or delete pages. |
+| **Text Editor** (`material3ui-text`) | .txt files and code in tabs, with line numbers, auto-indent, find and replace, and go to line. Line endings and encodings are kept as they were. |
+| **Notes** (`material3ui-notes`) | Notes and checklists as tinted cards, with labels, pins, search, an archive and a trash. |
+| **Task Manager** (`material3ui-tasks`) | Processes, performance, startup apps and services (<kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd>). |
 
-The shell's own **terminal** has tabs, 10,000 lines of scrollback, mouse support and colours from your wallpaper; full-screen apps like vim and htop work as in any xterm.
-
-Videos and music play in the shell's own **video player**, built on mpv: every format, hardware decoding, subtitles of every kind (loaded by themselves, shifted and resized from its menu), audio tracks, speed, a playlist from the folder and full screen.
+Files opens pictures, videos, songs, PDFs and text in them, and **Settings → Default apps** can pick others. Each is its own **pacman package**, sharing one library with the shell: the installer adds them all, and you can remove any with `sudo pacman -R material3ui-<app>` while the rest keep working (updates then leave it out). → [Packages](docs/INSTALL.md#keeping-everything-updated)
 
 Turn on the **Material You icon theme** (Settings → Look & feel) and the shell draws your desktop's icons itself: folders, file types, drives and hundreds of apps as Material Symbols in tonal circles, recoloured with every wallpaper, in every GTK app.
-
-The **Task Manager** (<kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd>) shows apps with all their processes, your background processes and the system's, to end, stop or force kill. Live graphs follow CPU (each core), memory, disks, the network and the GPU. It also turns login apps on and off, and starts, stops, enables or disables systemd services.
 
 ## Keys worth learning
 
@@ -237,7 +242,7 @@ Most settings live in the built-in **Settings** app (<kbd>Super</kbd><kbd>I</kbd
 - **Look:** wallpaper and colour, and Look & feel: blur (and blur behind the apps you pick), transparency, corner roundness and animation speed.
 - **Bar and dock:** the status bar and the dock. The bar has whole looks a tap away (Material 3's pills, a single bar, or Caelestia's side bar framing the screen), any edge (top, bottom, left or right), four styles, and a widget editor.
 - **Lock screen and weather:** the clock and widgets on the lock and login screens; your location, units and forecast.
-- **Tools:** clipboard and screenshots, default apps, and the system monitor.
+- **Tools:** clipboard and screenshots, default apps, and the system monitor (the Task Manager has the full view).
 - **You:** notifications, Digital Wellbeing (screen time, app timers, Focus mode), accessibility (text size, motion and the pointer), security (lock, idle and sleep), users, and the system's date, time and language.
 - **Calendar and clock:** your events, subscribed calendars and public holidays; alarms, timers, their sound and snooze.
 - **Hooks:** your own commands when things happen (the screen locks, the wallpaper changes, the battery runs low, a notification arrives, a screenshot is saved, an alarm goes off, updates arrive, the disk runs low: 46 events in all), each with a test run and its last result.
@@ -323,6 +328,9 @@ flowchart LR
     S <-- IPC --> C[material3ui msg · key binds]
     S --- X[Wayland · D-Bus · PipeWire · PAM]
     S --- U[pacman · AUR · Flatpak]
+    S -- launches --> APPS[Files · Photos · Videos · Terminal · PDF · Text · Notes · Tasks]
+    L[libmaterial3ui] --- S
+    L --- APPS
 ```
 
 ### Repository structure
@@ -332,7 +340,7 @@ material3-android-shell/
 ├── install.sh                  the full-screen installer: niri, packages, the shell, configs (--help)
 ├── update.sh                   updates the shell and the configs it ships, keeping yours
 ├── VERSION, CHANGELOG.md       the release, and what changed (the shell's What's new reads it)
-├── shell/                      the shell itself, in C++20
+├── shell/                      the shell and its apps, in C++20 (libmaterial3ui, material3ui, material3ui-<app>)
 │   ├── src/
 │   │   ├── core/               the event loop, config.json, file watching, processes, versions
 │   │   ├── wayland/            outputs, input, layer and lock surfaces, app windows
@@ -340,7 +348,9 @@ material3-android-shell/
 │   │   ├── ui/                 the widget toolkit: layout, labels, buttons, sliders, text fields, theme
 │   │   ├── services/           niri, audio, network, Bluetooth, power, notifications,
 │   │   │                       packages, weather, calendar, time zones and the rest
-│   │   ├── shell/              the bar, dock, panels, lock screen, Settings and Niri Settings
+│   │   ├── shell/              the bar, dock, panels, lock screen, Settings and Niri Settings, and the
+│   │   │                       apps' windows: Files, Photos, Videos, Terminal, PDF, Text Editor, Notes, Tasks
+│   │   ├── apps/               each app's program: one window, one running copy, the shell asked for the rest
 │   │   ├── greeter/            `material3ui greeter`, the login screen greetd runs
 │   │   ├── dbus/  ipc/         sd-bus on the event loop; the IPC socket and `material3ui msg`
 │   │   ├── polkit/             the polkit agent
@@ -353,15 +363,16 @@ material3-android-shell/
 ├── dotfiles/
 │   ├── .config/niri/           material3ui.kdl, the shell's part of a niri config
 │   ├── .config/matugen/        colour templates: GTK, KDE, terminals, editors and more
-│   ├── .config/alacritty/      the terminal, recoloured with the wallpaper
+│   ├── .config/alacritty/      Alacritty (if you pick it), recoloured with the wallpaper
 │   └── .local/share/material3ui/scripts/   the theme hooks Matugen runs
 ├── greeter/                    the login screen's niri session and material3ui-greeter
-├── packaging/                  PKGBUILDs for material3ui and material3ui-greeter, and build-pkg.sh
+├── packaging/                  PKGBUILDs for material3ui, each app (material3ui-files, -viewer, -player, -tasks,
+│                               -terminal, -notes, -pdf, -text) and material3ui-greeter; build-pkg.sh, install-pkg.sh
 ├── data/dependencies.json      every package the installer can install, by group (list: docs/DEPENDENCIES.md)
 ├── docs/                       the guides: install, niri, the login screen, IPC, packages, migration
 ├── scripts/                    generators for the emoji list, the logo, the wallpapers and the world map
 ├── extras/                     optional configs: kitty, fish, a Ryzen power-mode service
-└── .github/workflows/          builds both packages for every release
+└── .github/workflows/          builds every package for each release
 ```
 
 How the shell's code fits together, and the rules it follows: [shell/README.md](shell/README.md).

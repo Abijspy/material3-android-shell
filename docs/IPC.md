@@ -32,7 +32,7 @@ M3_INSTANCE=test material3ui msg workspaces
 | `play [file\|URL]` | The video player, playing a file (the folder's others after it), a web address, or a subtitle file for what's playing |
 | `tasks [processes\|performance\|startup\|services]` | The Task Manager, at a tab |
 | `files [folder\|file]` | Files, the built-in file manager, at a folder (or a file, selected); `file://` URIs work too |
-| `view <file>` | A picture in the built-in image viewer |
+| `view [file]` | Photos, the image viewer (with no file, its gallery) |
 | `clipboard` | Clipboard history |
 | `screenshot` | The screenshot tool |
 | `wallpaper pick` | The wallpaper picker |
