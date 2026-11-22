@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Store
+GenericName=Software Store
+Comment=Find, install and update apps: Flathub's catalogue, your system's repositories and the AUR.
+Exec=material3ui-store
+Icon=material3ui-store
+Terminal=false
+Categories=System;PackageManager;
+Keywords=store;software;apps;install;flathub;flatpak;aur;pacman;update;
+StartupNotify=false
+StartupWMClass=material3ui-store

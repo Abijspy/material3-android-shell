@@ -219,6 +219,7 @@ Its **editor** marks pictures up: pen, shapes, arrows, text, numbered steps, and
 | **Calculator** (`material3ui-calculator`) | The answer as you type, scientific keys (degrees or radians), history, and a converter for length, mass, temperature, area, volume, speed, data and time. |
 | **Fonts** (`material3ui-fonts`) | Your fonts, each family in its own face, with its styles, a sample in sizes you can retype, and its characters. Opens font files from Files to look at and install; removes the ones you installed. |
 | **Image Writer** (`material3ui-imagewriter`) | Writes an ISO or disk image (a Linux installer, a Raspberry Pi `.img.xz`) to a USB drive or memory card: only removable drives, never the system's, with progress, a SHA-256 check and the drive read back afterwards. |
+| **Store** (`material3ui-store`) | Find and install apps: Flathub's catalogue by category with icons, screenshots and descriptions, plus your repositories and the AUR in one search. Your installed apps and every update in one place. |
 | **Notes** (`material3ui-notes`) | Notes and checklists as tinted cards, with pictures, reminders, labels, pins, search, an archive and a trash. |
 | **Task Manager** (`material3ui-tasks`) | Processes, performance, startup apps and services (<kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd>). |
 

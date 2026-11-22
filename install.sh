@@ -930,7 +930,7 @@ run_install() {
     # package each, from the same build (pacman -R one you don't want)
     package_apps() {
         local app f
-        for app in files viewer player tasks terminal notes pdf text music disks camera backups recorder calculator fonts imagewriter; do
+        for app in files viewer player tasks terminal notes pdf text music disks camera backups recorder calculator fonts imagewriter store; do
             f="$("$REPO/packaging/build-pkg.sh" "material3ui-$app" --build "$BUILD" "$PKG_OUT")" && APP_FILES+=("$f")
         done
     }
@@ -939,7 +939,7 @@ run_install() {
     if [[ -n "$PKG_FILE" || "$DRY" == 1 ]]; then
         W=2 task "Installing the material3ui packages" sudo "$REPO/packaging/install-pkg.sh" "${PKG_FILE:-material3ui-$VERSION.pkg.tar.zst}" "${APP_FILES[@]}"
         # update.sh then updates the apps that stay installed
-        [[ "$DRY" == 1 ]] || { mkdir -p "$HOME/.local/state/material3ui" && printf '%s\n' files viewer player tasks terminal notes pdf text music disks camera backups recorder calculator fonts imagewriter >"$HOME/.local/state/material3ui/apps-split"; }
+        [[ "$DRY" == 1 ]] || { mkdir -p "$HOME/.local/state/material3ui" && printf '%s\n' files viewer player tasks terminal notes pdf text music disks camera backups recorder calculator fonts imagewriter store >"$HOME/.local/state/material3ui/apps-split"; }
         rm -rf "$PKG_OUT"
     else
         warn "Couldn't make the package (see the log): installing the build directly"

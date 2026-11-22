@@ -273,6 +273,7 @@ apps = {
   'tasks': {'sources': ['src/apps/TasksMain.cpp', 'src/shell/TaskManager.cpp'], 'deps': []},
   'terminal': {'sources': ['src/apps/TerminalMain.cpp', 'src/shell/Terminal.cpp'], 'deps': [libvterm]},
   'notes': {'sources': ['src/apps/NotesMain.cpp', 'src/shell/NotesApp.cpp'], 'deps': []},
+  'store': {'sources': ['src/apps/StoreMain.cpp', 'src/shell/StoreApp.cpp'], 'deps': []},
   'imagewriter': {'sources': ['src/apps/ImagewriterMain.cpp', 'src/shell/ImageWriterApp.cpp'], 'deps': []},
   'fonts': {'sources': ['src/apps/FontsMain.cpp', 'src/shell/FontsApp.cpp'], 'deps': [dependency('fontconfig'), dependency('pangoft2')]},
   'calculator': {'sources': ['src/apps/CalculatorMain.cpp', 'src/shell/CalculatorApp.cpp'], 'deps': []},
