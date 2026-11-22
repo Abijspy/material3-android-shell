@@ -202,6 +202,15 @@ void Images::reloadIcon(const std::string& name) {
     rescan(); // its folder may be new
 }
 
+void Images::reloadIcons() {
+    std::erase_if(m_cache, [](auto& kv) {
+        if (!kv.first.starts_with("icon:")) return false;
+        if (kv.second.id) glDeleteTextures(1, &kv.second.id);
+        return true;
+    });
+    rescan();
+}
+
 const Images::Texture* Images::pixmap(const std::string& key, int w, int h, const std::vector<uint8_t>& argb) {
     if (w <= 0 || h <= 0 || argb.size() < static_cast<size_t>(w) * h * 4) return nullptr;
     auto& t = m_cache["pixmap:" + key];

@@ -23,6 +23,7 @@
 #include "services/Repos.h"
 #include "services/Printers.h"
 #include "services/ThemedIcons.h"
+#include "services/IconTheme.h"
 #include "services/Wellbeing.h"
 #include "services/BatteryAlerts.h"
 #include "services/Calendar.h"
@@ -126,8 +127,10 @@ bool Shell::start() {
     // Wallpaper colours only need a repaint; config edits may change sizes and fonts
     // The Settings icon follows the wallpaper's colours too
     themedicons::update();
+    icontheme::update();
     Theme::get().changed.connectForever([this] {
         themedicons::update();
+        icontheme::update();
         restyle(false);
     });
     Config::get().changed.connectForever([this] { restyle(true); });

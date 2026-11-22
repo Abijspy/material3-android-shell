@@ -36,6 +36,9 @@ public:
     // A themed icon was rewritten (Settings' follows the wallpaper): drawn
     // and looked up afresh
     void reloadIcon(const std::string& name);
+    // The icon theme changed (or was drawn again): every icon looked up and
+    // drawn afresh
+    void reloadIcons();
     // ARGB32 big-endian pixmap (StatusNotifierItem IconPixmap)
     const Texture* pixmap(const std::string& key, int w, int h, const std::vector<uint8_t>& argb);
 

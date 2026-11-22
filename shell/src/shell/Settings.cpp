@@ -6,6 +6,7 @@
 #include "core/Paths.h"
 #include "core/Process.h"
 #include "render/Images.h"
+#include "services/IconTheme.h"
 #include "services/Audio.h"
 #include "services/Backups.h"
 #include "services/Calendar.h"
@@ -1274,6 +1275,16 @@ void stylePage(Flex* page, Popup&) {
                       {{0.0, "Off"}, {0.6, "Fast"}, {1.0, "Normal"}, {1.5, "Relaxed"}});
     niriLink(shape, "animation", "Window animations", "Their speed, and each one's curve or spring", "niri-animations");
     switchRow(shape, "palette", "Themed icons", "Settings' icons take on your wallpaper's colours, as Android's do", "/appearance/themedIcons", true);
+    {
+        // The whole desktop's icons (services/IconTheme): folders, files, apps
+        auto r = row(shape, "interests", "Material You icon theme",
+                     "Folders, files, drives and apps as Material Symbols in your wallpaper's colours, in every app (GTK's icon theme)");
+        auto* sw = r.row->add<Switch>();
+        sw->setChecked(icontheme::enabled(), false);
+        sw->onToggled = [](bool on) {
+            EventLoop::get().defer([on] { icontheme::setEnabled(on); });
+        };
+    }
 
     auto* reset = group(page, "Defaults");
     auto r = row(reset, "restart_alt", "Reset look & feel", "Blur, opacity, corners and motion");

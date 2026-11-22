@@ -134,6 +134,7 @@ sources = files(
   'src/services/Repos.cpp',
   'src/services/Search.cpp',
   'src/services/ThemedIcons.cpp',
+  'src/services/IconTheme.cpp',
   'src/services/Screenshot.cpp',
   'src/services/Session.cpp',
   'src/services/SystemStats.cpp',
