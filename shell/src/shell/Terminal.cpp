@@ -5,7 +5,8 @@
 // Each tab runs your shell on a pseudo-terminal. The screen is drawn with
 // Pango into a Cairo picture a row at a time (only the rows that changed),
 // handed to GL as a texture. Colours come from the wallpaper's palette.
-// Scrollback, selection with copy and paste, font size, tabs.
+// Scrollback, selection with copy and paste, font size, tabs, and split
+// panes (Ctrl+Shift+E side by side, Ctrl+Shift+O stacked, Alt+arrows between).
 #include "shell/Panels.h"
 
 #include "core/Config.h"
@@ -464,6 +465,7 @@ public:
     std::function<void()> onActivity;
     std::function<void(float, float)> onMenu;
     std::function<bool(const KeyEvent&)> onShortcut; // the window's keys, asked first
+    std::function<void()> onFocused; // given the keyboard (a split's pane)
     float fontSize = 14;
 
     explicit TermView(std::shared_ptr<Session> s) : session(std::move(s)) {
@@ -776,6 +778,7 @@ private:
     void onFocus(bool f) override {
         m_focused = f;
         requestRedraw();
+        if (f && onFocused) onFocused();
     }
 
     bool typed() {
@@ -1058,13 +1061,39 @@ private:
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };
 
+// Tabs, each a tree of panes: a tab's root holds one child, a terminal or
+// a split (a row or column of two). Splitting puts a terminal and a new one
+// in a split where it was; closing one puts its sibling back in the
+// split's place
 struct TermState {
     Flex *tabs = nullptr, *stack = nullptr;
-    std::vector<TermView*> views;
+    std::vector<Flex*> roots;       // a tab each
+    std::vector<TermView*> focusOf; // a tab's terminal with the keyboard
+    std::vector<TermView*> views;   // every terminal, every tab
     int active = 0;
     Popup* popup = nullptr;
     std::function<void()> rebuild;
     std::shared_ptr<bool> alive = std::make_shared<bool>(true);
+
+    bool has(TermView* v) const { return std::ranges::find(views, v) != views.end(); }
+    // The tab a node's in (-1: none)
+    int tabOf(const Node* n) const {
+        for (; n; n = n->parentNode())
+            for (size_t i = 0; i < roots.size(); ++i)
+                if (roots[i] == n) return static_cast<int>(i);
+        return -1;
+    }
+    std::vector<TermView*> viewsIn(int tab) const {
+        std::vector<TermView*> out;
+        for (auto* v : views)
+            if (tabOf(v) == tab) out.push_back(v);
+        return out;
+    }
+    TermView* current() const {
+        if (roots.empty()) return nullptr;
+        TermView* v = focusOf[static_cast<size_t>(active)];
+        return has(v) ? v : nullptr;
+    }
 };
 
 class TermKeeper : public Node {
@@ -1074,6 +1103,7 @@ public:
         *m_st->alive = false;
         m_st->rebuild = nullptr;
         m_st->views.clear();
+        m_st->roots.clear();
     }
 
 protected:
@@ -1083,33 +1113,95 @@ private:
     std::shared_ptr<TermState> m_st;
 };
 
-void activate(const std::shared_ptr<TermState>& st, int i) {
-    if (st->views.empty()) return;
-    st->active = std::clamp(i, 0, static_cast<int>(st->views.size()) - 1);
-    for (size_t k = 0; k < st->views.size(); ++k) st->views[k]->setVisible(static_cast<int>(k) == st->active);
-    TermView* v = st->views[static_cast<size_t>(st->active)];
-    v->damageAll();
+// Split tabs dim the terminals without the keyboard
+void markFocus(const std::shared_ptr<TermState>& st, int tab) {
+    const auto vs = st->viewsIn(tab);
+    for (auto* v : vs) v->setOpacity(vs.size() < 2 || v == st->focusOf[static_cast<size_t>(tab)] ? 1.0f : 0.62f);
+}
+
+void focusView(const std::shared_ptr<TermState>& st, TermView* v) {
     EventLoop::get().defer([st, v] {
-        if (*st->alive && std::ranges::find(st->views, v) != st->views.end()) v->focus();
+        if (*st->alive && st->has(v)) v->focus();
     });
+}
+
+void activate(const std::shared_ptr<TermState>& st, int i) {
+    if (st->roots.empty()) return;
+    st->active = std::clamp(i, 0, static_cast<int>(st->roots.size()) - 1);
+    for (size_t k = 0; k < st->roots.size(); ++k) st->roots[k]->setVisible(static_cast<int>(k) == st->active);
+    TermView* v = st->current();
+    if (!v) {
+        const auto vs = st->viewsIn(st->active);
+        if (!vs.empty()) v = st->focusOf[static_cast<size_t>(st->active)] = vs.front();
+    }
+    for (auto* x : st->viewsIn(st->active)) x->damageAll();
+    if (v) focusView(st, v);
+    markFocus(st, st->active);
     if (st->rebuild) st->rebuild();
 }
 
-void closeTab(const std::shared_ptr<TermState>& st, TermView* v) {
-    const auto it = std::ranges::find(st->views, v);
-    if (it == st->views.end()) return;
-    const int i = static_cast<int>(it - st->views.begin());
-    st->views.erase(it);
+// How a pane sits in a split: sharing the row (or column) evenly
+void sizeIn(Node* n, Flex::Direction dir) {
+    n->grow = true;
+    n->fixedWidth.reset();
+    n->fixedHeight.reset();
+    if (dir == Flex::Direction::Row) n->fixedWidth = 1;
+    else n->fixedHeight = 1;
+}
+
+void copySizing(const Node* from, Node* to) {
+    to->grow = from->grow;
+    to->fixedWidth = from->fixedWidth;
+    to->fixedHeight = from->fixedHeight;
+}
+
+void closeTab(const std::shared_ptr<TermState>& st, int tab) {
+    if (tab < 0 || tab >= static_cast<int>(st->roots.size())) return;
+    Flex* root = st->roots[static_cast<size_t>(tab)];
+    for (auto* v : st->viewsIn(tab)) std::erase(st->views, v);
+    st->roots.erase(st->roots.begin() + tab);
+    st->focusOf.erase(st->focusOf.begin() + tab);
     // Not inside its own callbacks: removed on the next turn
-    EventLoop::get().defer([st, v] {
-        if (!*st->alive) return;
-        st->stack->remove(v);
+    EventLoop::get().defer([st, root] {
+        if (*st->alive) st->stack->remove(root);
     });
-    if (st->views.empty()) {
+    if (st->roots.empty()) {
         if (st->popup) st->popup->close();
         return;
     }
-    activate(st, std::min(i, static_cast<int>(st->views.size()) - 1));
+    activate(st, std::min(tab, static_cast<int>(st->roots.size()) - 1));
+}
+
+// One terminal: its split loses it (the other takes the split's place), or
+// its tab closes when it was the only one
+void closePane(const std::shared_ptr<TermState>& st, TermView* v) {
+    if (!st->has(v)) return;
+    const int tab = st->tabOf(v);
+    if (st->viewsIn(tab).size() < 2) return closeTab(st, tab);
+    std::erase(st->views, v);
+    auto* split = static_cast<Flex*>(v->parentNode());
+    EventLoop::get().defer([st, v, split, tab] {
+        if (!*st->alive) return;
+        split->remove(v);
+        Node* outer = split->parentNode();
+        if (split->children().size() == 1 && outer) {
+            // The one left takes the split's place
+            Node* other = split->children().front().get();
+            copySizing(split, other);
+            size_t at = 0;
+            for (; at < outer->children().size() && outer->children()[at].get() != split; ++at) {}
+            auto moved = split->release(other);
+            outer->adopt(std::move(moved), at);
+            outer->remove(split);
+        }
+        const auto vs = st->viewsIn(tab);
+        if (tab < static_cast<int>(st->focusOf.size()) && !vs.empty()) {
+            auto& f = st->focusOf[static_cast<size_t>(tab)];
+            if (!st->has(f)) f = vs.back();
+            if (tab == st->active) focusView(st, f);
+            markFocus(st, tab);
+        }
+    });
 }
 
 void copySelection(TermView* v) {
@@ -1119,14 +1211,61 @@ void copySelection(TermView* v) {
 
 void pasteInto(const std::shared_ptr<TermState>& st, TermView* v) {
     m3::run({"wl-paste", "--no-newline"}, [st, v](int code, const std::string& out) {
-        if (code == 0 && *st->alive && std::ranges::find(st->views, v) != st->views.end()) v->paste(out);
+        if (code == 0 && *st->alive && st->has(v)) v->paste(out);
     });
 }
 
+TermView* makeView(const std::shared_ptr<TermState>& st, Flex* parent, std::string dir, const std::vector<std::string>& command);
 void newTab(const std::shared_ptr<TermState>& st, std::string dir, const std::vector<std::string>& command);
+
+// A new terminal beside this one (a row) or under it (a column), in its folder
+void splitPane(const std::shared_ptr<TermState>& st, TermView* v, Flex::Direction dir) {
+    if (!st->has(v)) return;
+    auto* parent = static_cast<Flex*>(v->parentNode());
+    size_t at = 0;
+    for (; at < parent->children().size() && parent->children()[at].get() != v; ++at) {}
+    auto split = std::make_unique<Flex>(dir);
+    auto* box = split.get();
+    box->setSpacing(6)->setAlignItems(Align::Stretch);
+    copySizing(v, box);
+    parent->adopt(std::move(split), at);
+    auto moved = parent->release(v);
+    box->adopt(std::move(moved));
+    sizeIn(v, dir);
+    TermView* fresh = makeView(st, box, v->session->cwd(), {});
+    sizeIn(fresh, dir);
+    const int tab = st->tabOf(box);
+    st->focusOf[static_cast<size_t>(tab)] = fresh;
+    focusView(st, fresh);
+    markFocus(st, tab);
+    if (st->rebuild) st->rebuild();
+}
+
+// The keyboard to the terminal that way (Alt+arrows)
+bool moveFocus(const std::shared_ptr<TermState>& st, TermView* v, int dx, int dy) {
+    const auto vs = st->viewsIn(st->tabOf(v));
+    const auto& a = v->rect();
+    const float ax = a.x + a.w / 2, ay = a.y + a.h / 2;
+    TermView* best = nullptr;
+    float bestD = 1e9f;
+    for (auto* o : vs) {
+        if (o == v) continue;
+        const auto& b = o->rect();
+        const float bx = b.x + b.w / 2, by = b.y + b.h / 2;
+        const float along = dx ? (bx - ax) * static_cast<float>(dx) : (by - ay) * static_cast<float>(dy);
+        if (along <= 1) continue;
+        const float across = dx ? std::abs(by - ay) : std::abs(bx - ax);
+        const float d = along + across * 2;
+        if (d < bestD) bestD = d, best = o;
+    }
+    if (!best) return false;
+    focusView(st, best);
+    return true;
+}
 
 void menuFor(const std::shared_ptr<TermState>& st, TermView* v, float x, float y) {
     const bool hasSel = !v->selection().empty();
+    const bool split = st->viewsIn(st->tabOf(v)).size() > 1;
     std::vector<MenuItem> items;
     items.emplace_back("content_copy", "Copy", "Ctrl+Shift+C", [v] { copySelection(v); }, false, false, hasSel);
     items.emplace_back("content_paste", "Paste", "Ctrl+Shift+V", [st, v] { pasteInto(st, v); });
@@ -1136,6 +1275,9 @@ void menuFor(const std::shared_ptr<TermState>& st, TermView* v, float x, float y
         v->session->write("\x0c", 1); // Ctrl+L: the shell draws its prompt at the top
         v->damageAll();
     });
+    items.emplace_back("vertical_split", "Split side by side", "Ctrl+Shift+E", [st, v] { splitPane(st, v, Flex::Direction::Row); }, false, false, true, true);
+    items.emplace_back("horizontal_split", "Split top and bottom", "Ctrl+Shift+O", [st, v] { splitPane(st, v, Flex::Direction::Column); });
+    if (split) items.emplace_back("close", "Close this pane", "Ctrl+Shift+W", [st, v] { closePane(st, v); });
     items.emplace_back("tab", "New tab", "Ctrl+Shift+T", [st, v] { newTab(st, v->session->cwd(), {}); }, false, false, true, true);
     items.emplace_back("folder_open", "Open this folder in Files", "", [v] {
         if (open) open("files " + v->session->cwd());
@@ -1148,12 +1290,15 @@ void menuFor(const std::shared_ptr<TermState>& st, TermView* v, float x, float y
 bool shortcut(const std::shared_ptr<TermState>& st, TermView* v, const KeyEvent& e) {
     const bool ctrl = e.ctrl(), shift = e.shift(), alt = e.mods & ModAlt;
     const uint32_t k = e.baseSym >= 'A' && e.baseSym <= 'Z' ? e.baseSym - 'A' + 'a' : e.baseSym;
+    const int tabs = static_cast<int>(st->roots.size());
     if (ctrl && shift) {
         switch (k) {
         case 'c': copySelection(v); return true;
         case 'v': pasteInto(st, v); return true;
         case 't': newTab(st, v->session->cwd(), {}); return true;
-        case 'w': closeTab(st, v); return true;
+        case 'w': closePane(st, v); return true;
+        case 'e': splitPane(st, v, Flex::Direction::Row); return true;
+        case 'o': splitPane(st, v, Flex::Direction::Column); return true;
         case 'a': v->selectAll(); return true;
         case 'k':
             v->session->scrollback.clear();
@@ -1165,29 +1310,39 @@ bool shortcut(const std::shared_ptr<TermState>& st, TermView* v, const KeyEvent&
             return true;
         default: break;
         }
-        if (e.sym == XKB_KEY_ISO_Left_Tab || e.sym == XKB_KEY_Tab) return activate(st, st->active - 1), true;
+        if (e.sym == XKB_KEY_ISO_Left_Tab || e.sym == XKB_KEY_Tab) return activate(st, (st->active + tabs - 1) % tabs), true;
         if (e.sym == XKB_KEY_Page_Up || e.sym == XKB_KEY_Page_Down) return false;
     }
     if (ctrl && !shift) {
-        if (e.sym == XKB_KEY_Tab || e.sym == XKB_KEY_Page_Down) return activate(st, (st->active + 1) % static_cast<int>(st->views.size())), true;
-        if (e.sym == XKB_KEY_Page_Up) return activate(st, (st->active + static_cast<int>(st->views.size()) - 1) % static_cast<int>(st->views.size())), true;
+        if (e.sym == XKB_KEY_Tab || e.sym == XKB_KEY_Page_Down) return activate(st, (st->active + 1) % tabs), true;
+        if (e.sym == XKB_KEY_Page_Up) return activate(st, (st->active + tabs - 1) % tabs), true;
         if (e.sym == XKB_KEY_equal || e.sym == XKB_KEY_plus || e.sym == XKB_KEY_KP_Add) return v->setFontSize(v->fontSize + 1), true;
         if (e.sym == XKB_KEY_minus || e.sym == XKB_KEY_KP_Subtract) return v->setFontSize(v->fontSize - 1), true;
         if (e.sym == XKB_KEY_0) return v->setFontSize(14), true;
     }
     if (shift && !ctrl && e.sym == XKB_KEY_Insert) return pasteInto(st, v), true;
-    if (alt && !ctrl && e.sym >= XKB_KEY_1 && e.sym <= XKB_KEY_9) {
-        const int i = static_cast<int>(e.sym - XKB_KEY_1);
-        if (i < static_cast<int>(st->views.size())) return activate(st, i), true;
+    if (alt && !ctrl && !shift) {
+        if (e.sym >= XKB_KEY_1 && e.sym <= XKB_KEY_9) {
+            const int i = static_cast<int>(e.sym - XKB_KEY_1);
+            if (i < tabs) return activate(st, i), true;
+        }
+        // Between a tab's panes; with none that way, the shell gets the key
+        switch (e.sym) {
+        case XKB_KEY_Left: return moveFocus(st, v, -1, 0);
+        case XKB_KEY_Right: return moveFocus(st, v, 1, 0);
+        case XKB_KEY_Up: return moveFocus(st, v, 0, -1);
+        case XKB_KEY_Down: return moveFocus(st, v, 0, 1);
+        default: break;
+        }
     }
     return false;
 }
 
-void newTab(const std::shared_ptr<TermState>& st, std::string dir, const std::vector<std::string>& command) {
+TermView* makeView(const std::shared_ptr<TermState>& st, Flex* parent, std::string dir, const std::vector<std::string>& command) {
     std::error_code ec;
     if (dir.empty() || !fs::is_directory(dir, ec)) dir = paths::home();
     auto session = std::make_shared<Session>(dir, command);
-    auto* v = st->stack->add<TermView>(session);
+    auto* v = parent->add<TermView>(session);
     v->grow = true;
     st->views.push_back(v);
     std::weak_ptr<TermState> weak = st;
@@ -1198,7 +1353,7 @@ void newTab(const std::shared_ptr<TermState>& st, std::string dir, const std::ve
         auto s = weak.lock();
         if (!s || !*s->alive) return;
         EventLoop::get().defer([s, v] {
-            if (*s->alive) closeTab(s, v);
+            if (*s->alive) closePane(s, v);
         });
     };
     v->onShortcut = [weak, v](const KeyEvent& e) {
@@ -1208,7 +1363,28 @@ void newTab(const std::shared_ptr<TermState>& st, std::string dir, const std::ve
     v->onMenu = [weak, v](float x, float y) {
         if (auto s = weak.lock(); s && *s->alive) menuFor(s, v, x, y);
     };
-    activate(st, static_cast<int>(st->views.size()) - 1);
+    v->onFocused = [weak, v] {
+        auto s = weak.lock();
+        if (!s || !*s->alive || !s->has(v)) return;
+        const int tab = s->tabOf(v);
+        if (tab < 0) return;
+        auto& f = s->focusOf[static_cast<size_t>(tab)];
+        if (f == v) return;
+        f = v;
+        markFocus(s, tab);
+        if (s->rebuild) s->rebuild(); // the tab's title is its focused terminal's
+    };
+    return v;
+}
+
+void newTab(const std::shared_ptr<TermState>& st, std::string dir, const std::vector<std::string>& command) {
+    auto* root = st->stack->add<Flex>(Flex::Direction::Column);
+    root->setAlignItems(Align::Stretch);
+    root->grow = true;
+    st->roots.push_back(root);
+    st->focusOf.push_back(nullptr);
+    st->focusOf.back() = makeView(st, root, std::move(dir), command);
+    activate(st, static_cast<int>(st->roots.size()) - 1);
 }
 
 } // namespace
@@ -1227,33 +1403,38 @@ void terminal(Flex* card, Popup& popup, const std::string& dir, const std::vecto
     st->rebuild = [st] {
         auto* t = st->tabs;
         t->clearChildren();
-        for (size_t i = 0; i < st->views.size(); ++i) {
-            TermView* v = st->views[i];
+        for (size_t i = 0; i < st->roots.size(); ++i) {
             const bool here = static_cast<int>(i) == st->active;
+            const auto vs = st->viewsIn(static_cast<int>(i));
+            TermView* v = st->has(st->focusOf[i]) ? st->focusOf[i] : vs.empty() ? nullptr : vs.front();
             auto* b = t->add<Button>(Flex::Direction::Row);
             pill(b)->setPadding({14, 6, 6, 6})->setSpacing(6);
             b->setBackground(here ? "secondary_container" : "surface_container_high", false);
-            b->add<Icon>("terminal", 16)->setColor(here ? "on_secondary_container" : "on_surface_variant", false);
-            b->add<Label>(v->session->title)->setSize(13)->setWeight(here ? 600 : 500)->setMaxWidth(200)->setColor(here ? "on_secondary_container" : "on_surface", false);
+            b->add<Icon>(vs.size() > 1 ? "splitscreen_right" : "terminal", 16)->setColor(here ? "on_secondary_container" : "on_surface_variant", false);
+            b->add<Label>(v ? v->session->title : "")->setSize(13)->setWeight(here ? 600 : 500)->setMaxWidth(200)->setColor(here ? "on_secondary_container" : "on_surface", false);
             b->givesWay = true;
             b->onClicked = [st, i](uint32_t button) {
                 if (button == BTN_LEFT) activate(st, static_cast<int>(i));
             };
-            auto* x = iconButton(b, "close", [st, v] { closeTab(st, v); }, 14);
+            auto* x = iconButton(b, "close", [st, i] { closeTab(st, static_cast<int>(i)); }, 14);
             x->setPadding(Insets(4));
-            x->tooltip = "Close tab (Ctrl+Shift+W)";
+            x->tooltip = "Close tab";
         }
         iconButton(t, "add", [st] {
-            const std::string dir = st->views.empty() ? paths::home() : st->views[static_cast<size_t>(st->active)]->session->cwd();
-            newTab(st, dir, {});
+            TermView* v = st->current();
+            newTab(st, v ? v->session->cwd() : paths::home(), {});
         }, 20)->tooltip = "New tab (Ctrl+Shift+T)";
         t->add<Node>()->grow = true;
+        if (TermView* v = st->current()) {
+            iconButton(t, "vertical_split", [st, v] { splitPane(st, v, Flex::Direction::Row); }, 18)->tooltip = "Split side by side (Ctrl+Shift+E)";
+            iconButton(t, "horizontal_split", [st, v] { splitPane(st, v, Flex::Direction::Column); }, 18)->tooltip = "Split top and bottom (Ctrl+Shift+O)";
+        }
     };
 
     popup.onKey = [st](const KeyEvent& e) {
         // Keys the terminal didn't get (it wasn't focused): given to it
-        if (st->views.empty()) return false;
-        TermView* v = st->views[static_cast<size_t>(st->active)];
+        TermView* v = st->current();
+        if (!v) return false;
         v->focus();
         return v->onKey(e);
     };

@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
     app.closed = [] { shell::panels::terminalClosed(); };
     app.settings = shell::panels::terminalSettings;
     app.about.summary = "Your shell, in tabs, in your wallpaper's colours.";
-    app.about.features = {"xterm-256colour and truecolour; vim, htop and other full-screen apps", "Tabs, 10,000 lines of scrollback, mouse reporting, bracketed paste", "Select to copy, middle click to paste, Ctrl+Shift+C and V", "material3ui-terminal [folder] [-e command] for scripts and $TERMINAL"};
+    app.about.features = {"xterm-256colour and truecolour; vim, htop and other full-screen apps", "Tabs, 10,000 lines of scrollback, mouse reporting, bracketed paste", "Split panes: Ctrl+Shift+E side by side, Ctrl+Shift+O stacked, Alt+arrows between", "Select to copy, middle click to paste, Ctrl+Shift+C and V", "material3ui-terminal [folder] [-e command] for scripts and $TERMINAL"};
     app.about.builtWith = "libvterm (Neovim's terminal emulator), Pango";
     return apps::run(app, argc, argv);
 }

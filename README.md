@@ -207,7 +207,7 @@ Its **editor** marks pictures up: pen, shapes, arrows, text, numbered steps, and
 | App | What it does |
 | :--- | :--- |
 | **Videos** (`material3ui-player`) | Plays every video and audio format through mpv, with hardware decoding and web videos (yt-dlp). Subtitles of every kind load by themselves and can be shifted, resized and moved; it also picks audio tracks, sets the speed, plays the folder as a playlist and goes full screen. |
-| **Terminal** (`material3ui-terminal`) | Tabs, 10,000 lines of scrollback, mouse support and colours from your wallpaper. Full-screen apps like vim and htop work as in any xterm (<kbd>Super</kbd><kbd>Return</kbd>). |
+| **Terminal** (`material3ui-terminal`) | Tabs and split panes, 10,000 lines of scrollback, mouse support and colours from your wallpaper. Full-screen apps like vim and htop work as in any xterm (<kbd>Super</kbd><kbd>Return</kbd>). |
 | **PDF** (`material3ui-pdf`) | Reads PDFs, with page thumbnails, search, text selection, links, passwords and a night mode. It marks them up too: highlight, underline, strike out, draw, add shapes, arrows, text boxes and sticky notes, sign, fill in forms, and rotate, move or delete pages. |
 | **Text Editor** (`material3ui-text`) | .txt files and code in tabs, with line numbers, auto-indent, find and replace, and go to line. Line endings and encodings are kept as they were. |
 | **Music** (`material3ui-music`) | Your library by album and artist, with covers, every song, search, playlists and a queue; gapless, with even loudness. The bar, the lock screen and lyrics follow it (with mpv-mpris). |
