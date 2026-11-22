@@ -28,6 +28,7 @@ M3_INSTANCE=test material3ui msg workspaces
 | `nirisettings [page]` | Niri Settings, on niri. Pages: `niri-layout`, `niri-decoration`, `niri-animations`, `niri-behaviour`, `niri-keys`, `niri-rules`, `niri-startup`, `niri-environment` |
 | `lyrics` | The playing song's lyrics, scrolling along, with Identify |
 | `terminal [folder] [-e command…]` | The terminal: a new tab, in a folder or running a command (`material3ui-terminal` is the same, for `$TERMINAL`) |
+| `text [file]` · `pdf [file]` · `notesapp` | The text editor, the PDF viewer, Notes |
 | `play [file\|URL]` | The video player, playing a file (the folder's others after it), a web address, or a subtitle file for what's playing |
 | `tasks [processes\|performance\|startup\|services]` | The Task Manager, at a tab |
 | `files [folder\|file]` | Files, the built-in file manager, at a folder (or a file, selected); `file://` URIs work too |

@@ -10,13 +10,16 @@ arch=(x86_64 aarch64)
 url="https://github.com/Abijspy/material3-android-shell"
 license=(MIT)
 depends=(niri wayland libglvnd pango cairo libxkbcommon systemd-libs libpulse librsvg gdk-pixbuf2 polkit pam fastfetch)
-makedepends=(meson ninja wayland-protocols wlr-protocols nlohmann-json mpv libvterm)
+makedepends=(meson ninja wayland-protocols wlr-protocols nlohmann-json mpv libvterm poppler-glib)
 # niri 26.04 or newer
 optdepends=('material3ui-files: Files, the file manager'
             'material3ui-viewer: the image viewer'
             'material3ui-player: Videos, the video player'
             'material3ui-tasks: the Task Manager'
             'material3ui-terminal: the terminal'
+            'material3ui-notes: Notes'
+            'material3ui-pdf: the PDF viewer and editor'
+            'material3ui-text: the text editor'
             'xwayland-satellite: X11 apps on niri'
             'xdg-desktop-portal-gnome: screen sharing on niri'
             'wf-recorder: screen recording'

@@ -15,6 +15,7 @@
 #include <cstring>
 #include <filesystem>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <sys/signalfd.h>
 #include <sys/socket.h>
@@ -192,6 +193,19 @@ int run(const App& app, int argc, char** argv) {
     shell::panels::open = [](const std::string& what) {
         const auto sp = what.find(' ');
         const std::string name = what.substr(0, sp), arg = sp == std::string::npos ? "" : what.substr(sp + 1);
+        // Another app: its own program, straight (the shell says when one
+        // isn't installed)
+        static const std::map<std::string, std::string> programs = {{"files", "files"}, {"viewer", "viewer"}, {"player", "player"}, {"tasks", "tasks"},
+                                                                     {"terminal", "terminal"}, {"notes", "notes"}, {"pdf", "pdf"}, {"text", "text"}};
+        if (auto it = programs.find(name); it != programs.end()) {
+            const std::string program = ownCommand("material3ui-" + it->second);
+            if (!program.empty()) {
+                std::vector<std::string> argv = {program};
+                if (!arg.empty()) argv.push_back(arg);
+                spawnArgs(argv);
+                return;
+            }
+        }
         std::vector<std::string> cmd;
         if (name == "files") cmd = {"files"};
         else if (name == "viewer") cmd = {"view"};

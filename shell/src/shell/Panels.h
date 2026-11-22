@@ -82,6 +82,19 @@ void playerClosed();
 void terminal(ui::Flex* card, Popup& popup, const std::string& dir, const std::vector<std::string>& command);
 extern std::function<void(const std::string&, const std::vector<std::string>&)> terminalGo;
 void terminalClosed();
+// Notes (an app window): notes and checklists as tinted cards, labels,
+// archive and trash; `arg` "new" or "checklist" starts one
+void notesApp(ui::Flex* card, Popup& popup, const std::string& arg);
+extern std::function<void(const std::string&)> notesGo;
+void notesAppClosed();
+// The PDF viewer and editor (an app window, poppler-glib) at `file`
+void pdfViewer(ui::Flex* card, Popup& popup, const std::string& file);
+extern std::function<void(const std::string&)> pdfGo;
+void pdfClosed();
+// The text editor (an app window) with `file` in a tab ("" a new one)
+void textEditor(ui::Flex* card, Popup& popup, const std::string& file);
+extern std::function<void(const std::string&)> textGo;
+void textEditorClosed();
 // Task Manager (an app window): processes, performance, startup apps and
 // services; `tab` one of processes|performance|startup|services
 void taskManager(ui::Flex* card, Popup& popup, const std::string& tab);

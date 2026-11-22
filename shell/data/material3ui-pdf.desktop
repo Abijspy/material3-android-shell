@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=PDF
+GenericName=PDF Viewer and Editor
+Comment=Read PDFs, search them, mark them up, sign them and fill in forms
+Exec=material3ui-pdf %f
+Icon=material3ui-pdf
+Terminal=false
+Categories=Office;Viewer;Graphics;
+Keywords=pdf;document;reader;viewer;annotate;sign;form;highlight;
+MimeType=application/pdf;application/x-pdf;
+StartupNotify=false
+StartupWMClass=material3ui-pdf

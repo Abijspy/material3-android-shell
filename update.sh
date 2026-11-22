@@ -76,8 +76,12 @@ APP_PKGS=()
 # before). One you've removed stays removed
 APPS_MARKER="$HOME/.local/state/material3ui/apps-split"
 WANTED_APPS=()
-for app in files viewer player tasks terminal; do
-    if [[ ! -f "$APPS_MARKER" ]] || pacman -Q "material3ui-$app" >/dev/null 2>&1; then WANTED_APPS+=("$app"); fi
+# The marker lists the apps offered so far (empty: 7.1.0's five): a new one
+# is installed once, one you've removed since stays removed
+OFFERED=""
+if [[ -f "$APPS_MARKER" ]]; then OFFERED=" $(tr '\n' ' ' <"$APPS_MARKER") "; [[ -n "${OFFERED// /}" ]] || OFFERED=" files viewer player tasks terminal "; fi
+for app in files viewer player tasks terminal notes pdf text; do
+    if [[ "$OFFERED" != *" $app "* ]] || pacman -Q "material3ui-$app" >/dev/null 2>&1; then WANTED_APPS+=("$app"); fi
 done
 if [[ "$CHANNEL" == stable && -n "${tag:-}" ]]; then
     # The package's version: the tag's, a pre-release's hyphens dropped (build-pkg.sh)
@@ -163,7 +167,7 @@ if [[ ${#APP_PKGS[@]} -gt 0 ]]; then
         if [[ ${#ROOT[@]} -gt 0 ]]; then pkexec "$PACKAGING/install-pkg.sh" "${missing[@]}"
         else "${SUDO[@]}" "$PACKAGING/install-pkg.sh" "${missing[@]}"; fi
     fi
-    mkdir -p "$(dirname "$APPS_MARKER")" && touch "$APPS_MARKER"
+    mkdir -p "$(dirname "$APPS_MARKER")" && printf '%s\n' files viewer player tasks terminal notes pdf text >"$APPS_MARKER"
 fi
 mkdir -p "$HOME/.local/share/material3ui"
 rm -rf "$HOME/.local/share/material3ui/scripts"

@@ -1,0 +1,28 @@
+# Maintainer: Abishek (Abijspy) <reachabishekr@gmail.com>
+# One of Material3UI's apps, packaged on its own. Built from the checkout by
+# packaging/build-pkg.sh (M3_SRC, M3_PKGVER, and M3_BUILD for a build
+# already compiled, which every package of a release then shares)
+pkgname=material3ui-text
+pkgver=${M3_PKGVER:-0}
+pkgrel=1
+pkgdesc="Material3UI's text editor"
+arch=(x86_64 aarch64)
+url="https://github.com/Abijspy/material3-android-shell"
+license=(MIT)
+# libmaterial3ui is private to the shell and its apps: the same release
+depends=("material3ui=$pkgver" )
+makedepends=(meson ninja wayland-protocols wlr-protocols nlohmann-json mpv libvterm poppler-glib)
+optdepends=('wl-clipboard: copy and paste')
+options=(!debug)
+
+build() {
+    [[ -n "${M3_BUILD:-}" ]] && return
+    local src="${M3_SRC:?build with packaging/build-pkg.sh}"
+    meson setup "$srcdir/build" "$src/shell" --prefix=/usr --sysconfdir=/etc --buildtype=release
+    meson compile -C "$srcdir/build"
+}
+
+package() {
+    meson install -C "${M3_BUILD:-$srcdir/build}" --destdir "$pkgdir" --no-rebuild --quiet --tags text
+    install -Dm644 "$M3_SRC/LICENSE" -t "$pkgdir/usr/share/licenses/$pkgname/"
+}

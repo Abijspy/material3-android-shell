@@ -1,5 +1,25 @@
 # Changelog
 
+## v7.1.1 — 2026-11-22
+
+- **Photos opens from the app list.** The image viewer was hidden and needed a file to start. Now it's in the app list as Photos and opens to a gallery of your pictures, newest first, with chips for Pictures, Screenshots, Wallpapers, Downloads and the desktop. A picture opens in the viewer, and Escape or the grid button goes back.
+- **Notes** (`material3ui-notes`), a notes app of its own:
+  - **Notes and checklists** as cards in twelve tints that follow light and dark mode. Pin them to the top, label them, search them and archive them; the trash keeps them for a week.
+  - **Writing:** a big title and real multi-line text, with selection by keyboard and mouse, copy and paste, and undo. Checklists tick items off into a "ticked" list, and Enter adds the next item.
+  - **Saving:** each note saves as you type. Copy a note's text, duplicate it, or save it as Markdown in Documents. The launcher's actions start a new note or checklist.
+- **PDF** (`material3ui-pdf`), a PDF viewer and editor built on poppler:
+  - **Reading:** pages one after another, fitted to the width or zoomed, with page thumbnails (F9) and search with every match marked (Ctrl+F). Select text to copy it, and follow links. Password-protected PDFs open, and there's a night mode.
+  - **Editing (E):** highlight, underline and strike out text; draw with a pen; add boxes, ellipses, lines and arrows; add text boxes and sticky notes; sign with a signature drawn once and kept; erase annotations; and fill in form fields and checkboxes. All of these are real PDF annotations that other readers show, in six colours and four widths, with undo.
+  - **Pages:** rotate, move, delete or save a page on its own (rotating, moving and deleting need qpdf). Save over the file or as a copy. Closing with unsaved changes keeps them in an "(edited)" copy.
+- **Text Editor** (`material3ui-text`) for .txt files and code:
+  - **Tabs,** line numbers and the current line marked. It draws only the lines in view, so big files stay quick.
+  - **Editing:** keyboard and mouse selection, auto-indent, Tab and Shift+Tab on selected lines, Alt+↑/↓ to move a line, Ctrl+D to duplicate, Ctrl+Shift+K to delete, Ctrl+/ to comment, Ctrl+L to select a line, and copying or cutting a whole line when nothing is selected.
+  - **Find and replace** (Ctrl+F, Ctrl+H, F3), go to a line (Ctrl+G), undo and redo, and text size (Ctrl+= and Ctrl+−, Ctrl+wheel).
+  - **Files stay as they were:** line endings (LF or CRLF, switchable), Latin-1 files, and file permissions are kept. Closing with unsaved changes keeps a copy and says where.
+- **Files opens text and code** in the text editor and **PDFs** in the PDF viewer.
+- **Each new app is its own package** (`material3ui-notes`, `-pdf`, `-text`). Updates add the new apps once and keep leaving out any you've removed. `material3ui msg text|pdf|notesapp [file]` opens them.
+- **A shared text-editing widget** (multi-line, wrapped) for the shell's apps, which Notes and the PDF editor use.
+
 ## v7.1.0 — 2026-11-22
 
 - **Files, the shell's own file manager.** There's no file manager to install now. Files (<kbd>Super</kbd><kbd>E</kbd>, or `material3ui msg files`) opens in an app window of its own, in the shell's Material 3 look:

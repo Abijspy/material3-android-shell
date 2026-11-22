@@ -915,6 +915,21 @@ void Shell::registerIpc() {
         EventLoop::get().defer([this, dir, command] { openTerminal(dir, command); });
         return std::string("terminal");
     });
+    // The other apps, by file: launched (each says when it isn't installed)
+    for (const auto& [verb, id, name] : std::initializer_list<std::tuple<const char*, const char*, const char*>>{
+             {"text", "text", "The text editor"}, {"pdf", "pdf", "The PDF viewer"}, {"notesapp", "notes", "Notes"}}) {
+        ipc.add(verb, std::string(verb) + " [file]: " + name, [this, id = std::string(id), name = std::string(name), localPath](const IpcServer::Args& a) {
+            std::string f;
+            for (size_t i = 0; i < a.size(); ++i) f += (i ? " " : "") + a[i];
+            f = localPath(f);
+            if (!f.empty() && f.find("://") == std::string::npos) {
+                std::error_code ec;
+                f = std::filesystem::absolute(f, ec).string();
+            }
+            EventLoop::get().defer([this, id, name, f] { launchApp(id, name, f.empty() ? std::vector<std::string>{} : std::vector<std::string>{f}); });
+            return id;
+        });
+    }
     ipc.add("play", "play [file|URL]: the video player, playing it (the folder's others after it)", [this, localPath](const IpcServer::Args& a) {
         std::string what;
         for (const auto& x : a) what += (what.empty() ? "" : " ") + x;

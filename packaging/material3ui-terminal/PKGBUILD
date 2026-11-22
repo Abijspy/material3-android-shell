@@ -11,7 +11,7 @@ url="https://github.com/Abijspy/material3-android-shell"
 license=(MIT)
 # libmaterial3ui is private to the shell and its apps: the same release
 depends=("material3ui=$pkgver" libvterm)
-makedepends=(meson ninja wayland-protocols wlr-protocols nlohmann-json mpv libvterm)
+makedepends=(meson ninja wayland-protocols wlr-protocols nlohmann-json mpv libvterm poppler-glib)
 optdepends=('wl-clipboard: copy and paste')
 options=(!debug)
 

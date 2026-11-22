@@ -1,0 +1,21 @@
+[Desktop Entry]
+Type=Application
+Name=Notes
+GenericName=Notes
+Comment=Notes and checklists in Material You colours, with labels, pins and an archive
+Exec=material3ui-notes
+Icon=material3ui-notes
+Terminal=false
+Categories=Office;Utility;
+Keywords=note;notes;checklist;todo;list;keep;memo;
+StartupNotify=false
+StartupWMClass=material3ui-notes
+Actions=new-note;new-checklist;
+
+[Desktop Action new-note]
+Name=New note
+Exec=material3ui-notes new
+
+[Desktop Action new-checklist]
+Name=New checklist
+Exec=material3ui-notes checklist

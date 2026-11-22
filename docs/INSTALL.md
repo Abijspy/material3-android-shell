@@ -158,6 +158,9 @@ Since 7.1 each built-in app is a package of its own, built from the same compile
 | `material3ui-player` | Videos (`material3ui-player`) | mpv |
 | `material3ui-tasks` | The Task Manager (`material3ui-tasks`) | |
 | `material3ui-terminal` | The terminal (`material3ui-terminal`) | libvterm |
+| `material3ui-notes` | Notes (`material3ui-notes`) | |
+| `material3ui-pdf` | The PDF viewer and editor (`material3ui-pdf`) | poppler-glib (qpdf for page changes) |
+| `material3ui-text` | The text editor (`material3ui-text`) | |
 
 Don't want one? `sudo pacman -R material3ui-player`, and updates leave it out from then on; the shell says it isn't installed when something asks for it. Each app's version always matches the shell's (they share the library). Package them by hand from one build with `packaging/build-pkg.sh material3ui-files --build <build dir>`, and so on.
 

@@ -1,5 +1,5 @@
 project('material3ui', 'cpp', 'c',
-  version: '7.1.0',
+  version: '7.1.1',
   license: 'MIT',
   meson_version: '>= 1.1',
   default_options: ['cpp_std=c++20', 'warning_level=2', 'buildtype=debugoptimized'])
@@ -22,6 +22,8 @@ gdk_pixbuf = dependency('gdk-pixbuf-2.0')
 polkit_agent = dependency('polkit-agent-1')
 libmpv = dependency('mpv') # the video player
 libvterm = dependency('vterm') # the terminal
+# The PDF viewer and editor: built when poppler-glib is there
+poppler_glib = dependency('poppler-glib', required: false)
 pam = meson.get_compiler('cpp').find_library('pam')
 
 # ── Wayland protocols ──
@@ -201,6 +203,7 @@ sources = files(
   'src/shell/bar/Widgets.cpp',
   'src/ui/Animation.cpp',
   'src/ui/Controls.cpp',
+  'src/ui/TextArea.cpp',
   'src/ui/Node.cpp',
   'src/ui/Theme.cpp',
   'src/wayland/Display.cpp',
@@ -267,7 +270,14 @@ apps = {
   'player': {'sources': ['src/apps/PlayerMain.cpp', 'src/shell/VideoPlayer.cpp'], 'deps': [libmpv]},
   'tasks': {'sources': ['src/apps/TasksMain.cpp', 'src/shell/TaskManager.cpp'], 'deps': []},
   'terminal': {'sources': ['src/apps/TerminalMain.cpp', 'src/shell/Terminal.cpp'], 'deps': [libvterm]},
+  'notes': {'sources': ['src/apps/NotesMain.cpp', 'src/shell/NotesApp.cpp'], 'deps': []},
+  'text': {'sources': ['src/apps/TextMain.cpp', 'src/shell/TextEditor.cpp'], 'deps': []},
 }
+if poppler_glib.found()
+  apps += {'pdf': {'sources': ['src/apps/PdfMain.cpp', 'src/shell/PdfApp.cpp'], 'deps': [poppler_glib]}}
+else
+  warning('poppler-glib not found: the PDF viewer (material3ui-pdf) is left out')
+endif
 foreach app, def : apps
   executable('material3ui-' + app, def['sources'], protocol_headers,
     include_directories: include_directories('src'),

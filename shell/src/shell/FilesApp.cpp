@@ -327,6 +327,20 @@ void openPath(const std::shared_ptr<State>& st, const std::string& path) {
             return;
         }
     }
+    // Text and code in the text editor, PDFs in the PDF viewer (when they're installed)
+    {
+        const auto k = fileops::kindOf(path);
+        std::string e = fs::path(path).extension().string();
+        for (auto& c : e) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (e == ".pdf" && !ownCommand("material3ui-pdf").empty() && Config::get().value<bool>("/files/pdf", true)) {
+            if (open) open("pdf " + path);
+            return;
+        }
+        if ((k == fileops::Kind::Text || k == fileops::Kind::Code) && !ownCommand("material3ui-text").empty() && Config::get().value<bool>("/files/textEditor", true)) {
+            if (open) open("text " + path);
+            return;
+        }
+    }
     // Videos and songs in the shell's own player
     if (const auto k = fileops::kindOf(path); (k == fileops::Kind::Video || k == fileops::Kind::Audio) && Config::get().value<bool>("/files/player", true)) {
         if (open) open("player " + path);

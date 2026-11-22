@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Notes: the shell's squircle, with a note card in its tonal colours -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffd970"/>
+      <stop offset="1" stop-color="#b07800"/>
+    </linearGradient>
+  </defs>
+  <path d="M64 4C108 4 124 20 124 64S108 124 64 124 4 108 4 64 20 4 64 4Z" fill="url(#bg)"/>
+  <path d="M34 28h48l14 14v52a8 8 0 0 1-8 8H34a8 8 0 0 1-8-8V36a8 8 0 0 1 8-8Z" fill="#fffbe9"/>
+  <path d="M82 28v10a4 4 0 0 0 4 4h10Z" fill="#f2d98a"/>
+  <rect x="38" y="52" width="44" height="6" rx="3" fill="#b07800"/>
+  <rect x="38" y="66" width="44" height="6" rx="3" fill="#d9a520"/>
+  <rect x="38" y="80" width="28" height="6" rx="3" fill="#d9a520"/>
+</svg>

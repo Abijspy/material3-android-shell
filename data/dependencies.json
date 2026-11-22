@@ -71,6 +71,11 @@
       "description": "The video player (libmpv): every video and audio format, subtitles"
     },
     {
+      "name": "poppler-glib",
+      "command": "",
+      "description": "The PDF viewer and editor (rendering, annotations, forms)"
+    },
+    {
       "name": "libvterm",
       "command": "",
       "description": "The terminal's emulator (xterm-256colour, truecolour)"
