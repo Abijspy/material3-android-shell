@@ -42,6 +42,14 @@ public:
     void mask(GLuint texture, const RectF& r, const Color& tint, bool turned = false);
     // Full-colour premultiplied BGRA texture (Cairo's ARGB32 layout)
     void image(GLuint texture, const RectF& r, float opacity = 1, Radii radii = {}, bool turned = false);
+    // The same for RGBA texels as GL renders them (a video's frame from mpv)
+    void imageRGBA(GLuint texture, const RectF& r, float opacity = 1, Radii radii = {});
+    // The shared context current without a surface: GL work outside a frame
+    // (a video's frames rendered as they arrive)
+    void makeCurrent();
+    // After other code drew with GL (libmpv): the state the UI's drawing
+    // counts on put back
+    void resetState();
     // Clears what's been drawn inside `r` (rounded, anti-aliased): a hole
     // through a surface (the frame round the screen)
     void erase(const RectF& r, Radii radii = {});
@@ -102,7 +110,7 @@ private:
     } m_maskProg;
     struct ImageProgram {
         GLuint id = 0;
-        GLint viewport, rect, opacity, tex, radii, px, turn;
+        GLint viewport, rect, opacity, tex, radii, px, turn, rgba;
     } m_imageProg;
     struct BlurProgram {
         GLuint id = 0;
@@ -119,6 +127,7 @@ private:
     GLuint m_blurred2 = 0;
     int m_blurred2W = 0, m_blurred2H = 0;
     GLuint m_quad = 0;
+    bool m_rgba = false; // imageRGBA drawing
     // blurEdge: the copy of the frame under it, and its first pass
     GLuint m_backdrop = 0, m_blurred = 0, m_blurFbo = 0;
     int m_blurredW = 0, m_blurredH = 0;

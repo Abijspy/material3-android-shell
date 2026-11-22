@@ -72,6 +72,11 @@ void filesClosed();
 void viewer(ui::Flex* card, Popup& popup, const std::string& file);
 extern std::function<void(const std::string&)> viewerGo;
 void viewerClosed();
+// The video player (an app window, libmpv) at `file` (or a web address),
+// the folder's other videos or songs its playlist; playerGo plays another
+void player(ui::Flex* card, Popup& popup, const std::string& file);
+extern std::function<void(const std::string&)> playerGo;
+void playerClosed();
 // Task Manager (an app window): processes, performance, startup apps and
 // services; `tab` one of processes|performance|startup|services
 void taskManager(ui::Flex* card, Popup& popup, const std::string& tab);

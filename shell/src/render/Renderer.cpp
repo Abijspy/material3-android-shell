@@ -90,6 +90,7 @@ uniform float u_opacity;
 uniform vec4 u_radii;   // tl tr br bl; 0: square corners
 uniform float u_px;
 uniform float u_turn;   // as the mask's
+uniform float u_rgba;   // 1: RGBA texels (GL's own), not Cairo's BGRA
 uniform sampler2D u_tex;
 varying vec2 v_local;
 
@@ -108,7 +109,8 @@ void main() {
     vec2 uv = v_local / u_rect.zw;
     if (u_turn > 0.5) uv = vec2(uv.y, 1.0 - uv.x);
     // Cairo stores premultiplied ARGB32 as BGRA bytes on little-endian
-    gl_FragColor = texture2D(u_tex, uv).bgra * u_opacity * coverage;
+    vec4 c = texture2D(u_tex, uv);
+    gl_FragColor = (u_rgba > 0.5 ? c : c.bgra) * u_opacity * coverage;
 }
 )";
 
@@ -367,6 +369,7 @@ bool Renderer::buildPrograms() {
     im.px = glGetUniformLocation(im.id, "u_px");
     im.tex = glGetUniformLocation(im.id, "u_tex");
     im.turn = glGetUniformLocation(im.id, "u_turn");
+    im.rgba = glGetUniformLocation(im.id, "u_rgba");
 
     auto& r = m_rectProg;
     r.viewport = glGetUniformLocation(r.id, "u_viewport");
@@ -471,11 +474,42 @@ void Renderer::mask(GLuint texture, const RectF& r, const Color& tint, bool turn
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
+void Renderer::imageRGBA(GLuint texture, const RectF& r, float opacity, Radii radii) {
+    m_rgba = true;
+    image(texture, r, opacity, radii, false);
+    m_rgba = false;
+}
+
+void Renderer::makeCurrent() {
+    eglMakeCurrent(m_display, EGL_NO_SURFACE, EGL_NO_SURFACE, m_context);
+}
+
+void Renderer::resetState() {
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    for (GLuint i = 1; i < 8; ++i) glDisableVertexAttribArray(i);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_STENCIL_TEST);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_DITHER);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glPixelStorei(GL_PACK_ALIGNMENT, 4);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    glBindBuffer(GL_ARRAY_BUFFER, m_quad);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+    glViewport(0, 0, m_bufferWidth, m_bufferHeight);
+    applyClip();
+}
+
 void Renderer::image(GLuint texture, const RectF& r, float opacity, Radii radii, bool turned) {
     const float o = m_opacity.back() * opacity;
     if (!texture || o <= 0) return;
     auto& p = m_imageProg;
     glUseProgram(p.id);
+    glUniform1f(p.rgba, m_rgba ? 1.0f : 0.0f);
     glUniform2f(p.viewport, m_bufferWidth / m_scale, m_bufferHeight / m_scale);
     const auto& xf = m_xforms.back();
     const RectF m = xf.map(r);

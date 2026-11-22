@@ -209,8 +209,10 @@ Kind kindOf(const std::string& path, bool dir) {
                   ".psb", ".xcf", ".jp2", ".j2k", ".jpf", ".jpx", ".wbmp", ".dng", ".cr2", ".cr3", ".crw", ".nef", ".nrw", ".arw", ".srf", ".sr2", ".orf",
                   ".rw2", ".raf", ".pef", ".srw", ".x3f", ".3fr", ".mrw", ".kdc", ".dcr", ".erf", ".mos", ".raw", ".rwl", ".iiq"}))
         return Kind::Picture;
-    if (among(e, {".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".wmv", ".flv", ".mpg", ".mpeg", ".3gp", ".ogv"})) return Kind::Video;
-    if (among(e, {".mp3", ".flac", ".ogg", ".opus", ".m4a", ".wav", ".aac", ".wma", ".alac", ".aiff"})) return Kind::Audio;
+    if (among(e, {".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".wmv", ".flv", ".mpg", ".mpeg", ".3gp", ".3g2", ".ogv", ".ts", ".m2ts", ".mts", ".vob", ".rm", ".rmvb",
+                  ".asf", ".divx", ".xvid", ".f4v", ".mxf", ".dv", ".y4m", ".nut", ".ogm", ".mk3d", ".h264", ".h265", ".hevc", ".av1", ".ivf", ".wtv", ".m2v", ".mpv"})) return Kind::Video;
+    if (among(e, {".mp3", ".flac", ".ogg", ".opus", ".m4a", ".wav", ".aac", ".wma", ".alac", ".aiff", ".aif", ".ape", ".wv", ".mka", ".ac3", ".eac3", ".dts",
+                  ".mpc", ".tta", ".amr", ".au", ".caf", ".m4b", ".oga", ".spx", ".mid", ".midi", ".mod", ".xm", ".it", ".s3m", ".dsf", ".dff", ".weba"})) return Kind::Audio;
     if (among(e, {".pdf", ".doc", ".docx", ".odt", ".rtf", ".xls", ".xlsx", ".ods", ".ppt", ".pptx", ".odp", ".epub"})) return Kind::Document;
     if (among(e, {".txt", ".md", ".log", ".csv", ".ini", ".conf", ".cfg", ".toml", ".yaml", ".yml", ".json", ".xml", ".kdl"})) return Kind::Text;
     if (among(e, {".deb", ".rpm", ".apk", ".appimage", ".flatpak"}) || path.ends_with(".pkg.tar.zst")) return Kind::Package;

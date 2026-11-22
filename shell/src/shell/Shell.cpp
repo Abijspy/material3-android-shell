@@ -436,6 +436,27 @@ void Shell::openViewer(const std::string& file) {
     };
 }
 
+void Shell::openPlayer(const std::string& file) {
+    if (m_player && !m_player->closing()) {
+        if (!file.empty() && panels::playerGo) panels::playerGo(file);
+        return raise("material3ui-player");
+    }
+    if (m_popup) m_popup->close();
+    Popup::Options opts;
+    opts.name = "player";
+    opts.window = true;
+    opts.appId = "material3ui-player";
+    opts.title = "Videos";
+    opts.icon = "smart_display";
+    opts.windowWidth = 1120;
+    opts.windowHeight = 720;
+    m_player = std::make_unique<Popup>(nullptr, opts, [file](ui::Flex* card, Popup& p) { panels::player(card, p, file); });
+    m_player->onClosed = [this] {
+        panels::playerClosed();
+        EventLoop::get().defer([this] { m_player.reset(); });
+    };
+}
+
 void Shell::openTasks(const std::string& tab) {
     if (m_tasks && !m_tasks->closing()) return raise("material3ui-tasks");
     if (m_popup) m_popup->close();
@@ -488,6 +509,7 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
     if (name == "files") return openFiles(arg);
     if (name == "viewer") return openViewer(arg);
     if (name == "tasks") return openTasks(arg);
+    if (name == "player") return openPlayer(arg);
     if (name == "desktopedit") return desktopeditor::open(output ? output : focusedOutput());
     // The compositor's own overview where it has one (niri's)
     if (name == "overview" && Compositor::get().can(Compositor::Feature::NativeOverview)) {
@@ -921,6 +943,17 @@ void Shell::registerIpc() {
         std::error_code ec;
         return p.empty() ? p : std::filesystem::absolute(p, ec).string();
     };
+    ipc.add("play", "play [file|URL]: the video player, playing it (the folder's others after it)", [this, localPath](const IpcServer::Args& a) {
+        std::string what;
+        for (const auto& x : a) what += (what.empty() ? "" : " ") + x;
+        if (what.starts_with("file://")) what = localPath(what);
+        else if (!what.empty() && what.find("://") == std::string::npos) {
+            std::error_code ec;
+            what = std::filesystem::absolute(what, ec).string();
+        }
+        EventLoop::get().defer([this, what] { openPlayer(what); });
+        return std::string("playing");
+    });
     ipc.add("tasks", "tasks [processes|performance|startup|services]: the Task Manager", [this](const IpcServer::Args& a) {
         const std::string tab = a.empty() ? "" : a[0];
         EventLoop::get().defer([this, tab] { openTasks(tab); });

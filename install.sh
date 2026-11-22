@@ -1063,6 +1063,7 @@ EOF
         do_ xdg-mime default "$(desktop_for "$FILE_MANAGER")" inode/directory
         # Pictures open in the shell's own image viewer
         do_ xdg-mime default material3ui-viewer.desktop image/png image/jpeg image/webp image/gif image/bmp image/svg+xml image/tiff image/avif
+        do_ xdg-mime default material3ui-player.desktop video/mp4 video/x-matroska video/webm video/quicktime video/x-msvideo video/mpeg video/ogg video/x-flv video/3gpp video/x-ms-wmv video/mp2t
         do_ xdg-settings set default-web-browser "$(desktop_for "$BROWSER")" 2>/dev/null || warn "Couldn't make $BROWSER the default browser"
         if [[ "$FILE_MANAGER" == nemo ]] && command -v gsettings >/dev/null; then
             do_ gsettings set org.cinnamon.desktop.default-applications.terminal exec "$TERMINAL" 2>/dev/null || true

@@ -317,6 +317,20 @@ void openPath(const std::shared_ptr<State>& st, const std::string& path) {
         if (open) open("viewer " + path);
         return;
     }
+    // Subtitles go to the video playing (the player adds them to it)
+    {
+        std::string e = fs::path(path).extension().string();
+        for (auto& c : e) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if ((e == ".srt" || e == ".ass" || e == ".ssa" || e == ".vtt" || e == ".sub" || e == ".sup" || e == ".idx") && playerGo) {
+            playerGo(path);
+            return;
+        }
+    }
+    // Videos and songs in the shell's own player
+    if (const auto k = fileops::kindOf(path); (k == fileops::Kind::Video || k == fileops::Kind::Audio) && Config::get().value<bool>("/files/player", true)) {
+        if (open) open("player " + path);
+        return;
+    }
     m3::run({"xdg-open", path}, nullptr);
 }
 

@@ -66,6 +66,11 @@
       "description": "SVG icons"
     },
     {
+      "name": "mpv",
+      "command": "",
+      "description": "The video player (libmpv): every video and audio format, subtitles"
+    },
+    {
       "name": "gdk-pixbuf2",
       "command": "",
       "description": "JPEG, PNG and WebP wallpapers"
