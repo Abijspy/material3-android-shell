@@ -55,7 +55,10 @@ std::function<void(const std::string&, const std::vector<std::string>&)> termina
 
 namespace {
 
-constexpr size_t kScrollback = 10000;
+// Lines kept above the screen (Settings → Terminal)
+size_t scrollbackLines() {
+    return static_cast<size_t>(std::clamp(Config::get().value<int>("/terminal/scrollback", 10000), 500, 200000));
+}
 constexpr float kPad = 10;
 
 struct Rgb {
@@ -162,6 +165,9 @@ public:
         vterm_screen_reset(screen, 1);
         m_dir = dir;
         m_command = command;
+        // The cursor until a program asks for another (Settings → Terminal)
+        const std::string cur = Config::get().value<std::string>("/terminal/cursor", "block");
+        cursorShape = cur == "beam" ? VTERM_PROP_CURSORSHAPE_BAR_LEFT : cur == "underline" ? VTERM_PROP_CURSORSHAPE_UNDERLINE : VTERM_PROP_CURSORSHAPE_BLOCK;
         // Named for what runs in it, until it names itself
         if (!command.empty()) title = fs::path(command[0]).filename().string();
         else if (const char* sh = std::getenv("SHELL"); sh && *sh) title = fs::path(sh).filename().string();
@@ -294,6 +300,12 @@ private:
                 [[maybe_unused]] auto w = ::write(1, err.data(), err.size());
                 _exit(127);
             }
+            // A shell of your choosing (Settings), as a command line
+            const std::string custom = Config::get().value<std::string>("/terminal/shell", "");
+            if (!custom.empty()) {
+                execl("/bin/sh", "sh", "-c", ("exec " + custom).c_str(), static_cast<char*>(nullptr));
+                _exit(127);
+            }
             const char* sh = std::getenv("SHELL");
             std::string shell = sh && *sh ? sh : "";
             if (shell.empty())
@@ -400,7 +412,8 @@ private:
     static int onPushLine(int cols, const VTermScreenCell* cells, void* user) {
         auto* s = static_cast<Session*>(user);
         s->scrollback.emplace_back(cells, cells + cols);
-        while (s->scrollback.size() > kScrollback) s->scrollback.pop_front();
+        const size_t keep = scrollbackLines();
+        while (s->scrollback.size() > keep) s->scrollback.pop_front();
         if (s->scrolled) s->scrolled();
         return 1;
     }
@@ -461,6 +474,14 @@ public:
             if (m_scroll > 0) m_scroll = std::min<int>(m_scroll + 1, static_cast<int>(session->scrollback.size()));
             if (m_scroll > 0) damageAll();
         };
+        m_configConn = Config::get().changed.connect([this] {
+            const float want = static_cast<float>(Config::get().value<double>("/terminal/fontSize", 14.0));
+            if (std::abs(want - fontSize) > 0.01f) {
+                fontSize = want;
+                m_font.px = 0;
+                requestRedraw();
+            }
+        });
         m_themeConn = Theme::get().changed.connect([this] {
             session->applyPalette();
             m_palette = palette();
@@ -1033,7 +1054,7 @@ private:
     int m_mouseButton = 0;
     std::pair<int, int> m_selA{0, 0}, m_selB{0, 0}; // line, column
     EventLoop::Clock::time_point m_lastPress{};
-    Connection m_themeConn;
+    Connection m_themeConn, m_configConn;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };
 
@@ -1244,6 +1265,19 @@ void terminal(Flex* card, Popup& popup, const std::string& dir, const std::vecto
 
 void terminalClosed() {
     terminalGo = nullptr;
+}
+
+// Settings → Terminal
+void terminalSettings(Flex* page) {
+    auto* g = group(page, "Text");
+    sliderRow(g, "format_size", "Text size", "/terminal/fontSize", 14, 8, 28, 1, [](double v) { return std::format("{:.0f} px", v); });
+    choiceRow<std::string>(g, "text_select_end", "Cursor", "Until a program asks for another (new tabs)", "/terminal/cursor", "block",
+                           {{"block", "Block"}, {"beam", "Beam"}, {"underline", "Underline"}});
+    auto* s = group(page, "Sessions");
+    choiceRow<int>(s, "history", "Scrollback", "Lines kept above the screen", "/terminal/scrollback", 10000, {{2000, "2,000"}, {10000, "10,000"}, {50000, "50,000"}});
+    textRow(s, "terminal", "Shell", "/terminal/shell", "");
+    caption(s, "  A command for new tabs (fish, zsh -l, tmux…); empty, your login shell. Enter saves");
+    caption(page, "Your terminal's colours come from the wallpaper, as the shell's do");
 }
 
 } // namespace m3::shell::panels

@@ -18,5 +18,9 @@ int main(int argc, char** argv) {
         if (shell::panels::viewerGo && !args.empty()) shell::panels::viewerGo(args[0]);
     };
     app.closed = [] { shell::panels::viewerClosed(); };
+    app.settings = shell::panels::viewerSettings;
+    app.about.summary = "Your pictures in a gallery, and a viewer for every image format.";
+    app.about.features = {"A gallery of a folder's pictures, newest first, with your usual places a click away", "PNG, JPEG, WebP, GIF, AVIF, HEIC, JPEG XL, TIFF, SVG, OpenEXR; PSD, XCF and camera RAW too", "Zoom and pan, the folder's pictures a key away, animated GIF and WebP", "The image editor, set as wallpaper, show in Files, move to the trash"};
+    app.about.builtWith = "gdk-pixbuf, ImageMagick for the formats it can't read";
     return apps::run(app, argc, argv);
 }

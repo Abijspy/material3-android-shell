@@ -95,6 +95,15 @@ void pdfClosed();
 void textEditor(ui::Flex* card, Popup& popup, const std::string& file);
 extern std::function<void(const std::string&)> textGo;
 void textEditorClosed();
+// The apps' Settings pages (the gear in each app's title bar)
+void filesSettings(ui::Flex* page);
+void viewerSettings(ui::Flex* page);
+void playerSettings(ui::Flex* page);
+void tasksSettings(ui::Flex* page);
+void terminalSettings(ui::Flex* page);
+void notesSettings(ui::Flex* page);
+void pdfSettings(ui::Flex* page);
+void textSettings(ui::Flex* page);
 // Task Manager (an app window): processes, performance, startup apps and
 // services; `tab` one of processes|performance|startup|services
 void taskManager(ui::Flex* card, Popup& popup, const std::string& tab);

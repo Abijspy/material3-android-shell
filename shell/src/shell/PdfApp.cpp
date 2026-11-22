@@ -953,8 +953,9 @@ public:
     ~PdfKeeper() override {
         *m_st->alive = false;
         if (m_st->tick) EventLoop::get().cancel(m_st->tick);
-        // Unsaved edits aren't lost: a copy beside the file
-        if (m_st->dirty && m_st->doc) saveCopy(m_st);
+        // Unsaved edits aren't lost: a copy beside the file (unless Settings
+        // says to let them go)
+        if (m_st->dirty && m_st->doc && Config::get().value<std::string>("/pdf/onClose", "copy") == "copy") saveCopy(m_st);
         for (auto& [i, a] : m_st->added) g_object_unref(a);
         m_st->added.clear();
         m_st->views.clear(), m_st->thumbViews.clear(), m_st->lru.clear();
@@ -1058,6 +1059,12 @@ void pdfViewer(Flex* card, Popup& popup, const std::string& file) {
     st->popup = &popup;
     card->setPadding(Insets(10))->setSpacing(8);
     st->root = card;
+    // How it opens (Settings → PDF)
+    const std::string zoom = Config::get().value<std::string>("/pdf/zoom", "fit");
+    st->fitWidth = zoom == "fit";
+    if (!st->fitWidth) st->zoom = static_cast<float>(std::atof(zoom.c_str())) / 100.0f;
+    st->night = Config::get().value<bool>("/pdf/night", false);
+    st->thumbs = Config::get().value<bool>("/pdf/thumbs", false);
 
     st->empty = card->add<Flex>(Flex::Direction::Column);
     st->empty->setAlignItems(Align::Center)->setSpacing(12)->setPadding({0, 40});
@@ -1196,7 +1203,7 @@ void pdfViewer(Flex* card, Popup& popup, const std::string& file) {
     st->thumbScroll->fixedWidth = 170;
     st->thumbCol = st->thumbScroll->add<Flex>(Flex::Direction::Column);
     st->thumbCol->setSpacing(12)->setAlignItems(Align::Center)->setPadding({12, 14});
-    st->thumbScroll->setVisible(false);
+    st->thumbScroll->setVisible(st->thumbs);
     st->scroll = st->body->add<ScrollView>();
     st->scroll->maxHeight = 1e6f;
     st->scroll->grow = true;
@@ -1431,6 +1438,19 @@ void pdfViewer(Flex* card, Popup& popup, const std::string& file) {
     };
     if (file.empty()) showEmpty(st);
     else openPdf(st, file);
+}
+
+// Settings → PDF
+void pdfSettings(Flex* page) {
+    auto* g = group(page, "Opening", "From the next PDF you open");
+    choiceRow<std::string>(g, "zoom_in", "Zoom", "", "/pdf/zoom", "fit", {{"fit", "Fit the width"}, {"100", "100%"}, {"150", "150%"}});
+    switchRow(g, "dark_mode", "Night mode", "Dark pages with light text (N)", "/pdf/night", false);
+    switchRow(g, "view_sidebar", "Page thumbnails", "The pages down the side (F9)", "/pdf/thumbs", false);
+    auto* e = group(page, "Editing");
+    choiceRow<std::string>(e, "save", "Unsaved changes when closing", "", "/pdf/onClose", "copy", {{"copy", "Keep an (edited) copy"}, {"discard", "Let them go"}});
+    auto r = row(e, "signature", "Your signature", Config::get().value<nlohmann::json>("/pdf/signature", nlohmann::json::array()).empty() ? "None yet: draw one with the Signature tool" : "Kept for placing on any PDF");
+    pillButton(r.row, "Clear", false, [] { Config::get().set("/pdf/signature", nlohmann::json::array()); }, "ink_eraser");
+    caption(page, haveCommand("qpdf") ? "Pages can be rotated, moved and deleted (qpdf is installed)" : "Install qpdf to rotate, move and delete pages: sudo pacman -S qpdf");
 }
 
 void pdfClosed() {

@@ -269,7 +269,7 @@ void Popup::buildTitleBar(Flex* card) {
     drag->onDouble = [this] { toggleMaximized(); };
     // Round tonal buttons, close last. No minimise: niri has no
     // minimised state, and the dock or a workspace switch does the job
-    auto button = [&](const char* icon, std::function<void()> fn, const char* hover) -> Icon* {
+    auto button = [&](const std::string& icon, std::function<void()> fn, const char* hover) -> Icon* {
         auto* b = bar->add<Button>();
         b->skipKeyboard = true; // the compositor's keys close and maximise
         pill(b)->setPadding(Insets(7));
@@ -282,6 +282,10 @@ void Popup::buildTitleBar(Flex* card) {
         };
         return i;
     };
+    for (const auto& tb : m_options.titleButtons) {
+        Icon* i = button(tb.icon, tb.fn, "on_surface");
+        if (auto* b = dynamic_cast<Button*>(i->parentNode())) b->tooltip = tb.tooltip;
+    }
     m_maxIcon = button("crop_square", [this] { toggleMaximized(); }, "on_surface");
     button("close", [this] { close(); }, "error");
 }

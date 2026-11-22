@@ -31,6 +31,15 @@ struct App {
     std::function<void(const std::vector<std::string>& args)> go; // launched again while open
     std::function<void()> closed;
     std::string usage; // for --help
+
+    // Its Settings page (groups of rows, config.json under its own key) and
+    // its About page, behind the gear in the title bar
+    std::function<void(ui::Flex* page)> settings;
+    struct About {
+        std::string summary;               // a sentence: what it is
+        std::vector<std::string> features; // what it does, a line each
+        std::string builtWith;             // the libraries it stands on
+    } about;
 };
 
 int run(const App& app, int argc, char** argv);

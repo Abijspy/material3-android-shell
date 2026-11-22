@@ -18,5 +18,9 @@ int main(int argc, char** argv) {
         if (shell::panels::notesGo) shell::panels::notesGo(args.empty() ? "" : args[0]);
     };
     app.closed = [] { shell::panels::notesAppClosed(); };
+    app.settings = shell::panels::notesSettings;
+    app.about.summary = "Notes and checklists, as cards in your colours.";
+    app.about.features = {"Notes and checklists in twelve tints that follow light and dark mode", "Pins, labels, search, an archive and a trash", "Saved as you type; copy, duplicate, or save as Markdown"};
+    app.about.builtWith = "nlohmann-json";
     return apps::run(app, argc, argv);
 }

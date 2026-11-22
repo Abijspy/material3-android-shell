@@ -7,6 +7,7 @@
 // `material3ui-viewer` app for picture files.
 #include "shell/Panels.h"
 
+#include "core/Config.h"
 #include "core/EventLoop.h"
 #include "core/Paths.h"
 #include "core/Process.h"
@@ -25,6 +26,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 #include <cmath>
 #include <filesystem>
 #include <format>
@@ -310,7 +312,7 @@ void viewing(const std::shared_ptr<ViewerState>& st, bool on) {
     st->gallery->setVisible(!on);
     st->bar->setVisible(on);
     st->stage->setVisible(on);
-    if (!on) st->infoBar->setVisible(false);
+    st->infoBar->setVisible(on && Config::get().value<bool>("/viewer/info", false));
 }
 
 void showAt(const std::shared_ptr<ViewerState>& st, std::string file) {
@@ -332,6 +334,9 @@ void showAt(const std::shared_ptr<ViewerState>& st, std::string file) {
 void step(const std::shared_ptr<ViewerState>& st, int by) {
     if (st->pictures.size() < 2) return;
     const auto n = static_cast<long>(st->pictures.size());
+    // At an end: round to the other, or stay (Settings)
+    const long to = static_cast<long>(st->index) + by;
+    if ((to < 0 || to >= n) && !Config::get().value<bool>("/viewer/loop", true)) return;
     st->index = static_cast<size_t>(((static_cast<long>(st->index) + by) % n + n) % n);
     st->view->show(st->pictures[st->index]);
     st->refresh();
@@ -411,7 +416,10 @@ void buildGallery(const std::shared_ptr<ViewerState>& st) {
     std::vector<Pic> pics;
     for (const auto& e : fileops::list(st->galleryDir, false))
         if (!e.dir && fileops::isPicture(e.path)) pics.push_back({e.path, e.modified});
-    std::ranges::sort(pics, std::greater{}, &Pic::when);
+    if (Config::get().value<std::string>("/viewer/sort", "date") == "name")
+        std::ranges::sort(pics, [](const Pic& a, const Pic& b) { return strverscmp(fs::path(a.path).filename().c_str(), fs::path(b.path).filename().c_str()) < 0; });
+    else
+        std::ranges::sort(pics, std::greater{}, &Pic::when);
     if (pics.size() > 600) pics.resize(600);
     auto* flow = g->add<Flow>();
     flow->spacing = 8;
@@ -540,7 +548,8 @@ void viewer(Flex* card, Popup& popup, const std::string& file) {
     // The picture, with back and next over its sides
     auto* stage = card->add<Flex>(Flex::Direction::Row);
     st->stage = stage;
-    stage->setAlignItems(Align::Center)->setSpacing(6)->setRadius(Radii(22))->setBackground(ColorRef("surface_container_lowest", 0.6f), false);
+    stage->setAlignItems(Align::Center)->setSpacing(6)->setRadius(Radii(22));
+    stage->setBackground(Config::get().value<std::string>("/viewer/backdrop", "theme") == "black" ? ColorRef(Color{0, 0, 0, 1}) : ColorRef("surface_container_lowest", 0.6f), false);
     stage->grow = true;
     auto* prev = iconButton(stage, "chevron_left", [st] { step(st, -1); }, 30);
     prev->tooltip = "Previous (←)";
@@ -553,7 +562,7 @@ void viewer(Flex* card, Popup& popup, const std::string& file) {
     st->infoBar->setPadding({16, 6});
     st->info = st->infoBar->add<Label>("");
     st->info->setSize(13)->setColor("on_surface_variant", false)->setMaxLines(2);
-    st->infoBar->setVisible(false);
+    st->infoBar->setVisible(Config::get().value<bool>("/viewer/info", false));
 
     st->refresh = [st, prev, next] {
         if (st->pictures.empty()) return;
@@ -625,6 +634,16 @@ void viewer(Flex* card, Popup& popup, const std::string& file) {
 
 void viewerClosed() {
     viewerGo = nullptr;
+}
+
+// Settings → Photos
+void viewerSettings(Flex* page) {
+    auto* g = group(page, "Gallery");
+    choiceRow<std::string>(g, "sort", "Order", "How the gallery lists a folder's pictures", "/viewer/sort", "date", {{"date", "Newest first"}, {"name", "By name"}});
+    auto* v = group(page, "Viewing", "From the next picture you open");
+    switchRow(v, "info", "Show the details bar", "Size, dimensions and date under the picture (I)", "/viewer/info", false);
+    switchRow(v, "repeat", "Wrap around", "Past the last picture, back to the first", "/viewer/loop", true);
+    choiceRow<std::string>(v, "contrast", "Backdrop", "Behind the picture", "/viewer/backdrop", "theme", {{"theme", "Theme"}, {"black", "Black"}});
 }
 
 } // namespace m3::shell::panels

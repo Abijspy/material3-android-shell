@@ -7,6 +7,7 @@
 #include "wayland/Window.h"
 
 #include <functional>
+#include <vector>
 #include <memory>
 #include <string>
 
@@ -37,6 +38,13 @@ public:
         bool window = false;
         std::string appId, title, icon; // icon: a theme icon for the title bar
         int windowWidth = 1100, windowHeight = 760;
+        // More round buttons in a window's title bar, before maximise (an
+        // app's settings)
+        struct TitleButton {
+            std::string icon, tooltip;
+            std::function<void()> fn;
+        };
+        std::vector<TitleButton> titleButtons;
     };
 
     Popup(wl::Output* output, Options options, const std::function<void(ui::Flex* card, Popup& popup)>& build);

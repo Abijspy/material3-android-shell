@@ -121,6 +121,16 @@ struct Mpv {
                  {"sub-codepage", "auto"}, {"slang", "en,eng"}, {"sub-file-paths", "subs:Subs:subtitles:Subtitles"}, {"demuxer-max-bytes", "150MiB"},
                  {"cache", "auto"}})
             mpv_set_option_string(m->handle, k, v);
+        // Settings → Videos: resuming, and the starting volume
+        if (Config::get().value<bool>("/player/resume", true)) {
+            const std::string later = paths::stateDir() + "/watch_later";
+            std::error_code ec;
+            std::filesystem::create_directories(later, ec);
+            mpv_set_option_string(m->handle, "save-position-on-quit", "yes");
+            mpv_set_option_string(m->handle, "watch-later-directory", later.c_str());
+            mpv_set_option_string(m->handle, "watch-later-options", "start,volume,mute,sid,aid,sub-delay,speed");
+        }
+        mpv_set_option_string(m->handle, "volume", std::to_string(static_cast<int>(Config::get().value<double>("/player/volume", 100))).c_str());
         if (mpv_initialize(m->handle) < 0) return nullptr;
         Renderer::get().makeCurrent();
         mpv_opengl_init_params gl{&Mpv::proc, nullptr};
@@ -309,6 +319,13 @@ void load(const std::shared_ptr<PlayerState>& st, int index) {
     st->pos = st->length = 0;
     st->vw = st->vh = 0;
     st->mediaTitle.clear();
+    // Settings that apply from this file on
+    auto& m = *st->mpv;
+    m.set("hwdec", Config::get().value<bool>("/player/hwdec", true) ? "auto-safe" : "no");
+    m.set("slang", Config::get().value<std::string>("/player/subLang", "en,eng"));
+    m.set("sub-font-size", std::to_string(static_cast<int>(Config::get().value<double>("/player/subSize", 46))));
+    // Where the one before was up to, kept for next time
+    if (Config::get().value<bool>("/player/resume", true)) m.command({"write-watch-later-config"});
     st->mpv->command({"loadfile", st->playlist[st->index].c_str(), "replace"});
     st->mpv->setFlag("pause", false);
     if (st->empty) st->empty->setVisible(false);
@@ -491,7 +508,7 @@ void handleEvents(const std::shared_ptr<PlayerState>& st) {
         }
     }
     // At the end, on to the next in the folder (the last one stays)
-    if (st->eof && st->index + 1 < static_cast<int>(st->playlist.size())) {
+    if (st->eof && st->index + 1 < static_cast<int>(st->playlist.size()) && Config::get().value<bool>("/player/autoNext", true)) {
         st->eof = false;
         load(st, st->index + 1);
         return;
@@ -721,6 +738,20 @@ void player(Flex* card, Popup& popup, const std::string& file) {
 
 void playerClosed() {
     playerGo = nullptr;
+}
+
+// Settings → Videos
+void playerSettings(Flex* page) {
+    auto* g = group(page, "Playback");
+    switchRow(g, "memory", "Hardware decoding", "The graphics card decodes, where it can (less power, cooler)", "/player/hwdec", true);
+    switchRow(g, "history", "Resume where you left off", "A video opened again starts where it stopped", "/player/resume", true);
+    switchRow(g, "playlist_play", "Play the next one", "When a video ends, the folder's next starts", "/player/autoNext", true);
+    sliderRow(g, "volume_up", "Starting volume", "/player/volume", 100, 0, 130, 5, [](double v) { return std::format("{:.0f}%", v); });
+    auto* sub = group(page, "Subtitles");
+    textRow(sub, "translate", "Preferred languages", "/player/subLang", "en,eng");
+    caption(sub, "  Language codes, in order: en,eng or ta,tam,en (Enter saves)");
+    sliderRow(sub, "format_size", "Size", "/player/subSize", 46, 24, 90, 2, [](double v) { return std::format("{:.0f}", v); });
+    caption(page, "They apply from the next video you open");
 }
 
 } // namespace m3::shell::panels

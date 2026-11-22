@@ -19,5 +19,9 @@ int main(int argc, char** argv) {
         if (shell::panels::filesGo && !args.empty()) shell::panels::filesGo(args[0]);
     };
     app.closed = [] { shell::panels::filesClosed(); };
+    app.settings = shell::panels::filesSettings;
+    app.about.summary = "Your files, folders, drives and servers, in Material3UI's look.";
+    app.about.features = {"Grid with previews, or a list with dates and sizes; search, sort, hidden files", "Copy, move, rename, the trash shared with other file managers, and Quick Share", "ZIP and unzip (ZIP, tar, 7z, rar, ISO and more)", "USB drives opened and ejected safely; FTP, SFTP and WebDAV servers", "A preview and properties pane: pictures, videos, text, permissions, sizes"};
+    app.about.builtWith = "udisks2, gvfs, libarchive (bsdtar), ffmpeg and ImageMagick for previews";
     return apps::run(app, argc, argv);
 }

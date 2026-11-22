@@ -540,7 +540,8 @@ void processRow(const std::shared_ptr<State>& st, Node* list, const Proc& p, int
     const Proc copy = p;
     pillButton(actions, stopped ? "Resume" : "Stop", false, [copy, stopped] { signal(copy, stopped ? SIGCONT : SIGSTOP); }, stopped ? "play_arrow" : "pause");
     pillButton(actions, "End", false, [copy] { signal(copy, SIGTERM); }, "close");
-    const bool armed = st->armed == p.pid;
+    // Force asks twice, unless Settings says once is enough
+    const bool armed = st->armed == p.pid || !Config::get().value<bool>("/tasks/confirmKill", true);
     auto* kill = pillButton(actions, armed ? "Tap again to force" : "Force kill", false, {}, "dangerous");
     kill->setBackground(armed ? ColorRef("error") : ColorRef("error_container"), false);
     for (auto& c : kill->children())
@@ -989,6 +990,7 @@ void servicesTab(const std::shared_ptr<State>& st, Flex* c) {
 
 void taskManager(Flex* card, Popup& popup, const std::string& tab) {
     auto st = std::make_shared<State>();
+    st->showSystem = Config::get().value<bool>("/tasks/showSystem", false);
     st->tab = tab == "performance" ? 1 : tab == "startup" ? 2 : tab == "services" ? 3 : 0;
     st->stats = SystemStats::get().lease();
     st->traffic = Network::get().watchTraffic();
@@ -1063,12 +1065,20 @@ void taskManager(Flex* card, Popup& popup, const std::string& tab) {
         st->sampler.sample();
         glance();
         if (st->tab == 1) st->show();
-        else if (st->tab == 0 && ++tick % 2 == 0 && !st->content->busy()) st->show(); // processes every two seconds
+        else if (st->tab == 0 && ++tick % std::max(1, Config::get().value<int>("/tasks/interval", 2)) == 0 && !st->content->busy()) st->show(); // processes, as often as Settings says
     }, true);
     st->sidebar();
     glance();
     st->show();
     (void)popup;
+}
+
+// Settings → Task Manager
+void tasksSettings(Flex* page) {
+    auto* g = group(page, "Processes");
+    choiceRow<int>(g, "update", "Refresh every", "How often the list is read again", "/tasks/interval", 2, {{1, "1 s"}, {2, "2 s"}, {5, "5 s"}});
+    switchRow(g, "admin_panel_settings", "List the system's processes", "Opened, not folded away, when the Task Manager starts", "/tasks/showSystem", false);
+    switchRow(g, "dangerous", "Ask twice before force killing", "Force kill needs a second tap", "/tasks/confirmKill", true);
 }
 
 } // namespace m3::shell::panels

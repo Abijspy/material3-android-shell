@@ -1426,4 +1426,20 @@ void filesClosed() {
     filesGo = nullptr;
 }
 
+// Settings → Files (the gear in its title bar): what Files reads anyway,
+// applied as they change
+void filesSettings(Flex* page) {
+    auto* g = group(page, "Browsing");
+    switchRow(g, "visibility", "Show hidden files", "Names starting with a dot (Ctrl+H)", "/files/hidden", false);
+    switchRow(g, "view_list", "Show folders as a list", "With dates and sizes; off, a grid of previews", "/files/listView", false);
+    choiceRow<std::string>(g, "sort", "Sort by", "Folders always come first", "/files/sort", "name",
+                           {{"name", "Name"}, {"date", "Date"}, {"size", "Size"}, {"kind", "Kind"}});
+    switchRow(g, "vertical_split", "Preview and properties", "The pane beside the folder (F9)", "/files/preview", true);
+    auto* o = group(page, "Open with Material3UI's apps", "Off: the file's own default app opens it");
+    switchRow(o, "image", "Pictures in Photos", "", "/files/viewer", true);
+    switchRow(o, "movie", "Videos and songs in Videos", "", "/files/player", true);
+    switchRow(o, "picture_as_pdf", "PDFs in the PDF viewer", "", "/files/pdf", true);
+    switchRow(o, "edit_note", "Text and code in the Text Editor", "", "/files/textEditor", true);
+}
+
 } // namespace m3::shell::panels

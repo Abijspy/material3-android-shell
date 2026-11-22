@@ -18,5 +18,9 @@ int main(int argc, char** argv) {
         if (shell::panels::pdfGo && !args.empty()) shell::panels::pdfGo(args[0]);
     };
     app.closed = [] { shell::panels::pdfClosed(); };
+    app.settings = shell::panels::pdfSettings;
+    app.about.summary = "Read PDFs, mark them up, sign them and fill in their forms.";
+    app.about.features = {"Pages one after another, thumbnails, search, links, night mode, passwords", "Highlight, underline and strike out; pen, shapes, arrows, text boxes, sticky notes", "A signature drawn once and placed anywhere; forms filled in", "Pages rotated, moved, deleted or saved on their own; save or save a copy"};
+    app.about.builtWith = "poppler-glib, qpdf for page changes";
     return apps::run(app, argc, argv);
 }

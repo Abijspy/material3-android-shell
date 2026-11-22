@@ -10,6 +10,14 @@
 #include "shell/Panels.h"
 #include "shell/Popup.h"
 #include "wayland/Display.h"
+#include "render/Images.h"
+#include "shell/PanelKit.h"
+#include "shell/SettingsKit.h"
+#include "ui/Controls.h"
+#include "ui/Theme.h"
+
+#include <linux/input-event-codes.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
 
 #include <csignal>
 #include <cstring>
@@ -150,6 +158,100 @@ private:
     int m_fd = -1;
 };
 
+// Its children one over another, each the whole of it: the app, and the
+// Settings and About sheet over it
+class Stack : public ui::Node {
+protected:
+    SizeF doMeasure(SizeF available) override {
+        for (auto& c : children())
+            if (c->shown()) c->measure(available);
+        return available;
+    }
+    void doArrange() override {
+        for (auto& c : children())
+            if (c->shown()) {
+                c->measure({rect().w, rect().h});
+                c->arrange(rect());
+            }
+    }
+};
+
+// The dimmed backdrop behind the sheet: a click on it closes the sheet
+class Scrim : public ui::Flex {
+public:
+    Scrim() : Flex(Direction::Column) {}
+    std::function<void()> onDismiss;
+    bool interactive() const override { return true; }
+    void onClick(uint32_t button) override {
+        if (button == BTN_LEFT && onDismiss) onDismiss();
+    }
+};
+
+struct Sheet {
+    Scrim* scrim = nullptr;
+    ui::Flex *body = nullptr, *tabs = nullptr;
+    int tab = 0;
+    std::function<void(int)> show;
+};
+
+// The About page: the app, its version, what it does, and where it's from
+void aboutPage(ui::Flex* page, const App& app) {
+    using namespace ui;
+    auto* head = page->add<Flex>(Flex::Direction::Row);
+    head->setSpacing(18)->setAlignItems(Align::Center)->setPadding({4, 8});
+    const std::string icon = app.appId;
+    if (!Images::get().findIcon(icon, 72).empty()) {
+        head->add<ImageView>(72, [icon](float scale, int& w, int& h) -> GLuint {
+            auto* t = Images::get().icon(icon, static_cast<int>(std::lround(72 * scale)));
+            if (!t) return 0;
+            w = t->width, h = t->height;
+            return t->id;
+        });
+    } else {
+        // Not installed (a build directory): its symbol in a tonal circle
+        auto* dot = head->add<Flex>(Flex::Direction::Row);
+        dot->fixedWidth = dot->fixedHeight = 72;
+        dot->setRadius(Radii(36))->setBackground("primary_container", false)->setAlignItems(Align::Center)->setJustify(Align::Center);
+        dot->add<Icon>(app.icon, 38)->setFill(true)->setColor("on_primary_container", false);
+    }
+    auto* names = head->add<Flex>(Flex::Direction::Column);
+    names->setAlignItems(Align::Start)->setSpacing(3);
+    names->grow = true;
+    names->add<Label>(app.title)->setSize(24)->setWeight(500);
+    names->add<Label>(std::format("Version {}  ·  part of Material3UI", M3_VERSION))->setSize(13)->setColor("on_surface_variant", false);
+    names->add<Label>(app.appId)->setSize(12)->setColor("outline", false)->setFamily(Theme::get().monoFamily());
+    if (!app.about.summary.empty()) page->add<Label>(app.about.summary)->setSize(15)->setMaxWidth(520)->setMaxLines(4);
+    if (!app.about.features.empty()) {
+        auto* g = shell::panels::group(page, "What it does");
+        for (const auto& f : app.about.features) {
+            auto* r = g->add<Flex>(Flex::Direction::Row);
+            r->setSpacing(12)->setAlignItems(Align::Start)->setPadding({16, 8});
+            r->add<Icon>("check_circle", 18)->setColor("primary", false);
+            r->add<Label>(f)->setSize(14)->setMaxWidth(470)->setMaxLines(3);
+        }
+    }
+    auto* g = shell::panels::group(page, "About");
+    auto line = [&](const char* ic, const std::string& k, const std::string& v) {
+        auto r = shell::panels::row(g, ic, k, v);
+        (void)r;
+    };
+    line("deployed_code", "Package", "material3ui-" + app.id + " (pacman)");
+    if (!app.about.builtWith.empty()) line("construction", "Built on", app.about.builtWith);
+    line("gavel", "License", "MIT");
+    line("person", "By", "Abishek (Abijspy) and Material3UI's contributors");
+    auto links = page->add<Flex>(Flex::Direction::Row);
+    links->setSpacing(8)->setPadding({4, 6});
+    links->wrap = true;
+    shell::panels::pillButton(links, "Website", false, [] {
+        m3::run({"xdg-open", "https://github.com/Abijspy/material3-android-shell"}, nullptr);
+    }, "open_in_new");
+    shell::panels::pillButton(links, "Report a problem", false, [] {
+        m3::run({"xdg-open", "https://github.com/Abijspy/material3-android-shell/issues"}, nullptr);
+    }, "bug_report");
+    shell::panels::pillButton(links, "What's new", false, [] { askShell({"popup", "whatsnew"}); }, "new_releases");
+    shell::panels::pillButton(links, "Check for updates", false, [] { askShell({"settings", "packages"}); }, "system_update");
+}
+
 void raise(const std::string& appId) {
     auto& c = Compositor::get();
     for (const auto& w : c.windows(true))
@@ -226,8 +328,88 @@ int run(const App& app, int argc, char** argv) {
     opts.icon = app.icon;
     opts.windowWidth = app.width;
     opts.windowHeight = app.height;
-    auto window = std::make_unique<shell::Popup>(nullptr, opts, [&app, args](ui::Flex* card, shell::Popup& p) { app.build(card, p, args); });
-    window->onClosed = [&app] {
+    auto sheet = std::make_shared<Sheet>();
+    opts.titleButtons.push_back({"settings", "Settings and about", [sheet] {
+                                     if (sheet->show) sheet->show(sheet->scrim && sheet->scrim->visible() ? -1 : 0);
+                                 }});
+    auto window = std::make_unique<shell::Popup>(nullptr, opts, [&app, args, sheet](ui::Flex* card, shell::Popup& p) {
+        using namespace ui;
+        auto* stack = card->add<Stack>();
+        stack->grow = true;
+        auto* content = stack->add<Flex>(Flex::Direction::Column);
+        content->setAlignItems(Align::Stretch);
+        app.build(content, p, args);
+
+        // The sheet: Settings and About, over the app
+        sheet->scrim = stack->add<Scrim>();
+        sheet->scrim->setBackground(ColorRef("scrim", 0.32f), false)->setAlignItems(Align::Center)->setJustify(Align::Center)->setPadding(Insets(24));
+        sheet->scrim->setVisible(false);
+        auto* sc = sheet->scrim->add<Flex>(Flex::Direction::Column);
+        sc->setBackground("surface_container", false)->setRadius(Radii(28))->setPadding({20, 18, 20, 18})->setSpacing(12)->setAlignItems(Align::Stretch);
+        sc->fixedWidth = 620;
+        sc->fixedHeight = std::min(640, app.height - 110);
+        auto* bar = sc->add<Flex>(Flex::Direction::Row);
+        bar->setSpacing(8)->setAlignItems(Align::Center);
+        sheet->tabs = bar->add<Flex>(Flex::Direction::Row);
+        sheet->tabs->setSpacing(4);
+        sheet->tabs->grow = true;
+        shell::kit::iconButton(bar, "close", [sheet] { sheet->show(-1); }, 20)->tooltip = "Close (Escape)";
+        auto* scroll = sc->add<ScrollView>();
+        scroll->maxHeight = 1e6f;
+        scroll->grow = true;
+        scroll->blurEdges = true;
+        sheet->body = scroll->add<Flex>(Flex::Direction::Column);
+        sheet->body->setSpacing(14)->setAlignItems(Align::Stretch)->setPadding({0, 4, 8, 4});
+        sheet->scrim->onDismiss = [sheet] { sheet->show(-1); };
+        // Clicks on the card stay on it
+        sc->setBorder(0, ColorRef::none());
+        sheet->show = [sheet, &app](int tab) {
+            if (tab < 0) {
+                sheet->scrim->setVisible(false);
+                sheet->body->clearChildren();
+                return;
+            }
+            if (!app.settings) tab = 1;
+            sheet->tab = tab;
+            sheet->scrim->setVisible(true);
+            sheet->tabs->clearChildren();
+            const char* names[] = {"Settings", "About"};
+            const char* icons[] = {"tune", "info"};
+            for (int i = 0; i < 2; ++i) {
+                if (i == 0 && !app.settings) continue;
+                auto* b = sheet->tabs->add<Button>(Flex::Direction::Row);
+                ui::pill(b)->setPadding({14, 8})->setSpacing(8);
+                const bool here = i == tab;
+                b->setBackground(here ? "secondary_container" : "surface_container_high", false);
+                b->add<Icon>(icons[i], 18)->setFill(here)->setColor(here ? "on_secondary_container" : "on_surface_variant", false);
+                b->add<Label>(names[i])->setSize(14)->setWeight(here ? 600 : 500)->setColor(here ? "on_secondary_container" : "on_surface", false);
+                b->onClicked = [sheet, i](uint32_t btn) {
+                    if (btn == BTN_LEFT) EventLoop::get().defer([sheet, i] {
+                        if (sheet->show) sheet->show(i);
+                    });
+                };
+            }
+            sheet->body->clearChildren();
+            if (tab == 0) {
+                app.settings(sheet->body);
+                shell::kit::caption(sheet->body, "Saved as you change them (in ~/.config/material3ui/config.json)");
+            } else {
+                aboutPage(sheet->body, app);
+            }
+        };
+        // Escape closes the sheet before anything else; Ctrl+, opens it
+        auto appKeys = p.onKey;
+        p.onKey = [sheet, appKeys](const KeyEvent& e) {
+            if (sheet->scrim && sheet->scrim->visible()) {
+                if (e.sym == XKB_KEY_Escape) return sheet->show(-1), true;
+                return false;
+            }
+            if (e.ctrl() && e.sym == XKB_KEY_comma) return sheet->show(0), true;
+            return appKeys && appKeys(e);
+        };
+    });
+    window->onClosed = [&app, sheet] {
+        sheet->show = nullptr;
         if (app.closed) app.closed();
         EventLoop::get().defer([] { EventLoop::get().quit(0); });
     };

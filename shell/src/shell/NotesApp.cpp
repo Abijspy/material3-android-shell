@@ -4,6 +4,7 @@
 // the trash for a week. Kept in ~/.local/share/material3ui/notes/notes.json.
 #include "shell/Panels.h"
 
+#include "core/Config.h"
 #include "core/EventLoop.h"
 #include "core/Paths.h"
 #include "core/Process.h"
@@ -38,7 +39,10 @@ using namespace m3::shell::kit;
 
 namespace {
 
-constexpr std::time_t kTrashDays = 7;
+// Days in the trash before a note's gone (Settings → Notes; 0 keeps them)
+std::time_t trashDays() {
+    return std::max(0, Config::get().value<int>("/notes/trashDays", 7));
+}
 
 struct Note {
     std::string id, title, body;
@@ -135,7 +139,8 @@ public:
         }
         // A week in the trash, then gone
         const std::time_t now = std::time(nullptr);
-        std::erase_if(notes, [now](const Note& n) { return n.trashed && now - n.trashed > kTrashDays * 86400; });
+        const std::time_t days = trashDays();
+        if (days > 0) std::erase_if(notes, [now, days](const Note& n) { return n.trashed && now - n.trashed > days * 86400; });
     }
 
     void saveSoon() {
@@ -230,6 +235,7 @@ void newNote(const std::shared_ptr<State>& st, bool checklist) {
     n.id = newId();
     n.created = n.modified = std::time(nullptr);
     n.checklist = checklist;
+    n.tint = std::clamp(Config::get().value<int>("/notes/tint", 0), 0, kTintCount - 1);
     if (checklist) n.items.push_back({"", false});
     if (st->view == View::Label && !st->label.empty()) n.labels.push_back(st->label);
     st->store.notes.insert(st->store.notes.begin(), n);
@@ -404,7 +410,7 @@ void card(const std::shared_ptr<State>& st, Node* parent, const Note& n) {
             c->add<Label>(l)->setSize(11)->setWeight(500);
         }
     }
-    if (n.trashed) caption(b, std::format("Deleted for good in {} days", std::max<long>(1, (kTrashDays * 86400 - (std::time(nullptr) - n.trashed)) / 86400 + 1)));
+    if (n.trashed && trashDays() > 0) caption(b, std::format("Deleted for good in {} days", std::max<long>(1, (trashDays() * 86400 - (std::time(nullptr) - n.trashed)) / 86400 + 1)));
     const std::string id = n.id;
     b->onClicked = [st, id, b](uint32_t button) {
         if (button == BTN_RIGHT) return cardMenu(st, b, id);
@@ -454,7 +460,7 @@ void gridView(const std::shared_ptr<State>& st, Flex* c) {
         const bool any = std::ranges::any_of(st->store.notes, [](const Note& n) { return n.trashed; });
         auto* r = c->add<Flex>(Flex::Direction::Row);
         r->setSpacing(10)->setAlignItems(Align::Center);
-        auto* l = r->add<Label>("Notes in the trash are deleted after 7 days");
+        auto* l = r->add<Label>(trashDays() > 0 ? std::format("Notes in the trash are deleted after {} days", trashDays()) : "Notes stay in the trash until you empty it");
         l->setSize(13)->setColor("on_surface_variant", false);
         l->grow = true;
         if (any)
@@ -478,7 +484,17 @@ void gridView(const std::shared_ptr<State>& st, Flex* c) {
         if (!in || (!q.empty() && n.haystack().find(q) == std::string::npos)) continue;
         (n.pinned && st->view != View::Trash ? pinned : others).push_back(&n);
     }
-    auto byTime = [](const Note* a, const Note* b) { return a->modified > b->modified; };
+    const std::string order = Config::get().value<std::string>("/notes/sort", "edited");
+    auto byTime = [order](const Note* a, const Note* b) {
+        if (order == "created") return a->created > b->created;
+        if (order == "title") {
+            std::string x = a->title, y = b->title;
+            for (auto& c : x) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            for (auto& c : y) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            return x < y;
+        }
+        return a->modified > b->modified;
+    };
     std::ranges::sort(pinned, byTime);
     std::ranges::sort(others, byTime);
     auto section = [&](const char* name, const std::vector<const Note*>& list) {
@@ -768,6 +784,20 @@ void notesApp(Flex* card, Popup& popup, const std::string& arg) {
     st->show();
     if (arg == "new") newNote(st, false);
     else if (arg == "checklist") newNote(st, true);
+}
+
+// Settings → Notes
+void notesSettings(Flex* page) {
+    auto* g = group(page, "Notes");
+    choiceRow<std::string>(g, "sort", "Order", "Pinned notes stay on top", "/notes/sort", "edited", {{"edited", "Last edited"}, {"created", "Created"}, {"title", "Title"}});
+    auto r = row(g, "palette", "Colour of a new note", "");
+    std::vector<std::pair<std::string, std::string>> tints;
+    for (int i = 0; i < kTintCount; ++i) tints.push_back({std::to_string(i), kTints[i].name});
+    dropdown(r.row, g, kTints[std::clamp(Config::get().value<int>("/notes/tint", 0), 0, kTintCount - 1)].name, tints,
+             [](const std::string& v) { Config::get().set("/notes/tint", std::stoi(v)); });
+    auto* t = group(page, "Trash");
+    choiceRow<int>(t, "delete", "Keep notes in the trash", "Then they're deleted for good", "/notes/trashDays", 7, {{7, "7 days"}, {30, "30 days"}, {0, "Until emptied"}});
+    caption(page, std::string("Your notes are kept in ") + fileops::displayPath(storePath()));
 }
 
 void notesAppClosed() {

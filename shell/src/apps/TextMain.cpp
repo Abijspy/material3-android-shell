@@ -18,5 +18,9 @@ int main(int argc, char** argv) {
         if (shell::panels::textGo) shell::panels::textGo(args.empty() ? "" : args[0]);
     };
     app.closed = [] { shell::panels::textEditorClosed(); };
+    app.settings = shell::panels::textSettings;
+    app.about.summary = "Plain text and code, in tabs.";
+    app.about.features = {"Line numbers, auto-indent, Tab and Shift+Tab on selections, comments with Ctrl+/", "Find and replace, go to a line, undo and redo", "Line endings and Latin-1 files kept; big files stay quick"};
+    app.about.builtWith = "Pango, the shell's own text engine";
     return apps::run(app, argc, argv);
 }

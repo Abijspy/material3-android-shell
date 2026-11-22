@@ -213,7 +213,7 @@ Its **editor** marks pictures up: pen, shapes, arrows, text, numbered steps, and
 | **Notes** (`material3ui-notes`) | Notes and checklists as tinted cards, with labels, pins, search, an archive and a trash. |
 | **Task Manager** (`material3ui-tasks`) | Processes, performance, startup apps and services (<kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd>). |
 
-Files opens pictures, videos, songs, PDFs and text in them, and **Settings → Default apps** can pick others. Each is its own **pacman package**, sharing one library with the shell: the installer adds them all, and you can remove any with `sudo pacman -R material3ui-<app>` while the rest keep working (updates then leave it out). → [Packages](docs/INSTALL.md#keeping-everything-updated)
+Files opens pictures, videos, songs, PDFs and text in them, and **Settings → Default apps** can pick others. Each app has its own **Settings and About** pages behind the gear in its title bar (<kbd>Ctrl</kbd><kbd>,</kbd>): Files' view and sorting, Videos' hardware decoding, resuming and subtitle languages, the terminal's cursor, scrollback and shell, the text editor's tabs and line numbers, and more. Each is its own **pacman package**, sharing one library with the shell: the installer adds them all, and you can remove any with `sudo pacman -R material3ui-<app>` while the rest keep working (updates then leave it out). → [Packages](docs/INSTALL.md#keeping-everything-updated)
 
 Turn on the **Material You icon theme** (Settings → Look & feel) and the shell draws your desktop's icons itself: folders, file types, drives and hundreds of apps as Material Symbols in tonal circles, recoloured with every wallpaper, in every GTK app.
 

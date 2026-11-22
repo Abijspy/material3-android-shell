@@ -18,5 +18,9 @@ int main(int argc, char** argv) {
         if (shell::panels::playerGo && !args.empty()) shell::panels::playerGo(args[0]);
     };
     app.closed = [] { shell::panels::playerClosed(); };
+    app.settings = shell::panels::playerSettings;
+    app.about.summary = "Videos and music, in every format, with subtitles of every kind.";
+    app.about.features = {"Every format and codec FFmpeg knows, with hardware decoding", "Subtitles found by themselves; shifted, resized and moved; any track", "The folder as a playlist, speed, audio tracks, frame screenshots", "Full screen with a bar that steps aside, and web videos through yt-dlp"};
+    app.about.builtWith = "libmpv (FFmpeg), yt-dlp for web videos";
     return apps::run(app, argc, argv);
 }

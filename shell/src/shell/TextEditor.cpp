@@ -42,7 +42,13 @@ std::function<void(const std::string&)> textGo;
 
 namespace {
 
-constexpr int kTab = 4;
+// Settings → Text Editor
+int tabWidth() {
+    return std::clamp(Config::get().value<int>("/text/tabWidth", 4), 1, 16);
+}
+bool lineNumbers() {
+    return Config::get().value<bool>("/text/lineNumbers", true);
+}
 
 struct Pos {
     int line = 0;
@@ -162,7 +168,7 @@ std::string expand(const std::string& s, size_t upto = std::string::npos) {
     const size_t end = std::min(upto, s.size());
     for (size_t i = 0; i < end; ++i) {
         if (s[i] == '\t') {
-            const size_t n = kTab - col % kTab;
+            const size_t n = tabWidth() - col % tabWidth();
             o.append(n, ' ');
             col += n;
         } else {
@@ -189,6 +195,11 @@ public:
 
     explicit Editor(std::shared_ptr<Doc> d) : doc(std::move(d)) {
         fontSize = static_cast<float>(Config::get().value<double>("/text/fontSize", 14.0));
+        // Settings apply to the open files at once
+        m_configConn = Config::get().changed.connect([this] {
+            fontSize = static_cast<float>(Config::get().value<double>("/text/fontSize", 14.0));
+            requestRedraw();
+        });
     }
     ~Editor() override {
         *m_alive = false;
@@ -207,6 +218,7 @@ public:
     }
     float lineH() const { return std::round(fontSize * 1.6f); }
     float gutter() const {
+        if (!lineNumbers()) return 12;
         const int digits = std::max(3, static_cast<int>(std::to_string(doc->lines.size()).size()));
         return 20 + static_cast<float>(digits) * fontSize * 0.62f;
     }
@@ -424,7 +436,7 @@ public:
         case XKB_KEY_ISO_Left_Tab:
             if (ctrl) return false;
             if (shift || e.sym == XKB_KEY_ISO_Left_Tab || (hasSelection() && ordered().first.line != ordered().second.line)) return indentLines(!(shift || e.sym == XKB_KEY_ISO_Left_Tab)), true;
-            insert(usesTabs() ? "\t" : std::string(kTab - expand(cur, cursor.col).size() % kTab, ' '));
+            insert(usesTabs() ? "\t" : std::string(tabWidth() - expand(cur, cursor.col).size() % tabWidth(), ' '));
             return true;
         case XKB_KEY_BackSpace:
             if (!hasSelection()) {
@@ -583,7 +595,7 @@ protected:
         auto [sa, sb] = ordered();
         for (int i = first; i <= last; ++i) {
             const float y = b.y + static_cast<float>(i) * lh - m_scrollY;
-            if (i == cursor.line && !hasSelection()) r.rect({b.x + g, y, b.w - g, lh}, th.color("on_surface").withAlpha(0.05f));
+            if (i == cursor.line && !hasSelection() && Config::get().value<bool>("/text/currentLine", true)) r.rect({b.x + g, y, b.w - g, lh}, th.color("on_surface").withAlpha(0.05f));
             const std::string& l = doc->lines[static_cast<size_t>(i)];
             r.pushClip({b.x + g, b.y, b.w - g, b.h});
             // Find's matches, then the selection
@@ -610,11 +622,12 @@ protected:
                 r.rect({textX + xOf(i, cursor.col) - m_scrollX - 1, y + 3, 2, lh - 6}, th.color("primary"), Radii(1));
             r.popClip();
             // The line's number
+            if (!lineNumbers()) continue;
             const std::string n = std::to_string(i + 1);
             const auto& nt = TextEngine::get().texture(n, numStyle, r.scale());
             if (nt.id) r.mask(nt.id, {b.x + g - 12 - nt.logical.width, y + (lh - nt.logical.height) / 2, nt.logical.width, nt.logical.height}, i == cursor.line ? ink : dim);
         }
-        r.rect({b.x + g, b.y + 8, 1, b.h - 16}, th.color("outline_variant").withAlpha(0.5f));
+        if (lineNumbers()) r.rect({b.x + g, b.y + 8, 1, b.h - 16}, th.color("outline_variant").withAlpha(0.5f));
         // Where in the file: a thin bar
         const float total = static_cast<float>(doc->lines.size()) * lh;
         if (total > b.h) {
@@ -643,6 +656,9 @@ private:
         }, true);
     }
     bool usesTabs() const {
+        const std::string mode = Config::get().value<std::string>("/text/indent", "auto");
+        if (mode == "tabs") return true;
+        if (mode == "spaces") return false;
         int tabs = 0, spaces = 0;
         for (size_t i = 0; i < doc->lines.size() && i < 400; ++i) {
             const auto& l = doc->lines[i];
@@ -655,12 +671,12 @@ private:
         snapshot(false);
         auto [a, b] = ordered();
         if (b.col == 0 && b.line > a.line) --b.line;
-        const std::string unit = usesTabs() ? "\t" : std::string(kTab, ' ');
+        const std::string unit = usesTabs() ? "\t" : std::string(tabWidth(), ' ');
         for (int i = a.line; i <= b.line; ++i) {
             auto& l = doc->lines[static_cast<size_t>(i)];
             if (in) l.insert(0, unit);
             else if (l.starts_with('\t')) l.erase(0, 1);
-            else l.erase(0, std::min<size_t>(kTab, l.find_first_not_of(' ') == std::string::npos ? l.size() : l.find_first_not_of(' ')));
+            else l.erase(0, std::min<size_t>(tabWidth(), l.find_first_not_of(' ') == std::string::npos ? l.size() : l.find_first_not_of(' ')));
         }
         anchor = {a.line, 0};
         cursor = {b.line, doc->lines[static_cast<size_t>(b.line)].size()};
@@ -718,6 +734,7 @@ private:
     EventLoop::Clock::time_point m_lastPress{};
     Pos m_lastPos;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
+    Connection m_configConn;
 };
 
 // ── The window: tabs, the bars, the status line ──
@@ -1206,6 +1223,19 @@ void textEditor(Flex* card, Popup& popup, const std::string& file) {
         if (*st->alive) addTab(st, f);
     };
     addTab(st, file);
+}
+
+// Settings → Text Editor
+void textSettings(Flex* page) {
+    auto* g = group(page, "Text");
+    sliderRow(g, "format_size", "Text size", "/text/fontSize", 14, 8, 32, 1, [](double v) { return std::format("{:.0f} px", v); });
+    switchRow(g, "format_list_numbered", "Line numbers", "", "/text/lineNumbers", true);
+    switchRow(g, "horizontal_rule", "Mark the current line", "", "/text/currentLine", true);
+    auto* i = group(page, "Indentation");
+    choiceRow<int>(i, "keyboard_tab", "Tab width", "How wide a tab shows, and what Tab indents by", "/text/tabWidth", 4, {{2, "2"}, {4, "4"}, {8, "8"}});
+    choiceRow<std::string>(i, "format_indent_increase", "Indent with", "Tab, Shift+Tab and new lines", "/text/indent", "auto",
+                           {{"auto", "Like the file"}, {"spaces", "Spaces"}, {"tabs", "Tabs"}});
+    caption(page, "Unsaved changes are kept in " + fileops::displayPath(recoveryDir()) + " when the window closes");
 }
 
 void textEditorClosed() {
