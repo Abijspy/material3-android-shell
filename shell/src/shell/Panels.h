@@ -164,6 +164,8 @@ void eventEditor(ui::Flex* card, Popup& popup, const std::string& arg);
 void clockApp(ui::Flex* card, Popup& popup, const std::string& arg);
 void calendarApp(ui::Flex* card, Popup& popup, const std::string& arg);
 void weatherApp(ui::Flex* card, Popup& popup);
+// A Settings page (by its id) built into another window's page
+bool settingsPageInto(const std::string& id, ui::Flex* page, Popup& popup);
 // The first-run tour, in its own window
 void welcome(ui::Flex* card, Popup& popup);
 // After an update: the release notes since `since` (empty: this release's)
@@ -187,5 +189,9 @@ void cameraSettings(ui::Flex* page);
 // Backups (an app window)
 void backupsApp(ui::Flex* card, Popup& popup, const std::string& arg);
 void backupsSettings(ui::Flex* page);
+
+// Sound Recorder (an app window)
+void recorderApp(ui::Flex* card, Popup& popup, const std::string& arg);
+void recorderSettings(ui::Flex* page);
 
 } // namespace m3::shell::panels

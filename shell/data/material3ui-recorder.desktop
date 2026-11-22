@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Sound Recorder
+GenericName=Audio Recorder
+Comment=Voice notes and anything your microphone hears.
+Exec=material3ui-recorder
+Icon=material3ui-recorder
+Terminal=false
+Categories=AudioVideo;Audio;Recorder;
+Keywords=record;recorder;voice;memo;microphone;audio;
+StartupNotify=false
+StartupWMClass=material3ui-recorder

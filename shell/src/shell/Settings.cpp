@@ -4488,6 +4488,22 @@ const PageDef kPages[] = {
     {"about", "info", "About", "This device and the shell", aboutPage},
 };
 
+} // namespace
+
+// One Settings page built into `page` (an app's Settings sheet: Clock,
+// Calendar, Weather show their Settings pages there)
+bool settingsPageInto(const std::string& id, Flex* page, Popup& popup) {
+    for (const auto& d : kPages)
+        if (id == d.id) {
+            d.build(page, popup);
+            return true;
+        }
+    return false;
+}
+
+namespace {
+
+
 // Android's grouping of the settings list
 // The pages each app shows: niri's own options in Niri Settings,
 // everything else in Settings

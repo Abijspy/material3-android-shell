@@ -214,6 +214,8 @@ Its **editor** marks pictures up: pen, shapes, arrows, text, numbered steps, and
 | **Disks** (`material3ui-disks`) | Your drives with their partitions to scale, their health (SMART), mounting and powering off, renaming, checking and formatting; and Space used, what fills a folder, biggest first. |
 | **Camera** (`material3ui-camera`) | Photos (with a timer) and videos with sound from your webcam, mirrored or not, 480p to 1080p. |
 | **Backups** (`material3ui-backups`) | Your folders as dated snapshots on a USB drive or another disk; only what changed takes room, daily by itself, old ones thinned out, each a plain folder to restore from. |
+| **Sound Recorder** (`material3ui-recorder`) | Voice notes and recordings in Opus, MP3, FLAC or WAV, with the level live; play, share or trash them. |
+| **Clock**, **Calendar**, **Weather** | The shell's own windows (their services live in the shell): alarms, timers, focus and world clocks; a month with the day's agenda; the forecast by the hour and for ten days. |
 | **Notes** (`material3ui-notes`) | Notes and checklists as tinted cards, with labels, pins, search, an archive and a trash. |
 | **Task Manager** (`material3ui-tasks`) | Processes, performance, startup apps and services (<kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd>). |
 

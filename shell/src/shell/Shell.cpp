@@ -1,4 +1,5 @@
 #include "shell/Shell.h"
+#include "apps/AppHost.h"
 #include "shell/DesktopEditor.h"
 #include "shell/Switcher.h"
 #include "shell/Tooltip.h"
@@ -417,11 +418,35 @@ void Shell::openServiceApp(const std::string& kind, const std::string& arg) {
     opts.icon = kind == "clock" ? "alarm" : kind == "calendar" ? "calendar_month" : "partly_cloudy_day";
     opts.windowWidth = kind == "calendar" ? 1040 : 760;
     opts.windowHeight = 760;
-    slot = std::make_unique<Popup>(nullptr, opts, [kind, arg](ui::Flex* card, Popup& p) {
+    // Their Settings and About, as the other apps have (the Settings
+    // tab is the Settings app's own page for it)
+    static std::map<std::string, apps::App> infos = [] {
+        std::map<std::string, apps::App> m;
+        auto make = [&](const std::string& k, const std::string& title, const std::string& page, const std::string& summary, std::vector<std::string> features,
+                        const std::string& built) {
+            apps::App a;
+            a.id = k, a.appId = "material3ui-" + k, a.title = title, a.icon = k == "clock" ? "alarm" : k == "calendar" ? "calendar_month" : "partly_cloudy_day";
+            a.width = k == "calendar" ? 1040 : 760, a.height = 760;
+            a.settingsIn = [page](ui::Flex* pg, Popup& p) { panels::settingsPageInto(page, pg, p); };
+            a.about.summary = summary, a.about.features = std::move(features), a.about.builtWith = built;
+            m[k] = a;
+        };
+        make("clock", "Clock", "clock", "Alarms, timers, a focus timer and clocks around the world.",
+             {"Alarms once or on the days you pick, with snooze", "Timers counting down in rings", "A focus timer (Pomodoro) with breaks", "Clocks for other cities"},
+             "the shell's alarm service (they ring even with the window closed)");
+        make("calendar", "Calendar", "calendar", "Your events, subscribed calendars and public holidays, by month.",
+             {"A month at a glance, days with events marked", "The day's agenda and the next two weeks", "Events of your own, with reminders", "Subscribed calendars (iCal) and your country's holidays"},
+             "the shell's calendar service");
+        make("weather", "Weather", "weather", "The forecast: now, the next hours and ten days.",
+             {"Now: temperature, feels like, conditions", "The next hours, with the chance of rain", "Ten days, each day's range on the week's scale", "Humidity, wind, UV, sunrise and sunset"},
+             "Open-Meteo (no account, no key)");
+        return m;
+    }();
+    slot = std::make_unique<Popup>(nullptr, opts, apps::withSheet(infos[kind], opts, [kind, arg](ui::Flex* card, Popup& p) {
         if (kind == "clock") panels::clockApp(card, p, arg);
         else if (kind == "calendar") panels::calendarApp(card, p, arg);
         else panels::weatherApp(card, p);
-    });
+    }));
     slot->onClosed = [this, kind] {
         EventLoop::get().defer([this, kind] { m_serviceApps[kind].reset(); });
     };

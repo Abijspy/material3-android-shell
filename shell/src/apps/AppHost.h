@@ -1,5 +1,7 @@
 #pragma once
 
+#include "shell/Popup.h"
+
 #include <functional>
 #include <string>
 #include <vector>
@@ -35,6 +37,8 @@ struct App {
     // Its Settings page (groups of rows, config.json under its own key) and
     // its About page, behind the gear in the title bar
     std::function<void(ui::Flex* page)> settings;
+    // The same, for pages that need the window (the shell's own Settings pages)
+    std::function<void(ui::Flex* page, shell::Popup& popup)> settingsIn;
     struct About {
         std::string summary;               // a sentence: what it is
         std::vector<std::string> features; // what it does, a line each
@@ -43,6 +47,12 @@ struct App {
 };
 
 int run(const App& app, int argc, char** argv);
+
+// The Settings and About sheet over a window: a gear in its title bar
+// (added to `opts`), Ctrl+, and Escape. `inner` builds the window itself;
+// `app` must outlive the window
+using Builder = std::function<void(ui::Flex* card, shell::Popup& popup)>;
+Builder withSheet(const App& app, shell::Popup::Options& opts, Builder inner);
 
 // Asks the running shell: `material3ui msg <args…>`
 void askShell(const std::vector<std::string>& args);

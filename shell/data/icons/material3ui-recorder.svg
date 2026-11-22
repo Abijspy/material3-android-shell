@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Sound Recorder: the shell's squircle, in its tonal colours -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ef9a9a"/>
+      <stop offset="1" stop-color="#c62828"/>
+    </linearGradient>
+  </defs>
+  <path d="M64 4C108 4 124 20 124 64S108 124 64 124 4 108 4 64 20 4 64 4Z" fill="url(#bg)"/>
+  <rect x="52" y="28" width="24" height="44" rx="12" fill="#ffffff"/><path d="M40 62a24 24 0 0 0 48 0M64 86v14" stroke="#ffffff" stroke-width="7" fill="none" stroke-linecap="round"/>
+</svg>
