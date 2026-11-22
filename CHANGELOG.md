@@ -1,6 +1,6 @@
 # Changelog
 
-## v7.1.0 — 2026-11-21
+## v7.1.0 — 2026-11-22
 
 - **Files, the shell's own file manager.** There's no file manager to install now. Files (<kbd>Super</kbd><kbd>E</kbd>, or `material3ui msg files`) opens in an app window of its own, in the shell's Material 3 look:
   - **Side bar:** your folders, drives and the trash.
