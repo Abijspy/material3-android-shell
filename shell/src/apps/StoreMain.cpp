@@ -12,7 +12,7 @@ int main(int argc, char** argv) {
     app.icon = "storefront";
     app.width = 1120;
     app.height = 780;
-    app.usage = "usage: material3ui-store [updates|search:<words>|<flathub app id>]\n";
+    app.usage = "usage: material3ui-store [updates|search:<words>|category:<name>|<flathub app id>]\n";
     app.build = [](ui::Flex* card, shell::Popup& p, const std::vector<std::string>& args) { shell::panels::storeApp(card, p, args.empty() ? "" : args[0]); };
     app.go = [](const std::vector<std::string>& args) {
         if (shell::panels::storeGo) shell::panels::storeGo(args.empty() ? "" : args[0]);
