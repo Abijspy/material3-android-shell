@@ -8,6 +8,7 @@
 #include "core/EventLoop.h"
 #include "core/Paths.h"
 #include "core/Process.h"
+#include "render/Images.h"
 #include "services/FileOps.h"
 #include "shell/PanelKit.h"
 #include "shell/Popup.h"
@@ -26,6 +27,7 @@
 #include <linux/input-event-codes.h>
 #include <memory>
 #include <random>
+#include <set>
 #include <sstream>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
@@ -51,9 +53,11 @@ struct Note {
     std::time_t trashed = 0, created = 0, modified = 0;
     std::vector<std::pair<std::string, bool>> items;
     std::vector<std::string> labels;
+    std::vector<std::string> images; // copies in the notes' images folder
+    std::time_t remind = 0;          // a reminder (a systemd user timer)
 
     bool empty() const {
-        if (!title.empty() || !body.empty()) return false;
+        if (!title.empty() || !body.empty() || !images.empty()) return false;
         return std::ranges::all_of(items, [](const auto& i) { return i.first.empty(); });
     }
     // All its words, for search
@@ -111,6 +115,7 @@ public:
     std::vector<std::string> labels;
 
     void load() {
+        bool broken = false;
         std::ifstream in(storePath());
         if (!in) return;
         try {
@@ -129,6 +134,8 @@ public:
                 x.modified = n.value("modified", std::time_t{0});
                 for (const auto& i : n.value("items", json::array())) x.items.push_back({i.value("text", ""), i.value("done", false)});
                 for (const auto& l : n.value("labels", json::array())) x.labels.push_back(l.get<std::string>());
+                for (const auto& im : n.value("images", json::array())) x.images.push_back(im.get<std::string>());
+                x.remind = n.value("remind", std::time_t{0});
                 notes.push_back(std::move(x));
             }
             for (const auto& l : j.value("labels", json::array())) labels.push_back(l.get<std::string>());
@@ -136,11 +143,20 @@ public:
             // A broken file is kept aside, not overwritten
             std::error_code ec;
             fs::copy_file(storePath(), storePath() + ".broken", fs::copy_options::overwrite_existing, ec);
+            broken = true;
         }
         // A week in the trash, then gone
         const std::time_t now = std::time(nullptr);
         const std::time_t days = trashDays();
         if (days > 0) std::erase_if(notes, [now, days](const Note& n) { return n.trashed && now - n.trashed > days * 86400; });
+        // Pictures no note holds any more (deleted for good) go too
+        if (broken) return;
+        std::error_code ec;
+        const fs::path dir = fs::path(storePath()).parent_path() / "images";
+        std::set<std::string> held;
+        for (const auto& n : notes) held.insert(n.images.begin(), n.images.end());
+        for (const auto& e : fs::directory_iterator(dir, ec))
+            if (!held.contains(e.path().string())) fs::remove(e.path(), ec);
     }
 
     void saveSoon() {
@@ -158,7 +174,8 @@ public:
             for (const auto& [t, d] : n.items) items.push_back({{"text", t}, {"done", d}});
             arr.push_back({{"id", n.id},           {"title", n.title},         {"body", n.body},         {"tint", n.tint},
                            {"pinned", n.pinned},   {"archived", n.archived},   {"checklist", n.checklist}, {"trashed", n.trashed},
-                           {"created", n.created}, {"modified", n.modified},   {"items", items},          {"labels", n.labels}});
+                           {"created", n.created}, {"modified", n.modified},   {"items", items},          {"labels", n.labels},
+                           {"images", n.images},   {"remind", n.remind}});
         }
         j["notes"] = arr;
         std::error_code ec;
@@ -185,7 +202,7 @@ enum class View { Notes, Archive, Trash, Label };
 struct State {
     Store store;
     View view = View::Notes;
-    std::string label, query, editing;
+    std::string label, query, editing, asking; // asking: a note's "time:" or "image:" prompt
     Flex *side = nullptr, *content = nullptr;
     TextField* search = nullptr;
     std::function<void()> show, sidebar;
@@ -365,6 +382,101 @@ void cardMenu(const std::shared_ptr<State>& st, Node* from, const std::string& i
     floatingMenu(from, items);
 }
 
+// ── Pictures and reminders ──
+
+std::string imagesDir() {
+    const std::string d = fs::path(storePath()).parent_path().string() + "/images";
+    std::error_code ec;
+    fs::create_directories(d, ec);
+    return d;
+}
+
+std::string newImagePath(const std::string& id, const std::string& ext) {
+    return imagesDir() + "/" + id + "-" + std::to_string(std::time(nullptr)) + "-" + newId().substr(0, 4) + ext;
+}
+
+void addImageFile(const std::shared_ptr<State>& st, const std::string& id, const std::string& from) {
+    Note* n = st->store.find(id);
+    std::error_code ec;
+    if (!n || !fs::is_regular_file(from, ec)) return refresh(st);
+    const std::string to = newImagePath(id, fs::path(from).extension().string());
+    fs::copy_file(from, to, fs::copy_options::overwrite_existing, ec);
+    if (!ec) n->images.push_back(to), touch(st, *n);
+    refresh(st);
+}
+
+// The clipboard's picture into the note
+void pasteImage(const std::shared_ptr<State>& st, const std::string& id) {
+    const std::string to = newImagePath(id, ".png");
+    m3::run({"sh", "-c", "wl-paste --no-newline --type image/png > \"$1\" && [ -s \"$1\" ] || { rm -f \"$1\"; exit 1; }", "sh", to},
+            [st, id, to](int code, const std::string&) {
+                if (!*st->alive) return;
+                if (code != 0) {
+                    m3::run({"notify-send", "-a", "Notes", "No picture on the clipboard", "Copy one (a screenshot, an image in a browser) first"}, nullptr);
+                    return;
+                }
+                if (Note* n = st->store.find(id)) n->images.push_back(to), touch(st, *n), refresh(st);
+            });
+}
+
+std::string unitName(const std::string& id) {
+    std::string u = "material3ui-note-";
+    for (char c : id) u += std::isalnum(static_cast<unsigned char>(c)) ? c : '_';
+    return u;
+}
+
+// A reminder: a transient systemd user timer that sends a notification,
+// with Notes open or not
+void setReminder(const std::shared_ptr<State>& st, const std::string& id, std::time_t when) {
+    Note* n = st->store.find(id);
+    if (!n) return;
+    const std::string unit = unitName(id);
+    const std::string title = n->title.empty() ? "A note" : n->title;
+    const std::string body = n->checklist ? std::format("{} items", n->items.size()) : n->body.substr(0, 160);
+    n->remind = when;
+    touch(st, *n);
+    refresh(st);
+    // The old timer goes first, then the new one is set
+    m3::run({"systemctl", "--user", "stop", unit + ".timer"}, [when, unit, title, body](int, const std::string&) {
+        if (when <= std::time(nullptr)) return;
+        char at[32];
+        std::strftime(at, sizeof at, "%Y-%m-%d %H:%M:%S", std::localtime(&when));
+        m3::run({"systemd-run", "--user", "--unit=" + unit, "--on-calendar=" + std::string(at), "--timer-property=AccuracySec=1s", "--collect",
+                 "notify-send", "-a", "Notes", "-i", "accessories-text-editor", "-u", "critical", "Reminder: " + title, body},
+                [](int code, const std::string& out) {
+                    if (code != 0) m3::run({"notify-send", "-a", "Notes", "Couldn't set the reminder", out.substr(0, 200)}, nullptr);
+                });
+    });
+}
+
+std::time_t todayAt(int dayOffset, int hour) {
+    const std::time_t now = std::time(nullptr);
+    std::tm x = *std::localtime(&now);
+    x.tm_mday += dayOffset, x.tm_hour = hour, x.tm_min = 0, x.tm_sec = 0, x.tm_isdst = -1;
+    return std::mktime(&x);
+}
+
+void reminderMenu(const std::shared_ptr<State>& st, Node* from, const std::string& id) {
+    const std::time_t now = std::time(nullptr);
+    const std::tm t = *std::localtime(&now);
+    const int toMonday = (8 - t.tm_wday) % 7 == 0 ? 7 : (8 - t.tm_wday) % 7;
+    std::vector<MenuItem> items;
+    items.emplace_back("schedule", "In an hour", "", [st, id, now] { setReminder(st, id, now + 3600); });
+    if (t.tm_hour < 18) items.emplace_back("wb_twilight", "This evening", "18:00", [st, id] { setReminder(st, id, todayAt(0, 18)); });
+    items.emplace_back("light_mode", "Tomorrow morning", "08:00", [st, id] { setReminder(st, id, todayAt(1, 8)); });
+    items.emplace_back("date_range", "Next week", "Mon 08:00", [st, id, toMonday] { setReminder(st, id, todayAt(toMonday, 8)); });
+    items.emplace_back("edit_calendar", "Pick a time…", "", [st, id] { st->asking = "time:" + id, refresh(st); });
+    const Note* n = st->store.find(id);
+    if (n && n->remind) items.emplace_back("alarm_off", "Remove the reminder", "", [st, id] { setReminder(st, id, 0); }, false, true, true, true);
+    floatingMenu(from, items);
+}
+
+std::string whenText(std::time_t t) {
+    char b[48];
+    std::strftime(b, sizeof b, "%a %d %b, %H:%M", std::localtime(&t));
+    return b;
+}
+
 // ── The grid ──
 
 void card(const std::shared_ptr<State>& st, Node* parent, const Note& n) {
@@ -374,6 +486,18 @@ void card(const std::shared_ptr<State>& st, Node* parent, const Note& n) {
     b->setBackground(tintOf(n.tint), false);
     b->fixedWidth = 236;
     if (n.tint == 0) b->setBorder(1, ColorRef("outline_variant", 0.6f));
+    if (!n.images.empty()) {
+        const std::string pic = n.images.front();
+        auto* v = b->add<ImageView>(204, 130, [pic](float scale, int& w, int& h) -> GLuint {
+            auto* t = Images::get().picture(pic, static_cast<int>(204 * scale), static_cast<int>(130 * scale), true);
+            if (!t) return 0;
+            w = t->width, h = t->height;
+            return t->id;
+        });
+        v->cover = true;
+        v->radius = 12;
+        if (n.images.size() > 1) caption(b, std::format("+ {} more pictures", n.images.size() - 1));
+    }
     if (!n.title.empty() || n.pinned) {
         auto* head = b->add<Flex>(Flex::Direction::Row);
         head->setSpacing(6)->setAlignItems(Align::Start);
@@ -399,6 +523,12 @@ void card(const std::shared_ptr<State>& st, Node* parent, const Note& n) {
         if (done) caption(b, std::format("{} ticked", done));
     } else if (!n.body.empty()) {
         b->add<Label>(n.body.size() > 600 ? n.body.substr(0, 600) + "…" : n.body)->setSize(13)->setMaxWidth(204)->setMaxLines(10)->setColor("on_surface", false);
+    }
+    if (n.remind && !n.trashed) {
+        auto* chip = b->add<Flex>(Flex::Direction::Row);
+        pill(chip->setBackground(ColorRef("on_surface", 0.08f), false))->setPadding({8, 3})->setSpacing(4)->setAlignItems(Align::Center);
+        chip->add<Icon>(n.remind < std::time(nullptr) ? "alarm_on" : "alarm", 13);
+        chip->add<Label>(whenText(n.remind))->setSize(11)->setWeight(500);
     }
     if (n.empty()) caption(b, "Empty note");
     if (!n.labels.empty()) {
@@ -558,6 +688,18 @@ void editorView(const std::shared_ptr<State>& st, Flex* c) {
     iconButton(bar, n->checklist ? "notes" : "checklist", [st, id] {
         if (Note* x = st->store.find(id)) toChecklist(*x, !x->checklist), touch(st, *x), refresh(st);
     }, 22)->tooltip = n->checklist ? "Plain text" : "Make it a checklist";
+    Button* rem = iconButton(bar, n->remind ? "alarm_on" : "add_alert", [] {}, 22);
+    rem->onClicked = [st, id, rem](uint32_t b) {
+        if (b == BTN_LEFT) reminderMenu(st, rem, id);
+    };
+    rem->tooltip = "Remind me";
+    Button* pic = iconButton(bar, "add_photo_alternate", [] {}, 22);
+    pic->onClicked = [st, id, pic](uint32_t b) {
+        if (b != BTN_LEFT) return;
+        floatingMenu(pic, {MenuItem("content_paste", "Paste a picture", "from the clipboard", [st, id] { pasteImage(st, id); }),
+                           MenuItem("folder_open", "From a file…", "", [st, id] { st->asking = "image:" + id, refresh(st); })});
+    };
+    pic->tooltip = "Add a picture";
     iconButton(bar, n->archived ? "unarchive" : "archive", [st, id] {
         if (Note* x = st->store.find(id)) x->archived = !x->archived, x->pinned = false, touch(st, *x);
         openNote(st, "");
@@ -648,6 +790,84 @@ void editorView(const std::shared_ptr<State>& st, Flex* c) {
         if ((e.sym == XKB_KEY_Return || e.sym == XKB_KEY_Tab) && body) return body->focus(), true;
         return false;
     };
+    // A time or a picture's path, asked for in the sheet
+    if (st->asking == "time:" + id || st->asking == "image:" + id) {
+        const bool image = st->asking.starts_with("image:");
+        auto* ask = sheet->add<Flex>(Flex::Direction::Row);
+        pill(ask->setBackground(ColorRef("on_surface", 0.08f), false))->setPadding({14, 4, 6, 4})->setSpacing(8)->setAlignItems(Align::Center);
+        ask->add<Icon>(image ? "image" : "edit_calendar", 20);
+        auto* f = ask->add<TextField>();
+        f->bare = true;
+        f->grow = true;
+        f->setPlaceholder(image ? "The picture's path, like ~/Pictures/photo.jpg" : "When: YYYY-MM-DD HH:MM");
+        if (!image) {
+            char def[32];
+            const std::time_t soon = n->remind > std::time(nullptr) ? n->remind : std::time(nullptr) + 3600;
+            std::strftime(def, sizeof def, "%Y-%m-%d %H:%M", std::localtime(&soon));
+            f->setText(def);
+        }
+        auto done = [st, id, f, image] {
+            std::string v = f->text();
+            st->asking.clear();
+            if (image) {
+                if (v.starts_with("~/")) v = paths::home() + v.substr(1);
+                if (v.starts_with("file://")) v = v.substr(7);
+                return addImageFile(st, id, v);
+            }
+            std::tm tm{};
+            const char* end = strptime(v.c_str(), "%Y-%m-%d %H:%M", &tm);
+            if (!end) return refresh(st);
+            tm.tm_isdst = -1;
+            setReminder(st, id, std::mktime(&tm));
+        };
+        f->onSubmit = [done](const std::string&) { done(); };
+        pillButton(ask, image ? "Add" : "Set", true, done);
+        iconButton(ask, "close", [st] { st->asking.clear(), refresh(st); }, 18);
+        EventLoop::get().defer([st, f] {
+            if (*st->alive) f->focus();
+        });
+    }
+    if (n->remind) {
+        auto* chip = sheet->add<Button>(Flex::Direction::Row);
+        pill(chip->setBackground(ColorRef("on_surface", 0.08f), false))->setPadding({10, 5})->setSpacing(6)->setAlignItems(Align::Center);
+        chip->alignSelf = Align::Start;
+        chip->add<Icon>(n->remind < std::time(nullptr) ? "alarm_on" : "alarm", 16);
+        chip->add<Label>((n->remind < std::time(nullptr) ? "Reminded " : "Remind me ") + whenText(n->remind))->setSize(12)->setWeight(500);
+        chip->onClicked = [st, id, chip](uint32_t b) {
+            if (b == BTN_LEFT) reminderMenu(st, chip, id);
+        };
+    }
+    if (!n->images.empty()) {
+        auto* grid = sheet->add<Flow>();
+        grid->spacing = 8;
+        for (size_t i = 0; i < n->images.size(); ++i) {
+            const std::string pic = n->images[i];
+            auto* box = grid->add<Button>(Flex::Direction::Column);
+            box->setPadding(Insets(0))->setRadius(Radii(14));
+            box->tooltip = "Open · right click to take it out";
+            auto* v = box->add<ImageView>(180, 130, [pic](float scale, int& w, int& h) -> GLuint {
+                auto* t = Images::get().picture(pic, static_cast<int>(180 * scale), static_cast<int>(130 * scale), true);
+                if (!t) return 0;
+                w = t->width, h = t->height;
+                return t->id;
+            });
+            v->cover = true;
+            v->radius = 14;
+            box->onClicked = [st, id, pic, box](uint32_t b) {
+                if (b == BTN_LEFT && open) open("viewer " + pic);
+                if (b != BTN_RIGHT) return;
+                floatingMenu(box, {MenuItem("delete", "Take the picture out", "", [st, id, pic] {
+                                       Note* x = st->store.find(id);
+                                       if (!x) return;
+                                       std::error_code ec;
+                                       if (pic.starts_with(imagesDir())) fs::remove(pic, ec);
+                                       std::erase(x->images, pic);
+                                       touch(st, *x);
+                                       refresh(st);
+                                   }, false, true)});
+            };
+        }
+    }
     if (!n->labels.empty()) {
         auto* chips = sheet->add<Flow>();
         chips->spacing = 6;
@@ -665,7 +885,7 @@ void editorView(const std::shared_ptr<State>& st, Flex* c) {
     caption(sheet, std::string("Edited ") + fileops::humanTime(n->modified));
     // Typing begins where it should: a new note's title, else its text
     EventLoop::get().defer([st, title, body, fresh = n->empty()] {
-        if (!*st->alive) return;
+        if (!*st->alive || !st->asking.empty()) return;
         if (fresh || !body) title->focus();
         else body->focus();
     });

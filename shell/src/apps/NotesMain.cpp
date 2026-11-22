@@ -20,7 +20,7 @@ int main(int argc, char** argv) {
     app.closed = [] { shell::panels::notesAppClosed(); };
     app.settings = shell::panels::notesSettings;
     app.about.summary = "Notes and checklists, as cards in your colours.";
-    app.about.features = {"Notes and checklists in twelve tints that follow light and dark mode", "Pins, labels, search, an archive and a trash", "Saved as you type; copy, duplicate, or save as Markdown"};
+    app.about.features = {"Notes and checklists in twelve tints that follow light and dark mode", "Pins, labels, search, an archive and a trash", "Reminders that notify you even with Notes closed", "Pictures pasted from the clipboard or added from a file", "Saved as you type; copy, duplicate, or save as Markdown"};
     app.about.builtWith = "nlohmann-json";
     return apps::run(app, argc, argv);
 }
