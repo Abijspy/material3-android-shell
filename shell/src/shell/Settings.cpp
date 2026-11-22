@@ -43,6 +43,7 @@
 #include "shell/Dock.h"
 #include "shell/PrintersPage.h"
 #include "shell/SecurityPages.h"
+#include "shell/ShellAppsPage.h"
 #include "shell/SoftwarePages.h"
 #include "shell/TimeZoneMap.h"
 #include "shell/WellbeingPage.h"
@@ -4379,7 +4380,7 @@ HueChip categoryColours(const std::string& id) {
         teal{"#a8eafa", "#00505f"}, purple{"#ecdcfc", "#4c258e"};
     static const std::vector<std::pair<std::vector<std::string>, const Pair*>> table = {
         {{"network", "vpn", "bluetooth", "printers", "weather", "niri-layout"}, &blue},
-        {{"defaults", "niri-behaviour"}, &apps},
+        {{"defaults", "shellapps", "niri-behaviour"}, &apps},
         {{"notifications", "sound", "niri-animations"}, &pink},
         {{"display", "appearance", "style", "bar", "dock", "niri-decoration"}, &orange},
         {{"storage", "monitor", "calendar", "clock"}, &yellow},
@@ -4451,6 +4452,7 @@ const PageDef kPages[] = {
     {"bluetooth", "bluetooth", "Connected devices", "Bluetooth, pairing and devices", bluetoothPage},
     {"printers", "print", "Printers", "Printers nearby, the default and the queue", printersPage},
     {"defaults", "apps", "Apps", "Default apps for links, files and the terminal", defaultAppsPage},
+    {"shellapps", "settings_backup_restore", "Material3UI apps", "Files, Photos, Terminal and the rest: reinstall ones you removed", shellAppsPage},
     {"notifications", "notifications", "Notifications", "Do not disturb and pop-ups", notificationsPage},
     {"tools", "construction", "Tools", "Clipboard history and screenshots", toolsPage},
     {"spotlight", "search", "Spotlight", "Search, calculator, conversions and the web", spotlightPage},
@@ -4525,7 +4527,7 @@ int pageGroup(const std::string& id) {
     if (id == "niri-keys" || id == "niri-rules" || id == "niri-startup" || id == "niri-environment") return 3;
     if (id.starts_with("niri-")) return 0;
     if (id == "network" || id == "vpn" || id == "bluetooth" || id == "printers") return 0;
-    if (id == "defaults" || id == "notifications" || id == "wellbeing" || id == "tools" || id == "calendar" || id == "clock" || id == "weather") return 1;
+    if (id == "defaults" || id == "shellapps" || id == "notifications" || id == "wellbeing" || id == "tools" || id == "calendar" || id == "clock" || id == "weather") return 1;
     if (id == "battery" || id == "storage" || id == "monitor" || id == "sound" || id == "display") return 2;
     if (id == "appearance" || id == "style" || id == "bar" || id == "dock" || id == "lockscreen") return 3;
     if (id == "accessibility" || id == "lock" || id == "firewall" || id == "users") return 4;

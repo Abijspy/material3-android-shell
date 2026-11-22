@@ -190,6 +190,7 @@ sources = files(
   'src/shell/PrintersPage.cpp',
   'src/shell/SettingsKit.cpp',
   'src/shell/SoftwarePages.cpp',
+  'src/shell/ShellAppsPage.cpp',
   'src/shell/Tools.cpp',
   'src/shell/Switcher.cpp',
   'src/shell/Welcome.cpp',
