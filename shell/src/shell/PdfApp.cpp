@@ -113,6 +113,8 @@ struct State {
     std::string pendingText;
 
     std::vector<PageView*> views, thumbViews;
+    Flex *outlineCol = nullptr, *sideTabs = nullptr;
+    bool showOutline = false;
     Flex *root = nullptr, *toolbar = nullptr, *editBar = nullptr, *searchBar = nullptr, *body = nullptr, *pagesCol = nullptr, *thumbCol = nullptr,
          *empty = nullptr, *textBar = nullptr;
     ScrollView *scroll = nullptr, *thumbScroll = nullptr;
@@ -1054,7 +1056,42 @@ void setTool(std::shared_ptr<State> st, Tool t) {
 
 } // namespace
 
-void pdfViewer(Flex* card, Popup& popup, const std::string& file) {
+// The document's contents (its outline), a click to each part
+int outlinePage(const std::shared_ptr<State>& st, PopplerAction* a) {
+    if (!a || a->type != POPPLER_ACTION_GOTO_DEST || !a->goto_dest.dest) return -1;
+    PopplerDest* d = a->goto_dest.dest;
+    PopplerDest* found = nullptr;
+    if (d->type == POPPLER_DEST_NAMED) d = found = poppler_document_find_dest(st->doc, d->named_dest);
+    const int page = d ? d->page_num - 1 : -1;
+    if (found) poppler_dest_free(found);
+    return page;
+}
+void addOutline(const std::shared_ptr<State>& st, Flex* into, PopplerIndexIter* it, int depth) {
+    do {
+        PopplerAction* a = poppler_index_iter_get_action(it);
+        const std::string title = a && a->any.title ? a->any.title : "";
+        const int page = outlinePage(st, a);
+        if (!title.empty()) {
+            auto* b = into->add<Button>(Flex::Direction::Row);
+            b->setPadding({8.0f + static_cast<float>(depth) * 14, 6, 8, 6})->setSpacing(8)->setRadius(Radii(10));
+            auto* l = b->add<Label>(title);
+            l->setSize(depth == 0 ? 13 : 12)->setWeight(depth == 0 ? 600 : 400)->setMaxWidth(170.0f - static_cast<float>(depth) * 14)->setMaxLines(2);
+            l->grow = true;
+            if (page >= 0) b->add<Label>(std::to_string(page + 1))->setSize(11)->setColor("on_surface_variant", false);
+            b->onClicked = [st, page](uint32_t btn) {
+                if (btn == BTN_LEFT && page >= 0) jumpTo(st, page);
+            };
+        }
+        if (a) poppler_action_free(a);
+        if (PopplerIndexIter* child = poppler_index_iter_get_child(it)) {
+            addOutline(st, into, child, depth + 1);
+            poppler_index_iter_free(child);
+        }
+    } while (poppler_index_iter_next(it));
+}
+
+// One document's view: the window holds one per tab
+std::shared_ptr<State> pdfPane(Flex* card, Popup& popup, const std::string& file, std::function<bool(const KeyEvent&)>& keys) {
     auto st = std::make_shared<State>();
     st->popup = &popup;
     card->setPadding(Insets(10))->setSpacing(8);
@@ -1200,9 +1237,16 @@ void pdfViewer(Flex* card, Popup& popup, const std::string& file) {
     st->body->grow = true;
     st->thumbScroll = st->body->add<ScrollView>();
     st->thumbScroll->maxHeight = 1e6f;
-    st->thumbScroll->fixedWidth = 170;
-    st->thumbCol = st->thumbScroll->add<Flex>(Flex::Direction::Column);
+    st->thumbScroll->fixedWidth = 210;
+    auto* sideCol = st->thumbScroll->add<Flex>(Flex::Direction::Column);
+    sideCol->setAlignItems(Align::Stretch);
+    st->sideTabs = sideCol->add<Flex>(Flex::Direction::Row);
+    st->sideTabs->setPadding({8, 10, 8, 0})->setJustify(Align::Center);
+    st->thumbCol = sideCol->add<Flex>(Flex::Direction::Column);
     st->thumbCol->setSpacing(12)->setAlignItems(Align::Center)->setPadding({12, 14});
+    st->outlineCol = sideCol->add<Flex>(Flex::Direction::Column);
+    st->outlineCol->setSpacing(2)->setAlignItems(Align::Stretch)->setPadding({6, 10});
+    st->outlineCol->setVisible(false);
     st->thumbScroll->setVisible(st->thumbs);
     st->scroll = st->body->add<ScrollView>();
     st->scroll->maxHeight = 1e6f;
@@ -1225,6 +1269,22 @@ void pdfViewer(Flex* card, Popup& popup, const std::string& file) {
         st->thumbCol->clearChildren();
         st->views.clear(), st->thumbViews.clear(), st->lru.clear();
         for (int i = 0; i < st->pages; ++i) st->views.push_back(st->pagesCol->add<PageView>(st, i, false));
+        // Contents, when the document has them
+        st->outlineCol->clearChildren();
+        st->sideTabs->clearChildren();
+        if (PopplerIndexIter* it = poppler_index_iter_new(st->doc)) {
+            addOutline(st, st->outlineCol, it, 0);
+            poppler_index_iter_free(it);
+            connectedGroup<int>(st->sideTabs, st->showOutline ? 1 : 0, {{0, "Pages"}, {1, "Contents"}}, [st](int v) {
+                st->showOutline = v == 1;
+                st->thumbCol->setVisible(!st->showOutline);
+                st->outlineCol->setVisible(st->showOutline);
+            });
+        } else {
+            st->showOutline = false;
+        }
+        st->thumbCol->setVisible(!st->showOutline);
+        st->outlineCol->setVisible(st->showOutline);
         for (int i = 0; i < st->pages; ++i) {
             auto* col = st->thumbCol->add<Flex>(Flex::Direction::Column);
             col->setAlignItems(Align::Center)->setSpacing(4);
@@ -1358,7 +1418,7 @@ void pdfViewer(Flex* card, Popup& popup, const std::string& file) {
     }
 
     auto& p = popup;
-    popup.onKey = [st, &p](const KeyEvent& e) {
+    keys = [st, &p](const KeyEvent& e) {
         const uint32_t k = e.baseSym >= 'A' && e.baseSym <= 'Z' ? e.baseSym - 'A' + 'a' : e.baseSym;
         if (e.ctrl()) {
             if (k == 'f') {
@@ -1433,11 +1493,132 @@ void pdfViewer(Flex* card, Popup& popup, const std::string& file) {
         }
     };
 
-    pdfGo = [st](const std::string& f) {
-        if (*st->alive && !f.empty()) openPdf(st, f);
-    };
     if (file.empty()) showEmpty(st);
     else openPdf(st, file);
+    return st;
+}
+
+namespace {
+
+struct PdfTab {
+    std::shared_ptr<State> st;
+    Flex* box = nullptr;
+    std::function<bool(const KeyEvent&)> keys;
+};
+struct PdfWindow {
+    std::vector<PdfTab> tabs;
+    int active = 0;
+    Flex *strip = nullptr, *stack = nullptr;
+    Popup* popup = nullptr;
+    std::function<void()> rebuild;
+    std::shared_ptr<bool> alive = std::make_shared<bool>(true);
+};
+
+void showPdfTab(const std::shared_ptr<PdfWindow>& w, int i) {
+    if (w->tabs.empty()) return;
+    w->active = std::clamp(i, 0, static_cast<int>(w->tabs.size()) - 1);
+    for (size_t k = 0; k < w->tabs.size(); ++k) w->tabs[k].box->setVisible(static_cast<int>(k) == w->active);
+    if (w->rebuild) w->rebuild();
+}
+
+void addPdfTab(const std::shared_ptr<PdfWindow>& w, const std::string& file) {
+    // Already open: that tab; an empty tab: this file in it
+    for (size_t i = 0; i < w->tabs.size(); ++i)
+        if (!file.empty() && w->tabs[i].st->path == file && w->tabs[i].st->doc) return showPdfTab(w, static_cast<int>(i));
+    if (!file.empty() && !w->tabs.empty() && !w->tabs[static_cast<size_t>(w->active)].st->doc) {
+        openPdf(w->tabs[static_cast<size_t>(w->active)].st, file);
+        return showPdfTab(w, w->active);
+    }
+    PdfTab t;
+    t.box = w->stack->add<Flex>(Flex::Direction::Column);
+    t.box->setAlignItems(Align::Stretch);
+    t.box->grow = true;
+    t.st = pdfPane(t.box, *w->popup, file, t.keys);
+    w->tabs.push_back(std::move(t));
+    showPdfTab(w, static_cast<int>(w->tabs.size()) - 1);
+}
+
+void closePdfTab(const std::shared_ptr<PdfWindow>& w, int i) {
+    if (w->tabs.size() <= 1) {
+        if (w->popup) w->popup->close();
+        return;
+    }
+    Flex* box = w->tabs[static_cast<size_t>(i)].box;
+    w->tabs.erase(w->tabs.begin() + i);
+    EventLoop::get().defer([w, box] {
+        if (*w->alive) w->stack->remove(box);
+    });
+    showPdfTab(w, std::min(i, static_cast<int>(w->tabs.size()) - 1));
+}
+
+} // namespace
+
+void pdfViewer(Flex* card, Popup& popup, const std::string& file) {
+    auto w = std::make_shared<PdfWindow>();
+    w->popup = &popup;
+    card->setPadding(Insets(0))->setSpacing(0);
+    w->strip = card->add<Flex>(Flex::Direction::Row);
+    w->strip->setSpacing(4)->setAlignItems(Align::Center)->setPadding({12, 6, 12, 0});
+    w->stack = card->add<Flex>(Flex::Direction::Column);
+    w->stack->setAlignItems(Align::Stretch);
+    w->stack->grow = true;
+    w->rebuild = [w] {
+        auto* s = w->strip;
+        s->clearChildren();
+        s->setVisible(w->tabs.size() > 1);
+        for (size_t i = 0; i < w->tabs.size(); ++i) {
+            const bool here = static_cast<int>(i) == w->active;
+            const auto& st = w->tabs[i].st;
+            auto* b = s->add<Button>(Flex::Direction::Row);
+            pill(b)->setPadding({12, 5, 6, 5})->setSpacing(6);
+            b->setBackground(here ? "secondary_container" : "surface_container_high", false);
+            b->add<Icon>("picture_as_pdf", 16)->setColor(here ? "on_secondary_container" : "error", false);
+            b->add<Label>(st->doc ? fs::path(st->path).filename().string() : "Open a PDF")->setSize(13)->setWeight(here ? 600 : 500)->setMaxWidth(180);
+            b->givesWay = true;
+            b->onClicked = [w, i](uint32_t btn) {
+                if (btn == BTN_LEFT) EventLoop::get().defer([w, i] {
+                    if (*w->alive) showPdfTab(w, static_cast<int>(i));
+                });
+            };
+            iconButton(b, "close", [w, i] {
+                EventLoop::get().defer([w, i] {
+                    if (*w->alive) closePdfTab(w, static_cast<int>(i));
+                });
+            }, 14)->setPadding(Insets(3));
+        }
+        iconButton(s, "add", [w] {
+            EventLoop::get().defer([w] {
+                if (*w->alive) addPdfTab(w, "");
+            });
+        }, 18)->tooltip = "Another PDF (Ctrl+T)";
+    };
+    popup.onKey = [w](const KeyEvent& e) {
+        const uint32_t k = e.baseSym >= 'A' && e.baseSym <= 'Z' ? e.baseSym - 'A' + 'a' : e.baseSym;
+        if (e.ctrl() && k == 't') return addPdfTab(w, ""), true;
+        if (e.ctrl() && k == 'w') return closePdfTab(w, w->active), true;
+        if (e.ctrl() && (e.sym == XKB_KEY_Tab || e.sym == XKB_KEY_ISO_Left_Tab)) {
+            const int n = static_cast<int>(w->tabs.size());
+            showPdfTab(w, ((w->active + (e.shift() || e.sym == XKB_KEY_ISO_Left_Tab ? -1 : 1)) % n + n) % n);
+            return true;
+        }
+        if (w->tabs.empty()) return false;
+        auto& t = w->tabs[static_cast<size_t>(w->active)];
+        return t.keys && t.keys(e);
+    };
+    pdfGo = [w](const std::string& f) {
+        if (*w->alive && !f.empty()) addPdfTab(w, f);
+    };
+    struct WKeeper : Node {
+        std::shared_ptr<PdfWindow> w;
+        explicit WKeeper(std::shared_ptr<PdfWindow> x) : w(std::move(x)) { floating = true; }
+        ~WKeeper() override {
+            *w->alive = false;
+            w->rebuild = nullptr;
+        }
+        SizeF doMeasure(SizeF) override { return {0, 0}; }
+    };
+    card->add<WKeeper>(w);
+    addPdfTab(w, file);
 }
 
 // Settings → PDF
