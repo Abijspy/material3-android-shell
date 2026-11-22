@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Fonts
+GenericName=Font Viewer
+Comment=The fonts installed, each in its own face, and font files to look at and install.
+Exec=material3ui-fonts %U
+Icon=material3ui-fonts
+Terminal=false
+Categories=Utility;Graphics;
+Keywords=font;fonts;typeface;type;install;ttf;otf;
+MimeType=font/ttf;font/otf;font/collection;font/woff;font/woff2;application/x-font-ttf;application/x-font-otf;application/vnd.ms-opentype;
+StartupNotify=false
+StartupWMClass=material3ui-fonts

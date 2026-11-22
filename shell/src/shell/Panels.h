@@ -198,4 +198,10 @@ void recorderSettings(ui::Flex* page);
 void calculatorApp(ui::Flex* card, Popup& popup, const std::string& arg);
 void calculatorSettings(ui::Flex* page);
 
+// Fonts (an app window)
+void fontsApp(ui::Flex* card, Popup& popup, const std::string& arg);
+extern std::function<void(const std::string&)> fontsGo;
+void fontsClosed();
+void fontsSettings(ui::Flex* page);
+
 } // namespace m3::shell::panels

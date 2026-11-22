@@ -349,6 +349,11 @@ void openPath(const std::shared_ptr<State>& st, const std::string& path) {
             if (open) open("pdf " + path);
             return;
         }
+        if ((e == ".ttf" || e == ".otf" || e == ".ttc" || e == ".otc" || e == ".woff" || e == ".woff2") && !ownCommand("material3ui-fonts").empty() &&
+            Config::get().value<bool>("/files/fonts", true)) {
+            if (open) open("fonts " + path);
+            return;
+        }
         if ((k == fileops::Kind::Text || k == fileops::Kind::Code) && !ownCommand("material3ui-text").empty() && Config::get().value<bool>("/files/textEditor", true)) {
             if (open) open("text " + path);
             return;
@@ -1713,6 +1718,7 @@ void filesSettings(Flex* page) {
     switchRow(o, "library_music", "Songs in Music", "", "/files/music", true);
     switchRow(o, "movie", "Videos in Videos", "", "/files/player", true);
     switchRow(o, "picture_as_pdf", "PDFs in the PDF viewer", "", "/files/pdf", true);
+    switchRow(o, "font_download", "Fonts in Fonts", "", "/files/fonts", true);
     switchRow(o, "edit_note", "Text and code in the Text Editor", "", "/files/textEditor", true);
 }
 
