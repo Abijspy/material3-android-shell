@@ -161,6 +161,7 @@ Since 7.1 each built-in app is a package of its own, built from the same compile
 | `material3ui-notes` | Notes (`material3ui-notes`) | |
 | `material3ui-pdf` | The PDF viewer and editor (`material3ui-pdf`) | poppler-glib (qpdf for page changes) |
 | `material3ui-text` | The text editor (`material3ui-text`) | |
+| `material3ui-backups` | Backups (`material3ui-backups`) |  |
 | `material3ui-camera` | Camera (`material3ui-camera`) | `mpv`, `ffmpeg` |
 | `material3ui-disks` | Disks (`material3ui-disks`) | `udisks2` |
 | `material3ui-music` | Music (`material3ui-music`) | mpv (mpv-mpris for the bar and lyrics) |

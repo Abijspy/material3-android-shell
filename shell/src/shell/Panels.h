@@ -179,4 +179,8 @@ void disksSettings(ui::Flex* page);
 void cameraApp(ui::Flex* card, Popup& popup, const std::string& arg);
 void cameraSettings(ui::Flex* page);
 
+// Backups (an app window)
+void backupsApp(ui::Flex* card, Popup& popup, const std::string& arg);
+void backupsSettings(ui::Flex* page);
+
 } // namespace m3::shell::panels

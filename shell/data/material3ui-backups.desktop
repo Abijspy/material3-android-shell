@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Backups
+GenericName=Backup
+Comment=Your folders, kept as dated snapshots on a drive of your choosing.
+Exec=material3ui-backups
+Icon=material3ui-backups
+Terminal=false
+Categories=System;Utility;Archiving;
+Keywords=backup;restore;snapshot;copy;drive;history;
+StartupNotify=false
+StartupWMClass=material3ui-backups

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Backups: the shell's squircle, in its tonal colours -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a5d6a7"/>
+      <stop offset="1" stop-color="#2e7d32"/>
+    </linearGradient>
+  </defs>
+  <path d="M64 4C108 4 124 20 124 64S108 124 64 124 4 108 4 64 20 4 64 4Z" fill="url(#bg)"/>
+  <path d="M40 82h48a14 14 0 0 0 2-27.8A20 20 0 0 0 52 48a14 14 0 0 0-12 34Z" fill="#ffffff"/><path d="M64 58v18M56 66l8-8 8 8" stroke="#2e7d32" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
