@@ -9,7 +9,7 @@ pkgdesc="A Material 3 desktop shell for niri"
 arch=(x86_64 aarch64)
 url="https://github.com/Abijspy/material3-android-shell"
 license=(MIT)
-depends=(niri wayland libglvnd pango cairo libxkbcommon systemd-libs libpulse librsvg gdk-pixbuf2 polkit pam fastfetch mpv)
+depends=(niri wayland libglvnd pango cairo libxkbcommon systemd-libs libpulse librsvg gdk-pixbuf2 polkit pam fastfetch mpv libvterm)
 makedepends=(meson ninja wayland-protocols wlr-protocols nlohmann-json)
 # niri 26.04 or newer
 optdepends=('xwayland-satellite: X11 apps on niri'

@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Name=Terminal
+GenericName=Terminal
+Comment=Your shell, in Material You colours, with tabs
+Exec=material3ui-terminal
+Icon=material3ui-terminal
+Terminal=false
+Categories=System;TerminalEmulator;
+Keywords=shell;prompt;command;commandline;cmd;console;terminal;
+StartupNotify=false
+StartupWMClass=material3ui-terminal
+Actions=new-tab;
+
+[Desktop Action new-tab]
+Name=New tab
+Exec=material3ui-terminal

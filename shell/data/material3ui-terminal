@@ -1,0 +1,5 @@
+#!/bin/sh
+# The shell's own terminal, as a command other programs can run ($TERMINAL):
+#   material3ui-terminal [folder] [-e command…]
+# A new tab in its window (the window opens when there's none)
+exec material3ui msg terminal "$@"

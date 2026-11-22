@@ -47,6 +47,7 @@ private:
     void openViewer(const std::string& file);
     void openTasks(const std::string& tab);
     void openPlayer(const std::string& file);
+    void openTerminal(const std::string& dir, const std::vector<std::string>& command = {});
     // The first-run tour window
     void openWelcome();
     // A new install gets the tour, an update What's new (once each version)
@@ -58,7 +59,7 @@ private:
     std::string m_popupArg; // what the open popup shows (a transfer, an event…)
     std::unique_ptr<Popup> m_settings; // an app window, beside the popups
     std::unique_ptr<Popup> m_niriSettings; // Niri Settings, the same
-    std::unique_ptr<Popup> m_files, m_viewer, m_tasks, m_player; // Files, the image viewer
+    std::unique_ptr<Popup> m_files, m_viewer, m_tasks, m_player, m_terminal; // Files, the image viewer
     std::unique_ptr<Popup> m_welcome; // the tour window
     std::map<wl::Output*, std::unique_ptr<Desktop>> m_desktops;
     std::map<wl::Output*, std::unique_ptr<Dock>> m_docks;

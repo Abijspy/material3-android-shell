@@ -28,6 +28,14 @@
   - **Adjust:** exposure, brightness, contrast, saturation, warmth, sharpen, blur and vignette, shown as you drag. There are nine filters: Vivid, Warm, Cool, Mono, Noir, Sepia, Fade and Invert.
   - **Undo and redo:** everything, rotations and adjustments included.
   - **Save:** over a screenshot as before, or from the save menu over the original in its own format, or as a copy in PNG, JPEG, WebP or AVIF.
+- **A terminal.** The shell's own terminal (`material3ui-terminal`, or `material3ui msg terminal [folder] [-e command]`), on libvterm, the emulator Neovim uses. The installer offers it as your terminal, and Super+Return opens it.
+  - **Looks:** your monospace font, and colours from the wallpaper's palette (blue its primary, magenta its tertiary, red its error colour), redrawn when they change. Truecolour, 256 colours, bold, italic, underline, strikethrough, CJK and emoji on the grid.
+  - **Works with everything:** xterm-256color, the alternate screen (vim, nano, top, htop), mouse reporting, bracketed paste, window titles.
+  - **Tabs:** Ctrl+Shift+T, Ctrl+Shift+W, Ctrl+Tab or Ctrl+Page Up/Down, Alt+1–9. New tabs start in the folder you're in.
+  - **Scrollback** of 10,000 lines (the wheel, Shift+Page Up/Down), with a bar showing how far back you are.
+  - **Selecting:** drag, or double-click a word; it's the primary selection at once (middle click pastes it). Ctrl+Shift+C and V copy and paste, Ctrl+Shift+A selects all and Ctrl+Shift+K clears. Right click for the menu.
+  - **Text size:** Ctrl+= and Ctrl+−, Ctrl+0 to reset, remembered.
+  - A command that fails keeps its tab open with what it said and its exit code.
 - **A video player.** Videos and songs open in the shell's own player (Videos), built on libmpv: every format and codec FFmpeg knows (MKV, MP4, WebM, AVI, MOV, TS, WMV, FLV, VOB and the rest; FLAC, Opus, APE, DSD…), hardware decoding, and web videos through yt-dlp (`material3ui msg play <URL>`).
   - **Subtitles:** SRT, ASS/SSA, WebVTT, PGS, VobSub and the tracks inside the file. One beside the video with the same name (or in a Subs folder) loads by itself, and opening a subtitle file in Files adds it to what's playing. The subtitles menu picks a track and shifts them earlier or later, bigger or smaller, up or down.
   - **The bar:** seek, play and pause, the folder's other videos (or songs) as a playlist that plays on, volume, speed from 0.25× to 3×, the audio track, saving the frame to Screenshots, and full screen (F, or a double click), where the bar hides until the pointer moves.

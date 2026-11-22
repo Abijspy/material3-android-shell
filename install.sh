@@ -44,7 +44,7 @@ TERMINAL="" FILE_MANAGER="" BROWSER="" NIRI_MODE="" CHANNEL="" GREETER="" INSTAL
 ORIG_ARGS=("$@")
 
 # The choices, "value:description", the first the default
-readonly TERMINALS=("alacritty:GPU terminal, recoloured with the wallpaper" "kitty:feature-rich" "foot:minimal and fast" "ghostty:modern GPU terminal")
+readonly TERMINALS=("material3ui-terminal:the shell's own: Material You colours, tabs" "alacritty:GPU terminal, recoloured with the wallpaper" "kitty:feature-rich" "foot:minimal and fast" "ghostty:modern GPU terminal")
 readonly FILE_MANAGERS=("files:the shell's own Files: built in, nothing to install" "nemo:Cinnamon's" "thunar:light, from Xfce" "nautilus:GNOME Files" "dolphin:KDE's")
 readonly BROWSERS=("librewolf:privacy-minded Firefox" "firefox:Mozilla Firefox" "chromium:open-source Chromium" "zen-browser:Zen (AUR)")
 readonly CHANNELS=("latest:follow main" "release:tagged releases only")
@@ -58,7 +58,7 @@ Usage: install.sh [options]
   -n, --dry-run             Show the plan and every step; change nothing
       --plain               Plain prompts instead of the full-screen installer
       --skip-deps           Don't install packages (build and configure only)
-      --terminal NAME       alacritty | kitty | foot | ghostty
+      --terminal NAME       material3ui-terminal | alacritty | kitty | foot | ghostty
       --file-manager NAME   nemo | thunar | nautilus | dolphin
       --browser NAME        librewolf | firefox | chromium | zen-browser
       --niri MODE           include: keep your config.kdl (or start from niri's
@@ -406,8 +406,8 @@ previous() { [[ -f "$STATE_FILE" ]] && grep -oP "\"$1\": \"\\K[^\"]*" "$STATE_FI
 
 # ── Packages ─────────────────────────────────────────────────────────────────
 # LibreWolf is in [extra] now (librewolf-bin left the AUR); Zen is still AUR-only
-# The shell's own Files is in the shell: no package
-pkg_for() { case "$1" in zen-browser) echo zen-browser-bin ;; files) ;; *) echo "$1" ;; esac; }
+# The shell's own Files and terminal are in the shell: no package
+pkg_for() { case "$1" in zen-browser) echo zen-browser-bin ;; files | material3ui-terminal) ;; *) echo "$1" ;; esac; }
 desktop_for() {
     case "$1" in
         alacritty) echo Alacritty.desktop ;; ghostty) echo com.mitchellh.ghostty.desktop ;;

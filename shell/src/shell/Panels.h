@@ -77,6 +77,11 @@ void viewerClosed();
 void player(ui::Flex* card, Popup& popup, const std::string& file);
 extern std::function<void(const std::string&)> playerGo;
 void playerClosed();
+// The terminal (an app window, libvterm): a tab with your shell in `dir`
+// (or running `command`); terminalGo opens another tab
+void terminal(ui::Flex* card, Popup& popup, const std::string& dir, const std::vector<std::string>& command);
+extern std::function<void(const std::string&, const std::vector<std::string>&)> terminalGo;
+void terminalClosed();
 // Task Manager (an app window): processes, performance, startup apps and
 // services; `tab` one of processes|performance|startup|services
 void taskManager(ui::Flex* card, Popup& popup, const std::string& tab);

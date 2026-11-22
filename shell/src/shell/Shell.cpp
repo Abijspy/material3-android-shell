@@ -436,6 +436,27 @@ void Shell::openViewer(const std::string& file) {
     };
 }
 
+void Shell::openTerminal(const std::string& dir, const std::vector<std::string>& command) {
+    if (m_terminal && !m_terminal->closing()) {
+        if (panels::terminalGo) panels::terminalGo(dir, command);
+        return raise("material3ui-terminal");
+    }
+    if (m_popup) m_popup->close();
+    Popup::Options opts;
+    opts.name = "terminal";
+    opts.window = true;
+    opts.appId = "material3ui-terminal";
+    opts.title = "Terminal";
+    opts.icon = "terminal";
+    opts.windowWidth = 960;
+    opts.windowHeight = 620;
+    m_terminal = std::make_unique<Popup>(nullptr, opts, [dir, command](ui::Flex* card, Popup& p) { panels::terminal(card, p, dir, command); });
+    m_terminal->onClosed = [this] {
+        panels::terminalClosed();
+        EventLoop::get().defer([this] { m_terminal.reset(); });
+    };
+}
+
 void Shell::openPlayer(const std::string& file) {
     if (m_player && !m_player->closing()) {
         if (!file.empty() && panels::playerGo) panels::playerGo(file);
@@ -510,6 +531,7 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
     if (name == "viewer") return openViewer(arg);
     if (name == "tasks") return openTasks(arg);
     if (name == "player") return openPlayer(arg);
+    if (name == "terminal") return openTerminal(arg);
     if (name == "desktopedit") return desktopeditor::open(output ? output : focusedOutput());
     // The compositor's own overview where it has one (niri's)
     if (name == "overview" && Compositor::get().can(Compositor::Feature::NativeOverview)) {
@@ -943,6 +965,23 @@ void Shell::registerIpc() {
         std::error_code ec;
         return p.empty() ? p : std::filesystem::absolute(p, ec).string();
     };
+    ipc.add("terminal", "terminal [folder] [-e command…]: the terminal, a new tab (in a folder, or running a command)", [this](const IpcServer::Args& a) {
+        std::string dir;
+        std::vector<std::string> command;
+        for (size_t i = 0; i < a.size(); ++i) {
+            if (a[i] == "-e" || a[i] == "--") {
+                command.assign(a.begin() + static_cast<long>(i) + 1, a.end());
+                break;
+            }
+            if (dir.empty()) dir = a[i];
+        }
+        if (!dir.empty()) {
+            std::error_code ec;
+            dir = std::filesystem::absolute(dir, ec).string();
+        }
+        EventLoop::get().defer([this, dir, command] { openTerminal(dir, command); });
+        return std::string("terminal");
+    });
     ipc.add("play", "play [file|URL]: the video player, playing it (the folder's others after it)", [this, localPath](const IpcServer::Args& a) {
         std::string what;
         for (const auto& x : a) what += (what.empty() ? "" : " ") + x;

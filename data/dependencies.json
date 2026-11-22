@@ -71,6 +71,11 @@
       "description": "The video player (libmpv): every video and audio format, subtitles"
     },
     {
+      "name": "libvterm",
+      "command": "",
+      "description": "The terminal's emulator (xterm-256colour, truecolour)"
+    },
+    {
       "name": "gdk-pixbuf2",
       "command": "",
       "description": "JPEG, PNG and WebP wallpapers"
