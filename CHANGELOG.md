@@ -1,5 +1,14 @@
 # Changelog
 
+## v7.1.4 — 2026-11-22
+
+- **Store** (`material3ui-store`), a new app for finding, installing and updating apps:
+  - **Explore:** Flathub's catalogue with a featured banner in each app's own colour, shelves (Editor's picks, New & updated, Games, Creative tools and more) and colourful categories. Verified publishers come first, and the newest releases lead the shelves.
+  - **App pages:** the app's colour, a large Install button, its version and release date (and the one you have, with Update available), license and categories, a screenshot viewer, the full description and More like this.
+  - **Search** covers Flathub, your system's repositories and the AUR at once, with filters for each.
+  - **Installed and Updates:** your Flatpak and system apps with Open and Remove, and every update with Update all.
+- **Settings → Material3UI apps** lists the Store too, to reinstall it if removed.
+
 ## v7.1.3 — 2026-11-22
 
 - **Eight new apps**, each a package of its own with Settings and About pages:
