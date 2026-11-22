@@ -4,6 +4,7 @@
 #include "core/Paths.h"
 #include "core/Process.h"
 
+#include <gdk-pixbuf/gdk-pixbuf.h>
 #include <nlohmann/json.hpp>
 #include <openssl/evp.h>
 
@@ -203,7 +204,11 @@ std::vector<Entry> list(const std::string& dir, bool hidden, std::string* error)
 Kind kindOf(const std::string& path, bool dir) {
     if (dir) return Kind::Folder;
     const std::string e = lowerExt(path);
-    if (among(e, {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg", ".tif", ".tiff", ".avif", ".heic", ".ico", ".jxl"})) return Kind::Picture;
+    if (among(e, {".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".apng", ".webp", ".gif", ".bmp", ".svg", ".svgz", ".tif", ".tiff", ".avif", ".heic", ".heif",
+                  ".ico", ".icns", ".cur", ".jxl", ".qoi", ".tga", ".dds", ".exr", ".hdr", ".pnm", ".ppm", ".pgm", ".pbm", ".xpm", ".xbm", ".pcx", ".psd",
+                  ".psb", ".xcf", ".jp2", ".j2k", ".jpf", ".jpx", ".wbmp", ".dng", ".cr2", ".cr3", ".crw", ".nef", ".nrw", ".arw", ".srf", ".sr2", ".orf",
+                  ".rw2", ".raf", ".pef", ".srw", ".x3f", ".3fr", ".mrw", ".kdc", ".dcr", ".erf", ".mos", ".raw", ".rwl", ".iiq"}))
+        return Kind::Picture;
     if (among(e, {".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".wmv", ".flv", ".mpg", ".mpeg", ".3gp", ".ogv"})) return Kind::Video;
     if (among(e, {".mp3", ".flac", ".ogg", ".opus", ".m4a", ".wav", ".aac", ".wma", ".alac", ".aiff"})) return Kind::Audio;
     if (among(e, {".pdf", ".doc", ".docx", ".odt", ".rtf", ".xls", ".xlsx", ".ods", ".ppt", ".pptx", ".odp", ".epub"})) return Kind::Document;
@@ -216,6 +221,63 @@ Kind kindOf(const std::string& path, bool dir) {
 
 bool isPicture(const std::string& path) {
     return kindOf(path) == Kind::Picture;
+}
+
+bool nativePicture(const std::string& path) {
+    int w = 0, h = 0;
+    return gdk_pixbuf_get_file_info(path.c_str(), &w, &h) != nullptr && w > 0 && h > 0;
+}
+
+namespace {
+// Pictures the loaders can't read, waiting for ImageMagick, one at a time
+std::deque<std::pair<std::string, std::string>> g_convQueue; // picture, png
+std::map<std::string, std::vector<std::function<void()>>> g_convWaiters;
+std::set<std::string> g_convFailed;
+bool g_convRunning = false;
+
+void nextConversion() {
+    if (g_convRunning || g_convQueue.empty()) return;
+    const auto [picture, png] = g_convQueue.front();
+    g_convQueue.pop_front();
+    g_convRunning = true;
+    std::error_code ec;
+    fs::create_directories(fs::path(png).parent_path(), ec);
+    // The first layer or frame, turned upright, no bigger than 4096 px
+    const std::string tmp = png + ".part.png";
+    run({"timeout", "60", "magick", picture + "[0]", "-auto-orient", "-flatten", "-resize", "4096x4096>", "png:" + tmp},
+        [picture, png, tmp](int code, const std::string&) {
+            g_convRunning = false;
+            std::error_code ec2;
+            if (code == 0 && fs::exists(tmp, ec2)) fs::rename(tmp, png, ec2);
+            else {
+                fs::remove(tmp, ec2);
+                g_convFailed.insert(picture);
+            }
+            auto waiters = std::move(g_convWaiters[picture]);
+            g_convWaiters.erase(picture);
+            for (auto& w : waiters)
+                if (w) w();
+            nextConversion();
+        });
+}
+} // namespace
+
+std::string renderable(const std::string& path, std::function<void()> ready, bool* failed) {
+    if (failed) *failed = false;
+    if (nativePicture(path)) return path;
+    const std::string png = paths::home() + "/.cache/material3ui/converted/" + md5Hex("file://" + percentEncode(path, true)) + ".png";
+    std::error_code ec;
+    if (fs::exists(png, ec) && fs::last_write_time(png, ec) >= fs::last_write_time(path, ec)) return png;
+    if (g_convFailed.contains(path) || !haveCommand("magick")) {
+        if (failed) *failed = true;
+        return "";
+    }
+    auto& waiters = g_convWaiters[path];
+    const bool queued = !waiters.empty() || std::ranges::any_of(g_convQueue, [&](const auto& q) { return q.first == path; });
+    waiters.push_back(std::move(ready));
+    if (!queued) g_convQueue.emplace_back(path, png);
+    nextConversion();
+    return "";
 }
 
 std::string kindIcon(Kind kind, const std::string& path) {

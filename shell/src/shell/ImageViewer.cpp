@@ -20,6 +20,7 @@
 #include "ui/Controls.h"
 #include "ui/Theme.h"
 
+#include <GLES2/gl2.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 
 #include <algorithm>
@@ -43,22 +44,55 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
-// The picture, fitted or zoomed, and moved about when it's bigger than the room
+// The picture, fitted or zoomed, and moved about when it's bigger than the
+// room. Any format: what gdk-pixbuf reads (PNG, JPEG, WebP, AVIF, HEIC, JXL,
+// TIFF, EXR, QOI…) as it is, the rest (PSD, XCF, camera RAW, JPEG 2000…)
+// through ImageMagick (fileops::renderable). Animated GIF and WebP play,
+// one frame at a time in a texture of its own
 class ZoomView : public Node {
 public:
     std::function<void()> changed; // zoomed or moved: the bar's percentage
 
+    ZoomView() {
+        m_note = add<Label>("");
+        m_note->setSize(15)->setColor("on_surface_variant", false)->setMaxWidth(420)->setMaxLines(3)->setCentered(true);
+        m_note->setVisible(false);
+    }
+    ~ZoomView() override {
+        stopAnimation();
+        *m_alive = false;
+        if (m_tex) glDeleteTextures(1, &m_tex);
+    }
+
     void show(const std::string& path) {
-        m_path = path;
+        stopAnimation();
+        m_source = path;
         m_zoom = 0;
         m_panX = m_panY = 0;
+        bool failed = false;
+        m_draw = fileops::renderable(path, [this, alive = m_alive, path] {
+            if (*alive && m_source == path) show(path); // converted: shown now
+        }, &failed);
+        if (m_draw.empty()) {
+            m_note->setText(failed ? "This picture can't be opened\n" + fs::path(path).filename().string() : "Opening…")->setVisible(true);
+            m_w = m_h = 1;
+            requestLayout();
+            requestRedraw();
+            if (changed) changed();
+            return;
+        }
+        m_note->setVisible(false);
         int w = 0, h = 0;
-        gdk_pixbuf_get_file_info(path.c_str(), &w, &h);
+        gdk_pixbuf_get_file_info(m_draw.c_str(), &w, &h);
         m_w = std::max(1, w);
         m_h = std::max(1, h);
+        startAnimation();
         requestRedraw();
         if (changed) changed();
     }
+    bool animated() const { return m_iter != nullptr; }
+    int width() const { return m_w; }
+    int height() const { return m_h; }
     // What a picture's pixel is on screen: fitted (never past its own size), or the zoom
     float scale() const {
         if (m_zoom > 0) return m_zoom;
@@ -109,21 +143,33 @@ public:
 
 protected:
     SizeF doMeasure(SizeF available) override { return {available.w, std::max(200.0f, available.h)}; }
+    void doArrange() override {
+        clampPan();
+        const auto& b = rect();
+        const SizeF n = m_note->measure({b.w, b.h});
+        m_note->arrange({b.x + (b.w - n.w) / 2, b.y + (b.h - n.h) / 2, n.w, n.h});
+    }
     void doPaint(Renderer& r) override {
-        if (m_path.empty()) return;
+        if (m_draw.empty()) return;
         const auto& b = rect();
         const float s = scale();
         const float dw = static_cast<float>(m_w) * s, dh = static_cast<float>(m_h) * s;
-        // Decoded once, at its own size (a huge photo capped): zooming
-        // draws the same pixels bigger or smaller, no new decode each step
-        const int want = std::min(4096, std::max(m_w, m_h));
-        const auto* t = Images::get().picture(m_path, want, want, false);
-        if (!t) return; // decoding: drawn when it's ready
+        GLuint tex = 0;
+        if (m_iter) {
+            if (m_frameDirty) uploadFrame();
+            tex = m_tex;
+        } else {
+            // Decoded once, at its own size (a huge photo capped): zooming
+            // draws the same pixels bigger or smaller, no new decode each step
+            const int want = std::min(4096, std::max(m_w, m_h));
+            const auto* t = Images::get().picture(m_draw, want, want, false);
+            if (t) tex = t->id;
+        }
+        if (!tex) return; // decoding: drawn when it's ready
         r.pushClip(b);
-        r.image(t->id, {b.x + (b.w - dw) / 2 + m_panX, b.y + (b.h - dh) / 2 + m_panY, dw, dh});
+        r.image(tex, {b.x + (b.w - dw) / 2 + m_panX, b.y + (b.h - dh) / 2 + m_panY, dw, dh});
         r.popClip();
     }
-    void doArrange() override { clampPan(); }
 
 private:
     // A picture smaller than the room stays centred; a bigger one can't be
@@ -136,10 +182,97 @@ private:
         m_panY = std::clamp(m_panY, -my, my);
     }
 
-    std::string m_path;
+    // GIF and WebP may move: played frame by frame at their own pace.
+    // gdk-pixbuf calls its animation API deprecated (2.44) but it's the one
+    // it has, and it still decodes them
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    void startAnimation() {
+        std::string ext = fs::path(m_draw).extension().string();
+        for (auto& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (ext != ".gif" && ext != ".webp") return;
+        m_anim = gdk_pixbuf_animation_new_from_file(m_draw.c_str(), nullptr);
+        if (!m_anim || gdk_pixbuf_animation_is_static_image(m_anim)) {
+            if (m_anim) g_object_unref(m_anim);
+            m_anim = nullptr;
+            return;
+        }
+        m_w = gdk_pixbuf_animation_get_width(m_anim);
+        m_h = gdk_pixbuf_animation_get_height(m_anim);
+        m_iter = gdk_pixbuf_animation_get_iter(m_anim, nullptr);
+        m_frameDirty = true;
+        next();
+    }
+    void next() {
+        const int delay = gdk_pixbuf_animation_iter_get_delay_time(m_iter);
+        if (delay < 0) return; // the last frame stays
+        m_timer = EventLoop::get().addTimer(std::max(20, delay), [this] {
+            m_timer = 0;
+            if (!m_iter) return;
+            if (gdk_pixbuf_animation_iter_advance(m_iter, nullptr)) {
+                m_frameDirty = true;
+                requestRedraw();
+            }
+            next();
+        });
+    }
+    void stopAnimation() {
+        if (m_timer) EventLoop::get().cancel(m_timer);
+        m_timer = 0;
+        if (m_iter) g_object_unref(m_iter);
+        if (m_anim) g_object_unref(m_anim);
+        m_iter = nullptr;
+        m_anim = nullptr;
+    }
+    // The frame now, as the image shader takes it: premultiplied BGRA
+    void uploadFrame() {
+        m_frameDirty = false;
+        GdkPixbuf* pb = gdk_pixbuf_animation_iter_get_pixbuf(m_iter);
+        if (!pb) return;
+        const int w = gdk_pixbuf_get_width(pb), h = gdk_pixbuf_get_height(pb), rs = gdk_pixbuf_get_rowstride(pb);
+        const bool alpha = gdk_pixbuf_get_has_alpha(pb);
+        const int bpp = gdk_pixbuf_get_n_channels(pb);
+        const guchar* px = gdk_pixbuf_read_pixels(pb);
+        m_frame.resize(static_cast<size_t>(w) * h * 4);
+        for (int y = 0; y < h; ++y) {
+            const guchar* row = px + static_cast<size_t>(y) * rs;
+            unsigned char* o = m_frame.data() + static_cast<size_t>(y) * w * 4;
+            for (int x = 0; x < w; ++x) {
+                const guchar* p = row + x * bpp;
+                const unsigned a = alpha ? p[3] : 255;
+                o[x * 4 + 0] = static_cast<unsigned char>(p[2] * a / 255);
+                o[x * 4 + 1] = static_cast<unsigned char>(p[1] * a / 255);
+                o[x * 4 + 2] = static_cast<unsigned char>(p[0] * a / 255);
+                o[x * 4 + 3] = static_cast<unsigned char>(a);
+            }
+        }
+        if (!m_tex) {
+            glGenTextures(1, &m_tex);
+            glBindTexture(GL_TEXTURE_2D, m_tex);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        } else {
+            glBindTexture(GL_TEXTURE_2D, m_tex);
+        }
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, m_frame.data());
+    }
+
+#pragma GCC diagnostic pop
+
+    std::string m_source, m_draw; // the file, and what's drawn of it (a conversion, for some formats)
+    Label* m_note = nullptr;      // "Opening…", "can't be opened"
     int m_w = 1, m_h = 1;
     float m_zoom = 0, m_panX = 0, m_panY = 0, m_dragX = 0, m_dragY = 0;
     Clock::time_point m_lastPress;
+    GdkPixbufAnimation* m_anim = nullptr;
+    GdkPixbufAnimationIter* m_iter = nullptr;
+    GLuint m_tex = 0;
+    bool m_frameDirty = false;
+    std::vector<unsigned char> m_frame;
+    EventLoop::TimerId m_timer = 0;
+    std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };
 
 struct ViewerState {
@@ -198,10 +331,12 @@ void trashCurrent(const std::shared_ptr<ViewerState>& st, Popup& popup) {
 class ViewerKeeper : public Node {
 public:
     explicit ViewerKeeper(std::shared_ptr<ViewerState> st) : m_st(std::move(st)) { floating = true; }
+    // The window's nodes go in order: the picture's view may be gone
+    // already, so only the state is touched here
     ~ViewerKeeper() override {
         *m_st->alive = false;
         m_st->refresh = nullptr;
-        m_st->view->changed = nullptr;
+        m_st->view = nullptr;
     }
 
 protected:
@@ -280,14 +415,14 @@ void viewer(Flex* card, Popup& popup, const std::string& file) {
                                                    : fileops::displayPath(fs::path(f).parent_path().string()));
         prev->setOpacity(st->pictures.size() > 1 ? 1.0f : 0.3f);
         next->setOpacity(st->pictures.size() > 1 ? 1.0f : 0.3f);
-        int w = 0, h = 0;
-        gdk_pixbuf_get_file_info(f.c_str(), &w, &h);
+        const int w = st->view->width(), h = st->view->height();
         std::error_code ec;
         const auto size = fs::file_size(f, ec);
         struct stat s {};
         std::string when;
         if (::stat(f.c_str(), &s) == 0) when = fileops::humanTime(s.st_mtime);
-        st->info->setText(std::format("{}  ·  {} × {} px  ·  {}  ·  {}", fileops::kindName(fileops::Kind::Picture, f), w, h, fileops::humanSize(size), when));
+        st->info->setText(std::format("{}  ·  {} × {} px{}  ·  {}  ·  {}", fileops::kindName(fileops::Kind::Picture, f), w, h,
+                                      st->view->animated() ? "  ·  animated" : "", fileops::humanSize(size), when));
         st->zoom->setText(st->view->fitted() ? "Fit" : std::format("{:.0f}%", st->view->scale() * 100));
     };
     st->view->changed = [st] {

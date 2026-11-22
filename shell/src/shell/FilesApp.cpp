@@ -690,7 +690,16 @@ void clicked(const std::shared_ptr<State>& st, Button* tile, const std::string& 
 void art(const std::shared_ptr<State>& st, Node* parent, const Entry& e, float w, float h, bool big) {
     const Kind kind = fileops::kindOf(e.path, e.dir);
     std::string picture;
-    if (kind == Kind::Picture && !e.path.ends_with(".svg") && e.size < 80'000'000) picture = e.path;
+    if (kind == Kind::Picture && !e.path.ends_with(".svg") && e.size < 200'000'000) {
+        // Any format: those gdk-pixbuf can't read (PSD, RAW…) as ImageMagick's PNG of them
+        auto alive = st->alive;
+        picture = fileops::renderable(e.path, [st, alive] {
+            if (!*alive) return;
+            EventLoop::get().debounce(st->thumbTimer, 400, [st, alive] {
+                if (*alive) st->render();
+            });
+        });
+    }
     if (kind == Kind::Video) {
         auto alive = st->alive;
         picture = fileops::thumbnail(e.path, big, [st, alive] {
@@ -1206,7 +1215,13 @@ void files(Flex* card, Popup& popup, const std::string& start) {
         auto* box = p->add<Flex>(Flex::Direction::Row);
         box->setJustify(Align::Center)->setAlignItems(Align::Center)->setRadius(Radii(18))->setBackground("surface_container_highest", false);
         box->fixedHeight = 190;
-        std::string picture = kind == Kind::Picture ? target : kind == Kind::Video ? fileops::thumbnail(target, true, [st, alive = st->alive] {
+        auto again = [st, alive = st->alive] {
+            if (!*alive) return;
+            st->paneFor.clear();
+            if (st->details) st->details();
+        };
+        std::string picture = kind == Kind::Picture ? (target.ends_with(".svg") ? target : fileops::renderable(target, again))
+                            : kind == Kind::Video ? fileops::thumbnail(target, true, [st, alive = st->alive] {
             if (!*alive) return;
             st->paneFor.clear();
             if (st->details) st->details();

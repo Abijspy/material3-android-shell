@@ -196,7 +196,9 @@ From the moment the machine boots:
 - **ZIP and unzip:** compress to ZIP, or extract ZIP, tar, 7z, rar and ISO files.
 - **Drives and servers:** open USB drives from the side bar, and eject them safely. Connect to FTP, SFTP and WebDAV servers.
 
-Pictures open in the shell's **image viewer**. Zoom with the wheel or +/−, step through the folder with the arrow keys, and edit, set as wallpaper or move to the trash from its bar. The installer makes both the defaults; Settings → Default apps can pick others.
+Pictures open in the shell's **image viewer**, in any format: everyday ones, HEIC, AVIF, JPEG XL and OpenEXR, and also Photoshop, GIMP and camera RAW files, plus animated GIFs. Zoom with the wheel or +/−, step through the folder with the arrow keys, and edit, set as wallpaper or move to the trash from its bar.
+
+Its **editor** marks pictures up: pen, shapes, arrows, text, numbered steps, and pixelate or blur to hide. It rotates, flips, resizes and crops to an aspect ratio, and adjusts exposure, contrast, colour, warmth, sharpness and vignette, with nine filters. Everything can be undone, and it saves as PNG, JPEG, WebP or AVIF. The installer makes both the defaults; Settings → Default apps can pick others.
 
 ## Keys worth learning
 

@@ -32,6 +32,13 @@ Kind kindOf(const std::string& path, bool dir = false);
 std::string kindIcon(Kind kind, const std::string& path = {}); // a Material Symbol
 std::string kindName(Kind kind, const std::string& path);     // "PNG picture", "Folder"
 bool isPicture(const std::string& path);
+// gdk-pixbuf can read it as it is (PNG, JPEG, WebP, AVIF, HEIC, JXL, TIFF…)
+bool nativePicture(const std::string& path);
+// A file the shell can draw for a picture of any format: the picture itself,
+// or (PSD, XCF, camera RAW, JPEG 2000…) a PNG ImageMagick made of it, kept
+// in ~/.cache/material3ui/converted. "" while it's made (`ready` runs then),
+// and with `failed` set when it can't be
+std::string renderable(const std::string& path, std::function<void()> ready = {}, bool* failed = nullptr);
 
 std::string humanSize(std::uintmax_t bytes);   // "4.2 MB"
 std::string humanTime(std::time_t t);          // "Today, 14:05", "3 Nov 2026"

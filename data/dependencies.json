@@ -184,7 +184,7 @@
     {
       "name": "imagemagick",
       "command": "magick",
-      "description": "Image processing"
+      "description": "Image conversions; opening PSD, XCF, camera RAW and JPEG 2000 in the image viewer and editor"
     },
     {
       "name": "ffmpeg",

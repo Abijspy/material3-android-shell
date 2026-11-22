@@ -20,6 +20,14 @@
   - **Fits the window:** in a narrow window, the side bar folds away when the pane is open, and the path keeps the current folder with the ones above behind "…".
   - **Live:** the folder follows what changes in it, and copies run in the background.
 - **An image viewer.** Pictures open in the shell's own viewer. It fits them to the window, and zooms with the wheel, +/−, 0 and 1 or a double click, dragging to look around. It steps through the folder's pictures with the arrows, and shows the picture's size and details. Its bar edits the picture, sets it as the wallpaper, shows it in Files or moves it to the trash.
+  - **Every format:** PNG, JPEG, WebP, GIF, AVIF, HEIC/HEIF, JPEG XL, TIFF, BMP, SVG, ICO, QOI, TGA, DDS, OpenEXR and more open as they are. Photoshop (PSD), GIMP (XCF), JPEG 2000 and camera RAW files (DNG, CR2, CR3, NEF, ARW, ORF, RW2, RAF and the rest) go through ImageMagick, converted once and kept. Files shows them as previews too.
+  - **Animation:** animated GIFs and WebPs play.
+- **The image editor does much more.** It opens every format the viewer does, turned the way the camera held it.
+  - **Tools:** pen, line, arrow, box, ellipse (boxes and ellipses filled or not), highlighter, text, numbered steps, and hiding by pixelating or blurring. There are eleven colours and three sizes.
+  - **The picture itself:** rotate either way, flip either way, resize (by a percentage or to a common width), and crop free or to 1:1, 4:3, 3:2, 16:9, 3:4, 9:16 or the picture's own shape. The crop shows thirds, and Apply crop or Enter cuts it.
+  - **Adjust:** exposure, brightness, contrast, saturation, warmth, sharpen, blur and vignette, shown as you drag. There are nine filters: Vivid, Warm, Cool, Mono, Noir, Sepia, Fade and Invert.
+  - **Undo and redo:** everything, rotations and adjustments included.
+  - **Save:** over a screenshot as before, or from the save menu over the original in its own format, or as a copy in PNG, JPEG, WebP or AVIF.
 - **The installer offers Files as the file manager** (the default, with nothing to install), and makes the image viewer the default for pictures.
 - **Dropdowns open as a floating menu over the page,** under their button, rather than unfolding the whole list inside it. The choice is ticked, long lists scroll and open at the choice, and Escape or a click outside closes them. Files' right-click menus are the same.
 - Bedtime no longer mentions greyscale, which went in 7.0.
