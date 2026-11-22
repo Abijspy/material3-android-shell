@@ -28,6 +28,8 @@
 #include <fstream>
 #include <linux/input-event-codes.h>
 #include <memory>
+#include <map>
+#include <set>
 #include <sstream>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
@@ -179,6 +181,228 @@ std::string expand(const std::string& s, size_t upto = std::string::npos) {
     return o;
 }
 
+// ── Syntax highlighting ──
+//
+// A small tokenizer per language family, a line at a time; what carries
+// over a line break (a block comment, a triple-quoted string, a Markdown
+// code fence) is the state handed from one line to the next.
+
+enum class Lang { None, CLike, Python, Shell, Rust, Go, JS, Lua, Css, Json, Ini, Markdown, Kdl, Diff };
+enum Tok : uint8_t { TNone, TKeyword, TType, TString, TNumber, TComment, TPre, TFunc, THead };
+struct Span {
+    size_t start, len;
+    Tok tok;
+};
+
+Lang langFor(const std::string& path, const std::string& firstLine) {
+    std::string e = fs::path(path).extension().string();
+    for (auto& c : e) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    const std::string name = fs::path(path).filename().string();
+    if (e == ".c" || e == ".h" || e == ".cpp" || e == ".hpp" || e == ".cc" || e == ".cxx" || e == ".hh" || e == ".java" || e == ".cs" || e == ".kt" || e == ".swift" ||
+        e == ".glsl" || e == ".vert" || e == ".frag" || e == ".m" || e == ".dart" || e == ".scala")
+        return Lang::CLike;
+    if (e == ".js" || e == ".mjs" || e == ".cjs" || e == ".ts" || e == ".tsx" || e == ".jsx" || e == ".qml") return Lang::JS;
+    if (e == ".py" || e == ".pyw") return Lang::Python;
+    if (e == ".rs") return Lang::Rust;
+    if (e == ".go") return Lang::Go;
+    if (e == ".lua") return Lang::Lua;
+    if (e == ".css" || e == ".scss" || e == ".less") return Lang::Css;
+    if (e == ".json" || e == ".jsonc" || e == ".geojson") return Lang::Json;
+    if (name == "PKGBUILD") return Lang::Shell;
+    if (e == ".ini" || e == ".toml" || e == ".conf" || e == ".cfg" || e == ".desktop" || e == ".service" || e == ".timer" || e == ".yaml" || e == ".yml" || e == ".properties")
+        return Lang::Ini;
+    if (e == ".md" || e == ".markdown") return Lang::Markdown;
+    if (e == ".kdl") return Lang::Kdl;
+    if (e == ".diff" || e == ".patch") return Lang::Diff;
+    if (e == ".sh" || e == ".bash" || e == ".zsh" || e == ".fish" || name == "Makefile" || name == "makefile" || name == "meson.build" || name == ".bashrc" || name == ".zshrc")
+        return Lang::Shell;
+    if (firstLine.starts_with("#!")) {
+        if (firstLine.find("python") != std::string::npos) return Lang::Python;
+        if (firstLine.find("node") != std::string::npos) return Lang::JS;
+        return Lang::Shell;
+    }
+    return Lang::None;
+}
+
+const std::set<std::string>& keywords(Lang l) {
+    static const std::map<Lang, std::set<std::string>> k = {
+        {Lang::CLike, {"if", "else", "for", "while", "do", "switch", "case", "default", "break", "continue", "return", "goto", "struct", "class", "union", "enum", "typedef",
+                       "namespace", "using", "template", "typename", "public", "private", "protected", "virtual", "override", "final", "static", "const", "constexpr",
+                       "consteval", "inline", "extern", "volatile", "mutable", "explicit", "friend", "operator", "new", "delete", "this", "throw", "try", "catch", "noexcept",
+                       "nullptr", "true", "false", "sizeof", "alignof", "decltype", "auto", "static_cast", "dynamic_cast", "reinterpret_cast", "const_cast", "co_await",
+                       "co_return", "co_yield", "concept", "requires", "import", "package", "extends", "implements", "interface", "instanceof", "synchronized", "null", "fun",
+                       "val", "var", "let", "func", "self", "super", "in", "is", "as", "when", "where"}},
+        {Lang::JS, {"if", "else", "for", "while", "do", "switch", "case", "default", "break", "continue", "return", "function", "class", "extends", "new", "delete", "this",
+                    "super", "throw", "try", "catch", "finally", "const", "let", "var", "import", "export", "from", "as", "async", "await", "yield", "typeof", "instanceof",
+                    "in", "of", "true", "false", "null", "undefined", "interface", "type", "enum", "implements", "public", "private", "protected", "readonly", "static",
+                    "property", "signal", "alias", "required"}},
+        {Lang::Python, {"if", "elif", "else", "for", "while", "break", "continue", "return", "def", "class", "import", "from", "as", "pass", "raise", "try", "except",
+                        "finally", "with", "lambda", "yield", "global", "nonlocal", "in", "is", "not", "and", "or", "True", "False", "None", "async", "await", "match",
+                        "case", "del", "assert", "self"}},
+        {Lang::Shell, {"if", "then", "else", "elif", "fi", "for", "while", "until", "do", "done", "case", "esac", "in", "function", "return", "local", "export", "readonly",
+                       "declare", "source", "set", "unset", "shift", "exit", "break", "continue", "echo", "printf", "cd", "test", "true", "false", "end", "begin", "and",
+                       "or", "not"}},
+        {Lang::Rust, {"fn", "let", "mut", "if", "else", "match", "for", "while", "loop", "break", "continue", "return", "struct", "enum", "impl", "trait", "pub", "use", "mod",
+                      "crate", "self", "Self", "super", "where", "as", "in", "ref", "move", "const", "static", "unsafe", "async", "await", "dyn", "type", "true", "false",
+                      "Some", "None", "Ok", "Err"}},
+        {Lang::Go, {"func", "package", "import", "var", "const", "type", "struct", "interface", "map", "chan", "if", "else", "for", "range", "switch", "case", "default",
+                    "break", "continue", "return", "go", "defer", "select", "fallthrough", "goto", "nil", "true", "false"}},
+        {Lang::Lua, {"local", "function", "if", "then", "else", "elseif", "end", "for", "while", "do", "repeat", "until", "return", "break", "in", "and", "or", "not", "nil",
+                     "true", "false"}},
+        {Lang::Json, {"true", "false", "null"}},
+        {Lang::Kdl, {"true", "false", "null", "on", "off"}},
+    };
+    static const std::set<std::string> none;
+    auto it = k.find(l);
+    return it == k.end() ? none : it->second;
+}
+const std::set<std::string>& typeNames() {
+    static const std::set<std::string> t = {"int", "char", "bool", "void", "float", "double", "long", "short", "unsigned", "signed", "size_t", "uint8_t", "uint16_t",
+                                            "uint32_t", "uint64_t", "int8_t", "int16_t", "int32_t", "int64_t", "string", "String", "vector", "map", "std", "str",
+                                            "i32", "i64", "u8", "u32", "u64", "usize", "f32", "f64", "Vec", "Option", "Result", "Box", "number", "boolean", "any",
+                                            "byte", "rune", "error", "list", "dict", "tuple", "set", "Integer", "Object"};
+    return t;
+}
+
+// Spans of one line. `state` in and out: 0 normal, 1 in a C comment, 2 and
+// 3 in Python's triple-quoted strings (double, single), 4 in a Markdown
+// fence, 5 in a Lua long comment
+std::vector<Span> tokenize(const std::string& s, Lang lang, uint8_t& state) {
+    std::vector<Span> out;
+    if (lang == Lang::None) return out;
+    const size_t n = s.size();
+    auto add = [&](size_t a, size_t len, Tok t) {
+        if (len) out.push_back({a, len, t});
+    };
+    if (lang == Lang::Markdown) {
+        if (s.starts_with("```")) {
+            state = state == 4 ? 0 : 4;
+            add(0, n, TComment);
+        } else if (state == 4) add(0, n, TString);
+        else if (s.starts_with("#")) add(0, n, THead);
+        else if (s.starts_with("> ")) add(0, n, TComment);
+        else if (s.starts_with("- ") || s.starts_with("* ")) add(0, 1, TKeyword);
+        return out;
+    }
+    if (lang == Lang::Diff) {
+        if (s.starts_with("+++") || s.starts_with("---") || s.starts_with("diff ")) add(0, n, THead);
+        else if (s.starts_with("+")) add(0, n, TString);
+        else if (s.starts_with("-")) add(0, n, TNumber);
+        else if (s.starts_with("@@")) add(0, n, TPre);
+        return out;
+    }
+    const bool hashComment = lang == Lang::Python || lang == Lang::Shell || lang == Lang::Ini;
+    const bool slashComment = lang == Lang::CLike || lang == Lang::JS || lang == Lang::Rust || lang == Lang::Go || lang == Lang::Css || lang == Lang::Json || lang == Lang::Kdl;
+    size_t i = 0;
+    auto finishBlock = [&](const std::string& end, Tok t) {
+        const size_t e = s.find(end, i);
+        if (e == std::string::npos) {
+            add(i, n - i, t);
+            i = n;
+        } else {
+            add(i, e + end.size() - i, t);
+            i = e + end.size();
+            state = 0;
+        }
+    };
+    const std::string tq2(3, '"'), tq1(3, '\'');
+    if (state == 1) finishBlock("*/", TComment);
+    else if (state == 2) finishBlock(tq2, TString);
+    else if (state == 3) finishBlock(tq1, TString);
+    else if (state == 5) finishBlock("]]", TComment);
+    if (i >= n) return out;
+    if (lang == Lang::Ini) {
+        const size_t f = s.find_first_not_of(" \t");
+        if (f != std::string::npos && s[f] == '[') return add(f, n - f, THead), out;
+        if (f != std::string::npos && (s[f] == '#' || s[f] == ';')) return add(f, n - f, TComment), out;
+        const size_t eq = s.find_first_of("=:");
+        if (eq != std::string::npos && f != std::string::npos && eq > f) add(f, eq - f, TKeyword);
+        i = eq == std::string::npos ? n : eq + 1;
+    }
+    if (lang == Lang::CLike || lang == Lang::Rust) {
+        const size_t f = s.find_first_not_of(" \t");
+        if (f != std::string::npos && s[f] == '#') return add(f, n - f, TPre), out;
+    }
+    const auto& kw = keywords(lang);
+    while (i < n) {
+        const char c = s[i];
+        if (slashComment && c == '/' && i + 1 < n && s[i + 1] == '/') return add(i, n - i, TComment), out;
+        if (slashComment && c == '/' && i + 1 < n && s[i + 1] == '*') {
+            const size_t start = i;
+            const size_t e = s.find("*/", i + 2);
+            if (e == std::string::npos) {
+                state = 1;
+                return add(start, n - start, TComment), out;
+            }
+            add(start, e + 2 - start, TComment);
+            i = e + 2;
+            continue;
+        }
+        if (hashComment && c == '#' && (i == 0 || std::isspace(static_cast<unsigned char>(s[i - 1])))) return add(i, n - i, TComment), out;
+        if (lang == Lang::Lua && c == '-' && i + 1 < n && s[i + 1] == '-') {
+            if (s.compare(i, 4, "--[[") == 0) {
+                const size_t e = s.find("]]", i + 4);
+                if (e == std::string::npos) {
+                    state = 5;
+                    return add(i, n - i, TComment), out;
+                }
+                add(i, e + 2 - i, TComment);
+                i = e + 2;
+                continue;
+            }
+            return add(i, n - i, TComment), out;
+        }
+        if (lang == Lang::Python && (s.compare(i, 3, tq2) == 0 || s.compare(i, 3, tq1) == 0)) {
+            const std::string q = s.substr(i, 3);
+            const size_t e = s.find(q, i + 3);
+            if (e == std::string::npos) {
+                state = q[0] == '"' ? 2 : 3;
+                return add(i, n - i, TString), out;
+            }
+            add(i, e + 3 - i, TString);
+            i = e + 3;
+            continue;
+        }
+        if (c == '"' || c == '\'' || (c == '`' && (lang == Lang::JS || lang == Lang::Go || lang == Lang::Shell))) {
+            // Rust's lifetimes ('a) aren't strings
+            if (c == '\'' && lang == Lang::Rust && i + 2 < n && std::isalpha(static_cast<unsigned char>(s[i + 1])) && s[i + 2] != '\'') {
+                ++i;
+                continue;
+            }
+            size_t j = i + 1;
+            while (j < n && s[j] != c) j += s[j] == '\\' ? 2 : 1;
+            add(i, std::min(n, j + 1) - i, TString);
+            i = std::min(n, j + 1);
+            continue;
+        }
+        if (std::isdigit(static_cast<unsigned char>(c)) && (i == 0 || !(std::isalnum(static_cast<unsigned char>(s[i - 1])) || s[i - 1] == '_'))) {
+            size_t j = i;
+            while (j < n && (std::isalnum(static_cast<unsigned char>(s[j])) || s[j] == '.' || s[j] == '_')) ++j;
+            add(i, j - i, TNumber);
+            i = j;
+            continue;
+        }
+        if (std::isalpha(static_cast<unsigned char>(c)) || c == '_' || (c == '@' && (lang == Lang::JS || lang == Lang::Css || lang == Lang::Python)) ||
+            (c == '$' && lang == Lang::Shell)) {
+            size_t j = i + 1;
+            while (j < n && (std::isalnum(static_cast<unsigned char>(s[j])) || s[j] == '_' || ((lang == Lang::Css || lang == Lang::Kdl) && s[j] == '-'))) ++j;
+            const std::string word = s.substr(i, j - i);
+            if (c == '$' || c == '@') add(i, j - i, TPre);
+            else if (kw.contains(word)) add(i, j - i, TKeyword);
+            else if (typeNames().contains(word) ||
+                     (lang != Lang::Shell && lang != Lang::Css && lang != Lang::Kdl && lang != Lang::Json && std::isupper(static_cast<unsigned char>(c)) && word.size() > 1))
+                add(i, j - i, TType);
+            else if (j < n && s[j] == '(') add(i, j - i, TFunc);
+            else if (lang == Lang::Kdl && s.find_first_not_of(" \t") == i) add(i, j - i, TKeyword);
+            else if (lang == Lang::Css && j < n && s[j] == ':') add(i, j - i, TKeyword);
+            i = j;
+            continue;
+        }
+        ++i;
+    }
+    return out;
+}
+
 bool wordChar(gunichar c) {
     return g_unichar_isalnum(c) || c == '_';
 }
@@ -191,13 +415,21 @@ public:
     std::function<void()> onChanged, onMoved; // text, caret
     std::function<bool(const KeyEvent&)> onOtherKey;
     std::vector<std::pair<Pos, Pos>> highlights; // find's matches
+    Lang lang = Lang::None;
+    std::vector<uint8_t> lineStates; // the state each line starts in, as far as worked out
+    void relang() {
+        lang = Config::get().value<bool>("/text/syntax", true) ? langFor(doc->path, doc->lines.empty() ? "" : doc->lines[0]) : Lang::None;
+        lineStates.clear();
+    }
     int currentMatch = -1;
 
     explicit Editor(std::shared_ptr<Doc> d) : doc(std::move(d)) {
+        relang();
         fontSize = static_cast<float>(Config::get().value<double>("/text/fontSize", 14.0));
         // Settings apply to the open files at once
         m_configConn = Config::get().changed.connect([this] {
             fontSize = static_cast<float>(Config::get().value<double>("/text/fontSize", 14.0));
+            relang();
             requestRedraw();
         });
     }
@@ -308,6 +540,10 @@ public:
     }
 
     void edited() {
+        // States from the top of the change down are worked out again
+        const int from = std::max(0, std::min(cursor.line, anchor.line) - 1);
+        if (static_cast<int>(lineStates.size()) > from) lineStates.resize(static_cast<size_t>(from));
+        if (from == 0) relang();
         doc->modified = true;
         if (onChanged) onChanged();
         moved();
@@ -613,10 +849,29 @@ protected:
             if (!l.empty()) {
                 // Very long lines drawn in their first part (the texture's limit)
                 const std::string shown = expand(l.size() > 4000 ? l.substr(0, 4000) : l);
-                const auto& tex = TextEngine::get().texture(shown, st, r.scale());
-                const float ty = y + (lh - tex.logical.height) / 2;
-                if (tex.id) r.mask(tex.id, {textX - m_scrollX, ty, tex.logical.width, tex.logical.height}, ink);
-                if (tex.color) r.image(tex.color, {textX - m_scrollX, ty, tex.logical.width, tex.logical.height});
+                uint8_t state = stateAt(i);
+                const auto spans = tokenize(shown, lang, state);
+                auto run = [&](size_t a, size_t len, const Color& col) {
+                    if (!len) return;
+                    const float x0 = a ? TextEngine::get().measure(shown.substr(0, a), st).width : 0;
+                    const auto& tex = TextEngine::get().texture(shown.substr(a, len), st, r.scale());
+                    const float ty = y + (lh - tex.logical.height) / 2;
+                    if (tex.id) r.mask(tex.id, {textX - m_scrollX + x0, ty, tex.logical.width, tex.logical.height}, col);
+                    if (tex.color) r.image(tex.color, {textX - m_scrollX + x0, ty, tex.logical.width, tex.logical.height});
+                };
+                if (spans.empty()) {
+                    run(0, shown.size(), ink);
+                } else {
+                    size_t at = 0;
+                    for (const auto& sp : spans) {
+                        if (sp.start < at) continue;
+                        if (sp.start > at) run(at, sp.start - at, ink);
+                        const size_t len = std::min(sp.len, shown.size() - sp.start);
+                        run(sp.start, len, tokColor(sp.tok, ink));
+                        at = sp.start + len;
+                    }
+                    if (at < shown.size()) run(at, shown.size() - at, ink);
+                }
             }
             if (m_focused && m_caretOn && i == cursor.line)
                 r.rect({textX + xOf(i, cursor.col) - m_scrollX - 1, y + 3, 2, lh - 6}, th.color("primary"), Radii(1));
@@ -638,6 +893,34 @@ protected:
     }
 
 private:
+    uint8_t stateAt(int line) {
+        if (lang == Lang::None) return 0;
+        // Worked out from the last line known, down to this one
+        if (lineStates.empty()) lineStates.push_back(0);
+        while (static_cast<int>(lineStates.size()) <= line) {
+            const size_t k = lineStates.size() - 1;
+            uint8_t st2 = lineStates[k];
+            tokenize(expand(doc->lines[k]), lang, st2);
+            lineStates.push_back(st2);
+        }
+        return lineStates[static_cast<size_t>(line)];
+    }
+    static Color mixColor(const Color& a, const Color& b, float t) { return {a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, 1}; }
+    static Color tokColor(Tok t, const Color& ink) {
+        auto& th = Theme::get();
+        switch (t) {
+        case TKeyword: return th.color("primary");
+        case TType: return th.color("tertiary");
+        case TString: return mixColor(th.color("secondary"), Color{0.45f, 0.8f, 0.5f, 1}, 0.5f);
+        case TNumber: return mixColor(th.color("error"), Color{1, 0.65f, 0.3f, 1}, 0.5f);
+        case TComment: return th.color("outline");
+        case TPre: return mixColor(th.color("tertiary"), th.color("primary"), 0.5f);
+        case TFunc: return mixColor(ink, th.color("primary"), 0.45f);
+        case THead: return th.color("primary");
+        default: return ink;
+        }
+    }
+
     Pos posAt(float x, float y) {
         const int line = std::clamp(static_cast<int>((y - rect().y + m_scrollY) / lineH()), 0, static_cast<int>(doc->lines.size()) - 1);
         return {line, colAt(line, x - rect().x - gutter() - 8 + m_scrollX)};
@@ -853,6 +1136,9 @@ void saveTab(const std::shared_ptr<State>& st, int i, bool as) {
             m3::run({"notify-send", "-a", "Text Editor", "-i", "dialog-error", "Couldn't save", err}, nullptr);
             return;
         }
+        // A new name may be a new language
+        for (auto& t : st->tabs)
+            if (t.doc == doc) t.editor->relang(), t.editor->requestRedraw();
         if (st->rebuildTabs) st->rebuildTabs();
         if (st->refreshStatus) st->refreshStatus();
     };
@@ -1231,6 +1517,7 @@ void textSettings(Flex* page) {
     sliderRow(g, "format_size", "Text size", "/text/fontSize", 14, 8, 32, 1, [](double v) { return std::format("{:.0f} px", v); });
     switchRow(g, "format_list_numbered", "Line numbers", "", "/text/lineNumbers", true);
     switchRow(g, "horizontal_rule", "Mark the current line", "", "/text/currentLine", true);
+    switchRow(g, "palette", "Colour the code", "Keywords, strings, comments and more, by the file's language", "/text/syntax", true);
     auto* i = group(page, "Indentation");
     choiceRow<int>(i, "keyboard_tab", "Tab width", "How wide a tab shows, and what Tab indents by", "/text/tabWidth", 4, {{2, "2"}, {4, "4"}, {8, "8"}});
     choiceRow<std::string>(i, "format_indent_increase", "Indent with", "Tab, Shift+Tab and new lines", "/text/indent", "auto",
