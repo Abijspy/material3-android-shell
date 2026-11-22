@@ -384,113 +384,46 @@ void Shell::openNiriSettings(const std::string& page) {
     };
 }
 
-// An app window of the shell's own, once: asked again, it's raised (and
-// shown `arg`, through `go`); closed, it's let go
-namespace {
-void raise(const std::string& appId) {
-    auto& c = Compositor::get();
-    for (const auto& w : c.windows(true))
-        if (w.appId == appId) c.focusWindow(w.id);
+// The apps are programs of their own (material3ui-files…), each in its own
+// package: launched with what to show (one copy runs; a second launch hands
+// over to it). One that isn't installed says how to get it
+void Shell::launchApp(const std::string& id, const std::string& name, const std::vector<std::string>& args) {
+    const std::string program = ownCommand("material3ui-" + id);
+    if (program.empty()) {
+        run({"notify-send", "-a", "Material3UI", "-i", "dialog-information", name + " isn't installed",
+             "It's in its own package: sudo pacman -U material3ui-" + id + "-*.pkg.tar.zst, or run update.sh"},
+            nullptr);
+        return;
+    }
+    std::vector<std::string> argv = {program};
+    argv.insert(argv.end(), args.begin(), args.end());
+    spawnArgs(argv);
 }
-} // namespace
 
 void Shell::openFiles(const std::string& path) {
-    if (m_files && !m_files->closing()) {
-        if (!path.empty() && panels::filesGo) panels::filesGo(path);
-        return raise("material3ui-files");
-    }
-    if (m_popup) m_popup->close();
-    Popup::Options opts;
-    opts.name = "files";
-    opts.window = true;
-    opts.appId = "material3ui-files";
-    opts.title = "Files";
-    opts.icon = "folder";
-    opts.windowWidth = 1120;
-    opts.windowHeight = 720;
-    m_files = std::make_unique<Popup>(nullptr, opts, [path](ui::Flex* card, Popup& p) { panels::files(card, p, path); });
-    m_files->onClosed = [this] {
-        panels::filesClosed();
-        EventLoop::get().defer([this] { m_files.reset(); });
-    };
+    launchApp("files", "Files", path.empty() ? std::vector<std::string>{} : std::vector<std::string>{path});
 }
 
 void Shell::openViewer(const std::string& file) {
-    if (file.empty()) return;
-    if (m_viewer && !m_viewer->closing()) {
-        if (panels::viewerGo) panels::viewerGo(file);
-        return raise("material3ui-viewer");
-    }
-    Popup::Options opts;
-    opts.name = "viewer";
-    opts.window = true;
-    opts.appId = "material3ui-viewer";
-    opts.title = "Image Viewer";
-    opts.icon = "image";
-    opts.windowWidth = 1100;
-    opts.windowHeight = 760;
-    m_viewer = std::make_unique<Popup>(nullptr, opts, [file](ui::Flex* card, Popup& p) { panels::viewer(card, p, file); });
-    m_viewer->onClosed = [this] {
-        panels::viewerClosed();
-        EventLoop::get().defer([this] { m_viewer.reset(); });
-    };
+    if (!file.empty()) launchApp("viewer", "The image viewer", {file});
 }
 
 void Shell::openTerminal(const std::string& dir, const std::vector<std::string>& command) {
-    if (m_terminal && !m_terminal->closing()) {
-        if (panels::terminalGo) panels::terminalGo(dir, command);
-        return raise("material3ui-terminal");
+    std::vector<std::string> args;
+    if (!dir.empty()) args.push_back(dir);
+    if (!command.empty()) {
+        args.push_back("-e");
+        args.insert(args.end(), command.begin(), command.end());
     }
-    if (m_popup) m_popup->close();
-    Popup::Options opts;
-    opts.name = "terminal";
-    opts.window = true;
-    opts.appId = "material3ui-terminal";
-    opts.title = "Terminal";
-    opts.icon = "terminal";
-    opts.windowWidth = 960;
-    opts.windowHeight = 620;
-    m_terminal = std::make_unique<Popup>(nullptr, opts, [dir, command](ui::Flex* card, Popup& p) { panels::terminal(card, p, dir, command); });
-    m_terminal->onClosed = [this] {
-        panels::terminalClosed();
-        EventLoop::get().defer([this] { m_terminal.reset(); });
-    };
+    launchApp("terminal", "The terminal", args);
 }
 
 void Shell::openPlayer(const std::string& file) {
-    if (m_player && !m_player->closing()) {
-        if (!file.empty() && panels::playerGo) panels::playerGo(file);
-        return raise("material3ui-player");
-    }
-    if (m_popup) m_popup->close();
-    Popup::Options opts;
-    opts.name = "player";
-    opts.window = true;
-    opts.appId = "material3ui-player";
-    opts.title = "Videos";
-    opts.icon = "smart_display";
-    opts.windowWidth = 1120;
-    opts.windowHeight = 720;
-    m_player = std::make_unique<Popup>(nullptr, opts, [file](ui::Flex* card, Popup& p) { panels::player(card, p, file); });
-    m_player->onClosed = [this] {
-        panels::playerClosed();
-        EventLoop::get().defer([this] { m_player.reset(); });
-    };
+    launchApp("player", "Videos", file.empty() ? std::vector<std::string>{} : std::vector<std::string>{file});
 }
 
 void Shell::openTasks(const std::string& tab) {
-    if (m_tasks && !m_tasks->closing()) return raise("material3ui-tasks");
-    if (m_popup) m_popup->close();
-    Popup::Options opts;
-    opts.name = "tasks";
-    opts.window = true;
-    opts.appId = "material3ui-tasks";
-    opts.title = "Task Manager";
-    opts.icon = "monitoring";
-    opts.windowWidth = 1040;
-    opts.windowHeight = 720;
-    m_tasks = std::make_unique<Popup>(nullptr, opts, [tab](ui::Flex* card, Popup& p) { panels::taskManager(card, p, tab); });
-    m_tasks->onClosed = [this] { EventLoop::get().defer([this] { m_tasks.reset(); }); };
+    launchApp("tasks", "The Task Manager", tab.empty() ? std::vector<std::string>{} : std::vector<std::string>{tab});
 }
 
 void Shell::openWelcome() {

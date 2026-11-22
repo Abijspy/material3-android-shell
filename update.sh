@@ -70,6 +70,15 @@ PACKAGING="$INSTALL_DIR/packaging"
 PKG_DIR="$(mktemp -d)"
 trap 'rm -rf "$PKG_DIR"' EXIT
 PKG=""
+APP_PKGS=()
+# The apps are packages of their own (7.1): the ones installed are updated
+# with the shell; the first time, all of them (they were in the shell
+# before). One you've removed stays removed
+APPS_MARKER="$HOME/.local/state/material3ui/apps-split"
+WANTED_APPS=()
+for app in files viewer player tasks terminal; do
+    if [[ ! -f "$APPS_MARKER" ]] || pacman -Q "material3ui-$app" >/dev/null 2>&1; then WANTED_APPS+=("$app"); fi
+done
 if [[ "$CHANNEL" == stable && -n "${tag:-}" ]]; then
     # The package's version: the tag's, a pre-release's hyphens dropped (build-pkg.sh)
     ver="${tag#v}"
@@ -77,6 +86,15 @@ if [[ "$CHANNEL" == stable && -n "${tag:-}" ]]; then
     if curl -fsSL -o "$PKG_DIR/$name" "https://github.com/Abijspy/material3-android-shell/releases/download/$tag/$name"; then
         PKG="$PKG_DIR/$name"
         echo "Downloaded $name"
+        for app in "${WANTED_APPS[@]}"; do
+            app_name="material3ui-$app-${ver//-/}-1-$(uname -m).pkg.tar.zst"
+            if curl -fsSL -o "$PKG_DIR/$app_name" "https://github.com/Abijspy/material3-android-shell/releases/download/$tag/$app_name"; then
+                APP_PKGS+=("$PKG_DIR/$app_name")
+            else
+                # A release from before the split (its shell has the apps)
+                break
+            fi
+        done
     else
         echo "The $tag release has no package for $(uname -m); building it here."
     fi
@@ -104,6 +122,12 @@ if [[ -z "$PKG" ]]; then
     meson compile -C "$BUILD" | tail -1
     if [[ -x "$PACKAGING/build-pkg.sh" ]] && command -v makepkg >/dev/null; then
         PKG="$("$PACKAGING/build-pkg.sh" material3ui --build "$BUILD" "$PKG_DIR" 2>/dev/null)" || PKG=""
+        if [[ -n "$PKG" && -d "$PACKAGING/material3ui-files" ]]; then
+            for app in "${WANTED_APPS[@]}"; do
+                echo "Packaging material3ui-$app..."
+                app_pkg="$("$PACKAGING/build-pkg.sh" "material3ui-$app" --build "$BUILD" "$PKG_DIR" 2>/dev/null)" && APP_PKGS+=("$app_pkg")
+            done
+        fi
     fi
 fi
 # Root: Settings' update helper (one password for the whole update), else
@@ -111,19 +135,35 @@ fi
 read -ra ROOT <<<"${M3_ROOT:-}"
 read -ra SUDO <<<"${M3_SUDO:-sudo}"
 if [[ -n "$PKG" && ${#ROOT[@]} -gt 0 ]]; then
-    if ! "${ROOT[@]}" install-pkg "$PKG"; then
+    if ! "${ROOT[@]}" install-pkg "$PKG" "${APP_PKGS[@]}"; then
         # Helpers before 6.2.1 take over the files a source build left only
         # when no Material3UI package is installed: this checkout's
         # install-pkg.sh takes them whatever (asking for the password again)
         echo "Installing with $PACKAGING/install-pkg.sh instead..."
-        pkexec "$PACKAGING/install-pkg.sh" "$PKG"
+        pkexec "$PACKAGING/install-pkg.sh" "$PKG" "${APP_PKGS[@]}"
     fi
 elif [[ -n "$PKG" && -x "$PACKAGING/install-pkg.sh" ]]; then
-    "${SUDO[@]}" "$PACKAGING/install-pkg.sh" "$PKG"
+    "${SUDO[@]}" "$PACKAGING/install-pkg.sh" "$PKG" "${APP_PKGS[@]}"
 else
     # No makepkg (base-devel), or a release from before the packages
     [[ -n "${BUILD:-}" ]] || { echo "No package to install." >&2; exit 1; }
     "${SUDO[@]}" meson install -C "$BUILD" --no-rebuild --quiet
+fi
+# The apps' packages: a helper from before 7.1 installs only the first
+# package it's given, so any app still missing goes in on its own
+if [[ ${#APP_PKGS[@]} -gt 0 ]]; then
+    missing=()
+    for p in "${APP_PKGS[@]}"; do
+        name="$(bsdtar -xOf "$p" .PKGINFO 2>/dev/null | sed -n 's/^pkgname = //p')"
+        ver="$(bsdtar -xOf "$p" .PKGINFO 2>/dev/null | sed -n 's/^pkgver = //p')"
+        [[ "$(pacman -Q "$name" 2>/dev/null | awk '{print $2}')" == "$ver" ]] || missing+=("$p")
+    done
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo "Installing the apps' packages..."
+        if [[ ${#ROOT[@]} -gt 0 ]]; then pkexec "$PACKAGING/install-pkg.sh" "${missing[@]}"
+        else "${SUDO[@]}" "$PACKAGING/install-pkg.sh" "${missing[@]}"; fi
+    fi
+    mkdir -p "$(dirname "$APPS_MARKER")" && touch "$APPS_MARKER"
 fi
 mkdir -p "$HOME/.local/share/material3ui"
 rm -rf "$HOME/.local/share/material3ui/scripts"

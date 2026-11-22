@@ -28,6 +28,11 @@
   - **Adjust:** exposure, brightness, contrast, saturation, warmth, sharpen, blur and vignette, shown as you drag. There are nine filters: Vivid, Warm, Cool, Mono, Noir, Sepia, Fade and Invert.
   - **Undo and redo:** everything, rotations and adjustments included.
   - **Save:** over a screenshot as before, or from the save menu over the original in its own format, or as a copy in PNG, JPEG, WebP or AVIF.
+- **The apps are packages of their own.** Files, the image viewer, Videos, the Task Manager and the terminal are now separate programs (`material3ui-files`, `-viewer`, `-player`, `-tasks`, `-terminal`), each in its own pacman package, on a library they share with the shell (`libmaterial3ui`). Each updates and uninstalls on its own and brings only what it needs: only Videos needs mpv, and only the terminal needs libvterm.
+  - **One copy each:** launching an app again hands what to open to the copy that's running and raises its window.
+  - **The shell launches them** (Super+E, Ctrl+Alt+Del, `material3ui msg files`…). They ask the shell for what's the shell's (the wallpaper, the image editor, Quick Share), and reach each other through it.
+  - **Installing and updating:** the installer installs all five, and updates keep the ones you have. The first update after this one installs them all, since they were in the shell before. Remove one with `sudo pacman -R material3ui-<app>`.
+  - **Each app's window is its own process,** about 40–50 MB each, so a crash in one never takes the shell down.
 - **A terminal.** The shell's own terminal (`material3ui-terminal`, or `material3ui msg terminal [folder] [-e command]`), on libvterm, the emulator Neovim uses. The installer offers it as your terminal, and Super+Return opens it.
   - **Looks:** your monospace font, and colours from the wallpaper's palette (blue its primary, magenta its tertiary, red its error colour), redrawn when they change. Truecolour, 256 colours, bold, italic, underline, strikethrough, CJK and emoji on the grid.
   - **Works with everything:** xterm-256color, the alternate screen (vim, nano, top, htop), mouse reporting, bracketed paste, window titles.

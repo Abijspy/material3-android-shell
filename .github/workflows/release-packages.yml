@@ -1,5 +1,6 @@
 # Attaches the pacman packages to each published release: material3ui (the
-# shell) and material3ui-greeter (the login screen)
+# shell and libmaterial3ui), its apps (material3ui-files, -viewer, -player,
+# -tasks, -terminal: one build, packaged apart) and material3ui-greeter
 name: Release packages
 
 on:
@@ -39,7 +40,11 @@ jobs:
           useradd -m builder
           chown -R builder "$GITHUB_WORKSPACE"
           su builder -c "git config --global --add safe.directory '*' && cd '$GITHUB_WORKSPACE' &&
-            packaging/build-pkg.sh material3ui '$GITHUB_WORKSPACE/out' &&
+            meson setup build shell --prefix=/usr --sysconfdir=/etc --buildtype=release &&
+            meson compile -C build &&
+            for p in material3ui material3ui-files material3ui-viewer material3ui-player material3ui-tasks material3ui-terminal; do
+              packaging/build-pkg.sh \$p --build build '$GITHUB_WORKSPACE/out' || exit 1
+            done &&
             packaging/build-pkg.sh material3ui-greeter '$GITHUB_WORKSPACE/out'"
       - name: Names for older updaters
         # A pre-release's package is 6.0beta1; updaters before 6.0 ask for
@@ -48,7 +53,7 @@ jobs:
         run: |
           ver="${TAG#v}"
           if [[ "$ver" == *-* ]]; then
-            for f in out/material3ui-"${ver//-/}"-*.pkg.tar.zst; do
+            for f in out/material3ui*-"${ver//-/}"-*.pkg.tar.zst; do
               if [[ -e "$f" ]]; then cp "$f" "${f/${ver//-/}/$ver}"; fi
             done
           fi

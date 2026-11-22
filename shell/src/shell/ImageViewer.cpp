@@ -382,7 +382,7 @@ void viewer(Flex* card, Popup& popup, const std::string& file) {
         if (!st->pictures.empty() && open) open("imageeditor " + st->pictures[st->index]);
     }, 22)->tooltip = "Edit";
     iconButton(bar, "wallpaper", [st] {
-        if (!st->pictures.empty()) Wallpaper::get().set(st->pictures[st->index]);
+        if (!st->pictures.empty() && open) open("wallpaper " + st->pictures[st->index]);
     }, 22)->tooltip = "Set as wallpaper";
     iconButton(bar, "folder_open", [st] {
         if (!st->pictures.empty() && open) open("files " + st->pictures[st->index]);

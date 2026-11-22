@@ -319,7 +319,8 @@ void load(const std::shared_ptr<PlayerState>& st, int index) {
 
 void play(const std::shared_ptr<PlayerState>& st, const std::string& file) {
     // A subtitle file (opened from Files) goes with what's playing
-    if (subtitleFile(file) && st->mpv && !st->playlist.empty()) {
+    if (subtitleFile(file)) {
+        if (!st->mpv || st->playlist.empty()) return; // nothing playing to go with
         st->mpv->command({"sub-add", file.c_str(), "select"});
         m3::run({"notify-send", "-a", "Videos", "-i", "subtitles", "Subtitles added", fs::path(file).filename().string()}, nullptr);
         return;
@@ -709,7 +710,7 @@ void player(Flex* card, Popup& popup, const std::string& file) {
     playerGo = [st](const std::string& f) {
         if (*st->alive) play(st, f);
     };
-    if (file.empty()) {
+    if (file.empty() || subtitleFile(file)) {
         st->stage->setVisible(false);
         st->controls->setVisible(false);
     } else {

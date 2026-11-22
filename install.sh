@@ -923,11 +923,24 @@ run_install() {
     # As the material3ui package, so pacman knows its files and an update's
     # package replaces them cleanly; plain meson install when it can't be made
     PKG_FILE=""
-    package_shell() { PKG_FILE="$("$REPO/packaging/build-pkg.sh" material3ui --build "$BUILD" "$(mktemp -d)")" || PKG_FILE=""; }
+    APP_FILES=()
+    PKG_OUT="$(mktemp -d)"
+    package_shell() { PKG_FILE="$("$REPO/packaging/build-pkg.sh" material3ui --build "$BUILD" "$PKG_OUT")" || PKG_FILE=""; }
+    # Files, the viewer, Videos, the Task Manager and the terminal: a
+    # package each, from the same build (pacman -R one you don't want)
+    package_apps() {
+        local app f
+        for app in files viewer player tasks terminal; do
+            f="$("$REPO/packaging/build-pkg.sh" "material3ui-$app" --build "$BUILD" "$PKG_OUT")" && APP_FILES+=("$f")
+        done
+    }
     task "Packaging it for pacman" package_shell
+    [[ -z "$PKG_FILE" ]] || task "Packaging the apps" package_apps
     if [[ -n "$PKG_FILE" || "$DRY" == 1 ]]; then
-        W=2 task "Installing the material3ui package" sudo "$REPO/packaging/install-pkg.sh" "${PKG_FILE:-material3ui-$VERSION.pkg.tar.zst}"
-        [[ -z "$PKG_FILE" ]] || rm -rf "$(dirname "$PKG_FILE")"
+        W=2 task "Installing the material3ui packages" sudo "$REPO/packaging/install-pkg.sh" "${PKG_FILE:-material3ui-$VERSION.pkg.tar.zst}" "${APP_FILES[@]}"
+        # update.sh then updates the apps that stay installed
+        [[ "$DRY" == 1 ]] || { mkdir -p "$HOME/.local/state/material3ui" && touch "$HOME/.local/state/material3ui/apps-split"; }
+        rm -rf "$PKG_OUT"
     else
         warn "Couldn't make the package (see the log): installing the build directly"
         W=2 task "Installing to /usr" sudo meson install -C "$BUILD" --no-rebuild --quiet

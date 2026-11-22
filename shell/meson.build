@@ -43,10 +43,13 @@ protocols = {
 }
 
 protocol_sources = []
+protocol_headers = []
 foreach name, xml : protocols
-  protocol_sources += custom_target(name + '-header',
+  header = custom_target(name + '-header',
     input: xml, output: name + '-client-protocol.h',
     command: [scanner, 'client-header', '@INPUT@', '@OUTPUT@'])
+  protocol_sources += header
+  protocol_headers += header
   protocol_sources += custom_target(name + '-code',
     input: xml, output: name + '-protocol.c',
     command: [scanner, 'private-code', '@INPUT@', '@OUTPUT@'])
@@ -57,7 +60,7 @@ conf.set_quoted('M3_VERSION', meson.project_version())
 configure_file(output: 'build_config.h', configuration: conf)
 
 sources = files(
-  'src/main.cpp',
+  'src/apps/AppHost.cpp',
   'src/greeter/Greeter.cpp',
   'src/quickshare/Ble.cpp',
   'src/quickshare/Crypto.cpp',
@@ -158,11 +161,6 @@ sources = files(
   'src/shell/ColorPicker.cpp',
   'src/shell/NotesPanel.cpp',
   'src/shell/LyricsPanel.cpp',
-  'src/shell/FilesApp.cpp',
-  'src/shell/ImageViewer.cpp',
-  'src/shell/TaskManager.cpp',
-  'src/shell/VideoPlayer.cpp',
-  'src/shell/Terminal.cpp',
   'src/shell/Flyouts.cpp',
   'src/shell/MessagesPanel.cpp',
   'src/shell/LiveWallpaper.cpp',
@@ -211,29 +209,28 @@ sources = files(
   'src/wayland/Surface.cpp',
 )
 
-install_data('data/pam/material3ui', install_dir: get_option('sysconfdir') / 'pam.d')
+install_data('data/pam/material3ui', install_dir: get_option('sysconfdir') / 'pam.d', install_tag: 'shell')
 # The Settings app: a launcher entry and its icon
-install_data('data/material3ui-terminal', install_dir: get_option('bindir'), install_mode: 'rwxr-xr-x')
-install_data('data/material3ui-settings.desktop', 'data/material3ui-niri.desktop', 'data/material3ui-files.desktop', 'data/material3ui-viewer.desktop', 'data/material3ui-tasks.desktop', 'data/material3ui-player.desktop', 'data/material3ui-terminal.desktop', 'data/material3ui-quickshare.desktop', 'data/material3ui-print.desktop', install_dir: get_option('datadir') / 'applications')
-install_data('data/icons/material3ui-settings.svg', 'data/icons/material3ui-niri.svg', 'data/icons/material3ui-files.svg', 'data/icons/material3ui-viewer.svg', 'data/icons/material3ui-tasks.svg', 'data/icons/material3ui-player.svg', 'data/icons/material3ui-terminal.svg', 'data/icons/material3ui-quickshare.svg', install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps')
-install_data('data/icons/material3ui-settings.svg', 'data/icons/quickshare-symbol.svg', install_dir: get_option('datadir') / 'material3ui/icons')
+install_data('data/material3ui-settings.desktop', 'data/material3ui-niri.desktop', 'data/material3ui-quickshare.desktop', 'data/material3ui-print.desktop', install_dir: get_option('datadir') / 'applications', install_tag: 'shell')
+install_data('data/icons/material3ui-settings.svg', 'data/icons/material3ui-niri.svg', 'data/icons/material3ui-quickshare.svg', install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps', install_tag: 'shell')
+install_data('data/icons/material3ui-settings.svg', 'data/icons/quickshare-symbol.svg', install_dir: get_option('datadir') / 'material3ui/icons', install_tag: 'shell')
 # Shipped data: emoji list, logo, wallpapers
-install_data('data/emojis.txt', install_dir: get_option('datadir') / 'material3ui')
+install_data('data/emojis.txt', install_dir: get_option('datadir') / 'material3ui', install_tag: 'shell')
 # Default profile pictures (Settings → Users → Change picture)
-install_subdir('data/avatars', install_dir: get_option('datadir') / 'material3ui')
+install_subdir('data/avatars', install_dir: get_option('datadir') / 'material3ui', install_tag: 'shell')
 # What's new, the welcome tour and About → Changelog read it
-install_data('../CHANGELOG.md', install_dir: get_option('datadir') / 'material3ui')
+install_data('../CHANGELOG.md', install_dir: get_option('datadir') / 'material3ui', install_tag: 'shell')
 # One password per update: the root helper Settings starts, and its client
 install_data('data/update/material3ui-update-root', 'data/update/material3ui-root',
-  install_dir: get_option('prefix') / 'lib/material3ui', install_mode: 'rwxr-xr-x')
+  install_dir: get_option('prefix') / 'lib/material3ui', install_mode: 'rwxr-xr-x', install_tag: 'shell')
 install_data('data/update/io.github.abijspy.material3ui.update.policy',
-  install_dir: get_option('datadir') / 'polkit-1/actions')
-install_data('data/icons/Material3UI.svg', 'data/icons/niri-logo.svg', install_dir: get_option('datadir') / 'material3ui/icons')
+  install_dir: get_option('datadir') / 'polkit-1/actions', install_tag: 'shell')
+install_data('data/icons/Material3UI.svg', 'data/icons/niri-logo.svg', install_dir: get_option('datadir') / 'material3ui/icons', install_tag: 'shell')
 # The world's land, for Settings → System's time zone map
-install_data('data/maps/world.svg', install_dir: get_option('datadir') / 'material3ui/maps')
+install_data('data/maps/world.svg', install_dir: get_option('datadir') / 'material3ui/maps', install_tag: 'shell')
 # The package's icon (no .desktop file: the shell is not an app to launch)
 install_data('data/icons/Material3UI.svg', rename: 'material3ui.svg',
-  install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps')
+  install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps', install_tag: 'shell')
 install_data('data/wallpapers/default_wallpaper.png', 'data/wallpapers/midnight-dunes.png',
   'data/wallpapers/bloom-lavender.jpg',
   'data/wallpapers/bloom-rose.jpg',
@@ -243,14 +240,43 @@ install_data('data/wallpapers/default_wallpaper.png', 'data/wallpapers/midnight-
   'data/wallpapers/ripples-sage.jpg',
   'data/wallpapers/shapes-coral.jpg',
   'data/wallpapers/shapes-ocean.jpg',
-  install_dir: get_option('datadir') / 'material3ui/wallpapers')
+  install_dir: get_option('datadir') / 'material3ui/wallpapers', install_tag: 'shell')
 
-executable('material3ui', sources, protocol_sources,
+# Everything the shell and its apps share: libmaterial3ui, private to them
+# (in /usr/lib/material3ui, found through each program's rpath)
+shell_deps = [wayland_client, wayland_egl, egl, glesv2, pangocairo, cairo, json, xkbcommon, libsystemd, libpulse, librsvg, gdk_pixbuf, polkit_agent, pam, libcrypto]
+private_libdir = get_option('prefix') / get_option('libdir') / 'material3ui'
+libm3 = shared_library('material3ui', sources, protocol_sources,
   include_directories: include_directories('src'),
-  dependencies: [wayland_client, wayland_egl, egl, glesv2, pangocairo, cairo, json, xkbcommon, libsystemd, libpulse, librsvg, gdk_pixbuf, polkit_agent, pam, libcrypto, libmpv, libvterm],
+  dependencies: shell_deps,
+  install: true, install_dir: private_libdir, install_tag: 'shell')
+
+executable('material3ui', 'src/main.cpp', protocol_headers,
+  include_directories: include_directories('src'),
+  dependencies: shell_deps, link_with: libm3,
   # Function names in crash.log's backtraces
   link_args: ['-rdynamic'],
-  install: true)
+  install_rpath: private_libdir,
+  install: true, install_tag: 'shell')
+
+# The apps: each a program, a .desktop file and an icon of its own, packaged
+# apart (packaging/material3ui-<app>: meson install --tags <app>)
+apps = {
+  'files': {'sources': ['src/apps/FilesMain.cpp', 'src/shell/FilesApp.cpp'], 'deps': []},
+  'viewer': {'sources': ['src/apps/ViewerMain.cpp', 'src/shell/ImageViewer.cpp'], 'deps': []},
+  'player': {'sources': ['src/apps/PlayerMain.cpp', 'src/shell/VideoPlayer.cpp'], 'deps': [libmpv]},
+  'tasks': {'sources': ['src/apps/TasksMain.cpp', 'src/shell/TaskManager.cpp'], 'deps': []},
+  'terminal': {'sources': ['src/apps/TerminalMain.cpp', 'src/shell/Terminal.cpp'], 'deps': [libvterm]},
+}
+foreach app, def : apps
+  executable('material3ui-' + app, def['sources'], protocol_headers,
+    include_directories: include_directories('src'),
+    dependencies: shell_deps + def['deps'], link_with: libm3,
+    install_rpath: private_libdir,
+    install: true, install_tag: app)
+  install_data('data/material3ui-' + app + '.desktop', install_dir: get_option('datadir') / 'applications', install_tag: app)
+  install_data('data/icons/material3ui-' + app + '.svg', install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps', install_tag: app)
+endforeach
 
 # Unit tests: meson test -C <build dir>
 test('pacman-log', executable('pacman_log_test', 'tests/pacman_log_test.cpp', 'src/services/PacmanLog.cpp',

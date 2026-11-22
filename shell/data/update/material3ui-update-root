@@ -12,8 +12,8 @@
 #  answers each with its exit code. Only these run:
 #    pacman …             the package manager (AUR helpers call it here)
 #    flatpak update …     system Flatpaks
-#    install-pkg FILE     a Material3UI package (taking over files a
-#                         source install left)
+#    install-pkg FILE…    Material3UI packages, in one transaction (taking
+#                         over files a source install left)
 #    greeter-setup        the login screen's setup, after its package
 #    -v, true             AUR helpers' "may I?" checks
 # ─────────────────────────────────────────────────────────────────────────────
@@ -28,18 +28,24 @@ OWNER="${PKEXEC_UID:-}"
    -p "$DIR/in" && -p "$DIR/out" ]] || { echo "not an update folder: $DIR" >&2; exit 2; }
 
 install_pkg() {
-    local pkg="$1" name f
-    [[ "$pkg" == *.pkg.tar.zst && -f "$pkg" ]] || { echo "not a package: $pkg" >&2; return 2; }
-    name="$(bsdtar -xOf "$pkg" .PKGINFO | sed -n 's/^pkgname = //p')"
-    [[ "$name" == material3ui || "$name" == material3ui-greeter ]] || { echo "not Material3UI's: $name" >&2; return 2; }
-    # Its own files, from whatever put them there (a source build), also
-    # under an older package whose list lacks a newer build's files
-    local overwrite=()
-    while IFS= read -r f; do
-        [[ "$f" == .* || "$f" == */ ]] && continue
-        overwrite+=(--overwrite "/$f")
-    done < <(bsdtar -tf "$pkg")
-    pacman -U --noconfirm "${overwrite[@]}" "$pkg"
+    local pkg name f overwrite=() pkgs=()
+    (($# > 0)) || { echo "no package" >&2; return 2; }
+    for pkg in "$@"; do
+        [[ "$pkg" == *.pkg.tar.zst && -f "$pkg" ]] || { echo "not a package: $pkg" >&2; return 2; }
+        name="$(bsdtar -xOf "$pkg" .PKGINFO | sed -n 's/^pkgname = //p')"
+        case "$name" in
+            material3ui | material3ui-greeter | material3ui-files | material3ui-viewer | material3ui-player | material3ui-tasks | material3ui-terminal) ;;
+            *) echo "not Material3UI's: $name" >&2; return 2 ;;
+        esac
+        # Its own files, from whatever put them there (a source build), also
+        # under an older package whose list lacks a newer build's files
+        while IFS= read -r f; do
+            [[ "$f" == .* || "$f" == */ ]] && continue
+            overwrite+=(--overwrite "/$f")
+        done < <(bsdtar -tf "$pkg")
+        pkgs+=("$pkg")
+    done
+    pacman -U --noconfirm "${overwrite[@]}" "${pkgs[@]}"
 }
 
 touch "$DIR/ready"
@@ -56,7 +62,7 @@ while true; do
         pacman | /usr/bin/pacman) /usr/bin/pacman "${argv[@]:1}"; code=$? ;;
         flatpak | /usr/bin/flatpak)
             if [[ "${argv[1]:-}" == update ]]; then /usr/bin/flatpak "${argv[@]:1}"; code=$?; else code=126; fi ;;
-        install-pkg) install_pkg "${argv[1]:-}"; code=$? ;;
+        install-pkg) install_pkg "${argv[@]:1}"; code=$? ;;
         greeter-setup) /usr/bin/material3ui-greeter setup; code=$? ;;
         *) echo "refused: ${argv[0]}" >&2; code=126 ;;
     esac

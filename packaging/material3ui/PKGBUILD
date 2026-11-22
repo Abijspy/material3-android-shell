@@ -9,10 +9,15 @@ pkgdesc="A Material 3 desktop shell for niri"
 arch=(x86_64 aarch64)
 url="https://github.com/Abijspy/material3-android-shell"
 license=(MIT)
-depends=(niri wayland libglvnd pango cairo libxkbcommon systemd-libs libpulse librsvg gdk-pixbuf2 polkit pam fastfetch mpv libvterm)
-makedepends=(meson ninja wayland-protocols wlr-protocols nlohmann-json)
+depends=(niri wayland libglvnd pango cairo libxkbcommon systemd-libs libpulse librsvg gdk-pixbuf2 polkit pam fastfetch)
+makedepends=(meson ninja wayland-protocols wlr-protocols nlohmann-json mpv libvterm)
 # niri 26.04 or newer
-optdepends=('xwayland-satellite: X11 apps on niri'
+optdepends=('material3ui-files: Files, the file manager'
+            'material3ui-viewer: the image viewer'
+            'material3ui-player: Videos, the video player'
+            'material3ui-tasks: the Task Manager'
+            'material3ui-terminal: the terminal'
+            'xwayland-satellite: X11 apps on niri'
             'xdg-desktop-portal-gnome: screen sharing on niri'
             'wf-recorder: screen recording'
             'ffmpeg: GIF recordings'
@@ -34,6 +39,7 @@ build() {
 }
 
 package() {
-    meson install -C "${M3_BUILD:-$srcdir/build}" --destdir "$pkgdir" --no-rebuild --quiet
+    # The shell and libmaterial3ui; each app is a package of its own
+    meson install -C "${M3_BUILD:-$srcdir/build}" --destdir "$pkgdir" --no-rebuild --quiet --tags shell
     install -Dm644 "$M3_SRC/LICENSE" -t "$pkgdir/usr/share/licenses/$pkgname/"
 }

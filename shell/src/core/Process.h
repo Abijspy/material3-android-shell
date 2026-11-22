@@ -9,6 +9,14 @@ namespace m3 {
 // Runs `command` through /bin/sh in its own session, detached from the shell.
 bool spawn(const std::string& command);
 
+// Runs argv (looked up on PATH) detached, in its own session, as spawn does
+bool spawnArgs(const std::vector<std::string>& argv);
+
+// One of Material3UI's own programs (material3ui, material3ui-files…): the
+// one beside the running binary first (a build directory, /usr/bin), else
+// on PATH; "" when it isn't installed
+std::string ownCommand(const std::string& name);
+
 // Runs argv asynchronously, collecting stdout; `done` gets the exit code
 // (-1 if it could not start) and the output, on the event loop. Returns the
 // child's pid (to stop it early), -1 if it could not start.

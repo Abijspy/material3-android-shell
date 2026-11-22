@@ -148,6 +148,19 @@ If you prefer the command line, you can run the update script directly:
 ### Packages
 The shell installs as the `material3ui` pacman package, and the login screen as `material3ui-greeter`. Every release carries both (`material3ui-<version>-1-x86_64.pkg.tar.zst` and `material3ui-greeter-<version>-1-any.pkg.tar.zst`). On the stable channel, updates download the release's package and install it with pacman, with no compiling. On the latest (git) channel, or for a release without a package for your architecture, the update builds the shell from the checkout and packages that build, so pacman owns the files either way (`pacman -Qi material3ui`). Build one by hand with `packaging/build-pkg.sh material3ui`.
 
+Since 7.1 each built-in app is a package of its own, built from the same compile and installed with the shell:
+
+| Package | What it is | Needs |
+| :--- | :--- | :--- |
+| `material3ui` | The shell, and `libmaterial3ui` (in `/usr/lib/material3ui`), which it shares with its apps | |
+| `material3ui-files` | Files (`material3ui-files`) | udisks2, gvfs, libarchive |
+| `material3ui-viewer` | The image viewer (`material3ui-viewer`) | |
+| `material3ui-player` | Videos (`material3ui-player`) | mpv |
+| `material3ui-tasks` | The Task Manager (`material3ui-tasks`) | |
+| `material3ui-terminal` | The terminal (`material3ui-terminal`) | libvterm |
+
+Don't want one? `sudo pacman -R material3ui-player`, and updates leave it out from then on; the shell says it isn't installed when something asks for it. Each app's version always matches the shell's (they share the library). Package them by hand from one build with `packaging/build-pkg.sh material3ui-files --build <build dir>`, and so on.
+
 Whichever method you choose, updating is non-destructive. Your `config.kdl` and `material3ui-user.kdl` are never replaced, `material3ui.kdl` keeps the apps you picked in Settings → Default apps, and your Fish functions and Kitty settings are always safe.
 
 ## Troubleshooting Common Issues

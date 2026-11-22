@@ -321,8 +321,9 @@ void openPath(const std::shared_ptr<State>& st, const std::string& path) {
     {
         std::string e = fs::path(path).extension().string();
         for (auto& c : e) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        if ((e == ".srt" || e == ".ass" || e == ".ssa" || e == ".vtt" || e == ".sub" || e == ".sup" || e == ".idx") && playerGo) {
-            playerGo(path);
+        if (e == ".srt" || e == ".ass" || e == ".ssa" || e == ".vtt" || e == ".sub" || e == ".sup" || e == ".idx") {
+            // Videos takes it: with something playing, to go with it
+            if (open) open("player " + path);
             return;
         }
     }
@@ -618,7 +619,9 @@ void fileMenu(const std::shared_ptr<State>& st, Button* tile, const std::string&
         m3::run({"wl-copy"}, nullptr, text);
     }});
     if (one && fileops::isPicture(path)) {
-        m.push_back({"wallpaper", "Set as wallpaper", "", [path] { Wallpaper::get().set(path); }, false, false, true, true});
+        m.push_back({"wallpaper", "Set as wallpaper", "", [path] {
+            if (open) open("wallpaper " + path);
+        }, false, false, true, true});
         m.push_back({"brush", "Edit", "", [path] {
             if (open) open("imageeditor " + path);
         }});

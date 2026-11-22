@@ -200,6 +200,8 @@ Pictures open in the shell's **image viewer**, in any format: everyday ones, HEI
 
 Its **editor** marks pictures up: pen, shapes, arrows, text, numbered steps, and pixelate or blur to hide. It rotates, flips, resizes and crops to an aspect ratio, and adjusts exposure, contrast, colour, warmth, sharpness and vignette, with nine filters. Everything can be undone, and it saves as PNG, JPEG, WebP or AVIF. The installer makes both the defaults; Settings → Default apps can pick others.
 
+Each of these apps is its own **pacman package** (`material3ui-files`, `-viewer`, `-player`, `-tasks`, `-terminal`), sharing one library with the shell. The installer adds them all; remove any with `pacman -R` and the rest keep working.
+
 The shell's own **terminal** has tabs, 10,000 lines of scrollback, mouse support and colours from your wallpaper; full-screen apps like vim and htop work as in any xterm.
 
 Videos and music play in the shell's own **video player**, built on mpv: every format, hardware decoding, subtitles of every kind (loaded by themselves, shifted and resized from its menu), audio tracks, speed, a playlist from the folder and full screen.

@@ -2,6 +2,7 @@
 
 #include "core/EventLoop.h"
 
+#include <filesystem>
 #include <cerrno>
 #include <cstdlib>
 #include <csignal>
@@ -102,6 +103,29 @@ bool spawn(const std::string& command) {
     posix_spawnattr_destroy(&attr);
     if (r == 0) detached().insert(pid);
     return r == 0;
+}
+
+bool spawnArgs(const std::vector<std::string>& argv) {
+    if (argv.empty()) return false;
+    auto attr = detachedAttr();
+    pid_t pid;
+    std::vector<char*> args;
+    for (const auto& a : argv) args.push_back(const_cast<char*>(a.c_str()));
+    args.push_back(nullptr);
+    const int r = posix_spawnp(&pid, args[0], nullptr, &attr, args.data(), environ);
+    posix_spawnattr_destroy(&attr);
+    if (r == 0) detached().insert(pid);
+    return r == 0;
+}
+
+std::string ownCommand(const std::string& name) {
+    std::error_code ec;
+    const auto self = std::filesystem::read_symlink("/proc/self/exe", ec);
+    if (!ec) {
+        const auto beside = self.parent_path() / name;
+        if (access(beside.c_str(), X_OK) == 0) return beside.string();
+    }
+    return haveCommand(name) ? name : "";
 }
 
 int run(const std::vector<std::string>& argv, std::function<void(int, const std::string&)> done,
