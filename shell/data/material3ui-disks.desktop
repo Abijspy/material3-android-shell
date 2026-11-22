@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Disks
+GenericName=Disk Utility
+Comment=Your drives, their health, and what fills them.
+Exec=material3ui-disks
+Icon=material3ui-disks
+Terminal=false
+Categories=System;Utility;
+Keywords=disk;drive;partition;format;usb;smart;health;space;usage;storage;
+StartupNotify=false
+StartupWMClass=material3ui-disks

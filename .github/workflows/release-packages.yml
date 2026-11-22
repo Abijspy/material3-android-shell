@@ -42,7 +42,7 @@ jobs:
           su builder -c "git config --global --add safe.directory '*' && cd '$GITHUB_WORKSPACE' &&
             meson setup build shell --prefix=/usr --sysconfdir=/etc --buildtype=release &&
             meson compile -C build &&
-            for p in material3ui material3ui-files material3ui-viewer material3ui-player material3ui-tasks material3ui-terminal material3ui-notes material3ui-pdf material3ui-text material3ui-music; do
+            for p in material3ui material3ui-files material3ui-viewer material3ui-player material3ui-tasks material3ui-terminal material3ui-notes material3ui-pdf material3ui-text material3ui-music material3ui-disks; do
               packaging/build-pkg.sh \$p --build build '$GITHUB_WORKSPACE/out' || exit 1
             done &&
             packaging/build-pkg.sh material3ui-greeter '$GITHUB_WORKSPACE/out'"

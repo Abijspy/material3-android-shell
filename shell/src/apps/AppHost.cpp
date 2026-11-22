@@ -298,7 +298,7 @@ int run(const App& app, int argc, char** argv) {
         // Another app: its own program, straight (the shell says when one
         // isn't installed)
         static const std::map<std::string, std::string> programs = {{"files", "files"}, {"viewer", "viewer"}, {"player", "player"}, {"tasks", "tasks"},
-                                                                     {"terminal", "terminal"}, {"notes", "notes"}, {"pdf", "pdf"}, {"text", "text"}, {"music", "music"}};
+                                                                     {"terminal", "terminal"}, {"notes", "notes"}, {"pdf", "pdf"}, {"text", "text"}, {"music", "music"}, {"disks", "disks"}};
         if (auto it = programs.find(name); it != programs.end()) {
             const std::string program = ownCommand("material3ui-" + it->second);
             if (!program.empty()) {

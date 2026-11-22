@@ -25,6 +25,7 @@ The shell and each of its apps are separate pacman packages, built from one comp
 | `material3ui-notes` | Notes | | |
 | `material3ui-pdf` | The PDF viewer and editor | `poppler-glib` | `qpdf` (rotating, moving, deleting and extracting pages), `cups` (printing) |
 | `material3ui-text` | The text editor | | `wl-clipboard` |
+| `material3ui-disks` | Disks | `udisks2` | `smartmontools`, `exfatprogs`, `dosfstools`, `ntfs-3g` |
 | `material3ui-music` | Music | `mpv` (libmpv) | `mpv-mpris` (the bar, lock screen and lyrics follow it), `ffmpeg` (tags and album art) |
 | `material3ui-greeter` | The login screen | `greetd` `acl` `niri` | |
 

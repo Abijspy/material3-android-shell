@@ -171,4 +171,8 @@ void barWidgets(ui::Flex* card, Popup& popup, const std::string& zone);
 // The lock screen at full size, editable on its grid
 void lockEditor(ui::Flex* card, Popup& popup);
 
+// Disks (an app window)
+void disksApp(ui::Flex* card, Popup& popup, const std::string& arg);
+void disksSettings(ui::Flex* page);
+
 } // namespace m3::shell::panels
