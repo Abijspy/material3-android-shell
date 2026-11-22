@@ -25,6 +25,7 @@ The shell and each of its apps are separate pacman packages, built from one comp
 | `material3ui-notes` | Notes | | |
 | `material3ui-pdf` | The PDF viewer and editor | `poppler-glib` | `qpdf` (rotating, moving, deleting and extracting pages), `cups` (printing) |
 | `material3ui-text` | The text editor | | `wl-clipboard` |
+| `material3ui-imagewriter` | Image Writer | util-linux, polkit, udisks2 | xz, zstd |
 | `material3ui-fonts` | Fonts | fontconfig |  |
 | `material3ui-calculator` | Calculator |  |  |
 | `material3ui-recorder` | Sound Recorder | `ffmpeg` |  |

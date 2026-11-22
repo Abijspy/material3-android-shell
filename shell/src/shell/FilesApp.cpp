@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <sys/stat.h>
 #include <format>
@@ -664,6 +665,17 @@ void fileMenu(const std::shared_ptr<State>& st, Button* tile, const std::string&
         st->dir = here;
     }, false, false, !g_clip.paths.empty()});
     if (one) m.push_back({"edit", "Rename", "F2", [st, path] { renameOne(st, path); }});
+    // A disk image: onto a USB drive, to start a computer from
+    if (paths.size() == 1 && !ownCommand("material3ui-imagewriter").empty()) {
+        std::string n = fs::path(paths.front()).filename().string();
+        for (auto& c : n) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        for (const char* z : {".xz", ".gz", ".zst"})
+            if (n.ends_with(z)) n.resize(n.size() - std::strlen(z));
+        if (n.ends_with(".iso") || n.ends_with(".img"))
+            m.push_back({"usb", "Write to a USB drive", "", [p = paths.front()] {
+                             if (open) open("imagewriter " + p);
+                         }, false, false, true, true});
+    }
     if (std::ranges::all_of(paths, [](const std::string& p) { return fileops::canExtract(p); }))
         m.push_back({"unarchive", paths.size() == 1 ? "Extract here" : "Extract each here", "", [st, paths] { extractHere(st, paths); }, false, false, true, true});
     m.push_back({"folder_zip", "Compress to ZIP…", "", [st, paths] { compressPrompt(st, paths); }});

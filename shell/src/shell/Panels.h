@@ -204,4 +204,10 @@ extern std::function<void(const std::string&)> fontsGo;
 void fontsClosed();
 void fontsSettings(ui::Flex* page);
 
+// Image Writer (an app window)
+void imagewriterApp(ui::Flex* card, Popup& popup, const std::string& arg);
+extern std::function<void(const std::string&)> imagewriterGo;
+void imagewriterClosed();
+void imagewriterSettings(ui::Flex* page);
+
 } // namespace m3::shell::panels

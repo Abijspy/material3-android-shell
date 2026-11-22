@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Image Writer: the shell's squircle, in its tonal colours -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#80cbc4"/>
+      <stop offset="1" stop-color="#00695c"/>
+    </linearGradient>
+  </defs>
+  <path d="M64 4C108 4 124 20 124 64S108 124 64 124 4 108 4 64 20 4 64 4Z" fill="url(#bg)"/>
+  <rect x="44" y="22" width="40" height="26" rx="4" fill="#b2dfdb"/><rect x="52" y="28" width="7" height="7" fill="#00695c"/><rect x="69" y="28" width="7" height="7" fill="#00695c"/><rect x="36" y="46" width="56" height="62" rx="12" fill="#ffffff"/><path d="M64 60v26m-11-11l11 11 11-11" stroke="#00695c" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

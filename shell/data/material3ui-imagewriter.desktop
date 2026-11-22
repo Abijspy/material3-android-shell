@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Image Writer
+GenericName=Disk Image Writer
+Comment=Writes a disk image (a Linux ISO, a Raspberry Pi image) to a USB drive or memory card, to start a computer from.
+Exec=material3ui-imagewriter %U
+Icon=material3ui-imagewriter
+Terminal=false
+Categories=System;Utility;
+Keywords=iso;usb;image;writer;flash;burn;bootable;dd;etcher;sd card;
+MimeType=application/x-cd-image;application/x-iso9660-image;application/vnd.efi.iso;application/x-raw-disk-image;application/vnd.efi.img;application/x-raw-disk-image-xz-compressed;
+StartupNotify=false
+StartupWMClass=material3ui-imagewriter
