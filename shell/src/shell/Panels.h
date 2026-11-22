@@ -194,4 +194,8 @@ void backupsSettings(ui::Flex* page);
 void recorderApp(ui::Flex* card, Popup& popup, const std::string& arg);
 void recorderSettings(ui::Flex* page);
 
+// Calculator (an app window)
+void calculatorApp(ui::Flex* card, Popup& popup, const std::string& arg);
+void calculatorSettings(ui::Flex* page);
+
 } // namespace m3::shell::panels

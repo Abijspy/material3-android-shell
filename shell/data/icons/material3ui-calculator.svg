@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Calculator: the shell's squircle, in its tonal colours -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#b39ddb"/>
+      <stop offset="1" stop-color="#4527a0"/>
+    </linearGradient>
+  </defs>
+  <path d="M64 4C108 4 124 20 124 64S108 124 64 124 4 108 4 64 20 4 64 4Z" fill="url(#bg)"/>
+  <rect x="36" y="26" width="56" height="76" rx="12" fill="#ffffff"/><rect x="44" y="34" width="40" height="16" rx="4" fill="#b39ddb"/><circle cx="50" cy="62" r="4" fill="#4527a0"/><circle cx="64" cy="62" r="4" fill="#4527a0"/><circle cx="78" cy="62" r="4" fill="#4527a0"/><circle cx="50" cy="78" r="4" fill="#4527a0"/><circle cx="64" cy="78" r="4" fill="#4527a0"/><rect x="74" y="72" width="8" height="22" rx="4" fill="#4527a0"/><circle cx="50" cy="92" r="4" fill="#4527a0"/><circle cx="64" cy="92" r="4" fill="#4527a0"/>
+</svg>

@@ -216,6 +216,7 @@ Its **editor** marks pictures up: pen, shapes, arrows, text, numbered steps, and
 | **Backups** (`material3ui-backups`) | Your folders as dated snapshots on a USB drive or another disk; only what changed takes room, daily by itself, old ones thinned out, each a plain folder to restore from. |
 | **Sound Recorder** (`material3ui-recorder`) | Voice notes and recordings in Opus, MP3, FLAC or WAV, with the level live; play, share or trash them. |
 | **Clock**, **Calendar**, **Weather** | The shell's own windows (their services live in the shell): alarms, timers, focus and world clocks; a month with the day's agenda; the forecast by the hour and for ten days. |
+| **Calculator** (`material3ui-calculator`) | The answer as you type, scientific keys (degrees or radians), history, and a converter for length, mass, temperature, area, volume, speed, data and time. |
 | **Notes** (`material3ui-notes`) | Notes and checklists as tinted cards, with labels, pins, search, an archive and a trash. |
 | **Task Manager** (`material3ui-tasks`) | Processes, performance, startup apps and services (<kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd>). |
 

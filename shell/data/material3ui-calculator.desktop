@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Calculator
+GenericName=Calculator
+Comment=Sums as you type them, scientific keys, and a unit converter.
+Exec=material3ui-calculator
+Icon=material3ui-calculator
+Terminal=false
+Categories=Utility;Calculator;
+Keywords=calculator;calc;math;sum;convert;units;
+StartupNotify=false
+StartupWMClass=material3ui-calculator
