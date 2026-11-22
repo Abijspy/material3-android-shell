@@ -72,6 +72,9 @@ void filesClosed();
 void viewer(ui::Flex* card, Popup& popup, const std::string& file);
 extern std::function<void(const std::string&)> viewerGo;
 void viewerClosed();
+// Task Manager (an app window): processes, performance, startup apps and
+// services; `tab` one of processes|performance|startup|services
+void taskManager(ui::Flex* card, Popup& popup, const std::string& tab);
 // Floating panels beside the bar's chips (Flyouts.cpp): what Settings
 // would be opened for, at hand, with the page a tap away
 void phone(ui::Flex* card, Popup& popup);

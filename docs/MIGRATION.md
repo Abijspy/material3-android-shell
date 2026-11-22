@@ -19,7 +19,7 @@ When you move to Material3UI Shell, you are only replacing the "shell" portion o
 | Lock screen | The shell's own lock screen (ext-session-lock and PAM) |
 | Display settings | Built-in Display settings: brightness, night light, and each monitor's resolution, scale and place |
 | Bluetooth and Wi-Fi settings | Built-in controls within the Quick Settings and main Settings panel |
-| System monitor | A built-in System Monitor (<kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd>) |
+| System monitor | A built-in Task Manager (<kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd>) |
 | Dock | A dock with pinned and running apps |
 
 ### What Material3UI Does Not Replace

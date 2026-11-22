@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Task Manager
+GenericName=System Monitor
+Comment=See what's running and how hard the computer is working; end what's stuck
+Exec=material3ui msg tasks
+Icon=material3ui-tasks
+Terminal=false
+Categories=System;Monitor;
+Keywords=process;task;kill;cpu;memory;performance;monitor;startup;service;systemd;
+StartupNotify=false
+StartupWMClass=material3ui-tasks

@@ -18,6 +18,7 @@ struct Model {
     struct Win {
         uint64_t id = 0;
         std::string title, appId;
+        int pid = 0; // the client's process (0: niri doesn't know)
         std::optional<uint64_t> workspace;
         bool focused = false, floating = false, urgent = false;
         double focusTime = 0; // seconds, niri's monotonic focus timestamp

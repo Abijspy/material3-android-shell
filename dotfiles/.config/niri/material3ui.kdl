@@ -38,7 +38,7 @@ binds {
     Mod+L hotkey-overlay-title="Lock" allow-when-locked=true { spawn "material3ui" "msg" "lock"; }
     Super+Alt+L allow-when-locked=true { spawn "material3ui" "msg" "lock"; }
     Ctrl+Mod+T hotkey-overlay-title="Wallpapers" { spawn "material3ui" "msg" "wallpaper" "pick"; }
-    Ctrl+Alt+Delete hotkey-overlay-title="System monitor" { spawn "material3ui" "msg" "settings" "monitor"; }
+    Ctrl+Alt+Delete hotkey-overlay-title="Task Manager" { spawn "material3ui" "msg" "tasks"; }
     Mod+Shift+S hotkey-overlay-title="Screenshot a region" { spawn "material3ui" "msg" "screenshot" "region"; }
     Mod+Shift+X hotkey-overlay-title="Copy text from the screen" { spawn "material3ui" "msg" "screenshot" "ocr"; }
     Mod+Shift+C hotkey-overlay-title="Pick a colour" { spawn "material3ui" "msg" "colorpicker"; }

@@ -28,6 +28,11 @@
   - **Adjust:** exposure, brightness, contrast, saturation, warmth, sharpen, blur and vignette, shown as you drag. There are nine filters: Vivid, Warm, Cool, Mono, Noir, Sepia, Fade and Invert.
   - **Undo and redo:** everything, rotations and adjustments included.
   - **Save:** over a screenshot as before, or from the save menu over the original in its own format, or as a copy in PNG, JPEG, WebP or AVIF.
+- **A Task Manager.** <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd> (or `material3ui msg tasks`, or the bar's CPU & memory chip) opens it in an app window of its own.
+  - **Processes:** apps come first, each with every process it started, its CPU and memory added up, and End task or Force quit. Your background processes follow, then the system's. Search by name, PID or user, and sort by CPU, memory or name. Open one to see its command, user, state, threads and parent, and to stop, resume, end or force kill it (force asks twice; the system's processes ask for your password).
+  - **Performance:** graphs of the last minute and a half for CPU (each core too, with its clock and temperature), memory and swap, disk reading and writing (with each drive's free space), the network and, where the driver says, the GPU and its video memory.
+  - **Startup:** the apps that start when you log in (XDG autostart), each with a switch, and any app added from a list. Switching off a system entry only changes your own copy.
+  - **Services:** systemd's, the system's or yours, running or not. Start, stop or restart one, set whether it starts at boot, or read its log.
 - **The installer offers Files as the file manager** (the default, with nothing to install), and makes the image viewer the default for pictures.
 - **Dropdowns open as a floating menu over the page,** under their button, rather than unfolding the whole list inside it. The choice is ticked, long lists scroll and open at the choice, and Escape or a click outside closes them. Files' right-click menus are the same.
 - Bedtime no longer mentions greyscale, which went in 7.0.

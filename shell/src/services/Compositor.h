@@ -42,6 +42,7 @@ public:
     struct Window {
         std::string id; // niri's id
         std::string appId, title, output;
+        int pid = 0;       // its process, where the compositor says (0: not known)
         int workspace = 0; // its number (0 while minimised)
         std::string workspaceName;
         bool minimised = false, floating = false;

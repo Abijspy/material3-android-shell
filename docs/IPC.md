@@ -22,11 +22,12 @@ M3_INSTANCE=test material3ui msg workspaces
 | :--- | :--- |
 | `launcher [text]` | Spotlight, optionally pre-filled: `=` maths, `:` emoji, `#` clipboard, `@` files, `>` run |
 | `popup quicksettings [wifi]` | Quick Settings, or straight to its Wi-Fi list |
-| `popup notifications` · `dashboard` · `overview` · `sysmon` · `power` | The notification centre, dashboard, workspace overview, system monitor and power menu |
+| `popup notifications` · `dashboard` · `overview` · `sysmon` · `power` | The notification centre, dashboard, workspace overview, Task Manager and power menu |
 | `popup audio` · `network` · `bluetooth` · `run` | The small status panels and the run dialog |
 | `settings [page]` | Settings. Pages: `network`, `vpn`, `bluetooth`, `printers`, `defaults`, `notifications`, `tools`, `spotlight`, `wellbeing`, `calendar`, `weather`, `battery`, `storage`, `monitor`, `sound`, `display`, `appearance`, `style`, `bar`, `dock`, `lockscreen`, `accessibility`, `lock`, `firewall`, `users`, `system`, `mouse`, `keybinds`, `hooks`, `packages`, `firmware`, `about` |
 | `nirisettings [page]` | Niri Settings, on niri. Pages: `niri-layout`, `niri-decoration`, `niri-animations`, `niri-behaviour`, `niri-keys`, `niri-rules`, `niri-startup`, `niri-environment` |
 | `lyrics` | The playing song's lyrics, scrolling along, with Identify |
+| `tasks [processes\|performance\|startup\|services]` | The Task Manager, at a tab |
 | `files [folder\|file]` | Files, the built-in file manager, at a folder (or a file, selected); `file://` URIs work too |
 | `view <file>` | A picture in the built-in image viewer |
 | `clipboard` | Clipboard history |

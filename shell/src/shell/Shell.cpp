@@ -433,6 +433,21 @@ void Shell::openViewer(const std::string& file) {
     };
 }
 
+void Shell::openTasks(const std::string& tab) {
+    if (m_tasks && !m_tasks->closing()) return raise("material3ui-tasks");
+    if (m_popup) m_popup->close();
+    Popup::Options opts;
+    opts.name = "tasks";
+    opts.window = true;
+    opts.appId = "material3ui-tasks";
+    opts.title = "Task Manager";
+    opts.icon = "monitoring";
+    opts.windowWidth = 1040;
+    opts.windowHeight = 720;
+    m_tasks = std::make_unique<Popup>(nullptr, opts, [tab](ui::Flex* card, Popup& p) { panels::taskManager(card, p, tab); });
+    m_tasks->onClosed = [this] { EventLoop::get().defer([this] { m_tasks.reset(); }); };
+}
+
 void Shell::openWelcome() {
     if (m_welcome && !m_welcome->closing()) {
         auto& c = Compositor::get();
@@ -469,14 +484,15 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
     if (name == "nirisettings") return openNiriSettings(arg);
     if (name == "files") return openFiles(arg);
     if (name == "viewer") return openViewer(arg);
+    if (name == "tasks") return openTasks(arg);
     if (name == "desktopedit") return desktopeditor::open(output ? output : focusedOutput());
     // The compositor's own overview where it has one (niri's)
     if (name == "overview" && Compositor::get().can(Compositor::Feature::NativeOverview)) {
         m_popup.reset();
         return Compositor::get().toggleOverview();
     }
-    // The system monitor lives in Settings now (Ctrl+Alt+Delete, the bar's widget)
-    if (name == "sysmon") return openSettings("monitor");
+    // The system monitor is the Task Manager now (Ctrl+Alt+Delete, the bar's widget)
+    if (name == "sysmon") return openTasks(arg);
     // The same popup again closes it; the same kind for something else
     // (another transfer) takes its place
     if (m_popup && !m_popup->closing() && m_popup->name() == name && m_popup->output() == output && m_popupArg == arg) {
@@ -902,6 +918,11 @@ void Shell::registerIpc() {
         std::error_code ec;
         return p.empty() ? p : std::filesystem::absolute(p, ec).string();
     };
+    ipc.add("tasks", "tasks [processes|performance|startup|services]: the Task Manager", [this](const IpcServer::Args& a) {
+        const std::string tab = a.empty() ? "" : a[0];
+        EventLoop::get().defer([this, tab] { openTasks(tab); });
+        return std::string("tasks");
+    });
     ipc.add("files", "files [folder|file]: the Files app, at a folder (or a file, selected)", [this, localPath](const IpcServer::Args& a) {
         std::string path;
         for (size_t i = 0; i < a.size(); ++i) path += (i ? " " : "") + a[i];

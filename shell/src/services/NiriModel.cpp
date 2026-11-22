@@ -22,6 +22,7 @@ Model::Win window(const nlohmann::json& w) {
     x.id = id(w, "id").value_or(0);
     x.title = str(w, "title");
     x.appId = str(w, "app_id");
+    if (const auto p = w.find("pid"); p != w.end() && p->is_number_integer()) x.pid = p->get<int>();
     x.workspace = id(w, "workspace_id");
     x.focused = w.value("is_focused", false);
     x.floating = w.value("is_floating", false);
@@ -242,6 +243,7 @@ std::vector<Compositor::Window> Model::shellWindows() const {
         x.id = std::to_string(i);
         x.appId = w.appId;
         x.title = w.title;
+        x.pid = w.pid;
         x.floating = w.floating;
         if (w.workspace)
             if (const auto ws = workspaces.find(*w.workspace); ws != workspaces.end()) {

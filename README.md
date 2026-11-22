@@ -200,6 +200,8 @@ Pictures open in the shell's **image viewer**, in any format: everyday ones, HEI
 
 Its **editor** marks pictures up: pen, shapes, arrows, text, numbered steps, and pixelate or blur to hide. It rotates, flips, resizes and crops to an aspect ratio, and adjusts exposure, contrast, colour, warmth, sharpness and vignette, with nine filters. Everything can be undone, and it saves as PNG, JPEG, WebP or AVIF. The installer makes both the defaults; Settings → Default apps can pick others.
 
+The **Task Manager** (<kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd>) shows apps with all their processes, your background processes and the system's, to end, stop or force kill. Live graphs follow CPU (each core), memory, disks, the network and the GPU. It also turns login apps on and off, and starts, stops, enables or disables systemd services.
+
 ## Keys worth learning
 
 | | Open | | Do |
@@ -213,7 +215,7 @@ Its **editor** marks pictures up: pen, shapes, arrows, text, numbered steps, and
 | <kbd>Super</kbd><kbd>G</kbd> | Screenshot tool | <kbd>Super</kbd><kbd>Shift</kbd><kbd>X</kbd> | Copy text from screen (OCR) |
 | <kbd>Super</kbd><kbd>I</kbd> | Settings | <kbd>Super</kbd><kbd>Shift</kbd><kbd>R</kbd> | Record a region |
 | <kbd>Ctrl</kbd><kbd>Super</kbd><kbd>T</kbd> | Wallpapers | <kbd>Super</kbd><kbd>L</kbd> | Lock |
-| <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd> | System monitor | <kbd>Super</kbd><kbd>Esc</kbd> | Power menu |
+| <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd> | Task Manager | <kbd>Super</kbd><kbd>Esc</kbd> | Power menu |
 
 Keys for windows and workspaces are niri's own, from your `config.kdl`: <kbd>Super</kbd><kbd>Q</kbd> closes, <kbd>Super</kbd><kbd>F</kbd> maximises a column, <kbd>Super</kbd><kbd>R</kbd> cycles its width, and the arrows and <kbd>Super</kbd><kbd>1…9</kbd> move around. The shell's keys, in [`material3ui.kdl`](dotfiles/.config/niri/material3ui.kdl), take over the few that clash (<kbd>Super</kbd><kbd>D</kbd>, <kbd>Super</kbd><kbd>T</kbd>, <kbd>Super</kbd><kbd>V</kbd>, <kbd>Super</kbd><kbd>L</kbd>…). Rebind any key in **Niri Settings → Keys**, or in `material3ui-user.kdl`, which is read last.
 
