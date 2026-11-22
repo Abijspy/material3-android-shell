@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Music
+GenericName=Music Player
+Comment=Your music library: albums, artists, songs and playlists
+Exec=material3ui-music %U
+Icon=material3ui-music
+Terminal=false
+Categories=AudioVideo;Audio;Player;Music;
+Keywords=music;songs;albums;artists;playlist;player;audio;
+MimeType=audio/mpeg;audio/flac;audio/ogg;audio/x-wav;audio/wav;audio/mp4;audio/aac;audio/opus;audio/x-vorbis+ogg;audio/x-ape;audio/x-wavpack;
+StartupNotify=false
+StartupWMClass=material3ui-music

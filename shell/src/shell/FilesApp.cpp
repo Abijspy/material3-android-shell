@@ -341,6 +341,11 @@ void openPath(const std::shared_ptr<State>& st, const std::string& path) {
             return;
         }
     }
+    // Songs in Music, when it's installed
+    if (fileops::kindOf(path) == fileops::Kind::Audio && !ownCommand("material3ui-music").empty() && Config::get().value<bool>("/files/music", true)) {
+        if (open) open("music " + path);
+        return;
+    }
     // Videos and songs in the shell's own player
     if (const auto k = fileops::kindOf(path); (k == fileops::Kind::Video || k == fileops::Kind::Audio) && Config::get().value<bool>("/files/player", true)) {
         if (open) open("player " + path);
@@ -1437,7 +1442,8 @@ void filesSettings(Flex* page) {
     switchRow(g, "vertical_split", "Preview and properties", "The pane beside the folder (F9)", "/files/preview", true);
     auto* o = group(page, "Open with Material3UI's apps", "Off: the file's own default app opens it");
     switchRow(o, "image", "Pictures in Photos", "", "/files/viewer", true);
-    switchRow(o, "movie", "Videos and songs in Videos", "", "/files/player", true);
+    switchRow(o, "library_music", "Songs in Music", "", "/files/music", true);
+    switchRow(o, "movie", "Videos in Videos", "", "/files/player", true);
     switchRow(o, "picture_as_pdf", "PDFs in the PDF viewer", "", "/files/pdf", true);
     switchRow(o, "edit_note", "Text and code in the Text Editor", "", "/files/textEditor", true);
 }

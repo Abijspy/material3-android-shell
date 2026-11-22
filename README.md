@@ -210,6 +210,7 @@ Its **editor** marks pictures up: pen, shapes, arrows, text, numbered steps, and
 | **Terminal** (`material3ui-terminal`) | Tabs, 10,000 lines of scrollback, mouse support and colours from your wallpaper. Full-screen apps like vim and htop work as in any xterm (<kbd>Super</kbd><kbd>Return</kbd>). |
 | **PDF** (`material3ui-pdf`) | Reads PDFs, with page thumbnails, search, text selection, links, passwords and a night mode. It marks them up too: highlight, underline, strike out, draw, add shapes, arrows, text boxes and sticky notes, sign, fill in forms, and rotate, move or delete pages. |
 | **Text Editor** (`material3ui-text`) | .txt files and code in tabs, with line numbers, auto-indent, find and replace, and go to line. Line endings and encodings are kept as they were. |
+| **Music** (`material3ui-music`) | Your library by album and artist, with covers, every song, search, playlists and a queue; gapless, with even loudness. The bar, the lock screen and lyrics follow it (with mpv-mpris). |
 | **Notes** (`material3ui-notes`) | Notes and checklists as tinted cards, with labels, pins, search, an archive and a trash. |
 | **Task Manager** (`material3ui-tasks`) | Processes, performance, startup apps and services (<kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd>). |
 

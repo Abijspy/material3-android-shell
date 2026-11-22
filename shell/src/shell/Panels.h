@@ -104,6 +104,11 @@ void terminalSettings(ui::Flex* page);
 void notesSettings(ui::Flex* page);
 void pdfSettings(ui::Flex* page);
 void textSettings(ui::Flex* page);
+// Music (an app window, libmpv): the library, albums, artists, playlists
+void musicApp(ui::Flex* card, Popup& popup, const std::string& file);
+extern std::function<void(const std::string&)> musicGo;
+void musicClosed();
+void musicSettings(ui::Flex* page);
 // Task Manager (an app window): processes, performance, startup apps and
 // services; `tab` one of processes|performance|startup|services
 void taskManager(ui::Flex* card, Popup& popup, const std::string& tab);

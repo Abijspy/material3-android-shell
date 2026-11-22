@@ -272,6 +272,7 @@ apps = {
   'terminal': {'sources': ['src/apps/TerminalMain.cpp', 'src/shell/Terminal.cpp'], 'deps': [libvterm]},
   'notes': {'sources': ['src/apps/NotesMain.cpp', 'src/shell/NotesApp.cpp'], 'deps': []},
   'text': {'sources': ['src/apps/TextMain.cpp', 'src/shell/TextEditor.cpp'], 'deps': []},
+  'music': {'sources': ['src/apps/MusicMain.cpp', 'src/shell/MusicApp.cpp'], 'deps': [libmpv]},
 }
 if poppler_glib.found()
   apps += {'pdf': {'sources': ['src/apps/PdfMain.cpp', 'src/shell/PdfApp.cpp'], 'deps': [poppler_glib]}}
