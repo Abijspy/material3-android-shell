@@ -282,6 +282,13 @@ struct ViewerState {
     Label *name = nullptr, *count = nullptr, *zoom = nullptr, *info = nullptr;
     Flex* infoBar = nullptr;
     std::function<void()> refresh;
+    // The gallery: what opens with no picture asked for (from the app list),
+    // a folder's pictures as a grid, newest first
+    Flex *gallery = nullptr, *grid = nullptr, *bar = nullptr, *stage = nullptr;
+    Label* galleryTitle = nullptr;
+    std::string galleryDir;
+    std::function<void()> showGallery;
+    EventLoop::TimerId thumbTimer = 0;
     std::shared_ptr<bool> alive = std::make_shared<bool>(true);
 };
 
@@ -298,9 +305,23 @@ std::vector<std::string> siblings(const std::string& file) {
     return out;
 }
 
+void viewing(const std::shared_ptr<ViewerState>& st, bool on) {
+    if (!st->gallery) return;
+    st->gallery->setVisible(!on);
+    st->bar->setVisible(on);
+    st->stage->setVisible(on);
+    if (!on) st->infoBar->setVisible(false);
+}
+
 void showAt(const std::shared_ptr<ViewerState>& st, std::string file) {
     std::error_code ec;
-    if (fs::is_directory(file, ec) || !fs::exists(file, ec)) return;
+    if (fs::is_directory(file, ec)) {
+        st->galleryDir = file;
+        if (st->showGallery) st->showGallery();
+        return;
+    }
+    if (!fs::exists(file, ec)) return;
+    viewing(st, true);
     file = fs::weakly_canonical(file, ec).string();
     st->pictures = siblings(file);
     st->index = static_cast<size_t>(std::ranges::find(st->pictures, file) - st->pictures.begin());
@@ -322,7 +343,11 @@ void trashCurrent(const std::shared_ptr<ViewerState>& st, Popup& popup) {
     const std::string file = st->pictures[st->index];
     fileops::trash({file});
     st->pictures.erase(st->pictures.begin() + static_cast<long>(st->index));
-    if (st->pictures.empty()) return popup.close();
+    if (st->pictures.empty()) {
+        (void)popup;
+        if (st->showGallery) st->showGallery();
+        return;
+    }
     if (st->index >= st->pictures.size()) st->index = 0;
     st->view->show(st->pictures[st->index]);
     st->refresh();
@@ -336,6 +361,8 @@ public:
     ~ViewerKeeper() override {
         *m_st->alive = false;
         m_st->refresh = nullptr;
+        m_st->showGallery = nullptr;
+        if (m_st->thumbTimer) EventLoop::get().cancel(m_st->thumbTimer);
         m_st->view = nullptr;
     }
 
@@ -350,13 +377,133 @@ private:
 
 std::function<void(const std::string&)> viewerGo;
 
+// The folders a gallery offers: the usual places pictures gather
+std::vector<std::pair<std::string, std::string>> galleryPlaces() {
+    const std::string home = paths::home();
+    auto xdg = [&](const char* var, const std::string& fallback) {
+        const char* v = std::getenv(var);
+        return v && *v ? std::string(v) : home + "/" + fallback;
+    };
+    const std::string pics = xdg("XDG_PICTURES_DIR", "Pictures");
+    std::vector<std::pair<std::string, std::string>> all = {
+        {"Pictures", pics}, {"Screenshots", pics + "/Screenshots"}, {"Wallpapers", pics + "/Wallpapers"},
+        {"Camera", pics + "/Camera"}, {"Downloads", xdg("XDG_DOWNLOAD_DIR", "Downloads")}, {"Desktop", xdg("XDG_DESKTOP_DIR", "Desktop")}};
+    std::vector<std::pair<std::string, std::string>> out;
+    std::error_code ec;
+    for (auto& p : all)
+        if (fs::is_directory(p.second, ec)) out.push_back(p);
+    return out;
+}
+
+void buildGallery(const std::shared_ptr<ViewerState>& st) {
+    auto* g = st->grid;
+    g->clearChildren();
+    std::error_code ec;
+    if (st->galleryDir.empty()) {
+        const auto places = galleryPlaces();
+        st->galleryDir = places.empty() ? paths::home() : places.front().second;
+    }
+    st->galleryTitle->setText(fileops::displayPath(st->galleryDir));
+    struct Pic {
+        std::string path;
+        std::time_t when;
+    };
+    std::vector<Pic> pics;
+    for (const auto& e : fileops::list(st->galleryDir, false))
+        if (!e.dir && fileops::isPicture(e.path)) pics.push_back({e.path, e.modified});
+    std::ranges::sort(pics, std::greater{}, &Pic::when);
+    if (pics.size() > 600) pics.resize(600);
+    auto* flow = g->add<Flow>();
+    flow->spacing = 8;
+    for (const auto& pic : pics) {
+        auto* b = flow->add<Button>();
+        b->setPadding(Insets(0))->setRadius(Radii(14));
+        b->tooltip = fs::path(pic.path).filename().string();
+        std::string shown = pic.path.ends_with(".svg") ? pic.path : "";
+        if (shown.empty()) {
+            auto alive = st->alive;
+            shown = fileops::renderable(pic.path, [st, alive] {
+                if (!*alive) return;
+                EventLoop::get().debounce(st->thumbTimer, 400, [st, alive] {
+                    if (*alive && st->gallery->visible()) buildGallery(st);
+                });
+            });
+        }
+        constexpr float W = 172, H = 128;
+        if (shown.empty()) {
+            auto* box = b->add<Flex>(Flex::Direction::Row);
+            box->fixedWidth = W, box->fixedHeight = H;
+            box->setAlignItems(Align::Center)->setJustify(Align::Center)->setRadius(Radii(14))->setBackground("surface_container_high", false);
+            box->add<Icon>("image", 32)->setColor("on_surface_variant", false);
+        } else {
+            auto* v = b->add<ImageView>(W, H, [shown](float scale, int& tw, int& th) -> GLuint {
+                auto* t = Images::get().picture(shown, static_cast<int>(W * scale), static_cast<int>(H * scale), true);
+                if (!t) return 0;
+                tw = t->width, th = t->height;
+                return t->id;
+            });
+            v->cover = true;
+            v->radius = 14;
+        }
+        const std::string path = pic.path;
+        b->onClicked = [st, path](uint32_t button) {
+            if (button == BTN_LEFT) showAt(st, path);
+        };
+    }
+    if (pics.empty()) caption(g, "No pictures in this folder");
+}
+
 void viewer(Flex* card, Popup& popup, const std::string& file) {
     auto st = std::make_shared<ViewerState>();
     card->setPadding(Insets(10))->setSpacing(8);
 
     // The bar: which picture, and what to do with it
+    // The gallery (no picture yet, or the grid button)
+    st->gallery = card->add<Flex>(Flex::Direction::Column);
+    st->gallery->setSpacing(10)->setAlignItems(Align::Stretch);
+    st->gallery->grow = true;
+    {
+        auto* head = st->gallery->add<Flex>(Flex::Direction::Row);
+        head->setSpacing(8)->setAlignItems(Align::Center)->setPadding({8, 0});
+        auto* titles = head->add<Flex>(Flex::Direction::Column);
+        titles->setAlignItems(Align::Start)->setSpacing(1);
+        titles->grow = true;
+        titles->givesWay = true;
+        titles->add<Label>("Photos")->setSize(22)->setWeight(500);
+        st->galleryTitle = titles->add<Label>("");
+        st->galleryTitle->setSize(12)->setColor("on_surface_variant", false)->setMaxWidth(420);
+        for (const auto& [name, dir] : galleryPlaces()) {
+            auto* chip = head->add<Button>();
+            pill(chip->setBackground("surface_container_high", false))->setPadding({12, 6});
+            chip->add<Label>(name)->setSize(13)->setWeight(500);
+            chip->onClicked = [st, d = dir](uint32_t b) {
+                if (b != BTN_LEFT) return;
+                st->galleryDir = d;
+                buildGallery(st);
+            };
+        }
+        iconButton(head, "folder_open", [st] {
+            if (open) open("files " + st->galleryDir);
+        }, 22)->tooltip = "Open this folder in Files";
+        auto* scroll = st->gallery->add<ScrollView>();
+        scroll->maxHeight = 1e6f;
+        scroll->grow = true;
+        scroll->blurEdges = true;
+        st->grid = scroll->add<Flex>(Flex::Direction::Column);
+        st->grid->setAlignItems(Align::Stretch)->setPadding({8, 4, 8, 12});
+    }
+    st->showGallery = [st] {
+        viewing(st, false);
+        buildGallery(st);
+    };
+
     auto* bar = card->add<Flex>(Flex::Direction::Row);
+    st->bar = bar;
     bar->setSpacing(4)->setAlignItems(Align::Center)->setPadding({8, 0});
+    iconButton(bar, "grid_view", [st] {
+        if (!st->pictures.empty()) st->galleryDir = fs::path(st->pictures[st->index]).parent_path().string();
+        st->showGallery();
+    }, 22)->tooltip = "All the folder's pictures (Escape)";
     auto* names = bar->add<Flex>(Flex::Direction::Column);
     names->setAlignItems(Align::Start)->setSpacing(1);
     names->grow = true;
@@ -392,6 +539,7 @@ void viewer(Flex* card, Popup& popup, const std::string& file) {
 
     // The picture, with back and next over its sides
     auto* stage = card->add<Flex>(Flex::Direction::Row);
+    st->stage = stage;
     stage->setAlignItems(Align::Center)->setSpacing(6)->setRadius(Radii(22))->setBackground(ColorRef("surface_container_lowest", 0.6f), false);
     stage->grow = true;
     auto* prev = iconButton(stage, "chevron_left", [st] { step(st, -1); }, 30);
@@ -431,6 +579,16 @@ void viewer(Flex* card, Popup& popup, const std::string& file) {
     card->add<ViewerKeeper>(st);
 
     popup.onKey = [st, &p](const KeyEvent& e) {
+        // The gallery: Escape closes, nothing else is the viewer's
+        if (st->gallery->visible()) {
+            if (e.sym == XKB_KEY_Escape) return p.close(), true;
+            return false;
+        }
+        if (e.sym == XKB_KEY_Escape) {
+            if (!st->pictures.empty()) st->galleryDir = fs::path(st->pictures[st->index]).parent_path().string();
+            st->showGallery();
+            return true;
+        }
         switch (e.sym) {
         case XKB_KEY_Left:
         case XKB_KEY_Page_Up: step(st, -1); return true;
@@ -456,9 +614,13 @@ void viewer(Flex* card, Popup& popup, const std::string& file) {
         if (*st->alive) showAt(st, f);
     };
     // Laid out first: fitting needs the room it has
-    EventLoop::get().defer([st, file] {
-        if (*st->alive) showAt(st, file);
-    });
+    if (file.empty()) st->showGallery();
+    else {
+        viewing(st, true);
+        EventLoop::get().defer([st, file] {
+            if (*st->alive) showAt(st, file);
+        });
+    }
 }
 
 void viewerClosed() {

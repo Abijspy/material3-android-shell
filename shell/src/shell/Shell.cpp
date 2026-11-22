@@ -405,7 +405,7 @@ void Shell::openFiles(const std::string& path) {
 }
 
 void Shell::openViewer(const std::string& file) {
-    if (!file.empty()) launchApp("viewer", "The image viewer", {file});
+    launchApp("viewer", "The image viewer", file.empty() ? std::vector<std::string>{} : std::vector<std::string>{file});
 }
 
 void Shell::openTerminal(const std::string& dir, const std::vector<std::string>& command) {
