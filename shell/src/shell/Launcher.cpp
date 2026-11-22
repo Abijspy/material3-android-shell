@@ -82,7 +82,7 @@ private:
         powerResults(text, results);
         settingsResults(text, results);
         show(std::move(results));
-        if (text.starts_with('#') || text.starts_with('@') || search::asyncWord(text)) {
+        if (text.starts_with('#') || text.starts_with('@') || text.starts_with('?') || search::asyncWord(text)) {
             // Process-backed providers: wait for typing to pause, drop stale replies
             auto alive = m_alive;
             EventLoop::get().debounce(m_debounce, 150, [this, text, token, alive] {
@@ -136,7 +136,7 @@ private:
         q.erase(0, q.find_first_not_of(' '));
         while (!q.empty() && q.back() == ' ') q.pop_back();
         if (q.size() < 3 || !Config::get().value<bool>("/spotlight/settings", true)) return;
-        if (std::string("=:#@>").find(q[0]) != std::string::npos || search::asyncWord(q)) return;
+        if (std::string("=:#@>?").find(q[0]) != std::string::npos || search::asyncWord(q)) return;
         for (auto& c : q) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         std::vector<std::pair<int, const SettingsHit*>> found;
         for (const auto& h : settingsIndex(m_popup)) {

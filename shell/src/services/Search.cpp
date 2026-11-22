@@ -405,6 +405,8 @@ std::string formatNumber(double v) {
 
 namespace search {
 
+std::vector<SearchResult> noteResults(const std::string& q);
+
 namespace {
 
 struct Emoji {
@@ -569,7 +571,7 @@ std::vector<SearchResult> query(const std::string& raw) {
                        }});
         return out;
     }
-    if (text.starts_with('#') || text.starts_with('@')) return out; // async providers
+    if (text.starts_with('#') || text.starts_with('@') || text.starts_with('?')) return out; // async providers
 
     // Recent files: the last three on an empty search, any whose name has
     // what's typed in it after that (Settings → Spotlight)
@@ -642,6 +644,9 @@ std::vector<SearchResult> query(const std::string& raw) {
             out.push_back({"Getting exchange rates…", "The European Central Bank's, once a day", "", "currency_exchange", "", 205, {}});
         }
     }
+    // Your notes that match (Notes)
+    if (Config::get().value<bool>("/spotlight/notes", true))
+        for (auto& n : noteResults(text)) out.push_back(std::move(n));
     std::ranges::stable_sort(out, std::greater{}, &SearchResult::score);
     if (out.size() > 50) out.resize(50);
     // Last of all: what you typed, searched for on the web
@@ -732,6 +737,99 @@ bool asyncWord(const std::string& text) {
     return Config::get().value<bool>("/spotlight/define", true) && !definitionWord(trimmed(text)).empty();
 }
 
+
+// Notes (material3ui-notes): the ones whose title or text match, a click
+// opens one
+std::vector<SearchResult> noteResults(const std::string& q) {
+    std::vector<SearchResult> out;
+    if (q.size() < 2) return out;
+    const char* x = std::getenv("XDG_DATA_HOME");
+    const std::string file = (x && *x ? std::string(x) : paths::home() + "/.local/share") + "/material3ui/notes/notes.json";
+    static std::time_t loadedAt = 0;
+    static nlohmann::json notes;
+    std::error_code ec;
+    const auto mtime = fs::exists(file, ec) ? fs::last_write_time(file, ec).time_since_epoch().count() : 0;
+    if (mtime != loadedAt) {
+        loadedAt = static_cast<std::time_t>(mtime);
+        std::ifstream in(file);
+        try {
+            notes = in ? nlohmann::json::parse(in).value("notes", nlohmann::json::array()) : nlohmann::json::array();
+        } catch (...) {
+            notes = nlohmann::json::array();
+        }
+    }
+    std::string lq = q;
+    for (auto& c : lq) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (const auto& n : notes) {
+        if (n.value("trashed", std::time_t{0})) continue;
+        std::string title = n.value("title", ""), body = n.value("body", "");
+        for (const auto& i : n.value("items", nlohmann::json::array())) body += (body.empty() ? "" : " · ") + i.value("text", "");
+        std::string hay = title + "\n" + body;
+        for (auto& c : hay) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        const size_t at = hay.find(lq);
+        if (at == std::string::npos) continue;
+        std::string snippet = body.substr(0, 90);
+        std::ranges::replace(snippet, '\n', ' ');
+        const std::string id = n.value("id", "");
+        out.push_back({title.empty() ? snippet : title, "Note" + (title.empty() ? std::string() : "  ·  " + snippet), "", "sticky_note_2", "",
+                       at < title.size() ? 40.0 : 25.0, [id] { spawnArgs({ownCommand("material3ui-notes").empty() ? "material3ui-notes" : ownCommand("material3ui-notes"), "note:" + id}); }});
+        if (out.size() >= 4) break;
+    }
+    return out;
+}
+
+// "?…": inside your documents. Text files through grep; PDFs through their
+// text, extracted once (pdftotext) and kept in ~/.cache/material3ui/pdf-text
+std::string pdfTextDir() {
+    const char* x = std::getenv("XDG_CACHE_HOME");
+    return (x && *x ? std::string(x) : paths::home() + "/.cache") + "/material3ui/pdf-text";
+}
+std::vector<std::string> contentDirs() {
+    std::vector<std::string> out;
+    const std::string home = paths::home();
+    for (const auto& [var, d] : std::initializer_list<std::pair<const char*, const char*>>{{"XDG_DOCUMENTS_DIR", "Documents"}, {"XDG_DESKTOP_DIR", "Desktop"}, {"XDG_DOWNLOAD_DIR", "Downloads"}}) {
+        const char* v = std::getenv(var);
+        const std::string dir = v && *v ? v : home + "/" + d;
+        std::error_code ec;
+        if (fs::is_directory(dir, ec)) out.push_back(dir);
+    }
+    return out;
+}
+// The PDFs without their text yet: extracted in the background, a few at a time
+void indexPdfs() {
+    static bool running = false;
+    if (running || !haveCommand("pdftotext")) return;
+    std::error_code ec;
+    fs::create_directories(pdfTextDir(), ec);
+    auto todo = std::make_shared<std::vector<std::pair<std::string, std::string>>>();
+    for (const auto& dir : contentDirs())
+        for (auto it = fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied, ec); it != fs::recursive_directory_iterator(); it.increment(ec)) {
+            if (ec) break;
+            if (it.depth() > 4) it.disable_recursion_pending();
+            std::string e = it->path().extension().string();
+            for (auto& c : e) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (e != ".pdf" || !it->is_regular_file(ec) || it->file_size(ec) > 80'000'000) continue;
+            const std::string key = std::to_string(std::hash<std::string>{}(it->path().string() + std::to_string(it->last_write_time(ec).time_since_epoch().count())));
+            const std::string out = pdfTextDir() + "/" + key + ".txt";
+            if (!fs::exists(out, ec)) todo->push_back({it->path().string(), out});
+            if (todo->size() >= 300) break;
+        }
+    if (todo->empty()) return;
+    running = true;
+    auto next = std::make_shared<std::function<void()>>();
+    *next = [todo, next] {
+        if (todo->empty()) {
+            running = false;
+            return;
+        }
+        auto [pdf, out] = todo->back();
+        todo->pop_back();
+        // The first line names the PDF, for search to give it back
+        run({"sh", "-c", "printf '%s\\n' \"$1\" > \"$2\" && pdftotext -l 60 -q \"$1\" - >> \"$2\" || rm -f \"$2\"", "sh", pdf, out}, [next](int, const std::string&) { (*next)(); });
+    };
+    (*next)();
+}
+
 void queryAsync(const std::string& raw, std::function<void(std::vector<SearchResult>)> done) {
     const std::string text = trimmed(raw);
     // A word's meaning (dictionaryapi.dev, free, no key): each sense, an example under it
@@ -773,6 +871,41 @@ void queryAsync(const std::string& raw, std::function<void(std::vector<SearchRes
     if (text.starts_with('#')) {
         const std::string q = trimmed(text.substr(1));
         Clipboard::get().refresh([q, done] { done(clipboard(q)); });
+        return;
+    }
+    if (text.starts_with('?')) {
+        const std::string q = trimmed(text.substr(1));
+        if (q.size() < 3) return done({{"Search inside your documents", "Type at least three characters: text files, PDFs and your notes", "", "manage_search", "", 0, {}}});
+        indexPdfs();
+        std::vector<std::string> cmd = {"grep", "-rIil", "-m1", "--exclude-dir=.git", "--exclude-dir=node_modules"};
+        for (const char* ext : {"txt", "md", "org", "rst", "tex", "csv", "json", "yaml", "yml", "toml", "ini", "conf", "log", "html", "xml", "srt", "py", "sh", "c", "cpp", "h", "js", "ts", "rs", "go", "lua"})
+            cmd.push_back(std::string("--include=*.") + ext);
+        cmd.push_back("--");
+        cmd.push_back(q);
+        for (const auto& d : contentDirs()) cmd.push_back(d);
+        run(cmd, [done, q](int, const std::string& output) {
+            std::vector<SearchResult> out = noteResults(q);
+            std::stringstream ss(output);
+            for (std::string path; std::getline(ss, path) && out.size() < 30;) {
+                std::string shown = path.starts_with(paths::home()) ? "~" + path.substr(paths::home().size()) : path;
+                out.push_back({fs::path(path).filename().string(), "Text  ·  " + shown, "", "description", "", 2, [path] { run({"xdg-open", path}, nullptr); }});
+            }
+            // PDFs, by their extracted text
+            run({"grep", "-ril", "-m1", "--", q, pdfTextDir()}, [done, out](int, const std::string& hits) mutable {
+                std::stringstream hs(hits);
+                for (std::string txt; std::getline(hs, txt) && out.size() < 40;) {
+                    std::ifstream in(txt);
+                    std::string pdf;
+                    std::getline(in, pdf);
+                    std::error_code ec;
+                    if (pdf.empty() || !fs::exists(pdf, ec)) continue;
+                    std::string shown = pdf.starts_with(paths::home()) ? "~" + pdf.substr(paths::home().size()) : pdf;
+                    out.push_back({fs::path(pdf).filename().string(), "PDF  ·  " + shown, "", "picture_as_pdf", "", 2, [pdf] { run({"xdg-open", pdf}, nullptr); }});
+                }
+                if (out.empty()) out.push_back({"Nothing found inside your documents", "Text files and PDFs in Documents, Downloads and the desktop, and your notes", "", "search_off", "", 0, {}});
+                done(out);
+            });
+        });
         return;
     }
     if (text.starts_with('@')) {

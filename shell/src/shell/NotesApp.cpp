@@ -779,11 +779,13 @@ void notesApp(Flex* card, Popup& popup, const std::string& arg) {
         if (!*st->alive) return;
         if (what == "new") newNote(st, false);
         else if (what == "checklist") newNote(st, true);
+        else if (what.starts_with("note:")) openNote(st, what.substr(5));
     };
     st->sidebar();
     st->show();
     if (arg == "new") newNote(st, false);
     else if (arg == "checklist") newNote(st, true);
+    else if (arg.starts_with("note:")) openNote(st, arg.substr(5));
 }
 
 // Settings → Notes

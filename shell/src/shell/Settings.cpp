@@ -3434,6 +3434,7 @@ void spotlightPage(Flex* page, Popup&) {
               "/spotlight/power", true);
     row(answers, "timer", "Timers and reminders", "timer 10 min, remind me in 1 hour to call mum: Enter starts it");
     switchRow(answers, "menu_book", "Word definitions", "define serendipity: from dictionaryapi.dev, which gets just the word", "/spotlight/define", true);
+    switchRow(answers, "sticky_note_2", "Your notes", "Notes whose title or text match; ?words searches inside your documents and PDFs too", "/spotlight/notes", true);
     switchRow(answers, "calculate", "Calculator", "2^10, sqrt(2), (4+5)*3: Enter copies the result", "/spotlight/calculator", true);
     switchRow(answers, "straighten", "Unit conversions", "5 km to mi, 100 f in c, 3 cups, 10 GB in GiB", "/spotlight/units", true);
     switchRow(answers, "currency_exchange", "Currency conversion",
