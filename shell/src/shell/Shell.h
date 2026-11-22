@@ -47,6 +47,9 @@ private:
     void openViewer(const std::string& file);
     void openTasks(const std::string& tab);
     void launchApp(const std::string& id, const std::string& name, const std::vector<std::string>& args);
+    // Clock, Calendar and Weather: windows in the shell, one of each
+    void openServiceApp(const std::string& kind, const std::string& arg);
+    std::map<std::string, std::unique_ptr<Popup>> m_serviceApps;
     void openPlayer(const std::string& file);
     void openTerminal(const std::string& dir, const std::vector<std::string>& command = {});
     // The first-run tour window

@@ -19,6 +19,17 @@ public:
         std::string date; // YYYY-MM-DD
         double max = 0, min = 0;
         int code = 0;
+        // The Weather app's details
+        std::string sunrise = {}, sunset = {}; // HH:MM
+        double uv = 0, windMax = 0;
+        int rainChance = 0; // %
+    };
+    // The next day's hours (the Weather app)
+    struct Hour {
+        std::string time; // HH:MM
+        double temp = 0;
+        int code = 0, rainChance = 0;
+        bool day = true;
     };
     struct Place {
         std::string name; // "Chennai, Tamil Nadu, India"
@@ -38,6 +49,7 @@ public:
     int code() const { return m_code; }
     bool isDay() const { return m_isDay; }
     const std::vector<Day>& days() const { return m_days; }
+    const std::vector<Hour>& hours() const { return m_hours; }
     long long updated() const { return m_updated; } // unix time of the data
 
     bool imperial() const;
@@ -74,6 +86,7 @@ private:
     int m_rainIn = -1;
     bool m_rainTold = false; // told of this shower: not again until it's dry
     std::vector<Day> m_days;
+    std::vector<Hour> m_hours;
     EventLoop::TimerId m_timer = 0;
     std::string m_lastQuery; // the location the data is for
 };

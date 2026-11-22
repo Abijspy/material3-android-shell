@@ -175,6 +175,7 @@ sources = files(
   'src/shell/Rich.cpp',
   'src/shell/ClockFaces.cpp',
   'src/shell/ClockPanel.cpp',
+  'src/shell/ServiceApps.cpp',
   'src/shell/CurveEditor.cpp',
   'src/shell/DesktopEditor.cpp',
   'src/shell/EventEditor.cpp',
@@ -214,8 +215,8 @@ sources = files(
 
 install_data('data/pam/material3ui', install_dir: get_option('sysconfdir') / 'pam.d', install_tag: 'shell')
 # The Settings app: a launcher entry and its icon
-install_data('data/material3ui-settings.desktop', 'data/material3ui-niri.desktop', 'data/material3ui-quickshare.desktop', 'data/material3ui-print.desktop', install_dir: get_option('datadir') / 'applications', install_tag: 'shell')
-install_data('data/icons/material3ui-settings.svg', 'data/icons/material3ui-niri.svg', 'data/icons/material3ui-quickshare.svg', install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps', install_tag: 'shell')
+install_data('data/material3ui-settings.desktop', 'data/material3ui-niri.desktop', 'data/material3ui-clock.desktop', 'data/material3ui-calendar.desktop', 'data/material3ui-weather.desktop', 'data/material3ui-quickshare.desktop', 'data/material3ui-print.desktop', install_dir: get_option('datadir') / 'applications', install_tag: 'shell')
+install_data('data/icons/material3ui-settings.svg', 'data/icons/material3ui-niri.svg', 'data/icons/material3ui-quickshare.svg', 'data/icons/material3ui-clock.svg', 'data/icons/material3ui-calendar.svg', 'data/icons/material3ui-weather.svg', install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps', install_tag: 'shell')
 install_data('data/icons/material3ui-settings.svg', 'data/icons/quickshare-symbol.svg', install_dir: get_option('datadir') / 'material3ui/icons', install_tag: 'shell')
 # Shipped data: emoji list, logo, wallpapers
 install_data('data/emojis.txt', install_dir: get_option('datadir') / 'material3ui', install_tag: 'shell')

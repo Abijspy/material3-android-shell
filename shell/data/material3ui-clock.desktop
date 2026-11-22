@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Clock
+Comment=Alarms, timers, a focus timer and clocks around the world
+Exec=material3ui msg clockapp
+Icon=material3ui-clock
+Terminal=false
+Categories=Utility;
+Keywords=alarm;timer;stopwatch;clock;world;pomodoro;
+StartupNotify=false
+StartupWMClass=material3ui-clock

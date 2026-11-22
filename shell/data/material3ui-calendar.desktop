@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Calendar
+Comment=Your events, subscribed calendars and holidays, by month
+Exec=material3ui msg calendarapp
+Icon=material3ui-calendar
+Terminal=false
+Categories=Utility;
+Keywords=calendar;events;schedule;agenda;holiday;
+StartupNotify=false
+StartupWMClass=material3ui-calendar

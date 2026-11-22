@@ -96,7 +96,8 @@ void Weather::refresh() {
     std::string url = std::format(
         "https://api.open-meteo.com/v1/forecast?latitude={:.4f}&longitude={:.4f}"
         "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day"
-        "&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=7"
+        "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_probability_max,wind_speed_10m_max"
+        "&hourly=temperature_2m,weather_code,precipitation_probability,is_day&forecast_hours=25&timezone=auto&forecast_days=10"
         "&minutely_15=precipitation&forecast_minutely_15=8",
         lat, lon);
     if (imperial()) url += "&temperature_unit=fahrenheit&wind_speed_unit=mph";
@@ -151,9 +152,36 @@ void Weather::load(const std::string& text, bool fromCache) {
         if (j.contains("daily")) {
             const auto& d = j["daily"];
             const auto& dates = d.at("time");
-            for (size_t i = 0; i < dates.size(); ++i)
-                m_days.push_back({dates[i].get<std::string>(), d["temperature_2m_max"][i].get<double>(),
-                                  d["temperature_2m_min"][i].get<double>(), d["weather_code"][i].get<int>()});
+            auto num = [&](const char* k, size_t i) {
+                return d.contains(k) && i < d[k].size() && d[k][i].is_number() ? d[k][i].get<double>() : 0.0;
+            };
+            auto clockOf = [&](const char* k, size_t i) {
+                if (!d.contains(k) || i >= d[k].size() || !d[k][i].is_string()) return std::string();
+                const std::string t = d[k][i].get<std::string>();
+                return t.size() >= 16 ? t.substr(11, 5) : t;
+            };
+            for (size_t i = 0; i < dates.size(); ++i) {
+                Day day{dates[i].get<std::string>(), d["temperature_2m_max"][i].get<double>(), d["temperature_2m_min"][i].get<double>(), d["weather_code"][i].get<int>()};
+                day.sunrise = clockOf("sunrise", i), day.sunset = clockOf("sunset", i);
+                day.uv = num("uv_index_max", i), day.windMax = num("wind_speed_10m_max", i);
+                day.rainChance = static_cast<int>(num("precipitation_probability_max", i));
+                m_days.push_back(day);
+            }
+        }
+        m_hours.clear();
+        if (j.contains("hourly")) {
+            const auto& h = j["hourly"];
+            const auto& times = h.value("time", nlohmann::json::array());
+            for (size_t i = 0; i < times.size() && m_hours.size() < 25; ++i) {
+                Hour hr;
+                const std::string t = times[i].get<std::string>();
+                hr.time = t.size() >= 16 ? t.substr(11, 5) : t;
+                hr.temp = h.contains("temperature_2m") && h["temperature_2m"][i].is_number() ? h["temperature_2m"][i].get<double>() : 0;
+                hr.code = h.contains("weather_code") && h["weather_code"][i].is_number() ? h["weather_code"][i].get<int>() : 0;
+                hr.rainChance = h.contains("precipitation_probability") && h["precipitation_probability"][i].is_number() ? h["precipitation_probability"][i].get<int>() : 0;
+                hr.day = !h.contains("is_day") || !h["is_day"][i].is_number() || h["is_day"][i].get<int>() != 0;
+                m_hours.push_back(hr);
+            }
         }
         // Rain within the hour, from the 15-minute steps
         m_rainIn = -1;

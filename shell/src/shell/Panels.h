@@ -159,6 +159,11 @@ void quickSharePanel(ui::Flex* card, Popup& popup, const std::string& arg);
 void quickShareSend(ui::Flex* card, Popup& popup, const std::string& arg);
 // A calendar event: "new:YYYY-MM-DD" to add one, or an event's id
 void eventEditor(ui::Flex* card, Popup& popup, const std::string& arg);
+// Clock, Calendar and Weather as the shell's own app windows (their
+// services live in the shell)
+void clockApp(ui::Flex* card, Popup& popup, const std::string& arg);
+void calendarApp(ui::Flex* card, Popup& popup, const std::string& arg);
+void weatherApp(ui::Flex* card, Popup& popup);
 // The first-run tour, in its own window
 void welcome(ui::Flex* card, Popup& popup);
 // After an update: the release notes since `since` (empty: this release's)

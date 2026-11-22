@@ -400,6 +400,33 @@ void Shell::launchApp(const std::string& id, const std::string& name, const std:
     spawnArgs(argv);
 }
 
+void Shell::openServiceApp(const std::string& kind, const std::string& arg) {
+    auto& slot = m_serviceApps[kind];
+    if (slot && !slot->closing()) {
+        auto& c = Compositor::get();
+        for (const auto& w : c.windows(true))
+            if (w.appId == "material3ui-" + kind) c.focusWindow(w.id);
+        return;
+    }
+    if (m_popup) m_popup->close();
+    Popup::Options opts;
+    opts.name = kind + "app";
+    opts.window = true;
+    opts.appId = "material3ui-" + kind;
+    opts.title = kind == "clock" ? "Clock" : kind == "calendar" ? "Calendar" : "Weather";
+    opts.icon = kind == "clock" ? "alarm" : kind == "calendar" ? "calendar_month" : "partly_cloudy_day";
+    opts.windowWidth = kind == "calendar" ? 1040 : 760;
+    opts.windowHeight = 760;
+    slot = std::make_unique<Popup>(nullptr, opts, [kind, arg](ui::Flex* card, Popup& p) {
+        if (kind == "clock") panels::clockApp(card, p, arg);
+        else if (kind == "calendar") panels::calendarApp(card, p, arg);
+        else panels::weatherApp(card, p);
+    });
+    slot->onClosed = [this, kind] {
+        EventLoop::get().defer([this, kind] { m_serviceApps[kind].reset(); });
+    };
+}
+
 void Shell::openFiles(const std::string& path) {
     launchApp("files", "Files", path.empty() ? std::vector<std::string>{} : std::vector<std::string>{path});
 }
@@ -463,6 +490,9 @@ void Shell::togglePopup(const std::string& name, wl::Output* output, float ancho
     if (name == "files") return openFiles(arg);
     if (name == "viewer") return openViewer(arg);
     if (name == "tasks") return openTasks(arg);
+    if (name == "clockapp") return openServiceApp("clock", arg);
+    if (name == "calendarapp") return openServiceApp("calendar", arg);
+    if (name == "weatherapp") return openServiceApp("weather", arg);
     if (name == "player") return openPlayer(arg);
     if (name == "terminal") return openTerminal(arg);
     if (name == "desktopedit") return desktopeditor::open(output ? output : focusedOutput());
@@ -930,6 +960,12 @@ void Shell::registerIpc() {
             return id;
         });
     }
+    for (const auto& [verb, kind] : std::initializer_list<std::pair<const char*, const char*>>{{"clockapp", "clock"}, {"calendarapp", "calendar"}, {"weatherapp", "weather"}})
+        ipc.add(verb, std::string(verb) + std::string(": the ") + kind + " app (a window of the shell's)", [this, kind = std::string(kind)](const IpcServer::Args& a) {
+            const std::string arg = a.empty() ? "" : a[0];
+            EventLoop::get().defer([this, kind, arg] { openServiceApp(kind, arg); });
+            return kind;
+        });
     ipc.add("play", "play [file|URL]: the video player, playing it (the folder's others after it)", [this, localPath](const IpcServer::Args& a) {
         std::string what;
         for (const auto& x : a) what += (what.empty() ? "" : " ") + x;

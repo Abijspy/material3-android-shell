@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Weather
+Comment=The forecast
+Exec=material3ui msg weatherapp
+Icon=material3ui-weather
+Terminal=false
+Categories=Utility;
+Keywords= now, the next hours and ten days
+StartupNotify=false
+StartupWMClass=material3ui-weather
