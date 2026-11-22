@@ -175,4 +175,8 @@ void lockEditor(ui::Flex* card, Popup& popup);
 void disksApp(ui::Flex* card, Popup& popup, const std::string& arg);
 void disksSettings(ui::Flex* page);
 
+// Camera (an app window)
+void cameraApp(ui::Flex* card, Popup& popup, const std::string& arg);
+void cameraSettings(ui::Flex* page);
+
 } // namespace m3::shell::panels

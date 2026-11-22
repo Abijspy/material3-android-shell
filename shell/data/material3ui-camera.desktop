@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Camera
+GenericName=Webcam
+Comment=Photos and videos from your webcam.
+Exec=material3ui-camera
+Icon=material3ui-camera
+Terminal=false
+Categories=AudioVideo;Video;Recorder;
+Keywords=camera;webcam;photo;selfie;video;record;
+StartupNotify=false
+StartupWMClass=material3ui-camera

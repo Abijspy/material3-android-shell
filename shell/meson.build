@@ -271,6 +271,7 @@ apps = {
   'tasks': {'sources': ['src/apps/TasksMain.cpp', 'src/shell/TaskManager.cpp'], 'deps': []},
   'terminal': {'sources': ['src/apps/TerminalMain.cpp', 'src/shell/Terminal.cpp'], 'deps': [libvterm]},
   'notes': {'sources': ['src/apps/NotesMain.cpp', 'src/shell/NotesApp.cpp'], 'deps': []},
+  'camera': {'sources': ['src/apps/CameraMain.cpp', 'src/shell/CameraApp.cpp'], 'deps': [libmpv]},
   'disks': {'sources': ['src/apps/DisksMain.cpp', 'src/shell/DisksApp.cpp'], 'deps': []},
   'text': {'sources': ['src/apps/TextMain.cpp', 'src/shell/TextEditor.cpp'], 'deps': []},
   'music': {'sources': ['src/apps/MusicMain.cpp', 'src/shell/MusicApp.cpp'], 'deps': [libmpv]},
