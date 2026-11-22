@@ -1,5 +1,19 @@
 # Changelog
 
+## v7.1.2 — 2026-11-22
+
+- **Settings and About in every app.** Files, Photos, Videos, the Task Manager, the terminal, Notes, PDF and the Text Editor each have a gear in their title bar (or <kbd>Ctrl</kbd><kbd>,</kbd>). Settings apply as you change them:
+  - **Files:** hidden files, list or grid, sort order, the preview pane, and which of Material3UI's apps open pictures, videos, PDFs and text.
+  - **Photos:** the gallery's order, the details bar, wrapping round at the ends, a black or themed backdrop.
+  - **Videos:** hardware decoding, resuming where you left off, playing the next video, the starting volume, and subtitles' preferred languages and size.
+  - **Task Manager:** how often processes refresh, listing the system's processes, and whether force kill asks twice.
+  - **Terminal:** text size (open tabs follow), the cursor, scrollback length and a shell command of your own.
+  - **Notes:** the order, a new note's colour, and how long the trash keeps notes.
+  - **PDF:** the starting zoom, night mode and thumbnails, what happens to unsaved edits on closing, and clearing your signature.
+  - **Text Editor:** text size, line numbers, the current line, tab width, and indenting with spaces or tabs.
+  - **About:** each app's version, what it does, what it's built on, its package and license, with links to the website, reporting a problem, What's new and updates.
+- **Docs:** the dependency list covers every package and the build's libraries, and the README, install guide and the rest describe the apps and their packages. The installer adds qpdf (PDF pages) and yt-dlp (web videos) with the other tools.
+
 ## v7.1.1 — 2026-11-22
 
 - **Photos opens from the app list.** The image viewer was hidden and needed a file to start. Now it's in the app list as Photos and opens to a gallery of your pictures, newest first, with chips for Pictures, Screenshots, Wallpapers, Downloads and the desktop. A picture opens in the viewer, and Escape or the grid button goes back.
