@@ -237,6 +237,10 @@ struct State {
     std::shared_ptr<bool> alive = std::make_shared<bool>(true);
     EventLoop::TimerId thumbTimer = 0;
     std::vector<Connection> conns;
+    // The window's: a folder in a new tab (a middle click), and the tabs'
+    // labels to update when this one moves
+    std::function<void(const std::string&)> openTab;
+    std::function<void()> moved;
 };
 
 Keeper::~Keeper() {
@@ -262,6 +266,14 @@ bool isSelected(const State& st, const std::string& p) {
 }
 
 void go(const std::shared_ptr<State>& st, const fs::path& to, bool remember = true) {
+    struct Moved {
+        std::shared_ptr<State> st;
+        ~Moved() {
+            if (st->moved) EventLoop::get().defer([s = st] {
+                if (*s->alive && s->moved) s->moved();
+            });
+        }
+    } moved{st};
     std::error_code ec;
     if (!fs::is_directory(to, ec)) return;
     if (remember && (st->dir != to || st->inTrash)) {
@@ -693,6 +705,11 @@ void folderMenu(const std::shared_ptr<State>& st, Backdrop* from) {
 // twice quickly opens it
 void clicked(const std::shared_ptr<State>& st, Button* tile, const std::string& path, uint32_t button) {
     if (button == BTN_RIGHT) return fileMenu(st, tile, path);
+    if (button == BTN_MIDDLE) {
+        std::error_code ec;
+        if (st->openTab && fs::is_directory(path, ec)) st->openTab(path);
+        return;
+    }
     if (button != BTN_LEFT) return;
     const auto now = Clock::now();
     if (st->lastClick == path && now - st->lastClickAt < std::chrono::milliseconds(450)) {
@@ -984,7 +1001,10 @@ void build(const std::shared_ptr<State>& st, Flex* card) {
 
 std::function<void(const std::string&)> filesGo;
 
-void files(Flex* card, Popup& popup, const std::string& start) {
+// One Files view: the folder, its side bar, the pane. A window holds one
+// per tab, and two side by side in the dual view
+std::shared_ptr<State> filesPane(Flex* card, Popup& popup, const std::string& start, std::function<bool(const KeyEvent&)>& keys) {
+    (void)popup;
     auto st = std::make_shared<State>();
     std::error_code ec;
     st->dir = !start.empty() && fs::is_directory(start, ec) ? fs::path(start) : fs::path(paths::home());
@@ -1368,7 +1388,7 @@ void files(Flex* card, Popup& popup, const std::string& start) {
     }));
 
     // Keys
-    popup.onKey = [st](const KeyEvent& e) {
+    keys = [st](const KeyEvent& e) {
         const bool ctrl = e.ctrl(), shift = e.shift(), alt = e.mods & ModAlt;
         auto sel = st->selected;
         if (alt && e.sym == XKB_KEY_Left) return stepHistory(st, true), true;
@@ -1412,9 +1432,214 @@ void files(Flex* card, Popup& popup, const std::string& start) {
         return false;
     };
 
-    // `material3ui msg files <path>` with the window open: there
-    filesGo = [st, alive](const std::string& to) {
-        if (!*alive || to.empty()) return;
+    watch(st->dir.string());
+    st->load();
+    return st;
+}
+
+// ── The window: tabs, and the dual view ──
+
+namespace {
+
+// A pane's box: the one the pointer was last over takes the keys
+class PaneBox : public Flex {
+public:
+    PaneBox() : Flex(Direction::Column) {}
+    std::function<void()> onEnter;
+    void onHoverWithin(bool in) override {
+        if (in && onEnter) onEnter();
+    }
+};
+
+struct Window {
+    struct Tab {
+        std::shared_ptr<State> st;
+        PaneBox* box = nullptr;
+        std::function<bool(const KeyEvent&)> keys;
+    };
+    std::vector<Tab> tabs;
+    int active = 0;
+    Tab second; // the dual view's other side
+    bool dual = false;
+    bool secondActive = false;
+    Flex *strip = nullptr, *left = nullptr, *right = nullptr;
+    Popup* popup = nullptr;
+    std::function<void()> rebuild;
+    std::shared_ptr<bool> alive = std::make_shared<bool>(true);
+};
+
+void addTab(const std::shared_ptr<Window>& w, const std::string& dir);
+
+void showTab(const std::shared_ptr<Window>& w, int i) {
+    if (w->tabs.empty()) return;
+    w->active = std::clamp(i, 0, static_cast<int>(w->tabs.size()) - 1);
+    for (size_t k = 0; k < w->tabs.size(); ++k) w->tabs[k].box->setVisible(static_cast<int>(k) == w->active);
+    w->secondActive = false;
+    if (w->rebuild) w->rebuild();
+}
+
+void closeTab(const std::shared_ptr<Window>& w, int i) {
+    if (w->tabs.size() <= 1) {
+        if (w->popup) w->popup->close();
+        return;
+    }
+    auto box = w->tabs[static_cast<size_t>(i)].box;
+    w->tabs.erase(w->tabs.begin() + i);
+    EventLoop::get().defer([w, box] {
+        if (*w->alive) w->left->remove(box);
+    });
+    showTab(w, std::min(i, static_cast<int>(w->tabs.size()) - 1));
+}
+
+void hookPane(const std::shared_ptr<Window>& w, const std::shared_ptr<State>& st) {
+    std::weak_ptr<Window> weak = w;
+    st->openTab = [weak](const std::string& dir) {
+        if (auto x = weak.lock(); x && *x->alive) EventLoop::get().defer([x, dir] {
+            if (*x->alive) addTab(x, dir);
+        });
+    };
+    st->moved = [weak] {
+        if (auto x = weak.lock(); x && *x->alive && x->rebuild) x->rebuild();
+    };
+}
+
+void addTab(const std::shared_ptr<Window>& w, const std::string& dir) {
+    Window::Tab t;
+    t.box = w->left->add<PaneBox>();
+    t.box->setAlignItems(Align::Stretch);
+    t.box->grow = true;
+    t.st = filesPane(t.box, *w->popup, dir, t.keys);
+    hookPane(w, t.st);
+    std::weak_ptr<Window> weak = w;
+    t.box->onEnter = [weak] {
+        if (auto x = weak.lock()) x->secondActive = false;
+    };
+    w->tabs.push_back(std::move(t));
+    showTab(w, static_cast<int>(w->tabs.size()) - 1);
+}
+
+void toggleDual(const std::shared_ptr<Window>& w) {
+    w->dual = !w->dual;
+    if (w->dual && !w->second.box) {
+        w->second.box = w->right->add<PaneBox>();
+        w->second.box->setAlignItems(Align::Stretch);
+        w->second.box->grow = true;
+        const std::string dir = w->tabs.empty() ? paths::home() : w->tabs[static_cast<size_t>(w->active)].st->dir.string();
+        w->second.st = filesPane(w->second.box, *w->popup, dir, w->second.keys);
+        hookPane(w, w->second.st);
+        std::weak_ptr<Window> weak = w;
+        w->second.box->onEnter = [weak] {
+            if (auto x = weak.lock()) x->secondActive = true;
+        };
+    }
+    w->right->setVisible(w->dual);
+    if (w->rebuild) w->rebuild();
+}
+
+std::shared_ptr<State> activeState(const std::shared_ptr<Window>& w) {
+    if (w->dual && w->secondActive && w->second.st) return w->second.st;
+    return w->tabs.empty() ? nullptr : w->tabs[static_cast<size_t>(w->active)].st;
+}
+
+} // namespace
+
+void files(Flex* card, Popup& popup, const std::string& start) {
+    auto w = std::make_shared<Window>();
+    w->popup = &popup;
+    card->setPadding(Insets(0))->setSpacing(4);
+    w->strip = card->add<Flex>(Flex::Direction::Row);
+    w->strip->setSpacing(4)->setAlignItems(Align::Center)->setPadding({14, 6, 14, 0});
+    auto* body = card->add<Flex>(Flex::Direction::Row);
+    body->setAlignItems(Align::Stretch)->setSpacing(6);
+    body->grow = true;
+    w->left = body->add<Flex>(Flex::Direction::Column);
+    w->left->setAlignItems(Align::Stretch);
+    w->left->grow = true;
+    w->left->fixedWidth = 1; // grown from nothing: two views split evenly
+    w->right = body->add<Flex>(Flex::Direction::Column);
+    w->right->setAlignItems(Align::Stretch);
+    w->right->grow = true;
+    w->right->fixedWidth = 1;
+    w->right->setVisible(false);
+
+    w->rebuild = [w] {
+        auto* s = w->strip;
+        s->clearChildren();
+        // One tab: no strip to speak of, just its buttons
+        for (size_t i = 0; i < w->tabs.size() && w->tabs.size() > 1; ++i) {
+            const bool here = static_cast<int>(i) == w->active;
+            auto* b = s->add<Button>(Flex::Direction::Row);
+            pill(b)->setPadding({12, 5, 6, 5})->setSpacing(6);
+            b->setBackground(here ? "secondary_container" : "surface_container_high", false);
+            b->add<Icon>("folder", 16)->setFill(here)->setColor(here ? "on_secondary_container" : "on_surface_variant", false);
+            const auto& d = w->tabs[i].st->dir;
+            b->add<Label>(w->tabs[i].st->inTrash ? "Trash" : d == fs::path(paths::home()) ? "Home" : d.filename().string().empty() ? d.string() : d.filename().string())
+                ->setSize(13)
+                ->setWeight(here ? 600 : 500)
+                ->setMaxWidth(150)
+                ->setColor(here ? "on_secondary_container" : "on_surface", false);
+            b->givesWay = true;
+            b->onClicked = [w, i](uint32_t btn) {
+                if (btn == BTN_LEFT) EventLoop::get().defer([w, i] {
+                    if (*w->alive) showTab(w, static_cast<int>(i));
+                });
+                if (btn == BTN_MIDDLE) EventLoop::get().defer([w, i] {
+                    if (*w->alive) closeTab(w, static_cast<int>(i));
+                });
+            };
+            iconButton(b, "close", [w, i] {
+                EventLoop::get().defer([w, i] {
+                    if (*w->alive) closeTab(w, static_cast<int>(i));
+                });
+            }, 14)->setPadding(Insets(3));
+        }
+        iconButton(s, "add", [w] {
+            EventLoop::get().defer([w] {
+                if (!*w->alive) return;
+                auto st = activeState(w);
+                addTab(w, st ? st->dir.string() : paths::home());
+            });
+        }, 18)->tooltip = "New tab (Ctrl+T); a middle click on a folder opens it in one";
+        s->add<Node>()->grow = true;
+        auto* dual = iconButton(s, w->dual ? "view_agenda" : "view_column_2", [w] {
+            EventLoop::get().defer([w] {
+                if (*w->alive) toggleDual(w);
+            });
+        }, 18);
+        dual->tooltip = w->dual ? "One view (F3)" : "Two views side by side (F3)";
+        if (w->dual) dual->setBackground("secondary_container", false);
+    };
+
+    popup.onKey = [w](const KeyEvent& e) {
+        const bool ctrl = e.ctrl();
+        const uint32_t k = e.baseSym >= 'A' && e.baseSym <= 'Z' ? e.baseSym - 'A' + 'a' : e.baseSym;
+        if (ctrl && k == 't') {
+            auto st = activeState(w);
+            addTab(w, st ? st->dir.string() : paths::home());
+            return true;
+        }
+        if (ctrl && k == 'w') return closeTab(w, w->active), true;
+        if (ctrl && (e.sym == XKB_KEY_Tab || e.sym == XKB_KEY_ISO_Left_Tab || e.sym == XKB_KEY_Page_Down || e.sym == XKB_KEY_Page_Up)) {
+            const int n = static_cast<int>(w->tabs.size());
+            const int dir = (e.shift() || e.sym == XKB_KEY_ISO_Left_Tab || e.sym == XKB_KEY_Page_Up) ? -1 : 1;
+            showTab(w, ((w->active + dir) % n + n) % n);
+            return true;
+        }
+        if (e.sym == XKB_KEY_F3) return toggleDual(w), true;
+        if ((e.mods & ModAlt) && e.sym >= XKB_KEY_1 && e.sym <= XKB_KEY_9) {
+            const int i = static_cast<int>(e.sym - XKB_KEY_1);
+            if (i < static_cast<int>(w->tabs.size())) return showTab(w, i), true;
+        }
+        // The rest: the pane the pointer was over
+        if (w->dual && w->secondActive && w->second.keys) return w->second.keys(e);
+        if (!w->tabs.empty() && w->tabs[static_cast<size_t>(w->active)].keys) return w->tabs[static_cast<size_t>(w->active)].keys(e);
+        return false;
+    };
+    // `material3ui-files <path>` with the window open: there
+    filesGo = [w](const std::string& to) {
+        if (!*w->alive || to.empty()) return;
+        auto st = activeState(w);
+        if (!st) return;
         std::error_code ec2;
         if (fs::is_directory(to, ec2)) go(st, to);
         else if (fs::exists(to, ec2)) {
@@ -1423,9 +1648,19 @@ void files(Flex* card, Popup& popup, const std::string& start) {
             st->paint();
         }
     };
-    watch(st->dir.string());
-    st->load();
+    struct WindowKeeper : Node {
+        std::shared_ptr<Window> w;
+        explicit WindowKeeper(std::shared_ptr<Window> x) : w(std::move(x)) { floating = true; }
+        ~WindowKeeper() override {
+            *w->alive = false;
+            w->rebuild = nullptr;
+        }
+        SizeF doMeasure(SizeF) override { return {0, 0}; }
+    };
+    card->add<WindowKeeper>(w);
+    addTab(w, start);
 }
+
 
 void filesClosed() {
     filesGo = nullptr;
