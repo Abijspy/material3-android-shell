@@ -6,6 +6,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 struct wl_display;
@@ -26,6 +27,10 @@ struct zwlr_layer_shell_v1;
 struct wp_cursor_shape_manager_v1;
 struct wp_cursor_shape_device_v1;
 struct ext_background_effect_manager_v1;
+struct wl_data_device_manager;
+struct wl_data_device;
+struct wl_data_offer;
+struct wl_data_source;
 
 namespace m3::wl {
 
@@ -103,6 +108,20 @@ public:
     void modifiers(uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group);
     void repeatInfo(int32_t rate, int32_t delay);
 
+    // Drag and drop of files (text/uri-list): a drag from this surface,
+    // started while a button's held (Surface does it for nodes with
+    // dragFiles)
+    void startDrag(Surface* origin, const std::vector<std::string>& paths);
+    bool dragging() const { return m_dragSource != nullptr; }
+    void offerMime(wl_data_offer* offer, const char* mime);
+    void selectionOffer(wl_data_offer* offer);
+    void dndEnter(uint32_t serial, wl_surface* surface, double x, double y, wl_data_offer* offer);
+    void dndMotion(double x, double y);
+    void dndLeave();
+    void dndDrop();
+    void sourceSend(const char* mime, int fd);
+    void sourceDone(wl_data_source* source);
+
 private:
     Display() = default;
 
@@ -142,6 +161,19 @@ private:
     double m_scrollAccum = 0;
     bool m_axisPrecise = false; // this frame's scrolling is a touchpad's
     bool m_axisStopped = false; // the fingers lifted this frame
+
+    void setUpDataDevice();
+    void dropOffer(wl_data_offer* offer);
+    wl_data_device_manager* m_dataDeviceManager = nullptr;
+    wl_data_device* m_dataDevice = nullptr;
+    std::unordered_map<wl_data_offer*, std::vector<std::string>> m_offers; // their types
+    wl_data_offer *m_selection = nullptr, *m_dndOffer = nullptr;
+    Surface* m_dndSurface = nullptr;
+    uint32_t m_dndSerial = 0;
+    double m_dndX = 0, m_dndY = 0;
+    bool m_dndAccepted = false, m_dndActionsSet = false, m_dndDropping = false;
+    wl_data_source* m_dragSource = nullptr;
+    std::string m_dragUris, m_dragText;
 };
 
 } // namespace m3::wl

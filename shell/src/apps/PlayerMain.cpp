@@ -17,6 +17,7 @@ int main(int argc, char** argv) {
     app.go = [](const std::vector<std::string>& args) {
         if (shell::panels::playerGo && !args.empty()) shell::panels::playerGo(args[0]);
     };
+    app.opensDrops = true;
     app.closed = [] { shell::panels::playerClosed(); };
     app.settings = shell::panels::playerSettings;
     app.about.summary = "Videos and music, in every format, with subtitles of every kind.";

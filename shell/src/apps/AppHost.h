@@ -32,6 +32,9 @@ struct App {
     std::function<void(ui::Flex* card, shell::Popup& popup, const std::vector<std::string>& args)> build;
     std::function<void(const std::vector<std::string>& args)> go; // launched again while open
     std::function<void()> closed;
+    // Files dropped on its window open in it, one by one through `go` (a
+    // viewer, an editor); off for apps that take drops their own way
+    bool opensDrops = false;
     std::string usage; // for --help
 
     // Its Settings page (groups of rows, config.json under its own key) and

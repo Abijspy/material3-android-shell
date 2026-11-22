@@ -1363,6 +1363,19 @@ TermView* makeView(const std::shared_ptr<TermState>& st, Flex* parent, std::stri
     v->onMenu = [weak, v](float x, float y) {
         if (auto s = weak.lock(); s && *s->alive) menuFor(s, v, x, y);
     };
+    // Files dropped on it: their paths, quoted for the shell, typed in
+    v->onDropFiles = [weak, v](const std::vector<std::string>& paths) {
+        auto s = weak.lock();
+        if (!s || !*s->alive || !s->has(v)) return;
+        std::string text;
+        for (const auto& p : paths) {
+            std::string q = "'";
+            for (char c : p) q += c == '\'' ? std::string("'\\''") : std::string(1, c);
+            text += q + "' ";
+        }
+        v->paste(text);
+        v->focus();
+    };
     v->onFocused = [weak, v] {
         auto s = weak.lock();
         if (!s || !*s->alive || !s->has(v)) return;

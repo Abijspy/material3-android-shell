@@ -17,6 +17,7 @@ int main(int argc, char** argv) {
     app.go = [](const std::vector<std::string>& args) {
         if (shell::panels::textGo) shell::panels::textGo(args.empty() ? "" : args[0]);
     };
+    app.opensDrops = true;
     app.closed = [] { shell::panels::textEditorClosed(); };
     app.settings = shell::panels::textSettings;
     app.about.summary = "Plain text and code, in tabs.";

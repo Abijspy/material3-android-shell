@@ -187,6 +187,14 @@ public:
     // Left out of a Flex's flow: the owner places it (menus over a layout)
     bool floating = false;
 
+    // Drag and drop of files, between apps and within one. dragFiles: what
+    // dragging it (or what's in it) carries, paths; empty: no drag. And
+    // what takes files dropped on it or in it, the nearest from the
+    // pointer's node up; onDropHover while a drag is over it
+    std::function<std::vector<std::string>()> dragFiles;
+    std::function<void(const std::vector<std::string>& paths)> onDropFiles;
+    std::function<void(bool over)> onDropHover;
+
     // The compositor blurs what is behind this node's rect (translucent
     // cards); the surface collects these into its blur region after layout
     bool blurBehind = false;

@@ -426,7 +426,17 @@ int run(const App& app, int argc, char** argv) {
     opts.icon = app.icon;
     opts.windowWidth = app.width;
     opts.windowHeight = app.height;
-    auto window = std::make_unique<shell::Popup>(nullptr, opts, withSheet(app, opts, [&app, args](ui::Flex* card, shell::Popup& p) { app.build(card, p, args); }));
+    auto window = std::make_unique<shell::Popup>(nullptr, opts, withSheet(app, opts, [&app, args, remember](ui::Flex* card, shell::Popup& p) {
+        if (app.opensDrops && app.go) {
+            card->onDropFiles = [&app, remember](const std::vector<std::string>& paths) {
+                remember(paths);
+                for (const auto& f : paths) app.go({f});
+                raise(app.appId);
+            };
+            card->onDropHover = [card](bool over) { card->setOpacity(over ? 0.82f : 1.0f); };
+        }
+        app.build(card, p, args);
+    }));
     window->onClosed = [&app] {
         if (app.closed) app.closed();
         EventLoop::get().defer([] { EventLoop::get().quit(0); });

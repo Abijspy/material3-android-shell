@@ -29,6 +29,7 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <sys/stat.h>
 #include <format>
 #include <linux/input-event-codes.h>
 #include <map>
@@ -373,6 +374,23 @@ void setClipboard(const std::vector<std::string>& paths, bool cut) {
     std::string uris;
     for (const auto& p : paths) uris += fileUri(p) + "\r\n";
     m3::run({"wl-copy", "--type", "text/uri-list"}, nullptr, uris);
+}
+
+// Files dropped on a folder (the one shown, or one in it). A drag from
+// Files itself moves them when they stay on the same drive, as file managers
+// do (Ctrl copies); from other apps they're copied
+void dropInto(std::vector<std::string> paths, const std::string& dir) {
+    const fs::path to(dir);
+    std::erase_if(paths, [&](const std::string& p) { return fs::path(p).parent_path() == to || p == dir || dir.starts_with(p + "/"); });
+    if (paths.empty()) return;
+    struct stat a {}, b {};
+    const bool sameDrive = ::stat(dir.c_str(), &b) == 0 && ::stat(paths.front().c_str(), &a) == 0 && a.st_dev == b.st_dev;
+    const bool move = wl::Display::get().dragging() && sameDrive && !(wl::Display::get().heldModifiers() & ModCtrl);
+    auto done = [](const std::string& err) {
+        if (!err.empty()) m3::run({"notify-send", "-a", "Files", "-i", "folder", "Files", err}, nullptr);
+    };
+    if (move) fileops::move(paths, dir, done);
+    else fileops::copy(paths, dir, done);
 }
 
 void paste(const std::shared_ptr<State>& st) {
@@ -960,6 +978,11 @@ void build(const std::shared_ptr<State>& st, Flex* card) {
     st->scroll->blurEdges = true;
     st->content = st->scroll->add<Backdrop>(st->scroll);
     st->content->setAlignItems(Align::Stretch)->setPadding({4, 4, 12, 4});
+    // Files dropped in the folder shown go into it
+    st->content->onDropFiles = [st](const std::vector<std::string>& paths) {
+        if (!st->inTrash && *st->alive) dropInto(paths, st->dir.string());
+    };
+    st->content->onDropHover = [st](bool over) { st->content->setBackground(ColorRef("primary", over && !st->inTrash ? 0.07f : 0.0f), false); };
     st->content->onClicked = [st](uint32_t button) {
         if (button == BTN_RIGHT) return folderMenu(st, st->content);
         if (button == BTN_LEFT && !st->selected.empty()) {
@@ -1212,6 +1235,13 @@ std::shared_ptr<State> filesPane(Flex* card, Popup& popup, const std::string& st
             tile->tooltip = e.name;
             const std::string path = e.path;
             tile->onClicked = [st, tile, path](uint32_t button) { clicked(st, tile, path, button); };
+            // Dragged out: it, or everything selected with it, to a folder,
+            // another app, a browser's upload
+            tile->dragFiles = [st, path] { return isSelected(*st, path) ? st->selected : std::vector<std::string>{path}; };
+            if (e.dir && !st->inTrash) {
+                tile->onDropFiles = [path](const std::vector<std::string>& paths) { dropInto(paths, path); };
+                tile->onDropHover = [tile](bool over) { tile->setBorder(over ? 2 : 0, ColorRef("primary")); };
+            }
             st->tiles[path] = tile;
         }
         if (shown > kMax) caption(c, std::format("Showing the first {} of {}: search to narrow it down", kMax, st->entries.size()));

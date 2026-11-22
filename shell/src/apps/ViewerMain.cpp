@@ -17,6 +17,7 @@ int main(int argc, char** argv) {
     app.go = [](const std::vector<std::string>& args) {
         if (shell::panels::viewerGo && !args.empty()) shell::panels::viewerGo(args[0]);
     };
+    app.opensDrops = true;
     app.closed = [] { shell::panels::viewerClosed(); };
     app.settings = shell::panels::viewerSettings;
     app.about.summary = "Your pictures in a gallery, and a viewer for every image format.";

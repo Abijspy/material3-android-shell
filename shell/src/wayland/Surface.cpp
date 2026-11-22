@@ -312,6 +312,7 @@ void Surface::nodeDestroyed(ui::Node* node) {
         if (tooltipHook) tooltipHook(this, nullptr);
     }
     if (m_pressed == node) m_pressed = nullptr;
+    if (m_dropTarget == node) m_dropTarget = nullptr;
     if (m_focus == node) m_focus = nullptr;
     if (ui::Node::focusRing == node) ui::Node::focusRing = nullptr;
 }
@@ -544,6 +545,19 @@ void Surface::pointerMotion(double x, double y) {
     const auto chain = m_hoverChain;
     for (ui::Node* n : chain)
         if (std::ranges::find(m_hoverChain, n) != m_hoverChain.end()) n->onPointerMove(m_pointerX, m_pointerY);
+    // Pulled far enough, a node carrying files starts a drag of them
+    if (m_pressed && m_pressButton == BTN_LEFT && std::hypot(m_pointerX - m_pressX, m_pointerY - m_pressY) > 8) {
+        for (ui::Node* n = m_pressed; n; n = n->parentNode()) {
+            if (!n->dragFiles) continue;
+            const auto paths = n->dragFiles();
+            if (paths.empty()) break;
+            ui::Node* was = m_pressed;
+            m_pressed = nullptr;
+            was->onRelease();
+            wl::Display::get().startDrag(this, paths);
+            return;
+        }
+    }
     // A pressed node keeps receiving motion (slider drags)
     if (m_pressed) m_pressed->onDrag(m_pointerX, m_pointerY);
 }
@@ -577,6 +591,8 @@ void Surface::pointerButton(uint32_t button, bool pressed) {
     }
     if (pressed) {
         m_pressed = m_hovered;
+        m_pressX = m_pointerX, m_pressY = m_pointerY;
+        m_pressButton = button;
         if (m_pressed) {
             if (m_pressed->focusable()) setFocus(m_pressed);
             m_pressed->onPress(button, m_pointerX, m_pointerY);
@@ -591,6 +607,33 @@ void Surface::pointerButton(uint32_t button, bool pressed) {
         target->onRelease();
         if (target == m_hovered) target->onClick(button);
     }
+}
+
+bool Surface::dragMotion(float x, float y) {
+    ui::Node* hit = m_root ? m_root->hitTest(x, y, true) : nullptr;
+    ui::Node* target = nullptr;
+    for (ui::Node* n = hit; n && !target; n = n->parentNode())
+        if (n->onDropFiles) target = n;
+    if (target != m_dropTarget) {
+        if (m_dropTarget && m_dropTarget->onDropHover) m_dropTarget->onDropHover(false);
+        m_dropTarget = target;
+        if (m_dropTarget && m_dropTarget->onDropHover) m_dropTarget->onDropHover(true);
+    }
+    return target != nullptr;
+}
+
+void Surface::dragLeave() {
+    if (m_dropTarget && m_dropTarget->onDropHover) m_dropTarget->onDropHover(false);
+    m_dropTarget = nullptr;
+}
+
+void Surface::drop(const std::vector<std::string>& paths) {
+    ui::Node* target = m_dropTarget;
+    dragLeave();
+    if (!target || paths.empty()) return;
+    // Not inside the protocol's callbacks: the handler may rebuild the tree
+    auto fn = target->onDropFiles;
+    EventLoop::get().defer([fn, paths] { fn(paths); });
 }
 
 void Surface::pointerScroll(int direction) {

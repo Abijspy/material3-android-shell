@@ -17,7 +17,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <cerrno>
+#include <cstdio>
 #include <cstring>
+#include <fcntl.h>
 #include <linux/input-event-codes.h>
 #include <poll.h>
 #include <sys/mman.h>
@@ -158,6 +161,7 @@ void Display::addGlobal(wl_registry* r, uint32_t name, const char* iface, uint32
     } else if (i == wl_seat_interface.name && !m_seat) {
         m_seat = static_cast<wl_seat*>(wl_registry_bind(r, name, &wl_seat_interface, std::min(version, 5u)));
         wl_seat_add_listener(m_seat, &kSeat, this);
+        setUpDataDevice();
     } else if (i == wp_cursor_shape_manager_v1_interface.name) {
         m_cursorShapeManager = static_cast<wp_cursor_shape_manager_v1*>(
             wl_registry_bind(r, name, &wp_cursor_shape_manager_v1_interface, 1));
@@ -174,6 +178,9 @@ void Display::addGlobal(wl_registry* r, uint32_t name, const char* iface, uint32
         m_backgroundEffect = static_cast<ext_background_effect_manager_v1*>(
             wl_registry_bind(r, name, &ext_background_effect_manager_v1_interface, 1));
         ext_background_effect_manager_v1_add_listener(m_backgroundEffect, &kBackgroundEffect, this);
+    } else if (i == wl_data_device_manager_interface.name) {
+        m_dataDeviceManager = static_cast<wl_data_device_manager*>(wl_registry_bind(r, name, &wl_data_device_manager_interface, std::min(version, 3u)));
+        setUpDataDevice();
     } else if (i == wp_viewporter_interface.name) {
         m_viewporter = static_cast<wp_viewporter*>(wl_registry_bind(r, name, &wp_viewporter_interface, 1));
     } else if (i == wl_output_interface.name && version >= 4) {
@@ -285,6 +292,7 @@ void Display::pointerFrame() {
 
 void Display::forget(Surface* surface) {
     if (m_pointerFocus == surface) m_pointerFocus = nullptr;
+    if (m_dndSurface == surface) m_dndSurface = nullptr;
     if (m_keyboardFocus == surface) {
         m_keyboardFocus = nullptr;
         if (m_repeatTimer) EventLoop::get().cancel(m_repeatTimer);
@@ -415,6 +423,272 @@ void Display::dispatch(short revents) {
         return;
     }
     wl_display_dispatch_pending(m_display);
+}
+
+
+// ── Drag and drop ──
+//
+// Files travel as text/uri-list, both ways: dropped on a surface (from any
+// app, this one included), they reach the node under the pointer that takes
+// files; a drag started here offers them to whatever's under it. Transfers
+// go through pipes read and written in the event loop, so a drag from this
+// process to itself can't wait on itself
+
+namespace {
+
+// Reads a pipe to its end, then hands over what came
+class PipeReader : public EventSource {
+public:
+    PipeReader(int fd, std::function<void(std::string)> done) : m_fd(fd), m_done(std::move(done)) {
+        fcntl(m_fd, F_SETFL, fcntl(m_fd, F_GETFL) | O_NONBLOCK);
+    }
+    int fd() const override { return m_fd; }
+    void dispatch(short revents) override {
+        if (!revents || m_finished) return;
+        char buf[16384];
+        for (;;) {
+            const ssize_t n = ::read(m_fd, buf, sizeof buf);
+            if (n > 0) {
+                m_data.append(buf, static_cast<size_t>(n));
+                if (m_data.size() > 16 * 1024 * 1024) break; // nobody drags that much
+                continue;
+            }
+            if (n < 0 && (errno == EAGAIN || errno == EINTR)) return;
+            break; // the end, or an error
+        }
+        finish();
+    }
+
+private:
+    void finish() {
+        m_finished = true;
+        EventLoop::get().remove(this);
+        ::close(m_fd);
+        auto done = std::move(m_done);
+        std::string data = std::move(m_data);
+        EventLoop::get().defer([this] { delete this; });
+        if (done) done(std::move(data));
+    }
+    int m_fd;
+    std::function<void(std::string)> m_done;
+    std::string m_data;
+    bool m_finished = false;
+};
+
+// Writes its text into a pipe as the other end takes it, then closes it
+class PipeWriter : public EventSource {
+public:
+    PipeWriter(int fd, std::string data) : m_fd(fd), m_data(std::move(data)) { fcntl(m_fd, F_SETFL, fcntl(m_fd, F_GETFL) | O_NONBLOCK); }
+    int fd() const override { return m_fd; }
+    short events() const override { return 0x004; } // POLLOUT
+    void dispatch(short revents) override {
+        if (!revents || m_finished) return;
+        while (m_at < m_data.size()) {
+            const ssize_t n = ::write(m_fd, m_data.data() + m_at, m_data.size() - m_at);
+            if (n > 0) {
+                m_at += static_cast<size_t>(n);
+                continue;
+            }
+            if (n < 0 && (errno == EAGAIN || errno == EINTR)) return;
+            break; // the reader went away
+        }
+        m_finished = true;
+        EventLoop::get().remove(this);
+        ::close(m_fd);
+        EventLoop::get().defer([this] { delete this; });
+    }
+
+private:
+    int m_fd;
+    std::string m_data;
+    size_t m_at = 0;
+    bool m_finished = false;
+};
+
+std::string uriOf(const std::string& path) {
+    std::string out = "file://";
+    for (unsigned char c : path) {
+        if (std::isalnum(c) || std::strchr("/-_.~!$&'()*+,;=:@", c)) out += static_cast<char>(c);
+        else {
+            char hex[4];
+            std::snprintf(hex, sizeof hex, "%%%02X", c);
+            out += hex;
+        }
+    }
+    return out;
+}
+
+std::vector<std::string> pathsOf(const std::string& uriList) {
+    std::vector<std::string> out;
+    size_t at = 0;
+    while (at < uriList.size()) {
+        size_t end = uriList.find('\n', at);
+        if (end == std::string::npos) end = uriList.size();
+        std::string line = uriList.substr(at, end - at);
+        at = end + 1;
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty() || line[0] == '#') continue;
+        if (!line.starts_with("file://")) continue;
+        size_t from = 7;
+        if (line.size() > 7 && line[7] != '/') from = line.find('/', 7); // file://host/path
+        if (from == std::string::npos) continue;
+        std::string p;
+        for (size_t i = from; i < line.size(); ++i) {
+            if (line[i] == '%' && i + 2 < line.size() && std::isxdigit(static_cast<unsigned char>(line[i + 1])) && std::isxdigit(static_cast<unsigned char>(line[i + 2]))) {
+                p += static_cast<char>(std::strtol(line.substr(i + 1, 2).c_str(), nullptr, 16));
+                i += 2;
+            } else {
+                p += line[i];
+            }
+        }
+        out.push_back(p);
+    }
+    return out;
+}
+
+const wl_data_offer_listener kOffer = {
+    .offer = [](void* data, wl_data_offer* offer, const char* mime) { static_cast<Display*>(data)->offerMime(offer, mime); },
+    .source_actions = [](void*, wl_data_offer*, uint32_t) {},
+    .action = [](void*, wl_data_offer*, uint32_t) {},
+};
+
+const wl_data_device_listener kDataDevice = {
+    .data_offer = [](void* data, wl_data_device*, wl_data_offer* offer) {
+        wl_data_offer_add_listener(offer, &kOffer, data);
+        static_cast<Display*>(data)->offerMime(offer, nullptr);
+    },
+    .enter = [](void* data, wl_data_device*, uint32_t serial, wl_surface* s, wl_fixed_t x, wl_fixed_t y, wl_data_offer* offer) {
+        m3::guard("a drag", [&] { static_cast<Display*>(data)->dndEnter(serial, s, wl_fixed_to_double(x), wl_fixed_to_double(y), offer); });
+    },
+    .leave = [](void* data, wl_data_device*) { m3::guard("a drag", [&] { static_cast<Display*>(data)->dndLeave(); }); },
+    .motion = [](void* data, wl_data_device*, uint32_t, wl_fixed_t x, wl_fixed_t y) {
+        m3::guard("a drag", [&] { static_cast<Display*>(data)->dndMotion(wl_fixed_to_double(x), wl_fixed_to_double(y)); });
+    },
+    .drop = [](void* data, wl_data_device*) { m3::guard("a drop", [&] { static_cast<Display*>(data)->dndDrop(); }); },
+    .selection = [](void* data, wl_data_device*, wl_data_offer* offer) { static_cast<Display*>(data)->selectionOffer(offer); },
+};
+
+const wl_data_source_listener kSource = {
+    .target = [](void*, wl_data_source*, const char*) {},
+    .send = [](void* data, wl_data_source*, const char* mime, int32_t fd) { static_cast<Display*>(data)->sourceSend(mime, fd); },
+    .cancelled = [](void* data, wl_data_source* s) { static_cast<Display*>(data)->sourceDone(s); },
+    .dnd_drop_performed = [](void*, wl_data_source*) {},
+    .dnd_finished = [](void* data, wl_data_source* s) { static_cast<Display*>(data)->sourceDone(s); },
+    .action = [](void*, wl_data_source*, uint32_t) {},
+};
+
+} // namespace
+
+void Display::setUpDataDevice() {
+    if (m_dataDevice || !m_dataDeviceManager || !m_seat) return;
+    m_dataDevice = wl_data_device_manager_get_data_device(m_dataDeviceManager, m_seat);
+    wl_data_device_add_listener(m_dataDevice, &kDataDevice, this);
+}
+
+void Display::offerMime(wl_data_offer* offer, const char* mime) {
+    auto& mimes = m_offers[offer];
+    if (mime) mimes.emplace_back(mime);
+}
+
+void Display::dropOffer(wl_data_offer* offer) {
+    if (!offer) return;
+    m_offers.erase(offer);
+    wl_data_offer_destroy(offer);
+}
+
+void Display::selectionOffer(wl_data_offer* offer) {
+    // The clipboard's offer: not ours to read (wl-paste does), only to free
+    if (m_selection && m_selection != offer) dropOffer(m_selection);
+    m_selection = offer;
+}
+
+void Display::dndEnter(uint32_t serial, wl_surface* surface, double x, double y, wl_data_offer* offer) {
+    if (m_dndOffer && m_dndOffer != offer) dropOffer(m_dndOffer);
+    m_dndOffer = offer;
+    m_dndSerial = serial;
+    m_dndSurface = Surface::fromSurface(surface);
+    m_dndAccepted = false;
+    m_dndActionsSet = false;
+    dndMotion(x, y);
+}
+
+void Display::dndMotion(double x, double y) {
+    if (!m_dndOffer) return;
+    m_dndX = x, m_dndY = y;
+    const auto it = m_offers.find(m_dndOffer);
+    const bool files = it != m_offers.end() && std::ranges::find(it->second, "text/uri-list") != it->second.end();
+    const bool take = files && m_dndSurface && m_dndSurface->dragMotion(static_cast<float>(x), static_cast<float>(y));
+    if (take != m_dndAccepted || !m_dndActionsSet) {
+        m_dndAccepted = take;
+        m_dndActionsSet = true;
+        if (wl_data_offer_get_version(m_dndOffer) >= 3)
+            wl_data_offer_set_actions(m_dndOffer, take ? WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY | WL_DATA_DEVICE_MANAGER_DND_ACTION_MOVE : 0,
+                                      take ? WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY : 0);
+    }
+    wl_data_offer_accept(m_dndOffer, m_dndSerial, take ? "text/uri-list" : nullptr);
+}
+
+void Display::dndLeave() {
+    if (m_dndSurface) m_dndSurface->dragLeave();
+    if (m_dndOffer && !m_dndDropping) dropOffer(m_dndOffer);
+    m_dndOffer = nullptr;
+    m_dndSurface = nullptr;
+    m_dndAccepted = false;
+}
+
+void Display::dndDrop() {
+    wl_data_offer* offer = m_dndOffer;
+    Surface* surface = m_dndSurface;
+    if (!offer || !m_dndAccepted || !surface) return dndLeave();
+    int fds[2];
+    if (pipe2(fds, O_CLOEXEC) != 0) return dndLeave();
+    wl_data_offer_receive(offer, "text/uri-list", fds[1]);
+    ::close(fds[1]);
+    wl_display_flush(m_display);
+    // The offer stays until the data's in (leave comes right after drop)
+    m_dndDropping = true;
+    m_dndOffer = nullptr;
+    m_dndSurface = nullptr;
+    m_dndAccepted = false;
+    m_dndDropping = false;
+    auto* reader = new PipeReader(fds[0], [this, offer, surface](std::string data) {
+        if (wl_data_offer_get_version(offer) >= 3) wl_data_offer_finish(offer);
+        dropOffer(offer);
+        const auto paths = pathsOf(data);
+        if (std::ranges::find(Surface::all(), surface) == Surface::all().end()) return; // closed meanwhile
+        surface->drop(paths);
+    });
+    EventLoop::get().add(reader);
+}
+
+void Display::startDrag(Surface* origin, const std::vector<std::string>& paths) {
+    if (!m_dataDeviceManager || !m_dataDevice || !origin || paths.empty()) return;
+    if (m_dragSource) sourceDone(m_dragSource);
+    m_dragUris.clear();
+    m_dragText.clear();
+    for (const auto& p : paths) {
+        m_dragUris += uriOf(p) + "\r\n";
+        m_dragText += (m_dragText.empty() ? "" : "\n") + p;
+    }
+    m_dragSource = wl_data_device_manager_create_data_source(m_dataDeviceManager);
+    wl_data_source_add_listener(m_dragSource, &kSource, this);
+    wl_data_source_offer(m_dragSource, "text/uri-list");
+    wl_data_source_offer(m_dragSource, "text/plain;charset=utf-8");
+    wl_data_source_offer(m_dragSource, "text/plain");
+    if (wl_data_source_get_version(m_dragSource) >= 3)
+        wl_data_source_set_actions(m_dragSource, WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY | WL_DATA_DEVICE_MANAGER_DND_ACTION_MOVE);
+    wl_data_device_start_drag(m_dataDevice, m_dragSource, origin->wlSurface(), nullptr, m_buttonSerial);
+}
+
+void Display::sourceSend(const char* mime, int fd) {
+    const std::string m = mime ? mime : "";
+    auto* writer = new PipeWriter(fd, m == "text/uri-list" ? m_dragUris : m_dragText);
+    EventLoop::get().add(writer);
+}
+
+void Display::sourceDone(wl_data_source* source) {
+    wl_data_source_destroy(source);
+    if (m_dragSource == source) m_dragSource = nullptr;
 }
 
 } // namespace m3::wl

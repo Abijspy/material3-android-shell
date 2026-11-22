@@ -17,6 +17,7 @@ int main(int argc, char** argv) {
     app.go = [](const std::vector<std::string>& args) {
         if (shell::panels::pdfGo && !args.empty()) shell::panels::pdfGo(args[0]);
     };
+    app.opensDrops = true;
     app.closed = [] { shell::panels::pdfClosed(); };
     app.settings = shell::panels::pdfSettings;
     app.about.summary = "Read PDFs, mark them up, sign them and fill in their forms.";

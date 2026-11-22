@@ -89,6 +89,10 @@ public:
     // True when a node under the pointer scrolled by pixels
     bool pointerScrollPixels(float dy, bool precise);
     void pointerScrollEnd();
+    // A drag of files over it (from wl::Display): true when a node takes them
+    bool dragMotion(float x, float y);
+    void dragLeave();
+    void drop(const std::vector<std::string>& paths);
     void keyboardFocus(bool focused);
     void key(const ui::KeyEvent& event);
 
@@ -110,6 +114,8 @@ public:
     // Protocol callbacks
     void frameDone();
     void preferredScale(float scale, bool fractional);
+
+    friend class Display; // a drag starts from the wl_surface
 
 protected:
     // Subclasses create their role after createSurface(), call configured()
@@ -162,6 +168,9 @@ private:
     ui::Node* m_hovered = nullptr;
     ui::Node* m_tooltip = nullptr; // the node whose tooltip is up (or coming)
     ui::Node* m_pressed = nullptr;
+    ui::Node* m_dropTarget = nullptr; // a drag of files is over it
+    float m_pressX = 0, m_pressY = 0;
+    uint32_t m_pressButton = 0;
     ui::Node* m_focus = nullptr;
     bool navigate(const ui::KeyEvent& event); // keyboardNavigation's keys
     float m_pointerX = 0, m_pointerY = 0;

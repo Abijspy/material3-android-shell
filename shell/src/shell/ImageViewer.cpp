@@ -599,6 +599,7 @@ void buildGallery(const std::shared_ptr<ViewerState>& st) {
             heart->floating = true;
             b->heart = heart;
         }
+        b->dragFiles = [path] { return std::vector<std::string>{path}; }; // to Files, another app, a note
         b->onClicked = [st, path, b](uint32_t button) {
             if (button == BTN_LEFT) showAt(st, path, st->collection.empty() ? nullptr : &st->galleryPics);
             if (button == BTN_RIGHT) pictureMenu(st, b, path);

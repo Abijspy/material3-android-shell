@@ -665,6 +665,16 @@ void editorView(const std::shared_ptr<State>& st, Flex* c) {
     sheet->setBackground(tintOf(n->tint), false);
     if (n->tint == 0) sheet->setBorder(1, ColorRef("outline_variant", 0.6f));
 
+    // Pictures dropped on the note go in it
+    sheet->onDropFiles = [st, id](const std::vector<std::string>& paths) {
+        for (const auto& p : paths)
+            if (fileops::isPicture(p)) addImageFile(st, id, p);
+    };
+    sheet->onDropHover = [sheet, plain = n->tint == 0](bool over) {
+        if (over) sheet->setBorder(2, ColorRef("primary"));
+        else sheet->setBorder(plain ? 1 : 0, ColorRef("outline_variant", 0.6f));
+    };
+
     auto* bar = sheet->add<Flex>(Flex::Direction::Row);
     bar->setSpacing(2)->setAlignItems(Align::Center);
     iconButton(bar, "arrow_back", [st] { openNote(st, ""); }, 22)->tooltip = "Back (Escape)";

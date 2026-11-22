@@ -17,6 +17,7 @@ int main(int argc, char** argv) {
     app.go = [](const std::vector<std::string>& args) {
         if (shell::panels::musicGo && !args.empty()) shell::panels::musicGo(args[0]);
     };
+    app.opensDrops = true;
     app.closed = [] { shell::panels::musicClosed(); };
     app.settings = shell::panels::musicSettings;
     app.about.summary = "Your music library: albums, artists, songs and playlists.";
