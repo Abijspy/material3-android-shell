@@ -268,7 +268,8 @@ bool isSelected(const State& st, const std::string& p) {
     return std::ranges::find(st.selected, p) != st.selected.end();
 }
 
-void go(const std::shared_ptr<State>& st, const fs::path& to, bool remember = true) {
+// st and the place are copies: the button that asks is often one this rebuilds
+void go(std::shared_ptr<State> st, fs::path to, bool remember = true) {
     struct Moved {
         std::shared_ptr<State> st;
         ~Moved() {
@@ -294,7 +295,7 @@ void go(const std::shared_ptr<State>& st, const fs::path& to, bool remember = tr
     if (st->scroll) st->scroll->scrollTo(0, false);
 }
 
-void goTrash(const std::shared_ptr<State>& st) {
+void goTrash(std::shared_ptr<State> st) {
     if (!st->inTrash) {
         st->back.push_back(st->dir.string());
         st->forward.clear();
@@ -325,7 +326,7 @@ void stepHistory(const std::shared_ptr<State>& st, bool backwards) {
 }
 
 // Opening one: a folder here, a picture in the viewer, the rest in its app
-void openPath(const std::shared_ptr<State>& st, const std::string& path) {
+void openPath(std::shared_ptr<State> st, std::string path) {
     std::error_code ec;
     if (fs::is_directory(path, ec)) return go(st, path);
     if (fileops::isPicture(path) && Config::get().value<bool>("/files/viewer", true)) {
@@ -739,7 +740,7 @@ void folderMenu(const std::shared_ptr<State>& st, Backdrop* from) {
 
 // A click on a file: select (Ctrl adds or takes away, Shift a range);
 // twice quickly opens it
-void clicked(const std::shared_ptr<State>& st, Button* tile, const std::string& path, uint32_t button) {
+void clicked(std::shared_ptr<State> st, Button* tile, std::string path, uint32_t button) {
     if (button == BTN_RIGHT) return fileMenu(st, tile, path);
     if (button == BTN_MIDDLE) {
         std::error_code ec;
