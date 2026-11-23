@@ -577,6 +577,7 @@ void TextField::edited() {
 }
 
 bool TextField::onKey(const KeyEvent& e) {
+    if (onKeyFirst && onKeyFirst(e)) return true;
     switch (e.sym) {
     case XKB_KEY_Return:
     case XKB_KEY_KP_Enter:

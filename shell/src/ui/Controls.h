@@ -206,6 +206,9 @@ public:
     std::function<void(const std::string&)> onChanged;
     std::function<void(const std::string&)> onSubmit;
     std::function<void()> onCancel;
+    // Asked before the field's own editing keys: true takes the key (a
+    // launcher's arrows moving through a grid while the field is empty)
+    std::function<bool(const KeyEvent&)> onKeyFirst;
 
     bool interactive() const override { return true; }
     bool keyboardNavigable() const override { return true; }

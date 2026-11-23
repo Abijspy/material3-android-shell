@@ -5,12 +5,17 @@
 #include "services/Currency.h"
 #include "services/Search.h"
 #include "services/Session.h"
+#include "shell/Dock.h"
 #include "shell/PanelKit.h"
+#include "shell/SettingsKit.h"
 #include "shell/Panels.h"
 #include "ui/Controls.h"
 
 #include <algorithm>
 #include <cmath>
+#include <format>
+#include <linux/input-event-codes.h>
+#include <map>
 #include <memory>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
@@ -29,13 +34,20 @@ class LauncherView : public Flex {
 public:
     LauncherView(Popup& popup, const std::string& initial) : Flex(Direction::Column), m_popup(popup) {
         setAlignItems(Align::Stretch)->setSpacing(12);
-        m_field = add<TextField>();
+        auto* head = add<Flex>(Direction::Row);
+        head->setSpacing(10)->setAlignItems(Align::Center);
+        m_field = head->add<TextField>();
+        m_field->grow = true;
+        // How the apps show with nothing typed: list, grid, categories, A to Z
+        m_switcher = head->add<Flex>(Direction::Row);
+        m_switcher->setSpacing(2)->setAlignItems(Align::Center);
+        m_field->onKeyFirst = [this](const KeyEvent& e) { return browseKey(e); };
         m_field->setPlaceholder("Search apps   ·   = maths   : emoji   # clipboard   @ files   > run");
         m_field->onChanged = [this](const std::string&) { refresh(); };
         m_field->onSubmit = [this](const std::string&) { activate(); };
         m_field->onCancel = [this] { m_popup.close(); };
         m_scroll = add<ScrollView>();
-        m_scroll->maxHeight = 7 * (kRowHeight + kRowGap);
+        m_scroll->maxHeight = 8 * (kRowHeight + kRowGap);
         m_list = m_scroll->add<Flex>(Direction::Column);
         m_list->setAlignItems(Align::Stretch)->setSpacing(kRowGap);
         m_field->setText(initial);
@@ -78,6 +90,9 @@ private:
     void refresh() {
         const std::string text = m_field->text();
         const int token = ++m_token;
+        m_switcher->setVisible(text.empty());
+        if (text.empty()) return showBrowse();
+        m_browseView.clear();
         auto results = search::query(text);
         powerResults(text, results);
         settingsResults(text, results);
@@ -161,6 +176,221 @@ private:
         // Before the web search, which stays last
         const bool web = !out.empty() && out.back().glyph == "travel_explore";
         out.insert(web ? out.end() - 1 : out.end(), rows.begin(), rows.end());
+    }
+
+    // ── Browsing: the apps, with nothing typed ──
+
+    static std::string browseView() { return Config::get().value<std::string>("/launcher/view", "list"); }
+
+    void paintSwitcher() {
+        m_switcher->clearChildren();
+        const std::string view = browseView();
+        const std::pair<const char*, const char*> views[] = {{"list", "view_list"}, {"grid", "grid_view"}, {"categories", "category"}, {"az", "sort_by_alpha"}};
+        const char* tips[] = {"List: the ones you use most first", "Grid", "By category", "A to Z"};
+        int i = 0;
+        for (const auto& [key, icon] : views) {
+            const bool on = view == key;
+            auto* b = m_switcher->add<Button>();
+            b->setPadding(Insets(8))->setRadius(Radii(on ? 14 : 10));
+            b->setBackground(on ? ColorRef("secondary_container") : ColorRef("surface_container_high"), false);
+            b->add<Icon>(icon, 20)->setFill(on)->setColor(on ? "on_secondary_container" : "on_surface_variant", false);
+            b->tooltip = tips[i++];
+            b->skipKeyboard = true;
+            b->onClicked = [this, k = std::string(key), alive = m_alive](uint32_t button) {
+                if (button != BTN_LEFT) return;
+                Config::get().set("/launcher/view", k);
+                // Not inside this button's own click: the switcher is rebuilt
+                EventLoop::get().defer([this, alive] {
+                    if (*alive) refresh();
+                });
+            };
+        }
+    }
+
+    static std::string categoryOf(const Apps::App& a) {
+        static const std::pair<const char*, const char*> order[] = {
+            {"Network", "Internet"}, {"Office", "Office"},     {"Graphics", "Graphics"},    {"AudioVideo", "Sound & video"},
+            {"Game", "Games"},       {"Development", "Programming"}, {"Education", "Education"}, {"Science", "Science"},
+            {"Settings", "Settings"}, {"System", "System"},    {"Utility", "Accessories"}};
+        const std::string cats = ";" + a.categories + ";";
+        for (const auto& [key, name] : order)
+            if (cats.find(std::string(";") + key + ";") != std::string::npos) return name;
+        return "Other";
+    }
+
+    void appMenu(Node* from, const Apps::App& a) {
+        std::string id = a.id.ends_with(".desktop") ? a.id.substr(0, a.id.size() - 8) : a.id;
+        auto pinned = Dock::pinned();
+        const bool on = std::ranges::find(pinned, id) != pinned.end();
+        floatingMenu(from, {MenuItem("open_in_new", "Open", "", [this, a] {
+                                Apps::get().launch(a);
+                                m_popup.close();
+                            }),
+                            MenuItem(on ? "keep_off" : "keep", on ? "Unpin from dock" : "Pin to dock", "", [id, on] {
+                                auto now = Dock::pinned();
+                                if (on) std::erase(now, id);
+                                else now.push_back(id);
+                                Dock::setPinned(now);
+                            })});
+    }
+
+    // An app as a tile: its icon over its name
+    Button* tile(Node* parent, const Apps::App& a) {
+        auto* b = parent->add<Button>(Direction::Column);
+        b->setPadding({6, 12, 6, 10})->setSpacing(8)->setRadius(Radii(20))->setAlignItems(Align::Center);
+        b->fixedWidth = 116;
+        b->hoverLift = true;
+        b->pressedRadius = 14;
+        const std::string icon = a.icon;
+        b->add<ImageView>(52, [icon](float scale, int& w, int& h) -> GLuint {
+            auto* t = Images::get().icon(icon, static_cast<int>(std::lround(52 * scale)));
+            if (!t) return 0;
+            w = t->width, h = t->height;
+            return t->id;
+        });
+        b->add<Label>(a.name)->setSize(12)->setWeight(500)->setMaxWidth(104)->setMaxLines(2)->setCentered(true);
+        return b;
+    }
+
+    // An app as a row: icon, name, what it is
+    Button* row(Node* parent, const Apps::App& a) {
+        auto* b = parent->add<Button>(Direction::Row);
+        b->setPadding({14, 6})->setSpacing(14)->setRadius(Radii(16))->setAlignItems(Align::Center);
+        b->fixedHeight = 48;
+        const std::string icon = a.icon;
+        b->add<ImageView>(30, [icon](float scale, int& w, int& h) -> GLuint {
+            auto* t = Images::get().icon(icon, static_cast<int>(std::lround(30 * scale)));
+            if (!t) return 0;
+            w = t->width, h = t->height;
+            return t->id;
+        });
+        auto* t = b->add<Flex>(Direction::Column);
+        t->setAlignItems(Align::Start);
+        t->grow = true;
+        t->add<Label>(a.name)->setSize(14)->setWeight(500)->setMaxWidth(520);
+        const std::string sub = !a.generic.empty() ? a.generic : a.comment;
+        if (!sub.empty()) t->add<Label>(sub)->setSize(11)->setMaxWidth(520)->setColor("on_surface_variant", false);
+        return b;
+    }
+
+    Node* header(const std::string& text) {
+        auto* box = m_list->add<Flex>(Direction::Row);
+        box->setPadding({6, m_list->children().size() > 1 ? 12.0f : 2.0f, 6, 2});
+        box->add<Label>(text)->setSize(13)->setWeight(700)->setColor("primary", false);
+        return box;
+    }
+
+    void showBrowse() {
+        paintSwitcher();
+        const std::string view = browseView();
+        const bool changed = view != m_browseView;
+        m_browseView = view;
+        if (view == "list") {
+            show(search::query(""));
+            if (changed) kit::stagger(m_list);
+            return;
+        }
+        std::vector<Apps::App> apps(Apps::get().all().begin(), Apps::get().all().end());
+        auto byName = [](const Apps::App& a, const Apps::App& b) {
+            std::string x = a.name, y = b.name;
+            for (auto& c : x) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            for (auto& c : y) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            return x < y;
+        };
+        std::ranges::sort(apps, byName);
+        if (view == "grid") // the ones you use most first, then by name
+            std::ranges::stable_sort(apps, [](const Apps::App& a, const Apps::App& b) { return Apps::get().launches(a.id) > Apps::get().launches(b.id); });
+
+        m_list->clearChildren();
+        m_rows.clear();
+        m_titles.clear();
+        m_subtitles.clear();
+        m_results.clear();
+        m_armed = -1;
+        auto add = [this](Button* b, const Apps::App& a) {
+            m_results.push_back({a.name, a.generic, a.icon, "", "", 0, [a] { Apps::get().launch(a); }});
+            m_titles.push_back(nullptr);
+            m_subtitles.push_back(nullptr);
+            const int i = static_cast<int>(m_rows.size());
+            b->onClicked = [this, i, b, a, alive = m_alive](uint32_t button) {
+                if (button == BTN_RIGHT) return appMenu(b, a);
+                m_selected = i;
+                EventLoop::get().defer([this, alive] {
+                    if (*alive) activate();
+                });
+            };
+            m_rows.push_back(b);
+        };
+        std::vector<Node*> groups; // what arrives in turn
+        if (view == "grid") {
+            auto* flow = m_list->add<kit::Flow>();
+            flow->spacing = 6;
+            for (const auto& a : apps) add(tile(flow, a), a);
+            groups.push_back(flow);
+        } else if (view == "categories") {
+            std::map<std::string, std::vector<const Apps::App*>> byCat;
+            for (const auto& a : apps) byCat[categoryOf(a)].push_back(&a);
+            for (const char* name : {"Internet", "Office", "Graphics", "Sound & video", "Games", "Programming", "Education", "Science", "Accessories",
+                                     "Settings", "System", "Other"}) {
+                auto it = byCat.find(name);
+                if (it == byCat.end()) continue;
+                groups.push_back(header(std::format("{}  ·  {}", name, it->second.size())));
+                auto* flow = m_list->add<kit::Flow>();
+                flow->spacing = 6;
+                for (const auto* a : it->second) add(tile(flow, *a), *a);
+                groups.push_back(flow);
+            }
+        } else { // A to Z, under their letters
+            std::string letter;
+            for (const auto& a : apps) {
+                std::string first = a.name.empty() ? "#" : std::string(1, static_cast<char>(std::toupper(static_cast<unsigned char>(a.name[0]))));
+                if (!std::isalpha(static_cast<unsigned char>(first[0]))) first = "#";
+                if (first != letter) {
+                    letter = first;
+                    groups.push_back(header(letter));
+                }
+                auto* b = row(m_list, a);
+                add(b, a);
+                groups.push_back(b);
+            }
+        }
+        m_selected = -1;
+        if (!m_rows.empty()) select(0);
+        m_scroll->scrollTo(0, false);
+        if (changed)
+            for (size_t i = 0; i < groups.size(); ++i) {
+                if (auto* flow = dynamic_cast<kit::Flow*>(groups[i])) kit::stagger(flow, static_cast<int>(i));
+                else kit::enter(groups[i], static_cast<int>(i));
+            }
+    }
+
+    // Arrows with nothing typed: through the grid by where things are
+    bool browseKey(const KeyEvent& e) {
+        if (!m_field->text().empty() || m_rows.empty() || browseView() == "list") return false;
+        int dx = 0, dy = 0;
+        switch (e.sym) {
+        case XKB_KEY_Left: dx = -1; break;
+        case XKB_KEY_Right: dx = 1; break;
+        case XKB_KEY_Up: dy = -1; break;
+        case XKB_KEY_Down: dy = 1; break;
+        default: return false;
+        }
+        const auto& from = m_rows[static_cast<size_t>(std::max(0, m_selected))]->rect();
+        const float fx = from.x + from.w / 2, fy = from.y + from.h / 2;
+        int best = -1;
+        float bestD = 1e9f;
+        for (size_t i = 0; i < m_rows.size(); ++i) {
+            const auto& r = m_rows[i]->rect();
+            const float x = r.x + r.w / 2, y = r.y + r.h / 2;
+            const float along = dx ? (x - fx) * static_cast<float>(dx) : (y - fy) * static_cast<float>(dy);
+            if (along <= 1) continue;
+            const float across = dx ? std::abs(y - fy) : std::abs(x - fx);
+            if (dx && across > from.h / 2) continue; // left and right stay on the line
+            const float d = along + across * 3;
+            if (d < bestD) bestD = d, best = static_cast<int>(i);
+        }
+        if (best >= 0) select(best);
+        return true;
     }
 
     void show(std::vector<SearchResult> results) {
@@ -266,7 +496,7 @@ private:
             const auto i = static_cast<size_t>(m_selected);
             m_armed = m_selected;
             m_rows[i]->setBackground("error_container");
-            m_titles[i]->setColor("on_error_container");
+            if (m_titles[i]) m_titles[i]->setColor("on_error_container");
             if (m_subtitles[i]) m_subtitles[i]->setText(r.confirm)->setColor("on_error_container");
             return;
         }
@@ -279,7 +509,7 @@ private:
         if (m_armed < 0 || m_armed >= static_cast<int>(m_rows.size())) return;
         const auto i = static_cast<size_t>(m_armed);
         m_armed = -1;
-        m_titles[i]->setColor("on_surface");
+        if (m_titles[i]) m_titles[i]->setColor("on_surface");
         if (m_subtitles[i]) m_subtitles[i]->setText(m_results[i].subtitle)->setColor("on_surface_variant");
     }
 
@@ -292,6 +522,8 @@ public:
 private:
     Popup& m_popup;
     TextField* m_field;
+    Flex* m_switcher = nullptr;
+    std::string m_browseView; // the view last shown: switching to another, its apps arrive
     ScrollView* m_scroll;
     Flex* m_list;
     std::vector<SearchResult> m_results;

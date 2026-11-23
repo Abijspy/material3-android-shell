@@ -3429,6 +3429,9 @@ void spotlightPage(Flex* page, Popup&) {
     for (const auto& [id, name] : search::engines()) items.push_back({id, name});
     dropdown(engine.row, engineItem, shown, items, [](const std::string& v) { Config::get().set("/spotlight/engine", v); });
 
+    auto* apps = group(page, "Apps", "With nothing typed (the dock's apps button opens it so)");
+    choiceRow<std::string>(apps, "grid_view", "Show apps as", "Also the buttons beside the search field", "/launcher/view", "list",
+                           {{"list", "List"}, {"grid", "Grid"}, {"categories", "Categories"}, {"az", "A to Z"}});
     auto* answers = group(page, "Answers", "Shown above apps as you type");
     switchRow(answers, "history", "Recent files", "The last ones you opened at the top, and by name as you type", "/spotlight/recent", true);
     switchRow(answers, "settings", "Settings", "Pages and settings by name: bluetooth, night light, wallpaper", "/spotlight/settings", true);

@@ -157,7 +157,7 @@ From the moment the machine boots:
 
 **2 · The desktop.** The bar is yours to arrange: drop widgets (weather, date, media, CPU, notifications, clipboard, screenshot and more) into its left, centre and right, or right-click it to edit it in place. It shows each monitor's own workspaces, as many as your compositor has. Its centre holds a dynamic island. It grows to show the song that's playing, a workspace switch or an incoming notification, then shrinks back. The bar and panels are translucent with the compositor's blur behind them. A dock on the bottom edge keeps your pinned and running apps (with the unread counts and download progress they report) and the trash, and slides away until you need it. Right-click an app there for its shortcuts and the files it opened lately.
 
-**3 · Press <kbd>Super</kbd><kbd>Space</kbd>.** Spotlight opens. It finds apps, files, your notes and commands, does maths, and has an emoji picker. Start with `?` to search inside your documents and PDFs. <kbd>Super</kbd><kbd>V</kbd> opens the clipboard history, images included.
+**3 · Press <kbd>Super</kbd><kbd>Space</kbd>.** Spotlight opens. It finds apps, files, your notes and commands, does maths, and has an emoji picker. Start with `?` to search inside your documents and PDFs. With nothing typed it shows your apps as a list, a grid, by category or A to Z (the buttons beside the search field); right-click one to pin it to the dock. <kbd>Super</kbd><kbd>V</kbd> opens the clipboard history, images included.
 
 **4 · Open the panels.**
 - **Quick Settings:** volume, brightness, Wi-Fi, Bluetooth, Do Not Disturb, Caffeine, night light, and the connected network's live download and upload speed.
