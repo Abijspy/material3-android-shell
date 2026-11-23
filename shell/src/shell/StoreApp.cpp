@@ -1342,8 +1342,10 @@ void railItem(std::shared_ptr<StoreState> st, Flex* rail, int index, const char*
         dot->add<Label>(badge > 99 ? "99+" : std::to_string(badge))->setSize(10)->setWeight(700)->setColor("on_error", false);
     }
     b->add<Label>(label)->setSize(12)->setWeight(on ? 700 : 500)->setColor(on ? "on_surface" : "on_surface_variant", false);
-    b->onClicked = [st, index](uint32_t button) {
+    b->onClicked = [st0 = st, index](uint32_t button) {
         if (button != BTN_LEFT) return;
+        // A copy: the rebuild below destroys this button and what it holds
+        auto st = st0;
         st->tab = index;
         st->page.clear();
         if (index == 0) st->category.clear(), st->query.clear(), st->search->setText("");
