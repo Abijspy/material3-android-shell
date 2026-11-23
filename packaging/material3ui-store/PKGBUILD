@@ -12,7 +12,7 @@ license=(MIT)
 # libmaterial3ui is private to the shell and its apps: the same release
 depends=("material3ui=$pkgver" pacman curl)
 makedepends=(meson ninja wayland-protocols wlr-protocols nlohmann-json mpv libvterm poppler-glib)
-optdepends=('flatpak: Flathub's apps')
+optdepends=("flatpak: Flathub's apps")
 options=(!debug)
 
 build() {
