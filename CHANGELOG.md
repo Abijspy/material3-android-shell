@@ -1,5 +1,10 @@
 # Changelog
 
+## v7.1.6 — 2026-11-23
+
+- **Files:** double-clicking a folder opens it again instead of closing Files.
+- **Launcher views.** With nothing typed, the launcher (the dock's apps button, <kbd>Super</kbd><kbd>Space</kbd>) shows your apps as a list (most used first), a grid of icons, sections by category, or A to Z under letter headings. Switch with the buttons beside the search field or in Settings → Spotlight. Arrow keys move through the grids, and right-click an app to open it or pin it to the dock.
+
 ## v7.1.5 — 2026-11-23
 
 - **Smoother apps.** Pages and lists arrive instead of appearing at once:
