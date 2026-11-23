@@ -160,6 +160,19 @@ struct Player {
 enum class View { Albums, Album, Artists, Artist, Songs, Playlist, Queue };
 
 struct State {
+    // A page navigated to: its sections arrive in turn, a grid's covers after them
+    void arrive() {
+        if (!content) return;
+        int i = 0;
+        for (const auto& child : content->children()) {
+            if (auto* flow = dynamic_cast<kit::Flow*>(child.get())) {
+                kit::stagger(flow, i);
+                i += static_cast<int>(flow->children().size());
+            } else {
+                kit::enter(child.get(), i++);
+            }
+        }
+    }
     std::vector<Track> tracks;
     std::map<std::string, int> byPath;
     std::vector<Album> albums;
@@ -501,6 +514,7 @@ void go(const std::shared_ptr<State>& st, View v, const std::string& what = {}) 
         if (!*st->alive) return;
         if (st->sidebar) st->sidebar();
         if (st->show) st->show();
+        st->arrive(); // navigated: the page comes in
     });
 }
 
@@ -604,6 +618,7 @@ void albumGrid(const std::shared_ptr<State>& st, Flex* c, const std::vector<Albu
         auto* b = flow->add<Button>(Flex::Direction::Column);
         b->setPadding(Insets(8))->setSpacing(6)->setRadius(Radii(20))->setAlignItems(Align::Start);
         b->fixedWidth = 176;
+        b->hoverLift = true;
         coverView(b, coverOf(st, *a), 160, 16);
         b->add<Label>(a->name)->setSize(14)->setWeight(600)->setMaxWidth(160);
         b->add<Label>(a->artist + (a->year ? std::format("  ·  {}", a->year) : ""))->setSize(12)->setColor("on_surface_variant", false)->setMaxWidth(160);

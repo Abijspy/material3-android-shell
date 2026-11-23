@@ -366,6 +366,8 @@ struct StoreState {
     std::string installing;                   // the app an install is for
     int hero = 0, shot = 0;
     bool readMore = false;
+    std::string lastView; // what was shown last: a new one enters
+    bool shelfAnimate = false, heroAnimate = false;
     std::map<std::string, int> shelfPage;
     Flex *rail = nullptr, *body = nullptr;
     ScrollView* scroll = nullptr;
@@ -640,6 +642,7 @@ void appTile(std::shared_ptr<StoreState> st, Node* parent, const CatalogApp& a, 
     b->setBackground(ColorRef("surface_container", 0.85f), false);
     b->fixedWidth = width;
     b->pressedRadius = 18;
+    b->hoverLift = true;
     auto* top = b->add<Flex>(Flex::Direction::Row);
     top->setAlignItems(Align::Start);
     iconOrGlyph(top, a.icon, 56);
@@ -715,6 +718,7 @@ void shelf(std::shared_ptr<StoreState> st, Flex* p, const std::string& key, cons
         int& page = st->shelfPage[key];
         page = std::clamp(page, 0, static_cast<int>(pages) - 1);
         for (size_t i = static_cast<size_t>(page) * kPer; i < apps.size() && i < (static_cast<size_t>(page) + 1) * kPer; ++i) appTile(st, row, *apps[i]);
+        if (st->shelfAnimate) stagger(row);
         if (prev) prev->setOpacity(page > 0 ? 1.0f : 0.35f, false);
         if (next) next->setOpacity(page + 1 < static_cast<int>(pages) ? 1.0f : 0.35f, false);
     };
@@ -722,13 +726,17 @@ void shelf(std::shared_ptr<StoreState> st, Flex* p, const std::string& key, cons
         prev->onClicked = [st, key, fill](uint32_t b) {
             if (b != BTN_LEFT || st->shelfPage[key] == 0) return;
             --st->shelfPage[key];
+            st->shelfAnimate = true;
             (*fill)();
+            st->shelfAnimate = false;
         };
     if (next)
         next->onClicked = [st, key, fill, pages](uint32_t b) {
             if (b != BTN_LEFT || st->shelfPage[key] + 1 >= static_cast<int>(pages)) return;
             ++st->shelfPage[key];
+            st->shelfAnimate = true;
             (*fill)();
+            st->shelfAnimate = false;
         };
     (*fill)();
 }
@@ -795,6 +803,7 @@ void hero(std::shared_ptr<StoreState> st, Flex* p) {
         actions->setSpacing(8)->setPadding({0, 8, 0, 0});
         actionButton(st, actions, a, true);
         appIcon(banner, a.icon, 148);
+        if (st->heroAnimate) pageIn(banner, 1);
         banner->onClicked = [st, id = a.id](uint32_t b) {
             if (b == BTN_LEFT) openPage(st, id);
         };
@@ -803,7 +812,9 @@ void hero(std::shared_ptr<StoreState> st, Flex* p) {
         nav->setSpacing(6)->setAlignItems(Align::Center)->setJustify(Align::Center)->setPadding({0, 10, 0, 0});
         iconButton(nav, "chevron_left", [st, fill] {
             --st->hero;
+            st->heroAnimate = true;
             (*fill)();
+            st->heroAnimate = false;
         }, 20);
         for (size_t i = 0; i < apps.size(); ++i) {
             const bool on = static_cast<int>(i) == st->hero;
@@ -818,12 +829,16 @@ void hero(std::shared_ptr<StoreState> st, Flex* p) {
         }
         iconButton(nav, "chevron_right", [st, fill] {
             ++st->hero;
+            st->heroAnimate = true;
             (*fill)();
+            st->heroAnimate = false;
         }, 20);
     };
     st->heroNext = [st, fill] {
         ++st->hero;
+        st->heroAnimate = true;
         (*fill)();
+        st->heroAnimate = false;
     };
     (*fill)();
 }
@@ -839,6 +854,7 @@ void categoryTiles(std::shared_ptr<StoreState> st, Flex* p) {
         b->setBackground(ColorRef(tone(hue)), false);
         b->fixedWidth = 182;
         b->pressedRadius = 16;
+        b->hoverLift = true;
         b->add<Icon>(c.icon, 28)->setFill(true)->setColor(ColorRef(accent(hue)), false);
         b->add<Label>(c.name)->setSize(15)->setWeight(600);
         b->onClicked = [st, k = std::string(c.key)](uint32_t button) {
@@ -1346,6 +1362,11 @@ void railItem(std::shared_ptr<StoreState> st, Flex* rail, int index, const char*
         if (button != BTN_LEFT) return;
         // A copy: the rebuild below destroys this button and what it holds
         auto st = st0;
+        // The tab it's on already: back to its top, gliding
+        if (st->tab == index && st->page.empty() && (index != 0 || (st->category.empty() && st->query.empty()))) {
+            if (st->scroll) st->scroll->scrollTo(0, true);
+            return;
+        }
         st->tab = index;
         st->page.clear();
         if (index == 0) st->category.clear(), st->query.clear(), st->search->setText("");
@@ -1354,7 +1375,21 @@ void railItem(std::shared_ptr<StoreState> st, Flex* rail, int index, const char*
     };
 }
 
+void buildPage(std::shared_ptr<StoreState> st);
+
+// The page, and when it's a different one than before, its arrival: the
+// sections in turn, and a grid's tiles after them
 void build(std::shared_ptr<StoreState> st) {
+    buildPage(st);
+    const std::string view = std::format("{}|{}|{}|{}|{}|{}", st->tab, st->page, st->category, st->query, st->filter, st->loaded);
+    if (view == st->lastView) return;
+    st->lastView = view;
+    stagger(st->body);
+    for (const auto& section : st->body->children())
+        if (auto* flow = dynamic_cast<Flow*>(section.get())) stagger(flow, 2);
+}
+
+void buildPage(std::shared_ptr<StoreState> st) {
     if (!Packages::get().busy()) st->installing.clear();
     auto* r = st->rail;
     r->clearChildren();

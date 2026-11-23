@@ -210,6 +210,7 @@ private:
 };
 
 struct State {
+    std::string shownView; // the folder (and view) last shown: a new one's files enter in turn
     fs::path dir;
     bool inTrash = false;
     std::vector<std::string> back, forward;
@@ -1244,6 +1245,7 @@ std::shared_ptr<State> filesPane(Flex* card, Popup& popup, const std::string& st
                 tile = host->add<Button>(Flex::Direction::Column);
                 tile->setPadding({8, 8, 8, 10})->setSpacing(6)->setRadius(Radii(20))->setAlignItems(Align::Center);
                 tile->fixedWidth = 132;
+                tile->hoverLift = true;
                 art(st, tile, e, 116, 86, true);
                 auto* name = tile->add<Label>(e.name);
                 name->setSize(13)->setWeight(500)->setMaxWidth(116)->setMaxLines(2)->setCentered(true);
@@ -1263,6 +1265,13 @@ std::shared_ptr<State> filesPane(Flex* card, Popup& popup, const std::string& st
             st->tiles[path] = tile;
         }
         if (shown > kMax) caption(c, std::format("Showing the first {} of {}: search to narrow it down", kMax, st->entries.size()));
+        // Another folder (or view): its files arrive one after another;
+        // the same one refreshed (a file added) stays put
+        const std::string view = std::format("{}|{}|{}|{}", st->inTrash, st->dir.string(), list, st->filter);
+        if (view != st->shownView) {
+            st->shownView = view;
+            stagger(host, list ? 1 : 0);
+        }
         st->paint();
     };
 

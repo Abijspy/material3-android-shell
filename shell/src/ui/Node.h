@@ -122,6 +122,10 @@ public:
     // across and down it: a popup grows from the button that opened it);
     // layout and hit tests ignore it
     void setScale(float s, bool animate = true, int delayMs = 0);
+    // Arrives (fades to 1, slides to 0) once it's first drawn, `delayMs`
+    // after: a new page's first frame can take a while to build, and a list
+    // scrolled into view arrives as it does
+    void enterOnPaint(int delayMs) { m_enterPending = true, m_enterDelay = delayMs; }
     float scaleOriginX = 0.5f, scaleOriginY = 0.5f;
     // A blurred card wears liquid glass's light when that's on; off for
     // what only carries blur (the frame's strips round the screen)
@@ -246,6 +250,8 @@ private:
     Tween m_translateY{0, Spring::spatialDefault()};
     Tween m_translateX{0, Spring::spatialDefault()};
     Tween m_scale{1, Spring::bouncy()};
+    bool m_enterPending = false;
+    int m_enterDelay = 0;
     Host* host() const;
 
     Node* m_parent = nullptr;
@@ -433,6 +439,8 @@ public:
     float pressedRadius = -1;
     // Pressed, it squishes a few pixels and springs back on release
     bool squish = true;
+    // Cards and tiles: rises a little under the pointer (and settles back)
+    bool hoverLift = false;
 
     bool interactive() const override { return true; }
     bool keyboardNavigable() const override { return true; }

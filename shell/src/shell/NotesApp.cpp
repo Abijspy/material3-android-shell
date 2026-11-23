@@ -200,6 +200,7 @@ private:
 enum class View { Notes, Archive, Trash, Label };
 
 struct State {
+    std::string shownView; // what was shown last
     Store store;
     View view = View::Notes;
     std::string label, query, editing, asking; // asking: a note's "time:" or "image:" prompt
@@ -485,6 +486,7 @@ void card(const std::shared_ptr<State>& st, Node* parent, const Note& n) {
     b->setAlignItems(Align::Start);
     b->setBackground(tintOf(n.tint), false);
     b->fixedWidth = 236;
+    b->hoverLift = true;
     if (n.tint == 0) b->setBorder(1, ColorRef("outline_variant", 0.6f));
     if (!n.images.empty()) {
         const std::string pic = n.images.front();
@@ -991,6 +993,22 @@ void notesApp(Flex* card, Popup& popup, const std::string& arg) {
         c->clearChildren();
         if (!st->editing.empty()) editorView(st, c);
         else gridView(st, c);
+        // Somewhere else (a note opened or closed, another list): it
+        // arrives; the same view redrawn (a tick, a colour) stays put
+        const std::string view = std::format("{}|{}|{}", st->editing, static_cast<int>(st->view), st->label);
+        if (view == st->shownView) return;
+        const bool opened = !st->editing.empty();
+        st->shownView = view;
+        if (opened) return pageIn(c, 1);
+        int i = 0;
+        for (const auto& child : c->children()) {
+            if (auto* flow = dynamic_cast<Flow*>(child.get())) {
+                stagger(flow, i);
+                i += static_cast<int>(flow->children().size());
+            } else {
+                enter(child.get(), i++);
+            }
+        }
     };
 
     popup.onKey = [st](const KeyEvent& e) {

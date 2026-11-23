@@ -115,6 +115,12 @@ void Node::doArrange() {
 
 void Node::paint(Renderer& r) {
     if (!shown() || !r.visible(m_rect)) return;
+    if (m_enterPending) {
+        m_enterPending = false;
+        setOpacity(1, true, m_enterDelay);
+        setTranslateX(0, true, m_enterDelay);
+        setTranslateY(0, true, m_enterDelay);
+    }
     const float o = m_opacity.value(), dy = m_translateY.value(), dx = m_translateX.value();
     if (o <= 0.001f) return;
     if (o < 1) r.pushOpacity(o);
@@ -742,6 +748,7 @@ Button::Button(Direction dir) : Flex(dir) {}
 void Button::onHover(bool hovered) {
     m_hovered = hovered;
     m_state.set(hovered ? 0.08f : 0.0f);
+    if (hoverLift) setTranslateY(hovered ? -3.0f : 0.0f);
     requestRedraw();
 }
 

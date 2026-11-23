@@ -18,6 +18,17 @@ class Marquee;
 // Building blocks shared by the popup panels
 namespace m3::shell::kit {
 
+// ── Motion ──
+// Arriving: faded in from a little lower, after `index` beats (a list's
+// items one after another; the delay stops growing after a dozen, so a long
+// list doesn't keep you waiting). Off with Settings' animation speed at 0
+void enter(ui::Node* n, int index = 0, float rise = 14);
+// Each child of `parent` entering in turn (a grid, a list)
+void stagger(ui::Node* parent, int first = 0);
+// A page arriving: faded in, slid from the side it came from (+1 forward,
+// -1 back, 0 from below)
+void pageIn(ui::Node* page, int direction = 1);
+
 // A column that re-runs `sync` whenever a watched service changes, and drops
 // the subscriptions with the popup.
 class Live : public ui::Flex {

@@ -4705,6 +4705,7 @@ void settingsApp(Flex* card, Popup& popup, const std::string& initial) {
         content->setTranslateY(24, false);
         content->setOpacity(1);
         content->setTranslateY(0);
+        kit::stagger(content); // its groups, one after another
         for (size_t i = 0; i < items->size(); ++i) {
             const bool on = i == index;
             auto& it = (*items)[i];

@@ -389,6 +389,7 @@ struct ViewerState {
     EventLoop::TimerId thumbTimer = 0;
     // Favourites and albums: what the gallery shows when not a folder
     std::string collection; // "" (a folder), "fav", "album:<name>"
+    std::string shownGallery; // the gallery last shown: a new one's pictures enter in turn
     std::vector<std::string> galleryPics; // the gallery's, in its order
     Flex *albumsRow = nullptr, *ask = nullptr;
     Icon* favIcon = nullptr;
@@ -430,7 +431,9 @@ void showAt(const std::shared_ptr<ViewerState>& st, std::string file, const std:
         return;
     }
     if (!fs::exists(file, ec)) return;
+    const bool fromGallery = st->gallery && st->gallery->visible();
     viewing(st, true);
+    if (fromGallery) pageIn(st->stage, 0);
     file = fs::weakly_canonical(file, ec).string();
     if (within && std::ranges::find(*within, file) != within->end()) st->pictures = *within;
     else st->pictures = siblings(file);
@@ -447,6 +450,8 @@ void step(const std::shared_ptr<ViewerState>& st, int by) {
     if ((to < 0 || to >= n) && !Config::get().value<bool>("/viewer/loop", true)) return;
     st->index = static_cast<size_t>(((static_cast<long>(st->index) + by) % n + n) % n);
     st->view->show(st->pictures[st->index]);
+    if (!st->sliding) pageIn(st->view, by > 0 ? 1 : -1);
+    else pageIn(st->view, 0);
     st->refresh();
 }
 
@@ -564,6 +569,7 @@ void buildGallery(const std::shared_ptr<ViewerState>& st) {
     for (const auto& pic : pics) {
         auto* b = flow->add<Thumb>();
         b->setPadding(Insets(0))->setRadius(Radii(14));
+        b->hoverLift = true;
         b->tooltip = fs::path(pic.path).filename().string();
         std::string shown = pic.path.ends_with(".svg") ? pic.path : "";
         if (shown.empty()) {
@@ -604,6 +610,11 @@ void buildGallery(const std::shared_ptr<ViewerState>& st) {
             if (button == BTN_LEFT) showAt(st, path, st->collection.empty() ? nullptr : &st->galleryPics);
             if (button == BTN_RIGHT) pictureMenu(st, b, path);
         };
+    }
+    const std::string view = st->collection + "|" + st->galleryDir + "|" + Config::get().value<std::string>("/viewer/sort", "date");
+    if (view != st->shownGallery) {
+        st->shownGallery = view;
+        stagger(flow);
     }
     if (pics.empty())
         caption(g, st->collection == "fav"             ? "No favourites yet: open a picture and press F, or right click one"

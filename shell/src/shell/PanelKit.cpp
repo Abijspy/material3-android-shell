@@ -1,4 +1,6 @@
 #include "shell/PanelKit.h"
+
+#include <algorithm>
 #include "shell/Panels.h"
 
 #include "quickshare/Qr.h"
@@ -20,6 +22,37 @@
 #include <linux/input-event-codes.h>
 
 namespace m3::shell::kit {
+
+void enter(ui::Node* n, int index, float rise) {
+    if (!n || ui::motion::scale <= 0) return;
+    const int delay = std::min(index, 12) * 30;
+    // Gentler than a control's own springs: an arrival, not a reaction
+    n->setFadeSpring(ui::Spring::effectsSlow());
+    n->setMoveSpring(ui::Spring::spatialDefault());
+    n->setOpacity(0, false);
+    n->setTranslateY(rise, false);
+    n->enterOnPaint(delay);
+}
+
+void stagger(ui::Node* parent, int first) {
+    if (!parent || ui::motion::scale <= 0) return;
+    int i = first;
+    for (const auto& c : parent->children()) {
+        if (c->floating) continue;
+        enter(c.get(), i++);
+    }
+}
+
+void pageIn(ui::Node* page, int direction) {
+    if (!page || ui::motion::scale <= 0) return;
+    page->setFadeSpring(ui::Spring::effectsSlow());
+    page->setMoveSpring(ui::Spring::spatialDefault());
+    page->setOpacity(0, false);
+    if (direction == 0) page->setTranslateY(18, false);
+    else page->setTranslateX(28.0f * static_cast<float>(direction), false);
+    page->enterOnPaint(0);
+}
+
 
 using namespace m3::ui;
 
