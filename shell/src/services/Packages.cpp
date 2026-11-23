@@ -510,7 +510,7 @@ void Packages::checkShell(std::function<void()> done) {
         if (done) done();
         return;
     }
-    const std::string script = "d='" + m_shellDir + "'; git -C \"$d\" fetch -q --tags origin 2>/dev/null || exit 1; " +
+    const std::string script = "d='" + m_shellDir + "'; git -C \"$d\" fetch -q --tags --force origin 2>/dev/null || exit 1; " +
                                (channel == "stable"
                                     ? std::string("t=$(git -C \"$d\" describe --tags \"$(git -C \"$d\" rev-list --tags --max-count=1)\" "
                                                   "2>/dev/null); echo \"tag ${t#v}\"")

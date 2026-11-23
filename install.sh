@@ -386,7 +386,7 @@ locate_repo() {
     INSTALL_DIR="${INSTALL_DIR/#\~/$HOME}"
     if [[ -d "$INSTALL_DIR/.git" ]]; then
         echo "Updating $INSTALL_DIR"
-        git -C "$INSTALL_DIR" fetch -q --tags origin
+        git -C "$INSTALL_DIR" fetch -q --tags --force origin
         git -C "$INSTALL_DIR" checkout -q main
         git -C "$INSTALL_DIR" pull -q --ff-only origin main
     else

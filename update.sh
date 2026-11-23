@@ -47,7 +47,7 @@ fi
 
 cd "$INSTALL_DIR"
 echo "Fetching updates..."
-git fetch --tags origin
+git fetch --tags --force origin
 if [[ "$CHANNEL" == stable ]]; then
     tag="$(git describe --tags "$(git rev-list --tags --max-count=1)" 2>/dev/null || true)"
     if [[ -n "$tag" ]]; then
