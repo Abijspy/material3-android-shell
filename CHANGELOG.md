@@ -1,5 +1,16 @@
 # Changelog
 
+## v7.1.5 — 2026-11-23
+
+- **Smoother apps.** Pages and lists arrive instead of appearing at once:
+  - The Store's pages, Settings' pages (their groups one after another), Notes' views and an opened note, and Music's pages fade and slide in.
+  - Files, Photos' gallery, the Store's grids, Notes' cards and Music's albums bring their items in one after another, slightly staggered; a list scrolled into view arrives as it comes.
+  - Photos slides the next picture in from the side you moved to.
+  - Cards and tiles (the Store, Files, Photos, Notes, Music) lift a little under the pointer; clicking the Store tab you're on glides back to the top.
+  - Only navigating animates: a page refreshing itself stays put. Settings → Appearance → Animation speed slows these down or turns them off.
+- **Store:** choosing Installed or Updates no longer closes it.
+- **Updates and the installer** work again after v7.1.4's tag was published a second time: fetching tags no longer stops at a moved tag (install.sh stopped at line 389, and Software & updates didn't show v7.1.4).
+
 ## v7.1.4 — 2026-11-22
 
 - **Store** (`material3ui-store`), a new app for finding, installing and updating apps:
