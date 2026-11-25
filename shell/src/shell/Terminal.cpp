@@ -43,6 +43,7 @@
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <array>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
 namespace fs = std::filesystem;
@@ -87,6 +88,30 @@ Palette palette() {
     const Color surface = t.color("surface");
     const bool dark = 0.2126f * surface.r + 0.7152f * surface.g + 0.0722f * surface.b < 0.5f;
     Palette p;
+    auto hexc = [](const char* h) { return rgbOf(*Color::fromHex(h)); };
+    // A scheme of its own (Settings → Terminal), else the wallpaper's colours
+    const std::string scheme = Config::get().value<std::string>("/terminal/scheme", "theme");
+    auto fixed = [&](const char* bg, const char* fg, const char* cursor, const std::array<const char*, 16>& ansi) {
+        p.bg = hexc(bg);
+        p.fg = hexc(fg);
+        p.cursor = hexc(cursor);
+        p.cursorText = hexc(bg);
+        p.selection = hexc(cursor);
+        for (int i = 0; i < 16; ++i) p.ansi[i] = hexc(ansi[static_cast<size_t>(i)]);
+        return p;
+    };
+    if (scheme == "classic")
+        return fixed("#000000", "#e5e5e5", "#e5e5e5", {"#000000", "#cd0000", "#00cd00", "#cdcd00", "#3b78ff", "#cd00cd", "#00cdcd", "#e5e5e5",
+                                                        "#7f7f7f", "#ff5555", "#55ff55", "#ffff55", "#7aa2ff", "#ff55ff", "#55ffff", "#ffffff"});
+    if (scheme == "solarized")
+        return fixed("#002b36", "#93a1a1", "#93a1a1", {"#073642", "#dc322f", "#859900", "#b58900", "#268bd2", "#d33682", "#2aa198", "#eee8d5",
+                                                        "#586e75", "#cb4b16", "#9cb000", "#d0a000", "#4aa3e8", "#6c71c4", "#45c4b8", "#fdf6e3"});
+    if (scheme == "dracula")
+        return fixed("#282a36", "#f8f8f2", "#f8f8f2", {"#21222c", "#ff5555", "#50fa7b", "#f1fa8c", "#bd93f9", "#ff79c6", "#8be9fd", "#f8f8f2",
+                                                        "#6272a4", "#ff6e6e", "#69ff94", "#ffffa5", "#d6acff", "#ff92df", "#a4ffff", "#ffffff"});
+    if (scheme == "light")
+        return fixed("#fbfbfb", "#2b2b2b", "#2b2b2b", {"#2b2b2b", "#c62828", "#2e7d32", "#8a6400", "#1565c0", "#8e24aa", "#00838f", "#9e9e9e",
+                                                        "#616161", "#e53935", "#43a047", "#a07c00", "#1e88e5", "#ab47bc", "#00acc1", "#5c5c5c"});
     p.bg = rgbOf(t.color("surface_container_lowest"));
     p.fg = rgbOf(t.color("on_surface"));
     p.cursor = rgbOf(t.color("primary"));
@@ -140,9 +165,14 @@ public:
     VTermPos cursor{0, 0};
     std::unique_ptr<PtySource> source;
     std::function<void(int, int)> damaged; // rows from, to (screen rows)
-    std::function<void()> titled, exited, scrolled;
+    std::function<void()> titled, exited, scrolled, belled;
     bool dead = false;
 
+    static int onBell(void* user) {
+        auto* s = static_cast<Session*>(user);
+        if (s->belled) s->belled();
+        return 1;
+    }
     Session(const std::string& dir, const std::vector<std::string>& command) {
         vt = vterm_new(rows, cols);
         vterm_set_utf8(vt, 1);
@@ -153,7 +183,7 @@ public:
             .moverect = nullptr,
             .movecursor = &Session::onMoveCursor,
             .settermprop = &Session::onProp,
-            .bell = nullptr,
+            .bell = &Session::onBell,
             .resize = nullptr,
             .sb_pushline = &Session::onPushLine,
             .sb_popline = &Session::onPopLine,
@@ -478,6 +508,14 @@ public:
         };
         m_configConn = Config::get().changed.connect([this] {
             const float want = static_cast<float>(Config::get().value<double>("/terminal/fontSize", 14.0));
+            const std::string look = Config::get().value<std::string>("/terminal/font", "") + "|" + Config::get().value<std::string>("/terminal/scheme", "theme");
+            if (look != m_look) {
+                m_look = look;
+                m_font.px = 0; // measured again in the new font
+                session->applyPalette();
+                m_palette = palette();
+                damageAll();
+            }
             if (std::abs(want - fontSize) > 0.01f) {
                 fontSize = want;
                 m_font.px = 0;
@@ -698,7 +736,10 @@ protected:
         }
         m_dragging = false;
         // Selected: it's the primary selection too
-        if (m_hasSel) m3::run({"wl-copy", "--primary"}, nullptr, selection());
+        if (m_hasSel) {
+            m3::run({"wl-copy", "--primary"}, nullptr, selection());
+            if (Config::get().value<bool>("/terminal/copyOnSelect", false)) m3::run({"wl-copy"}, nullptr, selection());
+        }
     }
     bool onScroll(int steps) override {
         if (session->mouseMode && m_scroll == 0 && !session->dead) {
@@ -866,7 +907,8 @@ private:
             cairo_font_options_destroy(fo);
         }
         auto make = [&](PangoWeight w, PangoStyle s) {
-            PangoFontDescription* d = pango_font_description_from_string(Theme::get().monoFamily().c_str());
+            const std::string family = Config::get().value<std::string>("/terminal/font", "");
+            PangoFontDescription* d = pango_font_description_from_string((family.empty() ? Theme::get().monoFamily() : family).c_str());
             pango_font_description_set_absolute_size(d, px * PANGO_SCALE);
             pango_font_description_set_weight(d, w);
             pango_font_description_set_style(d, s);
@@ -1058,6 +1100,7 @@ private:
     std::pair<int, int> m_selA{0, 0}, m_selB{0, 0}; // line, column
     EventLoop::Clock::time_point m_lastPress{};
     Connection m_themeConn, m_configConn;
+    std::string m_look = Config::get().value<std::string>("/terminal/font", "") + "|" + Config::get().value<std::string>("/terminal/scheme", "theme");
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };
 
@@ -1153,6 +1196,18 @@ void copySizing(const Node* from, Node* to) {
     to->grow = from->grow;
     to->fixedWidth = from->fixedWidth;
     to->fixedHeight = from->fixedHeight;
+}
+
+void closeTab(const std::shared_ptr<TermState>& st, int tab);
+
+// A tab with something running in it (not just the shell): asked first
+void askCloseTab(const std::shared_ptr<TermState>& st, int tab, Node* from) {
+    const auto vs = st->viewsIn(tab);
+    std::string running;
+    for (auto* v : vs)
+        if (v->session->busy()) running = v->session->title;
+    if (running.empty() || !Config::get().value<bool>("/terminal/confirmClose", true)) return closeTab(st, tab);
+    floatingMenu(from, {MenuItem("close", "Close it anyway", running + " is still running", [st, tab] { closeTab(st, tab); }, false, true)});
 }
 
 void closeTab(const std::shared_ptr<TermState>& st, int tab) {
@@ -1376,6 +1431,18 @@ TermView* makeView(const std::shared_ptr<TermState>& st, Flex* parent, std::stri
         v->paste(text);
         v->focus();
     };
+    // The bell: the terminal blinks, or a notification (Settings)
+    session->belled = [weak, v] {
+        auto s = weak.lock();
+        if (!s || !*s->alive || !s->has(v)) return;
+        const std::string how = Config::get().value<std::string>("/terminal/bell", "flash");
+        if (how == "flash") {
+            v->setOpacity(0.55f, false);
+            v->setOpacity(1);
+        } else if (how == "notify") {
+            m3::run({"notify-send", "-a", "Terminal", "-i", "utilities-terminal", "Terminal", v->session->title + " rang the bell"}, nullptr);
+        }
+    };
     v->onFocused = [weak, v] {
         auto s = weak.lock();
         if (!s || !*s->alive || !s->has(v)) return;
@@ -1429,7 +1496,10 @@ void terminal(Flex* card, Popup& popup, const std::string& dir, const std::vecto
             b->onClicked = [st, i](uint32_t button) {
                 if (button == BTN_LEFT) activate(st, static_cast<int>(i));
             };
-            auto* x = iconButton(b, "close", [st, i] { closeTab(st, static_cast<int>(i)); }, 14);
+            auto* x = iconButton(b, "close", [] {}, 14);
+            x->onClicked = [st, i, x](uint32_t button) {
+                if (button == BTN_LEFT) askCloseTab(st, static_cast<int>(i), x);
+            };
             x->setPadding(Insets(4));
             x->tooltip = "Close tab";
         }
@@ -1470,6 +1540,16 @@ void terminalSettings(Flex* page) {
     auto* s = group(page, "Sessions");
     choiceRow<int>(s, "history", "Scrollback", "Lines kept above the screen", "/terminal/scrollback", 10000, {{2000, "2,000"}, {10000, "10,000"}, {50000, "50,000"}});
     textRow(s, "terminal", "Shell", "/terminal/shell", "");
+    auto* look = group(page, "Look");
+    choiceRow<std::string>(look, "palette", "Colours", "Open terminals follow at once", "/terminal/scheme", "theme",
+                           {{"theme", "Your wallpaper's"}, {"classic", "Classic"}, {"solarized", "Solarized"}, {"dracula", "Dracula"}, {"light", "Light"}});
+    textRow(look, "font_download", "Font", "/terminal/font", "");
+    caption(page, "  A monospace family (JetBrains Mono, Fira Code…); empty, the theme's");
+    auto* b = group(page, "Behaviour");
+    switchRow(b, "content_copy", "Copy what you select", "To the clipboard too, not only for middle-click pasting", "/terminal/copyOnSelect", false);
+    choiceRow<std::string>(b, "notifications", "The bell", "When a program rings it", "/terminal/bell", "flash",
+                           {{"flash", "Blink"}, {"notify", "A notification"}, {"off", "Nothing"}});
+    switchRow(b, "warning", "Ask before closing a busy tab", "When something other than the shell is running in it", "/terminal/confirmClose", true);
     caption(s, "  A command for new tabs (fish, zsh -l, tmux…); empty, your login shell. Enter saves");
     caption(page, "Your terminal's colours come from the wallpaper, as the shell's do");
 }
