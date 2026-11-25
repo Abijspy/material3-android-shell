@@ -135,6 +135,12 @@ bool loadDoc(Doc& d, const std::string& path, std::string& error) {
 }
 
 bool saveDoc(Doc& d, const std::string& path, std::string& error) {
+    // Tidied first, as Settings asks: spaces left at line ends, and the
+    // newline a file ends with
+    if (Config::get().value<bool>("/text/trimOnSave", false))
+        for (auto& l : d.lines)
+            while (!l.empty() && (l.back() == ' ' || l.back() == '\t')) l.pop_back();
+    if (Config::get().value<bool>("/text/finalNewline", true)) d.finalNewline = true;
     std::string out = d.text();
     if (d.latin1) {
         gsize n = 0;
@@ -444,7 +450,8 @@ public:
 
     TextStyle style() const {
         TextStyle s;
-        s.family = Theme::get().monoFamily();
+        const std::string font = Config::get().value<std::string>("/text/font", "");
+        s.family = font.empty() ? Theme::get().monoFamily() : font;
         s.size = fontSize;
         return s;
     }
@@ -1034,6 +1041,7 @@ struct State {
     Label* status = nullptr;
     TextField *findField = nullptr, *replaceField = nullptr;
     bool matchCase = false;
+    EventLoop::TimerId autosaveTimer = 0;
     Popup* popup = nullptr;
     std::function<void()> rebuildTabs, refreshStatus;
     std::shared_ptr<bool> alive = std::make_shared<bool>(true);
@@ -1052,6 +1060,12 @@ public:
     explicit TextKeeper(std::shared_ptr<State> st) : m_st(std::move(st)) { floating = true; }
     ~TextKeeper() override {
         *m_st->alive = false;
+        if (m_st->autosaveTimer) EventLoop::get().cancel(m_st->autosaveTimer);
+        // What was open, for next time (Settings → reopen them)
+        std::vector<std::string> open;
+        for (auto& t : m_st->tabs)
+            if (!t.doc->path.empty()) open.push_back(t.doc->path);
+        Config::get().set("/text/session", open);
         // Unsaved work isn't lost: copies kept, and said where
         std::error_code ec;
         for (auto& t : m_st->tabs) {
@@ -1113,8 +1127,19 @@ void addTab(const std::shared_ptr<State>& st, const std::string& path) {
     auto* ed = st->stack->add<Editor>(doc);
     ed->grow = true;
     std::weak_ptr<State> weak = st;
-    ed->onChanged = [weak] {
-        if (auto s = weak.lock(); s && *s->alive && s->rebuildTabs) s->rebuildTabs(), s->refreshStatus();
+    ed->onChanged = [weak, doc] {
+        auto s = weak.lock();
+        if (!s || !*s->alive) return;
+        if (s->rebuildTabs) s->rebuildTabs(), s->refreshStatus();
+        // Auto-save: a file that has a name, a moment after typing stops
+        if (!Config::get().value<bool>("/text/autosave", false) || doc->path.empty()) return;
+        EventLoop::get().debounce(s->autosaveTimer, 1500, [weak, doc] {
+            auto s2 = weak.lock();
+            if (!s2 || !*s2->alive || !doc->modified || doc->path.empty()) return;
+            std::string err;
+            if (!saveDoc(*doc, doc->path, err)) m3::run({"notify-send", "-a", "Text Editor", "-i", "dialog-error", "Couldn't save", err}, nullptr);
+            if (s2->rebuildTabs) s2->rebuildTabs(), s2->refreshStatus();
+        });
     };
     ed->onMoved = [weak] {
         if (auto s = weak.lock(); s && *s->alive && s->refreshStatus) s->refreshStatus();
@@ -1508,6 +1533,15 @@ void textEditor(Flex* card, Popup& popup, const std::string& file) {
     textGo = [st](const std::string& f) {
         if (*st->alive) addTab(st, f);
     };
+    // Opened with no file: last time's files, when Settings says so
+    if (file.empty() && Config::get().value<bool>("/text/reopen", false)) {
+        const auto last = Config::get().value<std::vector<std::string>>("/text/session", {});
+        std::error_code ec;
+        bool any = false;
+        for (const auto& f : last)
+            if (fs::is_regular_file(f, ec)) addTab(st, f), any = true;
+        if (any) return;
+    }
     addTab(st, file);
 }
 
@@ -1522,6 +1556,13 @@ void textSettings(Flex* page) {
     choiceRow<int>(i, "keyboard_tab", "Tab width", "How wide a tab shows, and what Tab indents by", "/text/tabWidth", 4, {{2, "2"}, {4, "4"}, {8, "8"}});
     choiceRow<std::string>(i, "format_indent_increase", "Indent with", "Tab, Shift+Tab and new lines", "/text/indent", "auto",
                            {{"auto", "Like the file"}, {"spaces", "Spaces"}, {"tabs", "Tabs"}});
+    textRow(g, "font_download", "Font", "/text/font", "");
+    caption(page, "  A monospace family (JetBrains Mono, Fira Code…); empty, the theme's");
+    auto* f = group(page, "Files");
+    switchRow(f, "save", "Save automatically", "A moment after you stop typing, for files that have a name", "/text/autosave", false);
+    switchRow(f, "content_cut", "Remove spaces at line ends", "When saving", "/text/trimOnSave", false);
+    switchRow(f, "keyboard_return", "End files with a newline", "When saving, as most tools expect", "/text/finalNewline", true);
+    switchRow(f, "history", "Reopen your files", "Opened on its own, the editor shows the files that were open last time", "/text/reopen", false);
     caption(page, "Unsaved changes are kept in " + fileops::displayPath(recoveryDir()) + " when the window closes");
 }
 
