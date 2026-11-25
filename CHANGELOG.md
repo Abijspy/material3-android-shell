@@ -1,5 +1,31 @@
 # Changelog
 
+## v7.2.0 — 2026-11-25
+
+- **Tooltips everywhere.** Rest the pointer on any icon button, in every app, Settings and the launcher, and it says what it does (Back, More options, Delete…). Tooltips now show inside app windows too, not only on the bar and dock.
+- **Files:**
+  - Undo (<kbd>Ctrl</kbd><kbd>Z</kbd>) for renames, moves, copies, pastes, duplicates, new files and folders, archives, and moving to the trash.
+  - Bookmarks in the side bar (<kbd>Ctrl</kbd><kbd>B</kbd> or right-click), shared with other file managers; a Recent place for files opened lately.
+  - New empty file (<kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>N</kbd>) and new files from ~/Templates; Duplicate (<kbd>Ctrl</kbd><kbd>D</kbd>) and Make a link.
+  - Rename several at once with a numbered pattern, or find and replace.
+  - Search in every folder below this one; type a name to jump to it; <kbd>Ctrl</kbd><kbd>I</kbd> inverts the selection.
+  - Reverse order, bigger and smaller icons (<kbd>Ctrl</kbd><kbd>=</kbd> / <kbd>Ctrl</kbd><kbd>−</kbd> / <kbd>Ctrl</kbd><kbd>0</kbd>), a file's SHA-256 in the details pane, and compressing to .tar.gz, .tar.xz and .7z as well as ZIP.
+- **Text Editor:** word wrap (Settings, or <kbd>Alt</kbd><kbd>Z</kbd>); save automatically; remove trailing spaces and end with a newline on save; a font of your own; reopen the files that were open last time.
+- **Terminal:** colour schemes (the wallpaper's, Classic, Solarized, Dracula, Light), a font of your own, copy on select, the bell as a blink, a notification or nothing, and asking before closing a tab where something is running.
+- **Videos:** how far the arrow keys skip, looping, a starting speed, and whether subtitles start on.
+- **Music:** a sleep timer (15 to 90 minutes, or at the end of the song), carry on where you left off, album order (artist, name, year, recently added), and keys N, P, M, R, ↑ ↓.
+- **Photos:** turn pictures left and right (R, Shift+R), copy a picture (<kbd>Ctrl</kbd><kbd>C</kbd>), fit small pictures to the window, and ask before trashing.
+- **Notes:** text size, how much of a note its card shows, and Export every note as Markdown.
+- **PDF:** each PDF opens at the page you left it on.
+- **Camera:** photos as JPEG or PNG, a shutter sound, video quality, and the timer remembered.
+- **Sound Recorder:** quality (smaller, balanced, best) and stereo or mono.
+- **Calculator:** decimal places, thousands separators and how many sums are remembered.
+- **Store** and **Task Manager:** choose the tab they open on.
+- **Fonts:** preview sizes, and the filter remembered.
+- **Disks:** show loop devices (attached ISOs and snaps); Space can count other drives mounted inside a folder.
+- **Backups:** a notification after the daily backup: every time, only when it fails, or never.
+- **Image Writer:** eject the drive by itself after a good write.
+
 ## v7.1.6 — 2026-11-23
 
 - **Files:** double-clicking a folder opens it again instead of closing Files.
