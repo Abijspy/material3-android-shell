@@ -15,6 +15,7 @@
 #include "core/Config.h"
 #include "core/EventLoop.h"
 #include "core/Paths.h"
+#include <nlohmann/json.hpp>
 #include "core/Process.h"
 #include "render/Renderer.h"
 #include "services/FileOps.h"
@@ -33,6 +34,7 @@
 #include <cmath>
 #include <deque>
 #include <filesystem>
+#include <fstream>
 #include <format>
 #include <linux/input-event-codes.h>
 #include <memory>
@@ -87,6 +89,8 @@ struct Match {
 
 struct PageView;
 
+void rememberPage(const std::string& path, int page);
+
 struct State {
     PopplerDocument* doc = nullptr;
     std::string path, password;
@@ -128,9 +132,41 @@ struct State {
     std::deque<PageView*> lru; // pages with a rendered texture, oldest first
 
     ~State() {
+        if (doc && Config::get().value<bool>("/pdf/resume", true)) rememberPage(path, current);
         if (doc) g_object_unref(doc);
     }
 };
+
+// The page each PDF was left at, to open it there again (Settings)
+std::string pagesFile() {
+    return paths::stateDir() + "/pdf-pages.json";
+}
+void rememberPage(const std::string& path, int page) {
+    if (path.empty()) return;
+    nlohmann::json j = nlohmann::json::object();
+    try {
+        std::ifstream in(pagesFile());
+        if (in) j = nlohmann::json::parse(in);
+    } catch (...) {
+    }
+    if (!j.is_object()) j = nlohmann::json::object();
+    j[path] = page;
+    // The 200 most recent are plenty
+    while (j.size() > 200) j.erase(j.begin());
+    std::error_code ec;
+    fs::create_directories(paths::stateDir(), ec);
+    std::ofstream(pagesFile()) << j.dump();
+}
+int lastPage(const std::string& path) {
+    try {
+        std::ifstream in(pagesFile());
+        if (!in) return 0;
+        const auto j = nlohmann::json::parse(in);
+        return j.is_object() ? j.value(path, 0) : 0;
+    } catch (...) {
+        return 0;
+    }
+}
 
 std::string uriOf(const std::string& path) {
     GError* e = nullptr;
@@ -1032,6 +1068,7 @@ void askPassword(const std::shared_ptr<State>& st, const std::string& path, bool
 
 void openPdf(const std::shared_ptr<State>& st, const std::string& path) {
     if (st->dirty && st->doc) saveCopy(st);
+    if (st->doc && Config::get().value<bool>("/pdf/resume", true)) rememberPage(st->path, st->current);
     std::string err;
     st->current = 0;
     if (!load(st, path, &err)) {
@@ -1044,6 +1081,11 @@ void openPdf(const std::shared_ptr<State>& st, const std::string& path) {
     st->toolbar->setVisible(true);
     if (st->rebuildPages) st->rebuildPages();
     if (st->rebuildBars) st->rebuildBars();
+    // Where it was left, last time
+    if (const int page = Config::get().value<bool>("/pdf/resume", true) ? lastPage(path) : 0; page > 0 && page < st->pages)
+        EventLoop::get().addTimer(50, [st, page, alive = st->alive] {
+            if (*alive) jumpTo(st, page);
+        });
 }
 
 void setTool(std::shared_ptr<State> st, Tool t) {
@@ -1627,6 +1669,7 @@ void pdfSettings(Flex* page) {
     choiceRow<std::string>(g, "zoom_in", "Zoom", "", "/pdf/zoom", "fit", {{"fit", "Fit the width"}, {"100", "100%"}, {"150", "150%"}});
     switchRow(g, "dark_mode", "Night mode", "Dark pages with light text (N)", "/pdf/night", false);
     switchRow(g, "view_sidebar", "Page thumbnails", "The pages down the side (F9)", "/pdf/thumbs", false);
+    switchRow(g, "history", "Open where you left off", "Each PDF opens at the page it was closed at", "/pdf/resume", true);
     auto* e = group(page, "Editing");
     choiceRow<std::string>(e, "save", "Unsaved changes when closing", "", "/pdf/onClose", "copy", {{"copy", "Keep an (edited) copy"}, {"discard", "Let them go"}});
     auto r = row(e, "signature", "Your signature", Config::get().value<nlohmann::json>("/pdf/signature", nlohmann::json::array()).empty() ? "None yet: draw one with the Signature tool" : "Kept for placing on any PDF");
