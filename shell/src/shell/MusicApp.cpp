@@ -199,7 +199,9 @@ struct State {
     std::string nowCoverPath;
     std::function<void()> show, sidebar, refreshBar;
     std::shared_ptr<bool> alive = std::make_shared<bool>(true);
-    EventLoop::TimerId saveTimer = 0, uiTimer = 0;
+    EventLoop::TimerId saveTimer = 0, uiTimer = 0, sleepTimer = 0;
+    bool sleepAfterSong = false; // the sleep timer: when this song ends
+    std::time_t sleepAt = 0;
 };
 
 // ── The library ──
@@ -490,7 +492,16 @@ void handleEvents(const std::shared_ptr<State>& st) {
         if (e->event_id != MPV_EVENT_PROPERTY_CHANGE) continue;
         const auto* pr = static_cast<mpv_event_property*>(e->data);
         const std::string n = pr->name;
-        if (pr->format == MPV_FORMAT_INT64 && n == "playlist-pos") st->pos = static_cast<int>(*static_cast<int64_t*>(pr->data));
+        if (pr->format == MPV_FORMAT_INT64 && n == "playlist-pos") {
+            const int now = static_cast<int>(*static_cast<int64_t*>(pr->data));
+            // The sleep timer said "when this song ends": the next one waits
+            if (st->sleepAfterSong && now != st->pos && st->pos >= 0) {
+                st->sleepAfterSong = false;
+                st->player->flag("pause", true);
+                m3::run({"notify-send", "-a", "Music", "-i", "audio-x-generic", "Music paused", "The sleep timer"}, nullptr);
+            }
+            st->pos = now;
+        }
         else if (pr->format == MPV_FORMAT_DOUBLE && n == "time-pos") st->time = *static_cast<double*>(pr->data);
         else if (pr->format == MPV_FORMAT_DOUBLE && n == "duration") st->length = *static_cast<double*>(pr->data);
         else if (pr->format == MPV_FORMAT_DOUBLE && n == "volume") st->volume = *static_cast<double*>(pr->data);
@@ -678,6 +689,16 @@ void page(const std::shared_ptr<State>& st) {
         c->add<Label>("Albums")->setSize(26)->setWeight(500);
         std::vector<Album*> all;
         for (auto& a : st->albums) all.push_back(&a);
+        // In the order Settings asks: by artist (as read), name, year, or newest added
+        const std::string order = Config::get().value<std::string>("/music/albumSort", "artist");
+        auto newest = [st](const Album* a) {
+            std::time_t t = 0;
+            for (int i : a->tracks) t = std::max(t, st->tracks[static_cast<size_t>(i)].mtime);
+            return t;
+        };
+        if (order == "name") std::ranges::stable_sort(all, [](const Album* a, const Album* b) { return lower(a->name) < lower(b->name); });
+        else if (order == "year") std::ranges::stable_sort(all, [](const Album* a, const Album* b) { return a->year > b->year; });
+        else if (order == "recent") std::ranges::stable_sort(all, [&](const Album* a, const Album* b) { return newest(a) > newest(b); });
         albumGrid(st, c, all);
         break;
     }
@@ -828,6 +849,12 @@ public:
         *m_st->alive = false;
         if (m_st->saveTimer) EventLoop::get().cancel(m_st->saveTimer);
         if (m_st->uiTimer) EventLoop::get().cancel(m_st->uiTimer);
+        if (m_st->sleepTimer) EventLoop::get().cancel(m_st->sleepTimer);
+        // Where you were, for next time (Settings → carry on)
+        std::vector<std::string> queue;
+        for (int t : m_st->queue)
+            if (t >= 0 && t < static_cast<int>(m_st->tracks.size())) queue.push_back(m_st->tracks[static_cast<size_t>(t)].path);
+        Config::get().set("/music/session", nlohmann::json{{"queue", queue}, {"pos", m_st->pos}, {"time", m_st->time}});
         saveCache(m_st);
         if (m_st->player) m_st->player->onEvents = nullptr;
         m_st->show = m_st->sidebar = m_st->refreshBar = nullptr;
@@ -841,6 +868,38 @@ private:
 };
 
 } // namespace
+
+// The sleep timer: playing stops after a while, or when this song ends
+void setSleep(const std::shared_ptr<State>& st, int minutes, bool afterSong) {
+    if (st->sleepTimer) EventLoop::get().cancel(st->sleepTimer);
+    st->sleepTimer = 0;
+    st->sleepAt = 0;
+    st->sleepAfterSong = afterSong;
+    if (minutes > 0) {
+        st->sleepAt = std::time(nullptr) + minutes * 60;
+        st->sleepTimer = EventLoop::get().addTimer(minutes * 60 * 1000, [st] {
+            if (!*st->alive) return;
+            st->sleepTimer = 0;
+            st->sleepAt = 0;
+            st->player->flag("pause", true);
+            m3::run({"notify-send", "-a", "Music", "-i", "audio-x-generic", "Music paused", "The sleep timer"}, nullptr);
+            if (st->refreshBar) st->refreshBar();
+        });
+    }
+    if (st->refreshBar) st->refreshBar();
+}
+
+void sleepMenu(const std::shared_ptr<State>& st, Node* from) {
+    std::vector<MenuItem> m;
+    const bool on = st->sleepAt || st->sleepAfterSong;
+    for (int mins : {15, 30, 45, 60, 90}) m.emplace_back("bedtime", std::format("In {} minutes", mins), "", [st, mins] { setSleep(st, mins, false); });
+    m.emplace_back("music_note", "When this song ends", "", [st] { setSleep(st, 0, true); }, st->sleepAfterSong);
+    if (on) {
+        std::string left = st->sleepAfterSong ? "after this song" : std::format("{} min left", std::max<long>(1, (st->sleepAt - std::time(nullptr) + 59) / 60));
+        m.emplace_back("timer_off", "Turn off the sleep timer", left, [st] { setSleep(st, 0, false); }, false, true, true, true);
+    }
+    floatingMenu(from, m);
+}
 
 void musicApp(Flex* card, Popup& popup, const std::string& file) {
     auto st = std::make_shared<State>();
@@ -918,6 +977,11 @@ void musicApp(Flex* card, Popup& popup, const std::string& file) {
         auto* rp = iconButton(ctl, "repeat", [st] { setRepeat(st, (st->repeat + 1) % 3); }, 20);
         rp->tooltip = "Repeat: off, all, one";
         st->repeatIcon = dynamic_cast<Icon*>(rp->children().front().get());
+        Button* sleep = iconButton(ctl, "bedtime", [] {}, 20);
+        sleep->tooltip = "Sleep timer";
+        sleep->onClicked = [st, sleep](uint32_t b) {
+            if (b == BTN_LEFT) sleepMenu(st, sleep);
+        };
         auto* seekRow = mid->add<Flex>(Flex::Direction::Row);
         seekRow->setSpacing(10)->setAlignItems(Align::Center);
         st->tPos = seekRow->add<Label>("0:00");
@@ -1035,6 +1099,20 @@ void musicApp(Flex* card, Popup& popup, const std::string& file) {
             return true;
         }
         if (e.sym == XKB_KEY_space) return st->player->cmd({"cycle", "pause"}), true;
+        if (!e.ctrl() && !(e.mods & ModAlt)) {
+            switch (e.sym) {
+            case XKB_KEY_n: return st->player->cmd({"playlist-next"}), true;
+            case XKB_KEY_p:
+                if (st->time > 3) st->player->cmd({"seek", "0", "absolute"});
+                else st->player->cmd({"playlist-prev"});
+                return true;
+            case XKB_KEY_m: return st->player->cmd({"cycle", "mute"}), true;
+            case XKB_KEY_r: return setRepeat(st, (st->repeat + 1) % 3), true;
+            case XKB_KEY_Up: return st->player->num("volume", std::min(130.0, st->volume + 5)), true;
+            case XKB_KEY_Down: return st->player->num("volume", std::max(0.0, st->volume - 5)), true;
+            default: break;
+            }
+        }
         if (e.ctrl() && e.sym == XKB_KEY_Right) return st->player->cmd({"playlist-next"}), true;
         if (e.ctrl() && e.sym == XKB_KEY_Left) return st->player->cmd({"playlist-prev"}), true;
         if (e.sym == XKB_KEY_Right) return st->player->cmd({"seek", "5", "relative"}), true;
@@ -1060,6 +1138,30 @@ void musicApp(Flex* card, Popup& popup, const std::string& file) {
         playQueue(st, {static_cast<int>(st->tracks.size()) - 1}, 0);
     };
     scan(st);
+    // Carry on where you were: last time's queue, paused at its place
+    if (file.empty() && Config::get().value<bool>("/music/resume", true)) {
+        const auto sess = Config::get().value<nlohmann::json>("/music/session", nlohmann::json());
+        std::vector<int> list;
+        if (sess.is_object())
+            for (const auto& p : sess.value("queue", nlohmann::json::array()))
+                if (p.is_string())
+                    if (auto it = st->byPath.find(p.get<std::string>()); it != st->byPath.end()) list.push_back(it->second);
+        if (!list.empty()) {
+            const int pos = std::clamp(sess.value("pos", 0), 0, static_cast<int>(list.size()) - 1);
+            const double at = sess.value("time", 0.0);
+            const bool shuffle = st->shuffle;
+            st->shuffle = false; // the queue as it was
+            playQueue(st, list, pos);
+            st->shuffle = shuffle;
+            st->player->flag("pause", true);
+            if (at > 1)
+                EventLoop::get().addTimer(400, [st, at] {
+                    if (!*st->alive) return;
+                    const std::string t = std::format("{:.1f}", at);
+                    st->player->cmd({"seek", t.c_str(), "absolute"});
+                });
+        }
+    }
     st->sidebar();
     st->show();
     st->refreshBar();
@@ -1088,6 +1190,10 @@ void musicSettings(Flex* page) {
     auto* p = group(page, "Playback", "From the next time Music opens");
     switchRow(p, "linear_scale", "Gapless", "One song runs into the next, as on the album", "/music/gapless", true);
     switchRow(p, "equalizer", "Even out loudness", "ReplayGain, where the songs have it", "/music/replaygain", true);
+    switchRow(p, "history", "Carry on where you left off", "Opening Music brings back the queue, paused at the song and second it was at", "/music/resume", true);
+    auto* v = group(page, "Albums");
+    choiceRow<std::string>(v, "sort", "Order", "", "/music/albumSort", "artist", {{"artist", "By artist"}, {"name", "By name"}, {"year", "Newest release first"}, {"recent", "Recently added"}});
+    caption(page, "  Keys: Space plays or pauses, N and P next and previous, ← → skip 5 s, ↑ ↓ volume, M mutes, R repeats");
     caption(page, fs::exists("/usr/lib/mpv-mpris/mpris.so") ? "The bar, the lock screen and lyrics follow Music (mpv-mpris)"
                                                              : "For the bar, the lock screen and lyrics to follow Music: sudo pacman -S mpv-mpris");
 }
