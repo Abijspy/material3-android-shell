@@ -524,7 +524,11 @@ void card(const std::shared_ptr<State>& st, Node* parent, const Note& n) {
         if (shown > 8) caption(b, std::format("+ {} more", shown - 8));
         if (done) caption(b, std::format("{} ticked", done));
     } else if (!n.body.empty()) {
-        b->add<Label>(n.body.size() > 600 ? n.body.substr(0, 600) + "…" : n.body)->setSize(13)->setMaxWidth(204)->setMaxLines(10)->setColor("on_surface", false);
+        b->add<Label>(n.body.size() > 600 ? n.body.substr(0, 600) + "…" : n.body)
+            ->setSize(13)
+            ->setMaxWidth(204)
+            ->setMaxLines(std::clamp(Config::get().value<int>("/notes/previewLines", 10), 2, 30))
+            ->setColor("on_surface", false);
     }
     if (n.remind && !n.trashed) {
         auto* chip = b->add<Flex>(Flex::Direction::Row);
@@ -732,7 +736,7 @@ void editorView(const std::shared_ptr<State>& st, Flex* c) {
     TextArea* body = nullptr;
     if (!n->checklist) {
         body = sheet->add<TextArea>();
-        body->setSize(16)->setMinLines(10)->setPlaceholder("Note");
+        body->setSize(static_cast<float>(std::clamp(Config::get().value<double>("/notes/fontSize", 16.0), 11.0, 28.0)))->setMinLines(10)->setPlaceholder("Note");
         body->setText(n->body);
         body->onChanged = [st, id](const std::string& t) {
             if (Note* x = st->store.find(id)) x->body = t, touch(st, *x);
@@ -1045,6 +1049,27 @@ void notesSettings(Flex* page) {
     for (int i = 0; i < kTintCount; ++i) tints.push_back({std::to_string(i), kTints[i].name});
     dropdown(r.row, g, kTints[std::clamp(Config::get().value<int>("/notes/tint", 0), 0, kTintCount - 1)].name, tints,
              [](const std::string& v) { Config::get().set("/notes/tint", std::stoi(v)); });
+    choiceRow<double>(g, "format_size", "Text size", "In an open note", "/notes/fontSize", 16.0, {{14.0, "Small"}, {16.0, "Normal"}, {19.0, "Large"}, {22.0, "Larger"}});
+    choiceRow<int>(g, "notes", "On a card", "How much of a note its card shows", "/notes/previewLines", 10, {{4, "4 lines"}, {10, "10 lines"}, {20, "20 lines"}});
+    auto ex = row(g, "download", "Export every note", "As Markdown files, in Documents/Notes");
+    pillButton(ex.row, "Export", false, [] {
+        Store s;
+        s.load();
+        const char* docs = std::getenv("XDG_DOCUMENTS_DIR");
+        const std::string dir = (docs && *docs ? std::string(docs) : paths::home() + "/Documents") + "/Notes";
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        int n = 0;
+        for (const auto& note : s.notes) {
+            if (note.trashed || note.empty()) continue;
+            std::string name = note.title.empty() ? "Note" : note.title;
+            for (auto& c : name)
+                if (c == '/') c = '-';
+            paths::writeFile(dir + "/" + fileops::freeName(dir, name + ".md"), note.asText());
+            ++n;
+        }
+        m3::run({"notify-send", "-a", "Notes", "-i", "document-save", std::format("Exported {} notes", n), fileops::displayPath(dir)}, nullptr);
+    }, "download");
     auto* t = group(page, "Trash");
     choiceRow<int>(t, "delete", "Keep notes in the trash", "Then they're deleted for good", "/notes/trashDays", 7, {{7, "7 days"}, {30, "30 days"}, {0, "Until emptied"}});
     caption(page, std::string("Your notes are kept in ") + fileops::displayPath(storePath()));
