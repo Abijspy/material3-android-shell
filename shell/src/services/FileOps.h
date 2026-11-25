@@ -59,9 +59,12 @@ std::vector<Place> devices(); // drives mounted under /run/media and /media, and
 
 // Operations: `done` runs on the event loop with an error ("" when all went)
 using Done = std::function<void(const std::string& error)>;
-void copy(const std::vector<std::string>& sources, const std::string& dir, Done done = {});
-void move(const std::vector<std::string>& sources, const std::string& dir, Done done = {});
-void trash(const std::vector<std::string>& paths, Done done = {});
+// Each returns where every item goes (from, to), as queued: what undoing
+// it needs (a trashed item's place in the trash; not for another drive's)
+using Moves = std::vector<std::pair<std::string, std::string>>;
+Moves copy(const std::vector<std::string>& sources, const std::string& dir, Done done = {});
+Moves move(const std::vector<std::string>& sources, const std::string& dir, Done done = {});
+Moves trash(const std::vector<std::string>& paths, Done done = {});
 void remove(const std::vector<std::string>& paths, Done done = {}); // for good
 std::string rename(const std::string& path, const std::string& name); // the error, "" when renamed
 std::string makeFolder(const std::string& dir, const std::string& name, std::string* made = nullptr);

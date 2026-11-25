@@ -84,6 +84,8 @@ std::vector<SearchResult> query(const std::string& text);
 // Files lately opened with an app, or of a kind it opens, newest first (from
 // recently-used.xbel, which GTK apps write too)
 std::vector<std::string> recentFor(const Apps::App& app, size_t max = 5);
+// Every file opened lately (still there), newest first
+std::vector<std::string> recentPaths(size_t max = 80);
 // Adds a file there as opened by an app ("Text Editor", "material3ui-text")
 void recordRecent(const std::string& path, const std::string& appName, const std::string& exec);
 // Providers that run a process report back asynchronously

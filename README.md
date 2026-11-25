@@ -195,7 +195,13 @@ From the moment the machine boots:
 - **Right-click menu:** Open with, cut, copy, paste, rename, the trash, Quick Share and the wallpaper.
 - **The trash:** shared with other file managers. Restore files from it, or empty it.
 - **Preview and properties:** a pane (F9) previews pictures, videos, PDFs and text, and lists size, dates, type, owner, permissions and free space. A switch lets a script run.
-- **ZIP and unzip:** compress to ZIP, or extract ZIP, tar, 7z, rar and ISO files.
+- **Compress and extract:** compress to ZIP, .tar.gz, .tar.xz or .7z, or extract ZIP, tar, 7z, rar and ISO files.
+- **Undo:** Ctrl+Z takes back renames, moves, copies, new files and folders, and moving to the trash.
+- **Making things:** new folders, new empty files and files from your Templates folder, duplicates (Ctrl+D) and links.
+- **Renaming several at once:** a numbered pattern (Trip ## → Trip 01, Trip 02…) or a find-and-replace across their names.
+- **Bookmarks and Recent:** pin folders to the side bar (Ctrl+B, shared with GTK file managers), and a Recent place for files opened lately.
+- **Finding:** search this folder or every folder under it, type a name to jump to it, invert the selection (Ctrl+I), reverse the sort order, and make icons bigger or smaller (Ctrl+= and Ctrl+−).
+- **Checksums:** a file's SHA-256 in the details pane.
 - **Drives and servers:** open USB drives from the side bar, and eject them safely. Connect to FTP, SFTP and WebDAV servers.
 
 Pictures open in **Photos**, the shell's image viewer, in any format: everyday ones, HEIC, AVIF, JPEG XL and OpenEXR, and also Photoshop, GIMP and camera RAW files, plus animated GIFs. From the app list it opens to a gallery of your pictures, newest first. Zoom with the wheel or +/−, step through the folder with the arrow keys, and edit, set as wallpaper or move to the trash from its bar. Mark favourites with <kbd>F</kbd>, gather pictures into albums without moving them, and press <kbd>F5</kbd> for a fullscreen slideshow.

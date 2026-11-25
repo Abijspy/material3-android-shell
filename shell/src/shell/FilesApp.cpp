@@ -213,6 +213,11 @@ struct State {
     std::string shownView; // the folder (and view) last shown: a new one's files enter in turn
     fs::path dir;
     bool inTrash = false;
+    bool inRecent = false; // the Recent place: files opened lately, wherever they are
+    bool special() const { return inTrash || inRecent; } // not a folder you can add to
+    std::string typed;                 // type to select: the letters so far
+    Clock::time_point typedAt;
+    std::map<std::string, std::string> checksums; // path → SHA-256, asked for in the pane
     std::vector<std::string> back, forward;
     std::vector<Entry> entries;               // shown: filtered and sorted
     std::map<std::string, std::string> origin; // the trash: where each came from
@@ -269,6 +274,136 @@ bool isSelected(const State& st, const std::string& p) {
 }
 
 // st and the place are copies: the button that asks is often one this rebuilds
+// ── Undo ──
+// What was just done, undone with Ctrl+Z: renames named back, moves moved
+// back, copies and new files to the trash, the trashed restored. Deleting
+// for good can't be undone (it asks first)
+struct UndoStep {
+    std::string label;
+    std::function<void()> undo;
+};
+std::vector<UndoStep> g_undo;
+
+void pushUndo(const std::string& label, std::function<void()> undo) {
+    g_undo.push_back({label, std::move(undo)});
+    if (g_undo.size() > 40) g_undo.erase(g_undo.begin());
+}
+
+void notifyFiles(const std::string& text) {
+    m3::run({"notify-send", "-a", "Files", "-i", "folder", "Files", text}, nullptr);
+}
+
+void reportDone(const std::string& err) {
+    if (!err.empty()) notifyFiles(err);
+}
+
+// Copies made: undone by sending them to the trash
+void undoableCopies(const std::string& label, const fileops::Moves& moves) {
+    std::vector<std::string> made;
+    for (const auto& [from, to] : moves) made.push_back(to);
+    if (!made.empty()) pushUndo(label, [made] { fileops::trash(made, reportDone); });
+}
+
+// Moves made: undone by moving each back where it was
+void undoableMoves(const std::string& label, const fileops::Moves& moves) {
+    if (moves.empty()) return;
+    pushUndo(label, [moves] {
+        for (const auto& [from, to] : moves) {
+            std::error_code ec;
+            if (fs::exists(from, ec)) continue; // something new is there now
+            fs::rename(to, from, ec);
+            if (ec) fileops::move({to}, fs::path(from).parent_path().string(), reportDone);
+        }
+    });
+}
+
+// The trashed: undone by restoring them
+void undoableTrash(const fileops::Moves& moves) {
+    std::vector<std::string> inTrash;
+    for (const auto& [from, to] : moves) inTrash.push_back(to);
+    if (!inTrash.empty())
+        pushUndo(inTrash.size() == 1 ? "Move to the trash" : std::format("Move {} items to the trash", inTrash.size()),
+                 [inTrash] { fileops::restore(inTrash, reportDone); });
+}
+
+// ── Bookmarks: folders pinned to the side bar ──
+// GTK's list (~/.config/gtk-3.0/bookmarks), so other file managers and file
+// pickers share them: "file:///path Name", a line each
+std::string bookmarksFile() {
+    const char* x = std::getenv("XDG_CONFIG_HOME");
+    return (x && *x ? std::string(x) : paths::home() + "/.config") + "/gtk-3.0/bookmarks";
+}
+
+std::string uriDecodePath(const std::string& uri) {
+    std::string p;
+    for (size_t i = 7; i < uri.size(); ++i) {
+        if (uri[i] == '%' && i + 2 < uri.size()) {
+            p += static_cast<char>(std::strtol(uri.substr(i + 1, 2).c_str(), nullptr, 16));
+            i += 2;
+        } else {
+            p += uri[i];
+        }
+    }
+    return p;
+}
+
+std::vector<std::pair<std::string, std::string>> bookmarks() {
+    std::vector<std::pair<std::string, std::string>> out;
+    std::ifstream in(bookmarksFile());
+    for (std::string line; std::getline(in, line);) {
+        if (!line.starts_with("file://")) continue;
+        const size_t sp = line.find(' ');
+        const std::string path = uriDecodePath(line.substr(0, sp));
+        std::string name = sp == std::string::npos ? fs::path(path).filename().string() : line.substr(sp + 1);
+        if (name.empty()) name = path;
+        out.emplace_back(path, name);
+    }
+    return out;
+}
+
+bool bookmarked(const std::string& path) {
+    return std::ranges::any_of(bookmarks(), [&](const auto& b) { return b.first == path; });
+}
+
+void setBookmarked(const std::string& path, bool on) {
+    std::vector<std::string> lines;
+    {
+        std::ifstream in(bookmarksFile());
+        for (std::string line; std::getline(in, line);) {
+            if (line.starts_with("file://") && uriDecodePath(line.substr(0, line.find(' '))) == path) continue;
+            lines.push_back(line);
+        }
+    }
+    if (on) lines.push_back(fileUri(path));
+    std::error_code ec;
+    fs::create_directories(fs::path(bookmarksFile()).parent_path(), ec);
+    std::ofstream out(bookmarksFile(), std::ios::trunc);
+    for (const auto& l : lines) out << l << "\n";
+}
+
+// ── Templates: new files made from ~/Templates ──
+std::string templatesDir() {
+    std::ifstream in(paths::home() + "/.config/user-dirs.dirs");
+    for (std::string line; std::getline(in, line);) {
+        if (!line.starts_with("XDG_TEMPLATES_DIR=")) continue;
+        std::string v = line.substr(18);
+        if (v.size() >= 2 && v.front() == '"') v = v.substr(1, v.size() - 2);
+        if (v.starts_with("$HOME")) v = paths::home() + v.substr(5);
+        return v;
+    }
+    return paths::home() + "/Templates";
+}
+
+std::vector<std::string> templates() {
+    std::vector<std::string> out;
+    std::error_code ec;
+    for (const auto& e : fs::directory_iterator(templatesDir(), fs::directory_options::skip_permission_denied, ec))
+        if (e.is_regular_file(ec) && !e.path().filename().string().starts_with(".")) out.push_back(e.path().string());
+    std::ranges::sort(out);
+    if (out.size() > 10) out.resize(10);
+    return out;
+}
+
 void go(std::shared_ptr<State> st, fs::path to, bool remember = true) {
     struct Moved {
         std::shared_ptr<State> st;
@@ -280,12 +415,13 @@ void go(std::shared_ptr<State> st, fs::path to, bool remember = true) {
     } moved{st};
     std::error_code ec;
     if (!fs::is_directory(to, ec)) return;
-    if (remember && (st->dir != to || st->inTrash)) {
-        st->back.push_back(st->inTrash ? "trash:" : st->dir.string());
+    if (remember && (st->dir != to || st->special())) {
+        st->back.push_back(st->inTrash ? "trash:" : st->inRecent ? "recent:" : st->dir.string());
         st->forward.clear();
     }
     st->dir = fs::weakly_canonical(to, ec);
     st->inTrash = false;
+    st->inRecent = false;
     st->selected.clear();
     st->anchor.clear();
     st->filter.clear();
@@ -297,9 +433,10 @@ void go(std::shared_ptr<State> st, fs::path to, bool remember = true) {
 
 void goTrash(std::shared_ptr<State> st) {
     if (!st->inTrash) {
-        st->back.push_back(st->dir.string());
+        st->back.push_back(st->inRecent ? "recent:" : st->dir.string());
         st->forward.clear();
     }
+    st->inRecent = false;
     st->inTrash = true;
     st->selected.clear();
     st->filter.clear();
@@ -315,14 +452,30 @@ void stepHistory(const std::shared_ptr<State>& st, bool backwards) {
     if (from.empty()) return;
     const std::string where = from.back();
     from.pop_back();
-    to.push_back(st->inTrash ? "trash:" : st->dir.string());
-    if (where == "trash:") {
-        st->inTrash = true;
+    to.push_back(st->inTrash ? "trash:" : st->inRecent ? "recent:" : st->dir.string());
+    if (where == "trash:" || where == "recent:") {
+        st->inTrash = where == "trash:";
+        st->inRecent = where == "recent:";
         st->selected.clear();
         st->load();
     } else {
         go(st, where, false);
     }
+}
+
+// The Recent place: files opened lately, newest first
+void goRecent(std::shared_ptr<State> st) {
+    if (!st->inRecent) {
+        st->back.push_back(st->inTrash ? "trash:" : st->dir.string());
+        st->forward.clear();
+    }
+    st->inTrash = false;
+    st->inRecent = true;
+    st->selected.clear();
+    st->filter.clear();
+    if (st->search) st->search->setText("");
+    st->load();
+    if (st->scroll) st->scroll->scrollTo(0, false);
 }
 
 // Opening one: a folder here, a picture in the viewer, the rest in its app
@@ -397,8 +550,8 @@ void dropInto(std::vector<std::string> paths, const std::string& dir) {
     auto done = [](const std::string& err) {
         if (!err.empty()) m3::run({"notify-send", "-a", "Files", "-i", "folder", "Files", err}, nullptr);
     };
-    if (move) fileops::move(paths, dir, done);
-    else fileops::copy(paths, dir, done);
+    if (move) undoableMoves(std::format("Move {} items", paths.size()), fileops::move(paths, dir, done));
+    else undoableCopies(std::format("Copy {} items", paths.size()), fileops::copy(paths, dir, done));
 }
 
 void paste(const std::shared_ptr<State>& st) {
@@ -407,11 +560,12 @@ void paste(const std::shared_ptr<State>& st) {
         if (!err.empty()) m3::run({"notify-send", "-a", "Files", "-i", "folder", "Files", err}, nullptr);
     };
     if (!g_clip.paths.empty()) {
+        const std::string what = g_clip.paths.size() == 1 ? "\"" + fs::path(g_clip.paths.front()).filename().string() + "\"" : std::format("{} items", g_clip.paths.size());
         if (g_clip.cut) {
-            fileops::move(g_clip.paths, dir, done);
+            undoableMoves("Move " + what, fileops::move(g_clip.paths, dir, done));
             g_clip = {};
         } else {
-            fileops::copy(g_clip.paths, dir, done);
+            undoableCopies("Paste " + what, fileops::copy(g_clip.paths, dir, done));
         }
         return;
     }
@@ -435,7 +589,7 @@ void paste(const std::shared_ptr<State>& st) {
             }
             paths.push_back(p);
         }
-        if (!paths.empty()) fileops::copy(paths, dir, done);
+        if (!paths.empty()) undoableCopies(std::format("Paste {} items", paths.size()), fileops::copy(paths, dir, done));
     });
 }
 
@@ -483,7 +637,9 @@ void renameOne(const std::shared_ptr<State>& st, const std::string& path) {
     ask(st, "Rename", fs::path(path).filename().string(), "Rename", false, [st, path](const std::string& name) {
         const std::string e = fileops::rename(path, name);
         if (e.empty()) {
-            st->selected = {(fs::path(path).parent_path() / name).string()};
+            const std::string now = (fs::path(path).parent_path() / name).string(), was = fs::path(path).filename().string();
+            if (now != path) pushUndo("Rename to \"" + name + "\"", [now, was] { reportDone(fileops::rename(now, was)); });
+            st->selected = {now};
             st->load();
         }
         return e;
@@ -495,6 +651,7 @@ void newFolder(const std::shared_ptr<State>& st) {
         std::string made;
         const std::string e = fileops::makeFolder(st->dir.string(), name, &made);
         if (e.empty()) {
+            pushUndo("New folder \"" + name + "\"", [made] { fileops::trash({made}, reportDone); });
             st->selected = {made};
             st->load();
         }
@@ -513,10 +670,130 @@ void deleteForGood(const std::shared_ptr<State>& st, std::vector<std::string> pa
 
 void toTrash(const std::shared_ptr<State>& st, const std::vector<std::string>& paths) {
     if (paths.empty()) return;
-    fileops::trash(paths, [](const std::string& err) {
+    undoableTrash(fileops::trash(paths, [](const std::string& err) {
         if (!err.empty()) m3::run({"notify-send", "-a", "Files", "-i", "delete", "Files", err}, nullptr);
-    });
+    }));
     st->selected.clear();
+}
+
+// Copies beside them: "name (2)"
+void duplicate(const std::shared_ptr<State>& st, const std::vector<std::string>& paths) {
+    if (paths.empty() || st->special()) return;
+    undoableCopies(paths.size() == 1 ? "Duplicate \"" + fs::path(paths.front()).filename().string() + "\"" : std::format("Duplicate {} items", paths.size()),
+                   fileops::copy(paths, fs::path(paths.front()).parent_path().string(), reportDone));
+}
+
+// Links to them, beside them: "name (link)"
+void makeLinks(const std::shared_ptr<State>& st, const std::vector<std::string>& paths) {
+    std::vector<std::string> made;
+    for (const auto& p : paths) {
+        const fs::path where = st->special() ? fs::path(p).parent_path() : st->dir;
+        const std::string stem = fs::path(p).stem().string(), ext = fs::path(p).extension().string();
+        const std::string link = (where / fileops::freeName(where.string(), stem + " (link)" + ext)).string();
+        std::error_code ec;
+        fs::create_symlink(p, link, ec);
+        if (ec) notifyFiles("Couldn't make a link: " + ec.message());
+        else made.push_back(link);
+    }
+    if (made.empty()) return;
+    pushUndo(made.size() == 1 ? "Make a link" : std::format("Make {} links", made.size()), [made] { fileops::trash(made, reportDone); });
+    st->selected = made;
+    st->load();
+}
+
+// A new file: empty, or a copy of one of your templates
+void newFile(const std::shared_ptr<State>& st, const std::string& from = {}) {
+    if (st->special()) return;
+    const std::string suggested = from.empty() ? "New document.txt" : fs::path(from).filename().string();
+    ask(st, from.empty() ? "New file" : "New " + fs::path(from).stem().string(), fileops::freeName(st->dir.string(), suggested), "Create", false,
+        [st, from](const std::string& name) {
+            if (name.empty() || name.find('/') != std::string::npos) return std::string("A name can't be empty or have a / in it");
+            const std::string path = (st->dir / name).string();
+            std::error_code ec;
+            if (fs::exists(path, ec)) return std::string("There's one with that name already");
+            if (from.empty()) std::ofstream(path).flush();
+            else fs::copy_file(from, path, ec);
+            if (ec || !fs::exists(path, ec)) return std::string("It couldn't be made here");
+            pushUndo("New file \"" + name + "\"", [path] { fileops::trash({path}, reportDone); });
+            st->selected = {path};
+            st->load();
+            return std::string();
+        });
+}
+
+void undo(const std::shared_ptr<State>& st) {
+    if (g_undo.empty()) return notifyFiles("Nothing to undo");
+    auto step = std::move(g_undo.back());
+    g_undo.pop_back();
+    step.undo();
+    if (st->showStatus) st->status->setText("Undone: " + step.label);
+    EventLoop::get().addTimer(400, [st, alive = st->alive] {
+        if (*alive && st->load) st->load();
+    });
+}
+
+// Several renamed at once: a pattern ("Trip ##" → Trip 01, Trip 02…, each
+// keeping its extension), or what's found in their names replaced
+void renameMany(const std::shared_ptr<State>& st, std::vector<std::string> paths, bool replace) {
+    std::ranges::sort(paths, [](const std::string& a, const std::string& b) { return naturalLess(fs::path(a).filename().string(), fs::path(b).filename().string()); });
+    const std::string question = replace ? std::format("Replace in {} names", paths.size())
+                                         : std::format("Rename {} (# = number)", paths.size());
+    ask(st, question, replace ? " → " : "Item ##", "Rename", false, [st, paths, replace](const std::string& text) {
+        std::vector<std::pair<std::string, std::string>> plan; // path, new name
+        if (replace) {
+            const size_t arrow = text.find("→");
+            if (arrow == std::string::npos) return std::string("Write it as: old → new");
+            auto trim = [](std::string v) {
+                while (!v.empty() && v.front() == ' ') v.erase(0, 1);
+                while (!v.empty() && v.back() == ' ') v.pop_back();
+                return v;
+            };
+            const std::string from = trim(text.substr(0, arrow)), to = trim(text.substr(arrow + std::string("→").size()));
+            if (from.empty()) return std::string("What to find can't be empty");
+            for (const auto& p : paths) {
+                std::string name = fs::path(p).filename().string();
+                for (size_t at = 0; (at = name.find(from, at)) != std::string::npos; at += to.size()) name.replace(at, from.size(), to);
+                if (name != fs::path(p).filename().string()) plan.emplace_back(p, name);
+            }
+        } else {
+            const size_t hashes = static_cast<size_t>(std::ranges::count(text, '#'));
+            if (hashes == 0) return std::string("Put # where the number goes: Trip ## → Trip 01");
+            const size_t first = text.find('#');
+            int n = 1;
+            for (const auto& p : paths) {
+                std::string number = std::to_string(n++);
+                while (number.size() < hashes) number = "0" + number;
+                std::string name = text.substr(0, first) + number + text.substr(first + hashes);
+                name.erase(std::remove(name.begin(), name.end(), '#'), name.end());
+                std::error_code ec;
+                if (!fs::is_directory(p, ec)) name += fs::path(p).extension().string();
+                plan.emplace_back(p, name);
+            }
+        }
+        if (plan.empty()) return std::string("No name has that in it");
+        for (const auto& [p, name] : plan)
+            if (name.empty() || name.find('/') != std::string::npos) return std::string("A name would be empty or have a / in it");
+        std::vector<std::pair<std::string, std::string>> done; // new path, old name
+        std::vector<std::string> now;
+        std::string firstError;
+        for (const auto& [p, name] : plan) {
+            const std::string e = fileops::rename(p, name);
+            if (!e.empty()) {
+                if (firstError.empty()) firstError = fs::path(p).filename().string() + ": " + e;
+                continue;
+            }
+            done.emplace_back((fs::path(p).parent_path() / name).string(), fs::path(p).filename().string());
+            now.push_back(done.back().first);
+        }
+        if (!done.empty())
+            pushUndo(std::format("Rename {} items", done.size()), [done] {
+                for (const auto& [path, was] : done) fileops::rename(path, was);
+            });
+        if (!firstError.empty()) notifyFiles("Some weren't renamed: " + firstError);
+        st->selected = now;
+        st->load();
+        return std::string();
+    });
 }
 
 // "Open with": the apps that say they open this kind of file
@@ -609,14 +886,26 @@ void connectPrompt(const std::shared_ptr<State>& st) {
     url->focus();
 }
 
-void compressPrompt(const std::shared_ptr<State>& st, const std::vector<std::string>& paths) {
-    const std::string first = paths.size() == 1 ? fileops::archiveStem(paths.front()) : "Archive";
-    ask(st, "Compress to ZIP", first, "Compress", false, [st, paths](const std::string& name) {
+// Into an archive beside them: .zip (anywhere), .tar.gz and .tar.xz (Linux),
+// .7z (smallest), all through bsdtar
+void compressPrompt(const std::shared_ptr<State>& st, const std::vector<std::string>& paths, const std::string& ext = ".zip") {
+    // Its name short of its extension ("notes.txt" → notes.tar.gz); a folder's whole
+    std::error_code dec;
+    const std::string first = paths.size() != 1 ? "Archive"
+                              : fs::is_directory(paths.front(), dec) ? fs::path(paths.front()).filename().string()
+                              : fileops::canExtract(paths.front()) ? fileops::archiveStem(paths.front())
+                                                                   : fs::path(paths.front()).stem().string();
+    ask(st, "Compress to " + ext, first, "Compress", false, [st, paths, ext](const std::string& name) {
         if (name.empty() || name.find('/') != std::string::npos) return std::string("A name can't be empty or have a / in it");
-        fileops::compress(paths, name, [st, alive = st->alive](const std::string& err, const std::string& zip) {
-            if (!err.empty()) return void(m3::run({"notify-send", "-a", "Files", "-i", "package-x-generic", "Files", err}, nullptr));
+        const std::string dir = fs::path(paths.front()).parent_path().string();
+        const std::string out = (fs::path(dir) / fileops::freeName(dir, name + ext)).string();
+        std::vector<std::string> cmd = {"bsdtar", "-a", "-cf", out, "-C", dir, "--"};
+        for (const auto& p : paths) cmd.push_back(fs::path(p).filename().string());
+        m3::run(cmd, [st, alive = st->alive, out](int code, const std::string& msg) {
+            if (code != 0) return notifyFiles("Couldn't compress: " + msg.substr(0, 200));
+            pushUndo("Compress to \"" + fs::path(out).filename().string() + "\"", [out] { fileops::trash({out}, reportDone); });
             if (*alive) {
-                st->selected = {zip};
+                st->selected = {out};
                 st->load();
             }
         });
@@ -628,6 +917,7 @@ void extractHere(const std::shared_ptr<State>& st, const std::vector<std::string
     for (const auto& a : archives)
         fileops::extract(a, [st, alive = st->alive](const std::string& err, const std::string& folder) {
             if (!err.empty()) return void(m3::run({"notify-send", "-a", "Files", "-i", "package-x-generic", "Files", err}, nullptr));
+            pushUndo("Extract \"" + fs::path(folder).filename().string() + "\"", [folder] { fileops::trash({folder}, reportDone); });
             if (*alive) {
                 st->selected = {folder};
                 st->load();
@@ -667,6 +957,24 @@ void fileMenu(const std::shared_ptr<State>& st, Button* tile, const std::string&
         st->dir = here;
     }, false, false, !g_clip.paths.empty()});
     if (one) m.push_back({"edit", "Rename", "F2", [st, path] { renameOne(st, path); }});
+    else {
+        m.push_back({"edit", std::format("Rename {} items…", paths.size()), "F2", [st, paths] { renameMany(st, paths, false); }});
+        m.push_back({"find_replace", "Replace in their names…", "", [st, paths] { renameMany(st, paths, true); }});
+    }
+    if (!st->special()) m.push_back({"file_copy", "Duplicate", "Ctrl+D", [st, paths] { duplicate(st, paths); }});
+    m.push_back({"link", one ? "Make a link" : "Make links", "", [st, paths] { makeLinks(st, paths); }});
+    if (dir) {
+        const bool marked = bookmarked(path);
+        m.push_back({marked ? "bookmark_remove" : "bookmark_add", marked ? "Remove from the side bar" : "Add to the side bar", "", [st, path, marked] {
+            setBookmarked(path, !marked);
+            if (st->sidebar) st->sidebar();
+        }});
+    }
+    if (st->inRecent && one) m.push_back({"folder_open", "Show in its folder", "", [st, path] {
+        go(st, fs::path(path).parent_path());
+        st->selected = {path};
+        st->paint();
+    }});
     // A disk image: onto a USB drive, to start a computer from
     if (paths.size() == 1 && !ownCommand("material3ui-imagewriter").empty()) {
         std::string n = fs::path(paths.front()).filename().string();
@@ -680,7 +988,10 @@ void fileMenu(const std::shared_ptr<State>& st, Button* tile, const std::string&
     }
     if (std::ranges::all_of(paths, [](const std::string& p) { return fileops::canExtract(p); }))
         m.push_back({"unarchive", paths.size() == 1 ? "Extract here" : "Extract each here", "", [st, paths] { extractHere(st, paths); }, false, false, true, true});
-    m.push_back({"folder_zip", "Compress to ZIP…", "", [st, paths] { compressPrompt(st, paths); }});
+    m.push_back({"folder_zip", "Compress to ZIP…", "", [st, paths] { compressPrompt(st, paths, ".zip"); }});
+    m.push_back({"folder_zip", "Compress to .tar.gz…", "", [st, paths] { compressPrompt(st, paths, ".tar.gz"); }});
+    m.push_back({"folder_zip", "Compress to .tar.xz…", "", [st, paths] { compressPrompt(st, paths, ".tar.xz"); }});
+    m.push_back({"folder_zip", "Compress to .7z…", "", [st, paths] { compressPrompt(st, paths, ".7z"); }});
     m.push_back({"link", "Copy the path", "", [paths] {
         std::string text;
         for (const auto& p : paths) text += (text.empty() ? "" : "\n") + p;
@@ -726,14 +1037,31 @@ void folderMenu(const std::shared_ptr<State>& st, Backdrop* from) {
         return show(m);
     }
     const std::string dir = st->dir.string();
+    if (!g_undo.empty()) m.push_back({"undo", "Undo: " + g_undo.back().label, "Ctrl+Z", [st] { undo(st); }});
+    if (st->inRecent) return show(m);
     m.push_back({"create_new_folder", "New folder", "Ctrl+Shift+N", [st] { newFolder(st); }});
-    m.push_back({"content_paste", "Paste", "Ctrl+V", [st] { paste(st); }});
+    m.push_back({"note_add", "New empty file", "Ctrl+Alt+N", [st] { newFile(st); }});
+    for (const auto& t : templates()) m.push_back({"description", "New " + fs::path(t).stem().string(), "", [st, t] { newFile(st, t); }});
+    m.push_back({"content_paste", "Paste", "Ctrl+V", [st] { paste(st); }, false, false, true, true});
     m.push_back({"select_all", "Select all", "Ctrl+A", [st] {
         st->selected.clear();
         for (const auto& e : st->entries) st->selected.push_back(e.path);
         st->paint();
     }});
-    m.push_back({"terminal", "Open a terminal here", "", [dir] { spawn("cd " + quoted(dir) + " && exec ${TERMINAL:-alacritty}"); }, false, false, true, true});
+    m.push_back({"flip_to_back", "Invert the selection", "Ctrl+I", [st] {
+        std::vector<std::string> now;
+        for (const auto& e : st->entries)
+            if (!isSelected(*st, e.path)) now.push_back(e.path);
+        st->selected = now;
+        st->paint();
+    }});
+    const bool marked = bookmarked(dir);
+    m.push_back({marked ? "bookmark_remove" : "bookmark_add", marked ? "Remove this folder from the side bar" : "Add this folder to the side bar", "Ctrl+B",
+                 [st, dir, marked] {
+                     setBookmarked(dir, !marked);
+                     if (st->sidebar) st->sidebar();
+                 }, false, false, true, true});
+    m.push_back({"terminal", "Open a terminal here", "", [dir] { spawn("cd " + quoted(dir) + " && exec ${TERMINAL:-alacritty}"); }});
     m.push_back({"visibility", "Show hidden files", "Ctrl+H", [] { Config::get().set("/files/hidden", !showHidden()); }, showHidden()});
     show(m);
 }
@@ -848,7 +1176,7 @@ void build(const std::shared_ptr<State>& st, Flex* card) {
                          std::function<void()> click = {}, const std::string& endIcon = {}, std::function<void()> end = {},
                          const std::string& endTip = {}) {
             std::error_code ec;
-            const bool here = trash ? st->inTrash : !path.empty() && !st->inTrash && fs::equivalent(path, st->dir, ec);
+            const bool here = trash ? st->inTrash : path == "recent:" ? st->inRecent : !path.empty() && !st->special() && fs::equivalent(path, st->dir, ec);
             auto* b = s->add<Button>(Flex::Direction::Row);
             pill(b)->setPadding({16, endIcon.empty() ? 11.0f : 5.0f, endIcon.empty() ? 16.0f : 6.0f, endIcon.empty() ? 11.0f : 5.0f})->setSpacing(14);
             b->pressedRadius = 12;
@@ -867,7 +1195,23 @@ void build(const std::shared_ptr<State>& st, Flex* card) {
                 EventLoop::get().defer([st, path, trash] { trash ? goTrash(st) : go(st, path); });
             };
         };
+        place("history", "Recent", "recent:", false, [st] { EventLoop::get().defer([st] { goRecent(st); }); });
         for (const auto& p : fileops::places()) place(p.icon, p.name, p.path, false);
+        // Folders you pinned here (shared with GTK's file managers)
+        if (const auto marks = bookmarks(); !marks.empty()) {
+            s->add<Node>()->fixedHeight = 8;
+            caption(s, "  Bookmarks");
+            for (const auto& [path, name] : marks) {
+                std::error_code ec;
+                if (!fs::is_directory(path, ec)) continue;
+                place("bookmark", name, path, false, {}, "close", [st, path] {
+                    setBookmarked(path, false);
+                    EventLoop::get().defer([st] {
+                        if (*st->alive && st->sidebar) st->sidebar();
+                    });
+                }, "Remove from the side bar");
+            }
+        }
 
         // Drives: open ones a click away, with eject; the others opened on a click
         s->add<Node>()->fixedHeight = 8;
@@ -925,7 +1269,7 @@ void build(const std::shared_ptr<State>& st, Flex* card) {
     iconButton(bar, "arrow_back", [st] { stepHistory(st, true); }, 22)->tooltip = "Back (Alt+←)";
     iconButton(bar, "arrow_forward", [st] { stepHistory(st, false); }, 22)->tooltip = "Forward (Alt+→)";
     iconButton(bar, "arrow_upward", [st] {
-        if (st->inTrash) return go(st, paths::home());
+        if (st->special()) return go(st, paths::home());
         if (st->dir != st->dir.root_path()) go(st, st->dir.parent_path());
     }, 22)->tooltip = "Up (Alt+↑)";
     st->crumbs = bar->add<Crumbs>();
@@ -944,6 +1288,21 @@ void build(const std::shared_ptr<State>& st, Flex* card) {
     st->search->onChanged = [st](const std::string& t) {
         st->filter = t;
         st->load();
+    };
+    // In subfolders too, or this folder alone
+    auto* deep = iconButton(searchRow, "account_tree", [] {}, 18);
+    auto paintDeep = [deep, st] {
+        const bool on = Config::get().value<bool>("/files/searchSubfolders", false);
+        deep->setBackground(on ? ColorRef("secondary_container") : ColorRef::none(), false);
+        deep->tooltip = on ? "Searching subfolders too (click: this folder only)" : "This folder only (click: subfolders too)";
+        st->search->setPlaceholder(on ? "Search here and in every folder under it" : "Search this folder");
+    };
+    paintDeep();
+    deep->onClicked = [st, paintDeep](uint32_t b) {
+        if (b != BTN_LEFT) return;
+        Config::get().set("/files/searchSubfolders", !Config::get().value<bool>("/files/searchSubfolders", false));
+        paintDeep();
+        if (!st->filter.empty()) st->load();
     };
     st->searchRow = searchRow;
     searchRow->setVisible(false);
@@ -970,8 +1329,10 @@ void build(const std::shared_ptr<State>& st, Flex* card) {
     more->onClicked = [st, more](uint32_t button) {
         if (button != BTN_LEFT) return;
         std::vector<MenuItem> m;
-        if (!st->inTrash) {
+        if (!g_undo.empty()) m.push_back({"undo", "Undo: " + g_undo.back().label, "Ctrl+Z", [st] { undo(st); }});
+        if (!st->special()) {
             m.push_back({"create_new_folder", "New folder", "Ctrl+Shift+N", [st] { newFolder(st); }});
+            m.push_back({"note_add", "New empty file", "Ctrl+Alt+N", [st] { newFile(st); }});
             m.push_back({"content_paste", "Paste", "Ctrl+V", [st] { paste(st); }});
         }
         const std::string s = sortBy();
@@ -979,6 +1340,11 @@ void build(const std::shared_ptr<State>& st, Flex* card) {
         m.push_back({"schedule", "Sort by date", "", [] { Config::get().set("/files/sort", "date"); }, s == "date"});
         m.push_back({"straighten", "Sort by size", "", [] { Config::get().set("/files/sort", "size"); }, s == "size"});
         m.push_back({"category", "Sort by kind", "", [] { Config::get().set("/files/sort", "kind"); }, s == "kind"});
+        m.push_back({"swap_vert", "Reverse order", "", [] { Config::get().set("/files/sortReverse", !Config::get().value<bool>("/files/sortReverse", false)); },
+                     Config::get().value<bool>("/files/sortReverse", false)});
+        m.push_back({"zoom_in", "Bigger icons", "Ctrl+=", [] { Config::get().set("/files/zoom", std::min(1.6, Config::get().value<double>("/files/zoom", 1.0) + 0.15)); },
+                     false, false, true, true});
+        m.push_back({"zoom_out", "Smaller icons", "Ctrl+−", [] { Config::get().set("/files/zoom", std::max(0.7, Config::get().value<double>("/files/zoom", 1.0) - 0.15)); }});
         m.push_back({"visibility", "Show hidden files", "Ctrl+H", [] { Config::get().set("/files/hidden", !showHidden()); }, showHidden(), false, true, true});
         m.push_back({"image", "Open pictures in the viewer", "", [] { Config::get().set("/files/viewer", !Config::get().value<bool>("/files/viewer", true)); },
                      Config::get().value<bool>("/files/viewer", true)});
@@ -1000,7 +1366,7 @@ void build(const std::shared_ptr<State>& st, Flex* card) {
     st->content->setAlignItems(Align::Stretch)->setPadding({4, 4, 12, 4});
     // Files dropped in the folder shown go into it
     st->content->onDropFiles = [st](const std::vector<std::string>& paths) {
-        if (!st->inTrash && *st->alive) dropInto(paths, st->dir.string());
+        if (!st->special() && *st->alive) dropInto(paths, st->dir.string());
     };
     st->content->onDropHover = [st](bool over) { st->content->setBackground(ColorRef("primary", over && !st->inTrash ? 0.07f : 0.0f), false); };
     st->content->onClicked = [st](uint32_t button) {
@@ -1074,6 +1440,44 @@ std::shared_ptr<State> filesPane(Flex* card, Popup& popup, const std::string& st
                 st->origin[t.path] = t.original;
                 st->entries.push_back(std::move(e));
             }
+        } else if (st->inRecent) {
+            for (const auto& path : search::recentPaths(120)) {
+                Entry e;
+                e.path = path;
+                e.name = fs::path(path).filename().string();
+                std::error_code ec2;
+                e.dir = fs::is_directory(path, ec2);
+                if (!e.dir) e.size = fs::file_size(path, ec2);
+                const auto t = fs::last_write_time(path, ec2);
+                if (!ec2) e.modified = std::chrono::system_clock::to_time_t(std::chrono::clock_cast<std::chrono::system_clock>(t));
+                st->entries.push_back(std::move(e));
+            }
+        } else if (!st->filter.empty() && Config::get().value<bool>("/files/searchSubfolders", false)) {
+            // The search, in every folder under this one too (the first 500 found)
+            std::string f = st->filter;
+            for (auto& c : f) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            std::error_code ec2;
+            size_t seen = 0;
+            for (fs::recursive_directory_iterator it(st->dir, fs::directory_options::skip_permission_denied, ec2), end; it != end && seen < 50000;
+                 it.increment(ec2), ++seen) {
+                if (ec2) break;
+                std::string n = it->path().filename().string();
+                if (!showHidden() && n.starts_with(".")) {
+                    if (it->is_directory(ec2)) it.disable_recursion_pending();
+                    continue;
+                }
+                for (auto& c : n) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                if (n.find(f) == std::string::npos) continue;
+                Entry e;
+                e.path = it->path().string();
+                e.name = it->path().filename().string();
+                e.dir = it->is_directory(ec2);
+                if (!e.dir) e.size = it->file_size(ec2);
+                const auto t = it->last_write_time(ec2);
+                if (!ec2) e.modified = std::chrono::system_clock::to_time_t(std::chrono::clock_cast<std::chrono::system_clock>(t));
+                st->entries.push_back(std::move(e));
+                if (st->entries.size() >= 500) break;
+            }
         } else {
             st->entries = fileops::list(st->dir.string(), showHidden(), &st->error);
         }
@@ -1088,8 +1492,19 @@ std::shared_ptr<State> filesPane(Flex* card, Popup& popup, const std::string& st
             });
         }
         const std::string s = sortBy();
-        std::ranges::sort(st->entries, [&s](const Entry& a, const Entry& b) {
+        const bool reversed = Config::get().value<bool>("/files/sortReverse", false);
+        if (!st->inRecent) // Recent keeps its order: newest first
+        std::ranges::sort(st->entries, [&s, reversed](const Entry& a, const Entry& b) {
             if (a.dir != b.dir) return a.dir; // folders first
+            if (reversed) {
+                if (s == "date" && a.modified != b.modified) return a.modified < b.modified;
+                if (s == "size" && a.size != b.size) return a.size < b.size;
+                if (s == "kind") {
+                    const auto ea = fs::path(a.name).extension().string(), eb = fs::path(b.name).extension().string();
+                    if (ea != eb) return naturalLess(eb, ea);
+                }
+                return naturalLess(b.name, a.name);
+            }
             if (s == "date" && a.modified != b.modified) return a.modified > b.modified;
             if (s == "size" && a.size != b.size) return a.size > b.size;
             if (s == "kind") {
@@ -1145,9 +1560,9 @@ std::shared_ptr<State> filesPane(Flex* card, Popup& popup, const std::string& st
     st->render = [st] {
         // The path: each folder a step back to it
         st->crumbs->clearChildren();
-        if (st->inTrash) {
-            st->crumbs->add<Icon>("delete", 18)->setColor("on_surface_variant", false);
-            st->crumbs->add<Label>("Trash")->setSize(14)->setWeight(600);
+        if (st->special()) {
+            st->crumbs->add<Icon>(st->inTrash ? "delete" : "history", 18)->setColor("on_surface_variant", false);
+            st->crumbs->add<Label>(st->inTrash ? "Trash" : "Recent")->setSize(14)->setWeight(600);
         } else {
             std::vector<std::pair<std::string, fs::path>> steps;
             const fs::path home = paths::home();
@@ -1204,6 +1619,7 @@ std::shared_ptr<State> filesPane(Flex* card, Popup& popup, const std::string& st
             none->add<Icon>(st->inTrash ? "delete" : !st->error.empty() ? "folder_off" : !st->filter.empty() ? "search_off" : "folder_open", 56)
                 ->setColor("on_surface_variant", false);
             none->add<Label>(st->inTrash             ? "The trash is empty"
+                             : st->inRecent          ? "No files opened lately"
                              : !st->error.empty()    ? "This folder can't be opened"
                              : !st->filter.empty()   ? "Nothing matches \"" + st->filter + "\""
                                                      : "This folder is empty")
@@ -1245,11 +1661,13 @@ std::shared_ptr<State> filesPane(Flex* card, Popup& popup, const std::string& st
             } else {
                 tile = host->add<Button>(Flex::Direction::Column);
                 tile->setPadding({8, 8, 8, 10})->setSpacing(6)->setRadius(Radii(20))->setAlignItems(Align::Center);
-                tile->fixedWidth = 132;
+                // Icon size: Ctrl+= and Ctrl+− (0.7 to 1.6 times)
+                const float z = static_cast<float>(std::clamp(Config::get().value<double>("/files/zoom", 1.0), 0.7, 1.6));
+                tile->fixedWidth = 132 * z;
                 tile->hoverLift = true;
-                art(st, tile, e, 116, 86, true);
+                art(st, tile, e, 116 * z, 86 * z, true);
                 auto* name = tile->add<Label>(e.name);
-                name->setSize(13)->setWeight(500)->setMaxWidth(116)->setMaxLines(2)->setCentered(true);
+                name->setSize(13)->setWeight(500)->setMaxWidth(116 * z)->setMaxLines(2)->setCentered(true);
                 if (e.hidden) name->setOpacity(0.6f, false);
             }
             tile->pressedRadius = 12;
@@ -1388,6 +1806,24 @@ std::shared_ptr<State> filesPane(Flex* card, Popup& popup, const std::string& st
             row("Contains", info.children == 1 ? "1 item" : std::format("{} items", info.children));
         } else {
             row("Size", std::format("{} ({} bytes)", fileops::humanSize(info.size), info.size));
+            // Its SHA-256, when asked (against a download page's)
+            if (auto it = st->checksums.find(target); it != st->checksums.end()) {
+                auto* l = row("SHA-256", it->second);
+                if (l) l->setFamily("monospace")->setMaxLines(3);
+            } else {
+                auto* r = p->add<Flex>(Flex::Direction::Row);
+                pillButton(r, "Check SHA-256", false, [st, target] {
+                    st->checksums[target] = "Reading…";
+                    st->paneFor.clear();
+                    if (st->details) st->details();
+                    m3::run({"sha256sum", "--", target}, [st, target, alive = st->alive](int code, const std::string& out) {
+                        if (!*alive) return;
+                        st->checksums[target] = code == 0 && out.size() >= 64 ? out.substr(0, 64) : "Couldn't read it";
+                        st->paneFor.clear();
+                        if (st->details) st->details();
+                    });
+                }, "verified");
+            }
         }
         row("Where", fileops::displayPath(fs::path(target).parent_path().string()));
         if (st->inTrash && st->origin.contains(target)) row("From", fileops::displayPath(st->origin[target]));
@@ -1440,7 +1876,9 @@ std::shared_ptr<State> filesPane(Flex* card, Popup& popup, const std::string& st
     }));
     st->conns.push_back(Config::get().changed.connect([st, alive] {
         static std::string last;
-        const std::string now = std::format("{}{}{}{}", listView(), showHidden(), sortBy(), Config::get().value<bool>("/files/viewer", true));
+        const std::string now = std::format("{}{}{}{}{}{}{}", listView(), showHidden(), sortBy(), Config::get().value<bool>("/files/viewer", true),
+                                            Config::get().value<double>("/files/zoom", 1.0), Config::get().value<bool>("/files/sortReverse", false),
+                                            Config::get().value<bool>("/files/searchSubfolders", false));
         if (!*alive || now == last) return;
         last = now;
         st->load();
@@ -1468,8 +1906,50 @@ std::shared_ptr<State> filesPane(Flex* card, Popup& popup, const std::string& st
             st->paint();
             return true;
         }
-        if (ctrl && shift && e.baseSym == XKB_KEY_n && !st->inTrash) return newFolder(st), true;
-        if (ctrl && e.baseSym == XKB_KEY_v && !st->inTrash) return paste(st), true;
+        if (ctrl && shift && e.baseSym == XKB_KEY_n && !st->special()) return newFolder(st), true;
+        if (ctrl && alt && e.baseSym == XKB_KEY_n && !st->special()) return newFile(st), true;
+        if (ctrl && e.baseSym == XKB_KEY_v && !st->special()) return paste(st), true;
+        if (ctrl && e.baseSym == XKB_KEY_z) return undo(st), true;
+        if (ctrl && e.baseSym == XKB_KEY_b && !st->special()) {
+            const std::string d = st->dir.string();
+            setBookmarked(d, !bookmarked(d));
+            if (st->sidebar) st->sidebar();
+            return true;
+        }
+        if (ctrl && e.baseSym == XKB_KEY_i) {
+            std::vector<std::string> now;
+            for (const auto& x : st->entries)
+                if (!isSelected(*st, x.path)) now.push_back(x.path);
+            st->selected = now;
+            st->paint();
+            return true;
+        }
+        // Icon size
+        if (ctrl && (e.sym == XKB_KEY_equal || e.sym == XKB_KEY_plus || e.sym == XKB_KEY_KP_Add))
+            return Config::get().set("/files/zoom", std::min(1.6, Config::get().value<double>("/files/zoom", 1.0) + 0.15)), true;
+        if (ctrl && (e.sym == XKB_KEY_minus || e.sym == XKB_KEY_KP_Subtract))
+            return Config::get().set("/files/zoom", std::max(0.7, Config::get().value<double>("/files/zoom", 1.0) - 0.15)), true;
+        if (ctrl && e.sym == XKB_KEY_0) return Config::get().set("/files/zoom", 1.0), true;
+        // Type to select: the first name starting with what's typed
+        if (!ctrl && !alt && !e.text.empty() && static_cast<unsigned char>(e.text[0]) >= 0x20 && e.text != " " && !st->entries.empty()) {
+            const auto now = Clock::now();
+            if (now - st->typedAt > std::chrono::milliseconds(1000)) st->typed.clear();
+            st->typedAt = now;
+            st->typed += e.text;
+            std::string want = st->typed;
+            for (auto& c : want) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            for (const auto& x : st->entries) {
+                std::string n = x.name;
+                for (auto& c : n) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                if (!n.starts_with(want)) continue;
+                st->selected = {x.path};
+                st->anchor = x.path;
+                st->paint();
+                if (auto it = st->tiles.find(x.path); it != st->tiles.end() && st->scroll) st->scroll->reveal(it->second->rect());
+                break;
+            }
+            return true;
+        }
         if (e.sym == XKB_KEY_F9) return showPane(st, !Config::get().value<bool>("/files/preview", true)), true;
         if (sel.empty()) return false;
         // Space: a picture in the viewer; anything else, its preview
@@ -1479,6 +1959,7 @@ std::shared_ptr<State> filesPane(Flex* card, Popup& popup, const std::string& st
             return true;
         }
         if ((e.mods & ModAlt) && (e.sym == XKB_KEY_Return || e.sym == XKB_KEY_KP_Enter)) return showPane(st, true), true;
+        if (ctrl && e.baseSym == XKB_KEY_d && !st->special()) return duplicate(st, sel), true;
         if (ctrl && e.baseSym == XKB_KEY_c && !st->inTrash) return setClipboard(sel, false), true;
         if (ctrl && e.baseSym == XKB_KEY_x && !st->inTrash) return setClipboard(sel, true), true;
         if (e.sym == XKB_KEY_Delete) {
@@ -1487,6 +1968,7 @@ std::shared_ptr<State> filesPane(Flex* card, Popup& popup, const std::string& st
             return true;
         }
         if (e.sym == XKB_KEY_F2 && sel.size() == 1 && !st->inTrash) return renameOne(st, sel.front()), true;
+        if (e.sym == XKB_KEY_F2 && sel.size() > 1 && !st->inTrash) return renameMany(st, sel, false), true;
         if ((e.sym == XKB_KEY_Return || e.sym == XKB_KEY_KP_Enter) && sel.size() == 1 && !st->inTrash) return openPath(st, sel.front()), true;
         return false;
     };
@@ -1632,7 +2114,7 @@ void files(Flex* card, Popup& popup, const std::string& start) {
             b->setBackground(here ? "secondary_container" : "surface_container_high", false);
             b->add<Icon>("folder", 16)->setFill(here)->setColor(here ? "on_secondary_container" : "on_surface_variant", false);
             const auto& d = w->tabs[i].st->dir;
-            b->add<Label>(w->tabs[i].st->inTrash ? "Trash" : d == fs::path(paths::home()) ? "Home" : d.filename().string().empty() ? d.string() : d.filename().string())
+            b->add<Label>(w->tabs[i].st->inTrash ? "Trash" : w->tabs[i].st->inRecent ? "Recent" : d == fs::path(paths::home()) ? "Home" : d.filename().string().empty() ? d.string() : d.filename().string())
                 ->setSize(13)
                 ->setWeight(here ? 600 : 500)
                 ->setMaxWidth(150)
@@ -1734,6 +2216,10 @@ void filesSettings(Flex* page) {
     choiceRow<std::string>(g, "sort", "Sort by", "Folders always come first", "/files/sort", "name",
                            {{"name", "Name"}, {"date", "Date"}, {"size", "Size"}, {"kind", "Kind"}});
     switchRow(g, "vertical_split", "Preview and properties", "The pane beside the folder (F9)", "/files/preview", true);
+    switchRow(g, "swap_vert", "Reverse order", "Z to A, oldest or smallest first", "/files/sortReverse", false);
+    choiceRow<double>(g, "zoom_in", "Icon size", "In the grid (Ctrl+= and Ctrl+−)", "/files/zoom", 1.0,
+                      {{0.7, "Small"}, {0.85, "Smaller"}, {1.0, "Normal"}, {1.3, "Large"}, {1.6, "Largest"}});
+    switchRow(g, "account_tree", "Search subfolders too", "Ctrl+F finds names in every folder under this one (the first 500)", "/files/searchSubfolders", false);
     switchRow(g, "picture_as_pdf", "PDF previews", "A PDF's first page as its picture in the grid (pdftoppm)", "/files/pdfThumbnails", true);
     auto* o = group(page, "Open with Material3UI's apps", "Off: the file's own default app opens it");
     switchRow(o, "image", "Pictures in Photos", "", "/files/viewer", true);

@@ -433,7 +433,8 @@ std::vector<Place> devices() {
 
 // ── Operations ──
 
-void copy(const std::vector<std::string>& sources, const std::string& dir, Done done) {
+Moves copy(const std::vector<std::string>& sources, const std::string& dir, Done done) {
+    Moves moves;
     std::vector<std::vector<std::string>> cmds;
     std::set<std::string> taken;
     for (const auto& s : sources) {
@@ -443,28 +444,34 @@ void copy(const std::vector<std::string>& sources, const std::string& dir, Done 
         while (taken.contains(name)) name = freeName(dir, "_" + name);
         taken.insert(name);
         cmds.push_back({"cp", "-a", "--", s, (fs::path(dir) / name).string()});
+        moves.emplace_back(s, (fs::path(dir) / name).string());
     }
     queue("Copying " + items(sources.size()), std::move(cmds), std::move(done));
+    return moves;
 }
 
-void move(const std::vector<std::string>& sources, const std::string& dir, Done done) {
+Moves move(const std::vector<std::string>& sources, const std::string& dir, Done done) {
+    Moves moves;
     std::vector<std::vector<std::string>> cmds;
     std::error_code ec;
     for (const auto& s : sources) {
         if (fs::path(s).parent_path() == fs::path(dir)) continue; // already there
         // Not into itself
-        const std::string to = dir + "/";
-        if (to.starts_with(s + "/")) continue;
-        cmds.push_back({"mv", "-n", "--", s, (fs::path(dir) / freeName(dir, fs::path(s).filename().string())).string()});
+        if ((dir + "/").starts_with(s + "/")) continue;
+        const std::string to = (fs::path(dir) / freeName(dir, fs::path(s).filename().string())).string();
+        cmds.push_back({"mv", "-n", "--", s, to});
+        moves.emplace_back(s, to);
     }
     queue("Moving " + items(cmds.size()), std::move(cmds), std::move(done));
+    return moves;
 }
 
 std::string trashFiles() {
     return trashRoot() + "/files";
 }
 
-void trash(const std::vector<std::string>& paths, Done done) {
+Moves trash(const std::vector<std::string>& paths, Done done) {
+    Moves moves;
     const std::string files = trashFiles(), info = trashRoot() + "/info";
     std::error_code ec;
     fs::create_directories(files, ec);
@@ -483,8 +490,10 @@ void trash(const std::vector<std::string>& paths, Done done) {
         const std::string name = freeName(files, fs::path(p).filename().string());
         std::ofstream(info + "/" + name + ".trashinfo") << "[Trash Info]\nPath=" << percentEncode(p, true) << "\nDeletionDate=" << isoNow() << "\n";
         cmds.push_back({"mv", "-n", "--", p, files + "/" + name});
+        moves.emplace_back(p, files + "/" + name);
     }
     queue("Moving " + items(paths.size()) + " to the trash", std::move(cmds), std::move(done));
+    return moves;
 }
 
 void remove(const std::vector<std::string>& paths, Done done) {

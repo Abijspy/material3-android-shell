@@ -1014,6 +1014,15 @@ void queryAsync(const std::string& raw, std::function<void(std::vector<SearchRes
 
 // ── Recent files, by app ──
 
+std::vector<std::string> recentPaths(size_t max) {
+    std::vector<std::string> out;
+    for (const auto& r : recentFiles()) {
+        out.push_back(r.path);
+        if (out.size() >= max) break;
+    }
+    return out;
+}
+
 std::vector<std::string> recentFor(const Apps::App& app, size_t max) {
     std::vector<std::string> out;
     std::vector<std::string> names = {lower(app.name), programOf(app.exec)};
