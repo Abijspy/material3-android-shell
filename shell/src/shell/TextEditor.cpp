@@ -28,6 +28,7 @@
 #include <fstream>
 #include <linux/input-event-codes.h>
 #include <memory>
+#include <unordered_map>
 #include <map>
 #include <set>
 #include <sstream>
@@ -432,9 +433,14 @@ public:
     explicit Editor(std::shared_ptr<Doc> d) : doc(std::move(d)) {
         relang();
         fontSize = static_cast<float>(Config::get().value<double>("/text/fontSize", 14.0));
+        m_wrap = Config::get().value<bool>("/text/wrap", false);
         // Settings apply to the open files at once
         m_configConn = Config::get().changed.connect([this] {
             fontSize = static_cast<float>(Config::get().value<double>("/text/fontSize", 14.0));
+            m_wrap = Config::get().value<bool>("/text/wrap", false);
+            m_breaks.clear();
+            m_rowsDirty = true;
+            if (m_wrap) m_scrollX = 0;
             relang();
             requestRedraw();
         });
@@ -484,8 +490,112 @@ public:
         return bounds[lo];
     }
 
+    // ── Rows: the lines as laid out on screen. Without wrapping, one a line;
+    // with it, a long line goes on over as many as it needs, broken after a
+    // space where it can. Where each line breaks is kept by its text, so only
+    // lines that changed are measured again
+    struct Row {
+        int line;
+        size_t s, e; // its bytes in the line
+    };
+    bool wrapping() const { return m_wrap && doc->bytes() < 8'000'000; }
+    float wrapWidth() const { return rect().w - gutter() - 8 - 18; }
+    void ensureRows() const {
+        const float w = wrapping() ? wrapWidth() : 0;
+        if (!m_rowsDirty && w == m_wrapW && m_first.size() == doc->lines.size() + 1) return;
+        if (w != m_wrapW) m_breaks.clear();
+        m_wrapW = w;
+        m_rowsDirty = false;
+        m_rows.clear();
+        m_first.assign(doc->lines.size() + 1, 0);
+        if (m_breaks.size() > 200'000) m_breaks.clear();
+        for (size_t i = 0; i < doc->lines.size(); ++i) {
+            m_first[i] = static_cast<int>(m_rows.size());
+            const auto& l = doc->lines[i];
+            if (w < fontSize * 4 || l.empty()) {
+                m_rows.push_back({static_cast<int>(i), 0, l.size()});
+                continue;
+            }
+            const size_t key = std::hash<std::string>{}(l);
+            auto it = m_breaks.find(key);
+            if (it == m_breaks.end()) it = m_breaks.emplace(key, breaksOf(static_cast<int>(i), w)).first;
+            const auto& br = it->second;
+            for (size_t k = 0; k < br.size(); ++k) m_rows.push_back({static_cast<int>(i), br[k], k + 1 < br.size() ? br[k + 1] : l.size()});
+        }
+        m_first[doc->lines.size()] = static_cast<int>(m_rows.size());
+    }
+    // Where each row of a line starts, at this width
+    std::vector<size_t> breaksOf(int line, float w) const {
+        const auto& l = doc->lines[static_cast<size_t>(line)];
+        std::vector<size_t> starts{0};
+        if (xOf(line, l.size()) <= w) return starts;
+        std::vector<size_t> bounds{0};
+        for (const char* p = l.c_str(); *p;) {
+            p = g_utf8_next_char(p);
+            bounds.push_back(static_cast<size_t>(p - l.c_str()));
+        }
+        size_t from = 0; // index into bounds
+        while (from + 1 < bounds.size()) {
+            const float x0 = xOf(line, bounds[from]);
+            if (xOf(line, l.size()) - x0 <= w) break;
+            // The furthest it fits to
+            size_t lo = from + 1, hi = bounds.size() - 1;
+            while (lo < hi) {
+                const size_t mid = (lo + hi + 1) / 2;
+                if (xOf(line, bounds[mid]) - x0 <= w) lo = mid;
+                else hi = mid - 1;
+            }
+            size_t to = lo;
+            // Back to just after a space, when there's one on the row
+            for (size_t k = to; k > from + 1; --k)
+                if (l[bounds[k] - 1] == ' ' || l[bounds[k] - 1] == '\t') {
+                    to = k;
+                    break;
+                }
+            starts.push_back(bounds[to]);
+            from = to;
+        }
+        return starts;
+    }
+    int rowOf(Pos p) const {
+        ensureRows();
+        const int a = m_first[static_cast<size_t>(p.line)], b = m_first[static_cast<size_t>(p.line) + 1] - 1;
+        for (int r = b; r > a; --r)
+            if (m_rows[static_cast<size_t>(r)].s <= p.col) return r;
+        return a;
+    }
+    // The column nearest x (from the row's own start) on a row
+    size_t colInRow(int r, float x) const {
+        ensureRows();
+        const Row& row = m_rows[static_cast<size_t>(r)];
+        const auto& l = doc->lines[static_cast<size_t>(row.line)];
+        std::vector<size_t> bounds{row.s};
+        for (const char* p = l.c_str() + row.s; *p && static_cast<size_t>(p - l.c_str()) < row.e;) {
+            p = g_utf8_next_char(p);
+            bounds.push_back(static_cast<size_t>(p - l.c_str()));
+        }
+        // Not the row's very end when the line goes on below: that's the next row's start
+        const bool lastOfLine = r + 1 == m_first[static_cast<size_t>(row.line) + 1];
+        if (!lastOfLine && bounds.size() > 1) bounds.pop_back();
+        const float x0 = row.s ? xOf(row.line, row.s) : 0;
+        size_t lo = 0, hi = bounds.size() - 1;
+        while (lo < hi) {
+            const size_t mid = (lo + hi) / 2;
+            const float a = xOf(row.line, bounds[mid]) - x0, b = mid + 1 < bounds.size() ? xOf(row.line, bounds[mid + 1]) - x0 : 1e9f;
+            if (x < (a + b) / 2) hi = mid;
+            else lo = mid + 1;
+        }
+        return bounds[lo];
+    }
+    float xInRow(Pos p) const {
+        const Row& row = m_rows[static_cast<size_t>(rowOf(p))];
+        return xOf(p.line, p.col) - (row.s ? xOf(p.line, row.s) : 0);
+    }
+
     void setFontSize(float s) {
         fontSize = std::clamp(s, 8.0f, 36.0f);
+        m_breaks.clear();
+        m_rowsDirty = true;
         Config::get().set("/text/fontSize", fontSize);
         reveal();
         requestRedraw();
@@ -551,6 +661,7 @@ public:
         const int from = std::max(0, std::min(cursor.line, anchor.line) - 1);
         if (static_cast<int>(lineStates.size()) > from) lineStates.resize(static_cast<size_t>(from));
         if (from == 0) relang();
+        m_rowsDirty = true;
         doc->modified = true;
         if (onChanged) onChanged();
         moved();
@@ -577,7 +688,7 @@ public:
     void gotoLine(int line) {
         moveTo({line, 0}, false);
         // Centred
-        m_scrollY = std::max(0.0f, static_cast<float>(cursor.line) * lineH() - rect().h / 2);
+        m_scrollY = std::max(0.0f, static_cast<float>(rowOf(cursor)) * lineH() - rect().h / 2);
         requestRedraw();
     }
     void doUndo(bool redo) {
@@ -594,9 +705,13 @@ public:
     }
 
     void reveal() {
-        const float lh = lineH(), y = static_cast<float>(cursor.line) * lh, h = rect().h > 0 ? rect().h : 400;
+        const float lh = lineH(), y = static_cast<float>(rowOf(cursor)) * lh, h = rect().h > 0 ? rect().h : 400;
         if (y < m_scrollY) m_scrollY = y;
         else if (y + lh > m_scrollY + h - 8) m_scrollY = y + lh - h + 8;
+        if (wrapping()) {
+            m_scrollX = 0;
+            return;
+        }
         const float x = xOf(cursor.line, cursor.col), w = rect().w - gutter() - 24;
         if (x < m_scrollX) m_scrollX = std::max(0.0f, x - 40);
         else if (w > 0 && x > m_scrollX + w) m_scrollX = x - w + 40;
@@ -630,14 +745,18 @@ public:
             return p;
         };
         auto vertical = [&](int by) {
-            if (m_goalX < 0) m_goalX = xOf(cursor.line, cursor.col);
+            if (m_goalX < 0) m_goalX = xInRow(cursor);
             const float goal = m_goalX;
-            const int l = std::clamp(cursor.line + by, 0, static_cast<int>(lines.size()) - 1);
-            cursor = {l, colAt(l, goal)};
+            const int r = std::clamp(rowOf(cursor) + by, 0, static_cast<int>(m_rows.size()) - 1);
+            cursor = {m_rows[static_cast<size_t>(r)].line, colInRow(r, goal)};
             if (!shift) anchor = cursor;
             moved();
             m_goalX = goal;
         };
+        if (alt && !ctrl && (e.baseSym == 'z' || e.baseSym == 'Z')) {
+            Config::get().set("/text/wrap", !m_wrap);
+            return true;
+        }
         switch (e.sym) {
         case XKB_KEY_Left:
             if (hasSelection() && !shift) return moveTo(ordered().first, false), true;
@@ -809,7 +928,7 @@ protected:
     }
     bool onScroll(int steps) override {
         if (wl::Display::get().heldModifiers() & ModCtrl) return setFontSize(fontSize - static_cast<float>(steps)), true;
-        if (wl::Display::get().heldModifiers() & ModShift) m_scrollX = std::max(0.0f, m_scrollX + static_cast<float>(steps) * 60);
+        if (wl::Display::get().heldModifiers() & ModShift) m_scrollX = wrapping() ? 0 : std::max(0.0f, m_scrollX + static_cast<float>(steps) * 60);
         else m_scrollY += static_cast<float>(steps) * lineH() * 3;
         clampScroll();
         requestRedraw();
@@ -824,43 +943,60 @@ protected:
 
     void doPaint(Renderer& r) override {
         const auto& b = rect();
+        m_rowsDirty = true; // the width, or the text, may have changed under it
         clampScroll();
         auto& th = Theme::get();
         r.rect(b, th.color("surface_container_lowest"), Radii(16));
         r.pushClip(b);
         const float lh = lineH(), g = gutter(), textX = b.x + g + 8;
         const int first = std::max(0, static_cast<int>(m_scrollY / lh));
-        const int last = std::min(static_cast<int>(doc->lines.size()) - 1, static_cast<int>((m_scrollY + b.h) / lh) + 1);
+        const int last = std::min(static_cast<int>(m_rows.size()) - 1, static_cast<int>((m_scrollY + b.h) / lh) + 1);
         const TextStyle st = style();
         TextStyle numStyle = st;
         numStyle.size = fontSize * 0.85f;
         const Color ink = th.color("on_surface"), dim = th.color("outline"), sel = th.color("primary").withAlpha(m_focused ? 0.32f : 0.18f);
         auto [sa, sb] = ordered();
-        for (int i = first; i <= last; ++i) {
-            const float y = b.y + static_cast<float>(i) * lh - m_scrollY;
-            if (i == cursor.line && !hasSelection() && Config::get().value<bool>("/text/currentLine", true)) r.rect({b.x + g, y, b.w - g, lh}, th.color("on_surface").withAlpha(0.05f));
+        const int caretRow = rowOf(cursor);
+        const bool markLine = !hasSelection() && Config::get().value<bool>("/text/currentLine", true);
+        for (int ri = first; ri <= last; ++ri) {
+            const Row row = m_rows[static_cast<size_t>(ri)];
+            const int i = row.line;
+            const bool firstOfLine = ri == m_first[static_cast<size_t>(i)], lastOfLine = ri + 1 == m_first[static_cast<size_t>(i) + 1];
+            const float y = b.y + static_cast<float>(ri) * lh - m_scrollY;
+            if (i == cursor.line && markLine) r.rect({b.x + g, y, b.w - g, lh}, th.color("on_surface").withAlpha(0.05f));
             const std::string& l = doc->lines[static_cast<size_t>(i)];
+            const float xs = row.s ? xOf(i, row.s) : 0;
+            auto rel = [&](size_t c) { return xOf(i, c) - xs; };
             r.pushClip({b.x + g, b.y, b.w - g, b.h});
             // Find's matches, then the selection
             for (size_t m = 0; m < highlights.size(); ++m) {
                 const auto& [ha, hb] = highlights[m];
-                if (ha.line != i) continue;
-                const float x0 = xOf(i, ha.col), x1 = xOf(i, hb.col);
+                if (ha.line != i || ha.col < row.s || ha.col > row.e || (ha.col == row.e && !lastOfLine)) continue;
+                const float x0 = rel(ha.col), x1 = rel(std::min(hb.line == i ? hb.col : row.e, row.e));
                 r.rect({textX + x0 - m_scrollX, y + 2, std::max(2.0f, x1 - x0), lh - 4}, th.color(static_cast<int>(m) == currentMatch ? "tertiary" : "secondary").withAlpha(0.35f), Radii(3));
             }
-            if (hasSelection() && i >= sa.line && i <= sb.line) {
-                const float x0 = i == sa.line ? xOf(i, sa.col) : 0;
-                const float x1 = i == sb.line ? xOf(i, sb.col) : xOf(i, l.size()) + fontSize * 0.5f;
-                r.rect({textX + x0 - m_scrollX, y, std::max(3.0f, x1 - x0), lh}, sel);
+            if (hasSelection() && i >= sa.line && i <= sb.line && !(i == sa.line && sa.col > row.e) && !(i == sb.line && sb.col < row.s)) {
+                const size_t from = i == sa.line ? std::max(sa.col, row.s) : row.s, to = i == sb.line ? std::min(sb.col, row.e) : row.e;
+                const bool tail = lastOfLine && i < sb.line;
+                if (from < to || (from == to && tail)) {
+                    const float x0 = rel(from), x1 = rel(to) + (tail ? fontSize * 0.5f : 0);
+                    r.rect({textX + x0 - m_scrollX, y, std::max(3.0f, x1 - x0), lh}, sel);
+                }
             }
-            if (!l.empty()) {
-                // Very long lines drawn in their first part (the texture's limit)
-                const std::string shown = expand(l.size() > 4000 ? l.substr(0, 4000) : l);
+            if (row.e > row.s) {
+                // Very long lines (not wrapped) drawn in their first part (the texture's limit)
+                const std::string shown = expand(!wrapping() && l.size() > 4000 ? l.substr(0, 4000) : l);
+                const size_t es = row.s ? std::min(expand(l, row.s).size(), shown.size()) : 0;
+                const size_t ee = row.e >= l.size() ? shown.size() : std::min(expand(l, row.e).size(), shown.size());
+                const float ex = es ? TextEngine::get().measure(shown.substr(0, es), st).width : 0;
                 uint8_t state = stateAt(i);
                 const auto spans = tokenize(shown, lang, state);
                 auto run = [&](size_t a, size_t len, const Color& col) {
-                    if (!len) return;
-                    const float x0 = a ? TextEngine::get().measure(shown.substr(0, a), st).width : 0;
+                    size_t z = std::min(a + len, ee);
+                    a = std::max(a, es);
+                    if (a >= z) return;
+                    len = z - a;
+                    const float x0 = (a ? TextEngine::get().measure(shown.substr(0, a), st).width : 0) - ex;
                     const auto& tex = TextEngine::get().texture(shown.substr(a, len), st, r.scale());
                     const float ty = y + (lh - tex.logical.height) / 2;
                     if (tex.id) r.mask(tex.id, {textX - m_scrollX + x0, ty, tex.logical.width, tex.logical.height}, col);
@@ -880,18 +1016,18 @@ protected:
                     if (at < shown.size()) run(at, shown.size() - at, ink);
                 }
             }
-            if (m_focused && m_caretOn && i == cursor.line)
-                r.rect({textX + xOf(i, cursor.col) - m_scrollX - 1, y + 3, 2, lh - 6}, th.color("primary"), Radii(1));
+            if (m_focused && m_caretOn && ri == caretRow)
+                r.rect({textX + rel(cursor.col) - m_scrollX - 1, y + 3, 2, lh - 6}, th.color("primary"), Radii(1));
             r.popClip();
-            // The line's number
-            if (!lineNumbers()) continue;
+            // The line's number, on its first row
+            if (!lineNumbers() || !firstOfLine) continue;
             const std::string n = std::to_string(i + 1);
             const auto& nt = TextEngine::get().texture(n, numStyle, r.scale());
             if (nt.id) r.mask(nt.id, {b.x + g - 12 - nt.logical.width, y + (lh - nt.logical.height) / 2, nt.logical.width, nt.logical.height}, i == cursor.line ? ink : dim);
         }
         if (lineNumbers()) r.rect({b.x + g, b.y + 8, 1, b.h - 16}, th.color("outline_variant").withAlpha(0.5f));
         // Where in the file: a thin bar
-        const float total = static_cast<float>(doc->lines.size()) * lh;
+        const float total = static_cast<float>(m_rows.size()) * lh;
         if (total > b.h) {
             const float vh = std::max(24.0f, b.h * b.h / total), vy = b.y + (b.h - vh) * (m_scrollY / (total - b.h));
             r.rect({b.right() - 6, vy, 3, vh}, th.color("on_surface_variant").withAlpha(0.4f), Radii(1.5f));
@@ -929,11 +1065,13 @@ private:
     }
 
     Pos posAt(float x, float y) {
-        const int line = std::clamp(static_cast<int>((y - rect().y + m_scrollY) / lineH()), 0, static_cast<int>(doc->lines.size()) - 1);
-        return {line, colAt(line, x - rect().x - gutter() - 8 + m_scrollX)};
+        ensureRows();
+        const int r = std::clamp(static_cast<int>((y - rect().y + m_scrollY) / lineH()), 0, static_cast<int>(m_rows.size()) - 1);
+        return {m_rows[static_cast<size_t>(r)].line, colInRow(r, x - rect().x - gutter() - 8 + m_scrollX)};
     }
     void clampScroll() {
-        const float total = static_cast<float>(doc->lines.size()) * lineH();
+        ensureRows();
+        const float total = static_cast<float>(m_rows.size()) * lineH();
         m_scrollY = std::clamp(m_scrollY, 0.0f, std::max(0.0f, total - rect().h + lineH() * 3));
     }
     void restartBlink() {
@@ -1019,6 +1157,12 @@ private:
     }
 
     float m_scrollX = 0, m_scrollY = 0, m_goalX = -1;
+    bool m_wrap = false;
+    mutable std::vector<Row> m_rows;
+    mutable std::vector<int> m_first; // each line's first row (and one past the last)
+    mutable bool m_rowsDirty = true;
+    mutable float m_wrapW = -1;
+    mutable std::unordered_map<size_t, std::vector<size_t>> m_breaks;
     bool m_focused = false, m_caretOn = true, m_dragging = false;
     EventLoop::TimerId m_blink = 0;
     EventLoop::Clock::time_point m_lastPress{};
@@ -1550,6 +1694,7 @@ void textSettings(Flex* page) {
     auto* g = group(page, "Text");
     sliderRow(g, "format_size", "Text size", "/text/fontSize", 14, 8, 32, 1, [](double v) { return std::format("{:.0f} px", v); });
     switchRow(g, "format_list_numbered", "Line numbers", "", "/text/lineNumbers", true);
+    switchRow(g, "wrap_text", "Wrap long lines", "Onto the next row instead of off the side (Alt+Z)", "/text/wrap", false);
     switchRow(g, "horizontal_rule", "Mark the current line", "", "/text/currentLine", true);
     switchRow(g, "palette", "Colour the code", "Keywords, strings, comments and more, by the file's language", "/text/syntax", true);
     auto* i = group(page, "Indentation");
