@@ -119,8 +119,12 @@ void flashSaved(const std::shared_ptr<State>& st, const std::string& path, bool 
 }
 
 void takePhoto(const std::shared_ptr<State>& st) {
-    const std::string path = folder("XDG_PICTURES_DIR", "Pictures") + "/IMG_" + stamp() + ".jpg";
+    // JPEG (small) or PNG (lossless), as Settings says; the shutter sound too
+    const bool png = Config::get().value<std::string>("/camera/format", "jpg") == "png";
+    const std::string path = folder("XDG_PICTURES_DIR", "Pictures") + "/IMG_" + stamp() + (png ? ".png" : ".jpg");
     st->mpv->command({"screenshot-to-file", path.c_str(), "video"});
+    if (Config::get().value<bool>("/camera/shutterSound", true) && haveCommand("canberra-gtk-play"))
+        m3::run({"canberra-gtk-play", "-i", "camera-shutter", "-d", "Camera"}, nullptr);
     // The file appears a moment later
     EventLoop::get().addTimer(400, [st, path] {
         if (*st->alive) flashSaved(st, path, false);
@@ -141,7 +145,10 @@ void startRecording(const std::shared_ptr<State>& st) {
     const std::string mirror = Config::get().value<bool>("/camera/mirror", true) ? "hflip," : "";
     cmd.insert(cmd.end(), {"-filter_complex", "[0:v]" + mirror + "split=2[rec][pre]", "-map", "[rec]"});
     if (mic) cmd.insert(cmd.end(), {"-map", "1:a", "-c:a", "aac", "-b:a", "160k"});
-    cmd.insert(cmd.end(), {"-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p", "-movflags", "+faststart", st->recordPath,
+    // Quality: the smaller file or the sharper picture (Settings)
+    const std::string crf = Config::get().value<std::string>("/camera/videoQuality", "normal") == "high" ? "18"
+                            : Config::get().value<std::string>("/camera/videoQuality", "normal") == "small" ? "28" : "22";
+    cmd.insert(cmd.end(), {"-c:v", "libx264", "-preset", "veryfast", "-crf", crf, "-pix_fmt", "yuv420p", "-movflags", "+faststart", st->recordPath,
                            "-map", "[pre]", "-c:v", "mpeg1video", "-q:v", "4", "-f", "mpegts", "udp://127.0.0.1:23101?pkt_size=1316"});
     st->recording = true;
     st->recordStart = EventLoop::Clock::now();
@@ -215,6 +222,7 @@ private:
 
 void cameraApp(Flex* card, Popup& popup, const std::string& arg) {
     auto st = std::make_shared<State>();
+    st->timerSecs = Config::get().value<int>("/camera/timer", 0); // the timer last chosen
     st->video = arg == "video";
     card->setPadding(Insets(10))->setSpacing(10);
     st->cams = cameras();
@@ -305,7 +313,10 @@ void cameraApp(Flex* card, Popup& popup, const std::string& arg) {
         right->grow = true;
         right->setJustify(Align::End)->setSpacing(4)->setAlignItems(Align::Center);
         if (!st->video)
-            connectedGroup<int>(right, st->timerSecs, {{0, "No timer"}, {3, "3 s"}, {10, "10 s"}}, [st](int v) { st->timerSecs = v; });
+            connectedGroup<int>(right, st->timerSecs, {{0, "No timer"}, {3, "3 s"}, {10, "10 s"}}, [st](int v) {
+                st->timerSecs = v;
+                Config::get().set("/camera/timer", v);
+            });
         iconButton(right, "flip", [st] {
             Config::get().set("/camera/mirror", !Config::get().value<bool>("/camera/mirror", true));
             if (!st->recording) preview(st);
@@ -336,8 +347,11 @@ void cameraSettings(Flex* page) {
     choiceRow<std::string>(g, "high_quality", "Resolution", "Webcams that can't do it give the nearest", "/camera/resolution", "1280x720",
                            {{"640x480", "480p"}, {"1280x720", "720p"}, {"1920x1080", "1080p"}});
     switchRow(g, "flip", "Mirror", "As in a mirror (photos and videos are saved so too)", "/camera/mirror", true);
+    choiceRow<std::string>(g, "image", "Photo format", "", "/camera/format", "jpg", {{"jpg", "JPEG (smaller)"}, {"png", "PNG (lossless)"}});
+    switchRow(g, "photo_camera", "Shutter sound", "A click as a photo is taken (canberra-gtk-play)", "/camera/shutterSound", true);
     auto* v = group(page, "Videos");
     switchRow(v, "mic", "Record sound", "From your default microphone", "/camera/microphone", true);
+    choiceRow<std::string>(v, "high_quality", "Quality", "", "/camera/videoQuality", "normal", {{"small", "Smaller files"}, {"normal", "Balanced"}, {"high", "Sharper"}});
     caption(page, "Photos go to " + fileops::displayPath(folder("XDG_PICTURES_DIR", "Pictures", false)) + ", videos to " + fileops::displayPath(folder("XDG_VIDEOS_DIR", "Videos", false)));
 }
 
