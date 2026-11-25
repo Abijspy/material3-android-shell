@@ -130,6 +130,10 @@ void load(const std::shared_ptr<PlayerState>& st, int index) {
     m.set("hwdec", Config::get().value<bool>("/player/hwdec", true) ? "auto-safe" : "no");
     m.set("slang", Config::get().value<std::string>("/player/subLang", "en,eng"));
     m.set("sub-font-size", std::to_string(static_cast<int>(Config::get().value<double>("/player/subSize", 46))));
+    // Settings: a video played over and over, its speed, subtitles off to begin with
+    m.set("loop-file", Config::get().value<bool>("/player/loop", false) ? "inf" : "no");
+    m.set("speed", std::format("{:.2f}", std::clamp(Config::get().value<double>("/player/speed", 1.0), 0.25, 4.0)));
+    if (!Config::get().value<bool>("/player/subsOn", true)) m.set("sid", "no");
     // Where the one before was up to, kept for next time
     if (Config::get().value<bool>("/player/resume", true)) m.command({"write-watch-later-config"});
     st->mpv->command({"loadfile", st->playlist[st->index].c_str(), "replace"});
@@ -487,8 +491,14 @@ void player(Flex* card, Popup& popup, const std::string& file) {
         switch (e.sym) {
         case XKB_KEY_space:
         case XKB_KEY_k: m.setFlag("pause", !st->paused); return true;
-        case XKB_KEY_Left: m.command({"seek", e.shift() ? "-30" : "-5", "relative"}); return true;
-        case XKB_KEY_Right: m.command({"seek", e.shift() ? "30" : "5", "relative"}); return true;
+        case XKB_KEY_Left:
+        case XKB_KEY_Right: {
+            // How far an arrow goes (Settings), six times that with Shift
+            const int step = std::clamp(Config::get().value<int>("/player/seekStep", 5), 1, 120) * (e.shift() ? 6 : 1);
+            const std::string by = std::to_string(e.sym == XKB_KEY_Left ? -step : step);
+            m.command({"seek", by.c_str(), "relative"});
+            return true;
+        }
         case XKB_KEY_j: m.command({"seek", "-10", "relative"}); return true;
         case XKB_KEY_l: m.command({"seek", "10", "relative"}); return true;
         case XKB_KEY_Home: m.command({"seek", "0", "absolute"}); return true;
@@ -553,7 +563,13 @@ void playerSettings(Flex* page) {
     switchRow(g, "history", "Resume where you left off", "A video opened again starts where it stopped", "/player/resume", true);
     switchRow(g, "playlist_play", "Play the next one", "When a video ends, the folder's next starts", "/player/autoNext", true);
     sliderRow(g, "volume_up", "Starting volume", "/player/volume", 100, 0, 130, 5, [](double v) { return std::format("{:.0f}%", v); });
+    switchRow(g, "repeat_one", "Play a video over and over", "It starts again when it ends", "/player/loop", false);
+    choiceRow<double>(g, "speed", "Speed", "Each video starts at it ([ and ] change it while playing)", "/player/speed", 1.0,
+                      {{0.75, "0.75×"}, {1.0, "Normal"}, {1.25, "1.25×"}, {1.5, "1.5×"}, {2.0, "2×"}});
+    choiceRow<int>(g, "fast_forward", "Arrow keys skip", "Shift skips six times as far", "/player/seekStep", 5,
+                   {{3, "3 seconds"}, {5, "5 seconds"}, {10, "10 seconds"}, {30, "30 seconds"}});
     auto* sub = group(page, "Subtitles");
+    switchRow(sub, "subtitles", "Show subtitles", "When a video has them; C turns them on or off while playing", "/player/subsOn", true);
     textRow(sub, "translate", "Preferred languages", "/player/subLang", "en,eng");
     caption(sub, "  Language codes, in order: en,eng or ta,tam,en (Enter saves)");
     sliderRow(sub, "format_size", "Size", "/player/subSize", 46, 24, 90, 2, [](double v) { return std::format("{:.0f}", v); });
