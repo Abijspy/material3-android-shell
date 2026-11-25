@@ -195,7 +195,9 @@ public:
         if (m_zoom > 0) return m_zoom;
         const auto& b = rect();
         if (b.w <= 0 || b.h <= 0) return 1;
-        return std::min({b.w / static_cast<float>(m_w), b.h / static_cast<float>(m_h), 1.0f});
+        // Small pictures at their own size, unless Settings says to fill the window
+        const float fit = std::min(b.w / static_cast<float>(m_w), b.h / static_cast<float>(m_h));
+        return Config::get().value<bool>("/viewer/upscale", false) ? fit : std::min(fit, 1.0f);
     }
     bool fitted() const { return m_zoom <= 0; }
     void zoomTo(float z) {
@@ -456,9 +458,69 @@ void step(const std::shared_ptr<ViewerState>& st, int by) {
 }
 
 // Into the trash, and on to the next
-void trashCurrent(const std::shared_ptr<ViewerState>& st, Popup& popup) {
+void trashCurrent(const std::shared_ptr<ViewerState>& st, Popup& popup, bool asked = false);
+
+// Turned a quarter, and saved so (ImageMagick when it's there, which keeps
+// any format; else gdk-pixbuf for PNG and JPEG)
+void rotateCurrent(const std::shared_ptr<ViewerState>& st, bool clockwise) {
     if (st->pictures.empty()) return;
     const std::string file = st->pictures[st->index];
+    auto done = [st, file](bool ok, const std::string& why) {
+        if (!*st->alive) return;
+        if (!ok) return void(m3::run({"notify-send", "-a", "Photos", "-i", "image-x-generic", "Couldn't turn the picture", why}, nullptr));
+        Images::get().forget(file);
+        if (!st->pictures.empty() && st->pictures[st->index] == file) {
+            st->view->show(file);
+            st->refresh();
+        }
+    };
+    if (haveCommand("magick")) {
+        m3::run({"magick", "mogrify", "-rotate", clockwise ? "90" : "-90", file}, [done](int code, const std::string& out) { done(code == 0, out.substr(0, 200)); });
+        return;
+    }
+    std::string ext = fs::path(file).extension().string();
+    for (auto& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    const char* type = ext == ".png" ? "png" : ext == ".jpg" || ext == ".jpeg" ? "jpeg" : nullptr;
+    if (!type) return done(false, "Turning this kind of picture needs ImageMagick: sudo pacman -S imagemagick");
+    GError* err = nullptr;
+    GdkPixbuf* pb = gdk_pixbuf_new_from_file(file.c_str(), &err);
+    if (!pb) return done(false, err ? err->message : "It couldn't be read");
+    GdkPixbuf* turned = gdk_pixbuf_rotate_simple(pb, clockwise ? GDK_PIXBUF_ROTATE_CLOCKWISE : GDK_PIXBUF_ROTATE_COUNTERCLOCKWISE);
+    g_object_unref(pb);
+    const std::string tmp = file + ".turning";
+    const bool ok = std::string(type) == "jpeg" ? gdk_pixbuf_save(turned, tmp.c_str(), type, &err, "quality", "95", nullptr)
+                                               : gdk_pixbuf_save(turned, tmp.c_str(), type, &err, nullptr);
+    g_object_unref(turned);
+    std::error_code ec;
+    if (ok) fs::rename(tmp, file, ec);
+    else fs::remove(tmp, ec);
+    done(ok && !ec, err ? err->message : ec.message());
+    if (err) g_error_free(err);
+}
+
+// The picture itself onto the clipboard, to paste into a chat or a document
+void copyCurrent(const std::shared_ptr<ViewerState>& st) {
+    if (st->pictures.empty()) return;
+    const std::string file = st->pictures[st->index];
+    std::string ext = fs::path(file).extension().string();
+    for (auto& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    const std::string mime = ext == ".png" ? "image/png" : ext == ".jpg" || ext == ".jpeg" ? "image/jpeg" : ext == ".webp" ? "image/webp" : ext == ".gif" ? "image/gif" : "";
+    if (mime.empty()) {
+        // Another format: as PNG
+        m3::run({"sh", "-c", "magick \"$1\" png:- | wl-copy --type image/png", "sh", file}, nullptr);
+        return;
+    }
+    m3::run({"sh", "-c", "wl-copy --type \"$2\" < \"$1\"", "sh", file, mime}, nullptr);
+}
+
+void trashCurrent(const std::shared_ptr<ViewerState>& st, Popup& popup, bool asked) {
+    if (st->pictures.empty()) return;
+    const std::string file = st->pictures[st->index];
+    // Asked first, when Settings says so
+    if (!asked && Config::get().value<bool>("/viewer/confirmTrash", false) && st->bar) {
+        floatingMenu(st->bar, {MenuItem("delete", "Move " + fs::path(file).filename().string() + " to the trash", "", [st, &popup] { trashCurrent(st, popup, true); }, false, true)});
+        return;
+    }
     fileops::trash({file});
     st->pictures.erase(st->pictures.begin() + static_cast<long>(st->index));
     if (st->pictures.empty()) {
@@ -902,6 +964,9 @@ void viewer(Flex* card, Popup& popup, const std::string& file) {
     iconButton(bar, "brush", [st] {
         if (!st->pictures.empty() && open) open("imageeditor " + st->pictures[st->index]);
     }, 22)->tooltip = "Edit";
+    iconButton(bar, "rotate_left", [st] { rotateCurrent(st, false); }, 22)->tooltip = "Turn left (Shift+R)";
+    iconButton(bar, "rotate_right", [st] { rotateCurrent(st, true); }, 22)->tooltip = "Turn right (R)";
+    iconButton(bar, "content_copy", [st] { copyCurrent(st); }, 22)->tooltip = "Copy the picture (Ctrl+C)";
     iconButton(bar, "wallpaper", [st] {
         if (!st->pictures.empty() && open) open("wallpaper " + st->pictures[st->index]);
     }, 22)->tooltip = "Set as wallpaper";
@@ -1000,6 +1065,13 @@ void viewer(Flex* card, Popup& popup, const std::string& file) {
         case XKB_KEY_0: st->view->zoomTo(0); return true;
         case XKB_KEY_1: st->view->zoomTo(1); return true;
         case XKB_KEY_Delete: trashCurrent(st, p); return true;
+        case XKB_KEY_r:
+        case XKB_KEY_R: rotateCurrent(st, !e.shift()); return true;
+        case XKB_KEY_c:
+        case XKB_KEY_C:
+            if (!e.ctrl()) return false;
+            copyCurrent(st);
+            return true;
         case XKB_KEY_i:
         case XKB_KEY_I: st->infoBar->setVisible(!st->infoBar->visible()); return true;
         case XKB_KEY_f:
@@ -1033,6 +1105,9 @@ void viewerClosed() {
 
 // Settings → Photos
 void viewerSettings(Flex* page) {
+    auto* p = group(page, "Pictures");
+    switchRow(p, "fit_screen", "Fit small pictures to the window", "Enlarged to fill it; off, shown at their own size", "/viewer/upscale", false);
+    switchRow(p, "delete", "Ask before moving to the trash", "Delete and the trash button ask first", "/viewer/confirmTrash", false);
     auto* g = group(page, "Gallery");
     choiceRow<std::string>(g, "sort", "Order", "How the gallery lists a folder's pictures", "/viewer/sort", "date", {{"date", "Newest first"}, {"name", "By name"}});
     auto* v = group(page, "Viewing", "From the next picture you open");
