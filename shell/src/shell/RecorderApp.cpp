@@ -164,8 +164,11 @@ void startRecording(const std::shared_ptr<State>& st) {
     std::strftime(name, sizeof name, "Recording %Y-%m-%d %H.%M.%S", std::localtime(&t));
     st->path = folder() + "/" + name + "." + fmt;
     std::vector<std::string> cmd = {"ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "pulse", "-i", src.empty() ? "default" : src};
-    if (fmt == "opus") cmd.insert(cmd.end(), {"-c:a", "libopus", "-b:a", "96k"});
-    else if (fmt == "mp3") cmd.insert(cmd.end(), {"-c:a", "libmp3lame", "-q:a", "2"});
+    // Mono (voice) or stereo, and how much detail the lossy formats keep
+    cmd.insert(cmd.end(), {"-ac", Config::get().value<bool>("/recorder/stereo", false) ? "2" : "1"});
+    const std::string quality = Config::get().value<std::string>("/recorder/quality", "normal");
+    if (fmt == "opus") cmd.insert(cmd.end(), {"-c:a", "libopus", "-b:a", quality == "small" ? "48k" : quality == "high" ? "160k" : "96k"});
+    else if (fmt == "mp3") cmd.insert(cmd.end(), {"-c:a", "libmp3lame", "-q:a", quality == "small" ? "6" : quality == "high" ? "0" : "2"});
     else if (fmt == "flac") cmd.insert(cmd.end(), {"-c:a", "flac"});
     cmd.push_back(st->path);
     st->start = EventLoop::Clock::now();
@@ -321,6 +324,8 @@ void recorderSettings(Flex* page) {
     auto* g = group(page, "Recording");
     choiceRow<std::string>(g, "audio_file", "Format", "Opus is small and clear; FLAC and WAV keep everything", "/recorder/format", "opus",
                            {{"opus", "Opus"}, {"mp3", "MP3"}, {"flac", "FLAC"}, {"wav", "WAV"}});
+    choiceRow<std::string>(g, "high_quality", "Quality", "For Opus and MP3", "/recorder/quality", "normal", {{"small", "Smaller files"}, {"normal", "Balanced"}, {"high", "Best"}});
+    switchRow(g, "surround_sound", "Stereo", "Two channels, for music; off, mono (half the size, fine for voice)", "/recorder/stereo", false);
     auto r = row(g, "mic", "Microphone", Config::get().value<std::string>("/recorder/source", "").empty() ? "The default one" : Config::get().value<std::string>("/recorder/source", ""));
     auto* holder = r.row;
     m3::run({"pactl", "list", "short", "sources"}, [holder](int, const std::string& out) {

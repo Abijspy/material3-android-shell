@@ -15,6 +15,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <format>
 #include <linux/input-event-codes.h>
@@ -33,6 +34,7 @@ std::string prepare(std::string e) {
     auto replaceAll = [&](const std::string& a, const std::string& b) {
         for (size_t i = 0; (i = e.find(a, i)) != std::string::npos; i += b.size()) e.replace(i, a.size(), b);
     };
+    std::erase(e, ','); // thousands separators, from an answer reused
     replaceAll("×", "*");
     replaceAll("÷", "/");
     replaceAll("−", "-");
@@ -66,11 +68,25 @@ std::string prepare(std::string e) {
     return e;
 }
 
+// An answer as Settings asks: as many decimals as it needs (or a fixed
+// number), with thousands separated or not
+std::string formatAnswer(double v) {
+    const int places = Config::get().value<int>("/calculator/decimals", -1);
+    std::string s = places < 0 ? m3::formatNumber(v) : std::format("{:.{}f}", v, std::clamp(places, 0, 12));
+    if (Config::get().value<bool>("/calculator/grouping", false) && s.find('e') == std::string::npos) {
+        const size_t start = s.starts_with('-') ? 1 : 0;
+        size_t end = s.find('.');
+        if (end == std::string::npos) end = s.size();
+        for (long i = static_cast<long>(end) - 3; i > static_cast<long>(start); i -= 3) s.insert(static_cast<size_t>(i), ",");
+    }
+    return s;
+}
+
 std::string result(const std::string& expr) {
     if (expr.empty()) return "";
     auto v = m3::evaluate(prepare(expr));
     if (!v) return "";
-    return m3::formatNumber(*v);
+    return formatAnswer(*v);
 }
 
 // ── Units ──
@@ -121,7 +137,8 @@ struct State {
 void remember(const std::string& e, const std::string& r) {
     auto h = Config::get().value<nlohmann::json>("/calculator/history", nlohmann::json::array());
     h.insert(h.begin(), nlohmann::json{{"e", e}, {"r", r}});
-    while (h.size() > 30) h.erase(h.end() - 1);
+    const size_t keep = static_cast<size_t>(std::clamp(Config::get().value<int>("/calculator/historyLength", 30), 5, 200));
+    while (h.size() > keep) h.erase(h.end() - 1);
     Config::get().set("/calculator/history", h);
 }
 
@@ -395,6 +412,10 @@ void calculatorSettings(Flex* page) {
     switchRow(g, "function", "Scientific keys", "sin, cos, tan, ln, log, √, π, e and powers", "/calculator/scientific", false);
     auto r = row(g, "history", "History", "Your last 30 sums");
     pillButton(r.row, "Clear", false, [] { Config::get().set("/calculator/history", nlohmann::json::array()); }, "delete_sweep");
+    auto f = group(page, "Answers");
+    choiceRow<int>(f, "decimal_increase", "Decimal places", "", "/calculator/decimals", -1, {{-1, "As many as needed"}, {2, "2"}, {4, "4"}, {6, "6"}, {10, "10"}});
+    switchRow(f, "pin", "Separate thousands", "1,234,567 instead of 1234567", "/calculator/grouping", false);
+    choiceRow<int>(f, "history", "Sums remembered", "", "/calculator/historyLength", 30, {{10, "10"}, {30, "30"}, {100, "100"}});
 }
 
 } // namespace m3::shell::panels
