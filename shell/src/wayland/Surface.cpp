@@ -9,6 +9,9 @@
 #include "ui/Controls.h"
 #include "ui/Theme.h"
 #include "wayland/Display.h"
+#include "wayland/LayerSurface.h"
+#include "wayland/Window.h"
+#include "ui/IconTips.h"
 
 #include "ext-background-effect-v1-client-protocol.h"
 #include "fractional-scale-v1-client-protocol.h"
@@ -198,6 +201,8 @@ Surface::~Surface() {
     std::erase(registry(), this);
     *m_alive = false;
     if (m_ambientTimer) EventLoop::get().cancel(m_ambientTimer);
+    if (m_tipTimer) EventLoop::get().cancel(m_tipTimer);
+    m_tip.reset(); // before the members it reports to
     // Subclasses call destroySurface() in their destructors (their role
     // must go first); this is the safety net.
     destroySurface();
@@ -248,7 +253,7 @@ Surface* Surface::fromSurface(wl_surface* surface) {
 void Surface::setRoot(std::unique_ptr<ui::Node> root) {
     // The old tree goes: a tooltip shown or waiting for one of its nodes
     // goes with it (the dock rebuilds under the pointer)
-    if (m_tooltip && tooltipHook) tooltipHook(this, nullptr);
+    if (m_tooltip) showTip(nullptr);
     m_hovered = m_pressed = m_focus = m_tooltip = nullptr;
     m_root = std::move(root);
     m_root->setHost(this);
@@ -309,7 +314,7 @@ void Surface::nodeDestroyed(ui::Node* node) {
     if (m_hovered == node) m_hovered = nullptr;
     if (m_tooltip == node) {
         m_tooltip = nullptr;
-        if (tooltipHook) tooltipHook(this, nullptr);
+        showTip(nullptr);
     }
     if (m_pressed == node) m_pressed = nullptr;
     if (m_dropTarget == node) m_dropTarget = nullptr;
@@ -395,12 +400,28 @@ void Surface::render() {
     m_ambient = false;
     m_painting = true;
     if (m_root) m_root->paint(r);
+    // A tooltip in the window: under its item (over it where there's no
+    // room), inside the window's edges
+    if (m_tipShown && m_tip && m_tooltip) {
+        const SizeF ts = m_tip->measure({360, 200});
+        // Where it's drawn: its place, moved as it and its parents are
+        // moved (a popup's card sliding into place, a lifted card)
+        RectF it = m_tooltip->rect();
+        for (const ui::Node* n = m_tooltip; n; n = n->parentNode()) it.x += n->translateX(), it.y += n->translateY();
+        const float w = static_cast<float>(m_width), h = static_cast<float>(m_height);
+        float x = std::clamp(it.x + it.w / 2 - ts.w / 2, 6.0f, std::max(6.0f, w - ts.w - 6));
+        float y = it.y + it.h + 6;
+        if (y + ts.h > h - 6) y = std::max(6.0f, it.y - ts.h - 6);
+        m_tip->arrange({x, y, ts.w, ts.h});
+        m_tip->paint(r);
+    }
     m_painting = false;
     r.inlineBlur = 0;
     const auto t2 = Clock::now();
     // Painting may flag more work (running animations); that becomes the
     // next frame, or, for ambient motion alone, one at the ambient rate
-    const auto motion = m_root ? m_root->motion() : ui::Node::Motion::None;
+    auto motion = m_root ? m_root->motion() : ui::Node::Motion::None;
+    if (m_tipShown && m_tip) motion = std::max(motion, m_tip->motion());
     m_dirty = m_dirty || motion == ui::Node::Motion::Live;
     m_ambient = m_ambient || motion == ui::Node::Motion::Ambient;
     m_lastFrame = t0;
@@ -519,18 +540,69 @@ void Surface::updateBlurRegion() {
 
 // ── Input ──
 
+void Surface::showTip(ui::Node* node) {
+    // The shell's overlay places tooltips for its edge surfaces (the bar,
+    // the dock, panels down a side); anything else draws its own
+    bool overlay = false;
+    if (auto* layer = dynamic_cast<LayerSurface*>(this)) {
+        const auto a = layer->options().anchor;
+        const bool across = (a & LayerSurface::Left) && (a & LayerSurface::Right), down = (a & LayerSurface::Top) && (a & LayerSurface::Bottom);
+        // Not one over the whole screen (a centred popup's): it sits inside
+        // the bar's reserved space, which the overlay can't know
+        overlay = across != down;
+    }
+    if (tooltipHook && overlay) return tooltipHook(this, node);
+    if (m_tipTimer) EventLoop::get().cancel(m_tipTimer);
+    m_tipTimer = 0;
+    if (m_tipShown) {
+        m_tipShown = false;
+        requestRedraw();
+    }
+    if (!node) return;
+    // After the pointer rests a moment
+    m_tipTimer = EventLoop::get().addTimer(600, [this, alive = m_alive] {
+        if (!*alive) return;
+        m_tipTimer = 0;
+        if (!m_tooltip || m_tooltip->tooltip.empty()) return;
+        auto pill = std::make_unique<ui::Flex>(ui::Flex::Direction::Row);
+        pill->setPadding({10, 5})->setRadius(Radii(8))->setBackground("inverse_surface", false);
+        pill->add<ui::Label>(m_tooltip->tooltip)->setSize(12)->setWeight(500)->setColor("inverse_on_surface", false)->setMaxWidth(340)->setMaxLines(3);
+        pill->setHost(this);
+        pill->setOpacity(0, false);
+        pill->setOpacity(1);
+        m_tip = std::move(pill);
+        m_tipShown = true;
+        requestRedraw();
+    });
+}
+
 void Surface::pointerMotion(double x, double y) {
     m_pointerX = static_cast<float>(x);
     m_pointerY = static_cast<float>(y);
     ui::Node* hit = m_root ? m_root->hitTest(m_pointerX, m_pointerY) : nullptr;
-    if (hit != m_hovered && tooltipHook) {
-        // The nearest node with a tooltip, from the one under the pointer up
+    if (hit != m_hovered) {
+        // The nearest node with a tooltip, from the one under the pointer
+        // up; an icon-only button without one says what its icon means
         ui::Node* tip = nullptr;
-        for (ui::Node* n = hit; n && !tip; n = n->parentNode())
+        for (ui::Node* n = hit; n && !tip; n = n->parentNode()) {
+            if (n->tooltip.empty() || n->tooltipAuto) {
+                if (auto* b = dynamic_cast<ui::Button*>(n)) {
+                    ui::Icon* icon = nullptr;
+                    bool other = false;
+                    for (const auto& c : b->children()) {
+                        if (!c->shown()) continue;
+                        if (auto* i = dynamic_cast<ui::Icon*>(c.get()); i && !icon) icon = i;
+                        else if (dynamic_cast<ui::Label*>(c.get())) other = true;
+                    }
+                    const std::string words = icon && !other ? ui::iconTip(icon->text()) : "";
+                    if (!words.empty()) n->tooltip = words, n->tooltipAuto = true;
+                }
+            }
             if (!n->tooltip.empty()) tip = n;
+        }
         if (tip != m_tooltip) {
             m_tooltip = tip;
-            tooltipHook(this, tip);
+            showTip(tip);
         }
     }
     if (hit != m_hovered) {
@@ -574,7 +646,7 @@ void Surface::updateHoverWithin(ui::Node* hit) {
 }
 
 void Surface::pointerLeave() {
-    if (m_tooltip && tooltipHook) tooltipHook(this, nullptr);
+    if (m_tooltip) showTip(nullptr);
     m_tooltip = nullptr;
     updateHoverWithin(nullptr);
     if (m_hovered) m_hovered->onHover(false);
@@ -583,7 +655,7 @@ void Surface::pointerLeave() {
 }
 
 void Surface::pointerButton(uint32_t button, bool pressed) {
-    if (pressed && m_tooltip && tooltipHook) tooltipHook(this, nullptr); // a press puts it away
+    if (pressed && m_tooltip) showTip(nullptr), m_tooltip = nullptr; // a press puts it away
     // The pointer's back: no ring until the keyboard moves again
     if (pressed && ui::Node::focusRing) {
         ui::Node::focusRing = nullptr;

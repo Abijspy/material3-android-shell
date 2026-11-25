@@ -167,6 +167,12 @@ private:
 
     ui::Node* m_hovered = nullptr;
     ui::Node* m_tooltip = nullptr; // the node whose tooltip is up (or coming)
+    // Tooltips: the shell's overlay (bar, dock, popups) through tooltipHook,
+    // or in the window itself (apps, and the shell's own windows)
+    void showTip(ui::Node* node);
+    std::unique_ptr<ui::Node> m_tip; // the pill, drawn over the window
+    bool m_tipShown = false;
+    EventLoop::TimerId m_tipTimer = 0;
     ui::Node* m_pressed = nullptr;
     ui::Node* m_dropTarget = nullptr; // a drag of files is over it
     float m_pressX = 0, m_pressY = 0;

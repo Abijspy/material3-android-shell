@@ -170,6 +170,9 @@ public:
         if (tooltipChanged) tooltipChanged(this);
     }
     static inline std::function<void(Node*)> tooltipChanged;
+    // The tooltip was worded from the icon it shows (refreshed on each
+    // hover: a play button that became pause says so)
+    bool tooltipAuto = false;
 
     // Sizing constraints honoured by parents
     std::optional<float> fixedWidth, fixedHeight;

@@ -205,6 +205,7 @@ sources = files(
   'src/shell/bar/Widgets.cpp',
   'src/ui/Animation.cpp',
   'src/ui/Controls.cpp',
+  'src/ui/IconTips.cpp',
   'src/ui/TextArea.cpp',
   'src/ui/Node.cpp',
   'src/ui/Theme.cpp',
