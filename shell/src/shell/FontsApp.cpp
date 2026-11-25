@@ -334,7 +334,10 @@ void buildPage(const std::shared_ptr<FontState>& st) {
     auto fillSizes = [st, sizes, desc, weight = face->weight] {
         sizes->clearChildren();
         const std::string text = st->sample.empty() ? Config::get().value<std::string>("/fonts/sample", kSampleDefault) : st->sample;
-        for (float px : {12.0f, 16.0f, 20.0f, 28.0f, 36.0f, 48.0f, 64.0f, 80.0f}) {
+        const std::string range = Config::get().value<std::string>("/fonts/previewSizes", "all");
+        const std::vector<float> all = {12.0f, 16.0f, 20.0f, 28.0f, 36.0f, 48.0f, 64.0f, 80.0f};
+        const std::vector<float> pxs = range == "text" ? std::vector<float>(all.begin(), all.begin() + 4) : range == "display" ? std::vector<float>(all.begin() + 3, all.end()) : all;
+        for (float px : pxs) {
             auto* row = sizes->add<Flex>(Flex::Direction::Row);
             row->setSpacing(14)->setAlignItems(Align::Center);
             auto* n = row->add<Label>(std::format("{:.0f}", px));
@@ -368,6 +371,7 @@ std::function<void(const std::string&)> fontsGo;
 
 void fontsApp(Flex* card, Popup& popup, const std::string& arg) {
     auto st = std::make_shared<FontState>();
+    st->filter = Config::get().value<std::string>("/fonts/filter", "all");
     card->setPadding(Insets(10))->setSpacing(8);
     card->add<FontKeeper>(st);
 
@@ -403,6 +407,7 @@ void fontsApp(Flex* card, Popup& popup, const std::string& arg) {
         c->onClicked = [st, k = std::string(key), paintChips](uint32_t b) {
             if (b != BTN_LEFT) return;
             st->filter = k;
+            Config::get().set("/fonts/filter", k);
             (*paintChips)();
             st->showList();
         };
@@ -480,6 +485,7 @@ void fontsSettings(Flex* page) {
     auto* g = group(page, "Fonts");
     switchRow(g, "format_size", "Families in their own fonts", "The list shows each name in its face; off, quicker with many fonts", "/fonts/ownFace", true);
     textRow(g, "edit", "Sample text", "/fonts/sample", kSampleDefault);
+    choiceRow<std::string>(g, "format_size", "Preview sizes", "On a font's page", "/fonts/previewSizes", "all", {{"all", "12 to 80"}, {"text", "Text sizes (12 to 28)"}, {"display", "Headline sizes (28 to 80)"}});
     caption(page, "  Fonts you install go to ~/.local/share/fonts, for every app");
 }
 

@@ -359,6 +359,11 @@ void finish(std::shared_ptr<WState> st, int code, const std::string& out) {
     if (code == 0) {
         st->phase = WState::Phase::Done;
         notify("Ready to start from", fs::path(st->image.path).filename().string() + " is on " + drive);
+        if (d && fakeTarget().empty() && Config::get().value<bool>("/imagewriter/autoEject", false))
+            m3::run({"udisksctl", "power-off", "-b", d->path}, [st](int ok, const std::string&) {
+                if (ok == 0) notify("Safe to unplug");
+                if (*st->alive) readDrives(st);
+            });
     } else if (code == 126 || code == 127) {
         st->phase = WState::Phase::Confirm; // the password was refused or cancelled
     } else {
@@ -762,6 +767,7 @@ void imagewriterSettings(Flex* page) {
     auto* g = group(page, "Writing");
     switchRow(g, "fact_check", "Check the drive afterwards", "Read it back and compare with the image: slower, but catches failing and fake drives",
               "/imagewriter/verify", true);
+    switchRow(g, "eject", "Eject when it's done", "Power the drive off after a good write, ready to unplug", "/imagewriter/autoEject", false);
     switchRow(g, "hard_drive", "Offer every drive", "Not only USB drives and memory cards (the system's own are never offered)", "/imagewriter/allDrives", false);
 }
 

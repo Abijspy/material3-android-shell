@@ -494,6 +494,8 @@ void backupsSettings(Flex* page) {
     auto* g = group(page, "Left out");
     textRow(g, "block", "Also leave out", "/backups/exclude", "");
     caption(g, "  Names or paths, separated by commas: Downloads, *.iso, .local/share/containers (Enter saves)");
+    auto* n = group(page, "Daily backups");
+    choiceRow<std::string>(n, "notifications", "Tell me", "When the timer backs up by itself", "/backups/notify", "problems", {{"always", "Every time"}, {"problems", "Only when it fails"}, {"never", "Never"}});
     caption(page, "Always left out: .cache, the trash, node_modules, .npm, __pycache__, .venv, Steam's games, Flatpak app data, thumbnails");
 }
 
@@ -501,6 +503,14 @@ void backupsSettings(Flex* page) {
 int backupsRunHeadless() {
     backups::Progress p;
     backups::run(p);
+    const std::string when = Config::get().value<std::string>("/backups/notify", "problems");
+    if (when == "always" || (when == "problems" && !p.error.empty())) {
+        const std::string text = p.error.empty() ? std::format("{} files backed up", p.files.load()) : "Backup didn't finish: " + p.error;
+        if (fork() == 0) {
+            execlp("notify-send", "notify-send", "-a", "Backups", "-i", "backup", text.c_str(), nullptr);
+            _exit(127);
+        }
+    }
     if (!p.error.empty()) {
         std::fprintf(stderr, "material3ui-backups: %s\n", p.error.c_str());
         return 1;

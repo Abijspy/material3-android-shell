@@ -85,7 +85,7 @@ std::vector<Disk> readDisks(const std::string& out) {
     std::vector<Disk> disks;
     try {
         for (const auto& d : json::parse(out).value("blockdevices", json::array())) {
-            if (str(d, "type") != "disk" || str(d, "name").starts_with("zram") || str(d, "name").starts_with("loop")) continue;
+            if (str(d, "type") != "disk" || str(d, "name").starts_with("zram") || (str(d, "name").starts_with("loop") && !Config::get().value<bool>("/disks/showLoop", false))) continue;
             Disk k;
             k.name = str(d, "name"), k.path = str(d, "path"), k.model = str(d, "model"), k.tran = str(d, "tran");
             k.size = num(d.value("size", json()));
@@ -390,7 +390,9 @@ void loadSpace(const std::shared_ptr<State>& st, const std::string& dir) {
     st->spaceItems.clear();
     st->spaceLoading = true;
     if (st->show) st->show();
-    m3::run({"du", "-x", "-b", "-d", "1", dir}, [st, dir](int, const std::string& out) {
+    std::vector<std::string> du = {"du", "-b", "-d", "1", dir};
+    if (Config::get().value<bool>("/disks/spaceOneDrive", true)) du.insert(du.begin() + 1, "-x");
+    m3::run(du, [st, dir](int, const std::string& out) {
         if (!*st->alive || st->spaceDir != dir) return;
         st->spaceLoading = false;
         std::istringstream in(out);
@@ -613,6 +615,9 @@ void disksSettings(Flex* page) {
         auto r = row(g, haveCommand(cmd) ? "check_circle" : "radio_button_unchecked", what, haveCommand(cmd) ? std::string(pkg) + ": installed" : std::string("sudo pacman -S ") + pkg);
         (void)r;
     }
+    auto* v = group(page, "Showing");
+    switchRow(v, "album", "Loop devices", "Disk images that are attached (ISOs, snaps) listed beside the drives", "/disks/showLoop", false);
+    switchRow(v, "pie_chart", "Space: stay on one drive", "Folders that are other drives mounted inside aren't counted", "/disks/spaceOneDrive", true);
     caption(page, "The system's own partitions (/, /boot, /home, swap) can't be formatted from Disks");
 }
 

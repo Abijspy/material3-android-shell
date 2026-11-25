@@ -1548,10 +1548,12 @@ void storeApp(Flex* card, Popup& popup, const std::string& arg) {
         });
     }).detach();
 
-    if (arg.starts_with("search:")) startSearch(arg.substr(7));
-    else if (arg.starts_with("category:")) st->category = arg.substr(9);
+    const std::string start = Config::get().value<std::string>("/store/startTab", "explore");
+    st->tab = start == "installed" ? 1 : start == "updates" ? 2 : 0;
+    if (arg.starts_with("search:")) st->tab = 0, startSearch(arg.substr(7));
+    else if (arg.starts_with("category:")) st->tab = 0, st->category = arg.substr(9);
     else if (arg == "updates") st->tab = 2;
-    else if (!arg.empty()) st->page = arg;
+    else if (!arg.empty()) st->tab = 0, st->page = arg;
     readInstalled(st);
     if (Packages::get().updates().empty() && !Packages::get().checking()) Packages::get().check();
     build(st);
@@ -1565,6 +1567,7 @@ void storeClosed() {
 void storeSettings(Flex* page) {
     auto* g = group(page, "Searching");
     switchRow(g, "deployed_code_account", "Search the AUR", "Packages the community builds from source, beside Flathub and your repositories", "/store/aur", true);
+    choiceRow<std::string>(g, "tab", "Opens on", "", "/store/startTab", "explore", {{"explore", "Explore"}, {"installed", "Installed"}, {"updates", "Updates"}});
     caption(page, "  Updates, repositories and mirrors are in Settings → Software & updates");
 }
 
