@@ -44,6 +44,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <array>
+#include <fstream>
+#include <sstream>
+#include <nlohmann/json.hpp>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
 namespace fs = std::filesystem;
@@ -532,6 +535,7 @@ public:
     }
     ~TermView() override {
         *m_alive = false;
+        if (m_findTimer) EventLoop::get().cancel(m_findTimer);
         session->damaged = nullptr;
         session->scrolled = nullptr;
         if (m_surface) cairo_surface_destroy(m_surface);
@@ -665,6 +669,53 @@ public:
         damageAll();
     }
 
+    // ── Find: every match in the scrollback and on the screen, by its line
+    // counted from the top of the scrollback (so new output doesn't move
+    // them), the current one scrolled into view
+    struct Match {
+        long abs;
+        int col, len; // cells
+    };
+    size_t find(const std::string& q) {
+        m_query = q;
+        m_findCur = -1;
+        searchAll();
+        // The newest first: searching goes back from the bottom
+        if (!m_matches.empty()) m_findCur = static_cast<int>(m_matches.size()) - 1, revealMatch();
+        damageAll();
+        return m_matches.size();
+    }
+    // `older`: up, towards the top of the scrollback
+    void findStep(bool older) {
+        if (m_query.empty()) return;
+        const Match keep = m_findCur >= 0 && m_findCur < static_cast<int>(m_matches.size()) ? m_matches[static_cast<size_t>(m_findCur)] : Match{LONG_MAX, 0, 0};
+        searchAll();
+        if (m_matches.empty()) return m_findCur = -1, damageAll();
+        // From where the current one was
+        auto at = std::ranges::lower_bound(m_matches, std::pair{keep.abs, keep.col}, {}, [](const Match& m) { return std::pair{m.abs, m.col}; });
+        long i = at - m_matches.begin();
+        const bool same = at != m_matches.end() && at->abs == keep.abs && at->col == keep.col;
+        if (older) i = i - 1;
+        else i = same ? i + 1 : i;
+        const long n = static_cast<long>(m_matches.size());
+        m_findCur = static_cast<int>(((i % n) + n) % n);
+        revealMatch();
+        damageAll();
+    }
+    void endFind() {
+        if (m_query.empty() && m_matches.empty()) return;
+        m_query.clear();
+        m_matches.clear();
+        m_findCur = -1;
+        damageAll();
+    }
+    std::string findStatus() const {
+        if (m_query.empty()) return "";
+        if (m_matches.empty()) return "No matches";
+        return std::format("{} of {}", m_findCur + 1, m_matches.size());
+    }
+    std::function<void()> onFindChanged; // the count moved (output came)
+
     void scrollBy(int lines) {
         const int max = static_cast<int>(session->scrollback.size());
         const int s = std::clamp(m_scroll + lines, 0, max);
@@ -769,6 +820,24 @@ protected:
         session->resize(rows, cols);
         session->start();
         m_scroll = std::min<int>(m_scroll, static_cast<int>(session->scrollback.size()));
+        if (!m_query.empty() && m_findStale) {
+            if (EventLoop::Clock::now() - m_findAt > std::chrono::milliseconds(400)) {
+                const Match keep = m_findCur >= 0 && m_findCur < static_cast<int>(m_matches.size()) ? m_matches[static_cast<size_t>(m_findCur)] : Match{-1, 0, 0};
+                searchAll();
+                m_findCur = -1;
+                for (size_t i = 0; i < m_matches.size(); ++i)
+                    if (m_matches[i].abs == keep.abs && m_matches[i].col == keep.col) m_findCur = static_cast<int>(i);
+                if (m_findCur < 0 && !m_matches.empty()) m_findCur = static_cast<int>(m_matches.size()) - 1;
+                if (onFindChanged) onFindChanged();
+                m_dirtyFrom = 0, m_dirtyTo = INT_MAX;
+            } else if (!m_findTimer) {
+                m_findTimer = EventLoop::get().addTimer(450, [this, alive = m_alive] {
+                    if (!*alive) return;
+                    m_findTimer = 0;
+                    requestRedraw();
+                });
+            }
+        }
 
         const int w = std::max(1, static_cast<int>(std::lround(b.w * scale))), h = std::max(1, static_cast<int>(std::lround(b.h * scale)));
         bool full = false;
@@ -831,7 +900,67 @@ private:
 
     int rowsOnScreen() const { return session->rows; }
 
+    // A line's text and, for each of its bytes, the cell it's in
+    std::string lineText(int line, std::vector<int>& cellOf) const {
+        std::string out;
+        cellOf.clear();
+        for (int c = 0; c < session->cols; ++c) {
+            VTermScreenCell cell;
+            if (!cellAt(line, c, cell)) break;
+            std::string t;
+            if (cell.chars[0] == 0 || cell.chars[0] == static_cast<uint32_t>(-1)) t = " ";
+            for (int i = 0; i < VTERM_MAX_CHARS_PER_CELL && cell.chars[i] && cell.chars[i] != static_cast<uint32_t>(-1); ++i) t += encode(cell.chars[i]);
+            out += t;
+            cellOf.insert(cellOf.end(), t.size(), c);
+            if (cell.width > 1) ++c;
+        }
+        return out;
+    }
+    static std::string lowered(std::string t) {
+        for (char& c : t) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return t;
+    }
+    void searchAll() {
+        m_matches.clear();
+        m_findStale = false;
+        m_findAt = EventLoop::Clock::now();
+        if (m_query.empty()) return;
+        // Smart case: a capital in it, and case counts
+        const bool exact = std::ranges::any_of(m_query, [](char c) { return std::isupper(static_cast<unsigned char>(c)); });
+        const std::string q = exact ? m_query : lowered(m_query);
+        const long sb = static_cast<long>(session->scrollback.size());
+        std::vector<int> cellOf;
+        for (long line = -sb; line < session->rows; ++line) {
+            std::string t = lineText(static_cast<int>(line), cellOf);
+            if (t.size() < q.size()) continue;
+            if (!exact) t = lowered(std::move(t));
+            for (size_t at = t.find(q); at != std::string::npos; at = t.find(q, at + std::max<size_t>(1, q.size()))) {
+                const int c0 = cellOf[at], c1 = cellOf[at + q.size() - 1];
+                m_matches.push_back({line + sb, c0, c1 - c0 + 1});
+            }
+        }
+        if (m_matches.size() > 20000) m_matches.resize(20000);
+        if (onFindChanged) onFindChanged();
+    }
+    void revealMatch() {
+        if (m_findCur < 0) return;
+        const long line = m_matches[static_cast<size_t>(m_findCur)].abs - static_cast<long>(session->scrollback.size());
+        const long row = line + m_scroll;
+        if (row >= 1 && row < session->rows - 1) return;
+        m_scroll = static_cast<int>(std::clamp<long>(session->rows / 2 - line, 0, static_cast<long>(session->scrollback.size())));
+    }
+    // 0: no match here; 1: a match; 2: the current one
+    int matchAt(int line, int col) const {
+        if (m_matches.empty()) return 0;
+        const long abs = line + static_cast<long>(session->scrollback.size());
+        auto it = std::ranges::lower_bound(m_matches, abs, {}, &Match::abs);
+        for (; it != m_matches.end() && it->abs == abs; ++it)
+            if (col >= it->col && col < it->col + it->len) return it - m_matches.begin() == m_findCur ? 2 : 1;
+        return 0;
+    }
+
     void damage(int from, int to) {
+        if (!m_query.empty()) m_findStale = true;
         m_dirtyFrom = std::min(m_dirtyFrom, from + m_scroll);
         m_dirtyTo = std::max(m_dirtyTo, to + m_scroll);
         requestRedraw();
@@ -1010,6 +1139,10 @@ private:
                 const int width = std::max(1, static_cast<int>(cell.width));
                 const double x = pad + col * cw;
                 if (sel) bg = mix(bg, p.selection, 0.45);
+                if (const int m = matchAt(line, col)) {
+                    if (m == 2) bg = Rgb{0.98, 0.62, 0.2}, fg = Rgb{0.1, 0.07, 0.02};
+                    else bg = mix(bg, Rgb{0.95, 0.8, 0.25}, 0.5);
+                }
                 if (isCursor && m_focused && session->cursorShape == VTERM_PROP_CURSORSHAPE_BLOCK) bg = p.cursor, fg = p.cursorText;
                 if (!(bg == p.bg)) {
                     flush();
@@ -1098,6 +1231,12 @@ private:
     bool m_hasSel = false, m_dragging = false;
     int m_mouseButton = 0;
     std::pair<int, int> m_selA{0, 0}, m_selB{0, 0}; // line, column
+    std::string m_query;
+    std::vector<Match> m_matches;
+    int m_findCur = -1;
+    bool m_findStale = false;
+    EventLoop::Clock::time_point m_findAt{};
+    EventLoop::TimerId m_findTimer = 0;
     EventLoop::Clock::time_point m_lastPress{};
     Connection m_themeConn, m_configConn;
     std::string m_look = Config::get().value<std::string>("/terminal/font", "") + "|" + Config::get().value<std::string>("/terminal/scheme", "theme");
@@ -1115,7 +1254,7 @@ struct TermState {
     std::vector<TermView*> views;   // every terminal, every tab
     int active = 0;
     Popup* popup = nullptr;
-    std::function<void()> rebuild;
+    std::function<void()> rebuild, openFind, openSsh, tabChanged;
     std::shared_ptr<bool> alive = std::make_shared<bool>(true);
 
     bool has(TermView* v) const { return std::ranges::find(views, v) != views.end(); }
@@ -1181,6 +1320,7 @@ void activate(const std::shared_ptr<TermState>& st, int i) {
     if (v) focusView(st, v);
     markFocus(st, st->active);
     if (st->rebuild) st->rebuild();
+    if (st->tabChanged) st->tabChanged();
 }
 
 // How a pane sits in a split: sharing the row (or column) evenly
@@ -1325,6 +1465,9 @@ void menuFor(const std::shared_ptr<TermState>& st, TermView* v, float x, float y
     items.emplace_back("content_copy", "Copy", "Ctrl+Shift+C", [v] { copySelection(v); }, false, false, hasSel);
     items.emplace_back("content_paste", "Paste", "Ctrl+Shift+V", [st, v] { pasteInto(st, v); });
     items.emplace_back("select_all", "Select all", "Ctrl+Shift+A", [v] { v->selectAll(); });
+    items.emplace_back("search", "Find", "Ctrl+Shift+F", [st] {
+        if (st->openFind) st->openFind();
+    });
     items.emplace_back("mop", "Clear", "Ctrl+Shift+K", [v] {
         v->session->scrollback.clear();
         v->session->write("\x0c", 1); // Ctrl+L: the shell draws its prompt at the top
@@ -1355,6 +1498,9 @@ bool shortcut(const std::shared_ptr<TermState>& st, TermView* v, const KeyEvent&
         case 'e': splitPane(st, v, Flex::Direction::Row); return true;
         case 'o': splitPane(st, v, Flex::Direction::Column); return true;
         case 'a': v->selectAll(); return true;
+        case 'f':
+            if (st->openFind) st->openFind();
+            return true;
         case 'k':
             v->session->scrollback.clear();
             v->session->write("\x0c", 1);
@@ -1467,6 +1613,52 @@ void newTab(const std::shared_ptr<TermState>& st, std::string dir, const std::ve
     activate(st, static_cast<int>(st->roots.size()) - 1);
 }
 
+// ── SSH: connections saved in Settings (user@host, :port after it), and
+// the hosts named in ~/.ssh/config
+std::vector<std::string> savedSsh() {
+    std::vector<std::string> out;
+    const auto j = Config::get().value<nlohmann::json>("/terminal/ssh", nlohmann::json::array());
+    if (j.is_array())
+        for (const auto& e : j)
+            if (e.is_string() && !e.get<std::string>().empty()) out.push_back(e.get<std::string>());
+    return out;
+}
+std::vector<std::string> sshConfigHosts() {
+    std::vector<std::string> out;
+    std::ifstream in(paths::home() + "/.ssh/config");
+    for (std::string l; std::getline(in, l);) {
+        std::istringstream ls(l);
+        std::string key;
+        ls >> key;
+        if (key != "Host" && key != "host") continue;
+        for (std::string h; ls >> h;)
+            if (h.find_first_of("*?!") == std::string::npos && std::ranges::find(out, h) == out.end()) out.push_back(h);
+    }
+    return out;
+}
+std::vector<std::string> sshCommand(const std::string& target) {
+    // user@host:2222 → ssh -p 2222 user@host
+    const size_t at = target.rfind('@'), colon = target.rfind(':');
+    if (colon != std::string::npos && (at == std::string::npos || colon > at) && colon + 1 < target.size() &&
+        std::ranges::all_of(target.substr(colon + 1), [](char c) { return std::isdigit(static_cast<unsigned char>(c)); }))
+        return {"ssh", "-p", target.substr(colon + 1), target.substr(0, colon)};
+    return {"ssh", target};
+}
+void sshMenu(const std::shared_ptr<TermState>& st, Node* from) {
+    std::vector<MenuItem> items;
+    for (const auto& t : savedSsh()) items.emplace_back("dns", t, "", [st, t] { newTab(st, paths::home(), sshCommand(t)); });
+    bool first = true;
+    for (const auto& h : sshConfigHosts()) {
+        items.emplace_back("description", h, "~/.ssh/config", [st, h] { newTab(st, paths::home(), {"ssh", h}); }, false, false, true, first && !items.empty());
+        first = false;
+    }
+    if (items.empty()) items.emplace_back("info", "No connections yet", "", [] {}, false, false, false);
+    items.emplace_back("add", "New connection…", "", [st] {
+        if (st->openSsh) st->openSsh();
+    }, false, false, true, true);
+    floatingMenu(from, items);
+}
+
 } // namespace
 
 void terminal(Flex* card, Popup& popup, const std::string& dir, const std::vector<std::string>& command) {
@@ -1475,10 +1667,99 @@ void terminal(Flex* card, Popup& popup, const std::string& dir, const std::vecto
     card->setPadding(Insets(8))->setSpacing(6);
     st->tabs = card->add<Flex>(Flex::Direction::Row);
     st->tabs->setSpacing(4)->setAlignItems(Align::Center)->setPadding({4, 0});
+    // The find bar (Ctrl+Shift+F), over the terminals
+    auto* findBar = card->add<Flex>(Flex::Direction::Row);
+    pill(findBar->setBackground("surface_container_high", false))->setPadding({14, 4, 6, 4})->setSpacing(8)->setAlignItems(Align::Center);
+    findBar->setVisible(false);
+    auto* sshBar = card->add<Flex>(Flex::Direction::Row);
+    pill(sshBar->setBackground("surface_container_high", false))->setPadding({14, 4, 6, 4})->setSpacing(8)->setAlignItems(Align::Center);
+    sshBar->setVisible(false);
+    findBar->add<Icon>("search", 18)->setColor("on_surface_variant", false);
+    auto* findField = findBar->add<TextField>();
+    findField->bare = true;
+    findField->grow = true;
+    findField->setPlaceholder("Find in the terminal (a capital letter: exact case)");
+    auto* findCount = findBar->add<Label>("");
+    findCount->setSize(12)->setColor("on_surface_variant", false);
     st->stack = card->add<Flex>(Flex::Direction::Column);
     st->stack->setAlignItems(Align::Stretch);
     st->stack->grow = true;
     card->add<TermKeeper>(st);
+    auto findView = std::make_shared<TermView*>(nullptr);
+    auto showCount = [st, findView, findCount] {
+        if (*findView && st->has(*findView)) findCount->setText((*findView)->findStatus());
+    };
+    auto closeFind = [st, findBar, findView] {
+        for (auto* v : st->views) v->endFind(), v->onFindChanged = nullptr;
+        findBar->setVisible(false);
+        *findView = nullptr;
+        if (TermView* v = st->current()) v->focus();
+    };
+    auto step = [st, findView, showCount](bool older) {
+        if (*findView && st->has(*findView)) (*findView)->findStep(older), showCount();
+    };
+    iconButton(findBar, "keyboard_arrow_up", [step] { step(true); }, 18)->tooltip = "Older match (Enter)";
+    iconButton(findBar, "keyboard_arrow_down", [step] { step(false); }, 18)->tooltip = "Newer match (Shift+Enter)";
+    iconButton(findBar, "close", closeFind, 18)->tooltip = "Close (Esc)";
+    findField->onChanged = [st, findView, showCount](const std::string& t) {
+        TermView* v = st->current();
+        if (*findView && *findView != v && st->has(*findView)) (*findView)->endFind();
+        *findView = v;
+        if (!v) return;
+        v->onFindChanged = showCount;
+        v->find(t);
+        showCount();
+    };
+    findField->onSubmit = [step](const std::string&) { step(!(wl::Display::get().heldModifiers() & ModShift)); };
+    findField->onKeyFirst = [closeFind](const KeyEvent& e) {
+        if (e.sym != XKB_KEY_Escape) return false;
+        closeFind();
+        return true;
+    };
+    // A new SSH connection: typed, saved, and opened in a tab
+    sshBar->add<Icon>("lan", 18)->setColor("on_surface_variant", false);
+    auto* sshField = sshBar->add<TextField>();
+    sshField->bare = true;
+    sshField->grow = true;
+    sshField->setPlaceholder("user@host or user@host:port, then Enter (saved; remove in Settings)");
+    auto closeSsh = [st, sshBar] {
+        sshBar->setVisible(false);
+        if (TermView* v = st->current()) v->focus();
+    };
+    iconButton(sshBar, "close", closeSsh, 18)->tooltip = "Cancel (Esc)";
+    sshField->onKeyFirst = [closeSsh](const KeyEvent& e) {
+        if (e.sym != XKB_KEY_Escape) return false;
+        closeSsh();
+        return true;
+    };
+    sshField->onSubmit = [st, sshField, sshBar](const std::string& text) {
+        std::string t = text;
+        t.erase(0, t.find_first_not_of(" \t"));
+        t.erase(t.find_last_not_of(" \t") + 1);
+        if (t.empty() || t.find(' ') != std::string::npos || t.starts_with('-')) return;
+        auto j = nlohmann::json::array();
+        for (const auto& e : savedSsh()) j.push_back(e);
+        if (std::ranges::find(j, nlohmann::json(t)) == j.end()) j.push_back(t);
+        Config::get().set("/terminal/ssh", j);
+        sshField->setText("");
+        sshBar->setVisible(false);
+        newTab(st, paths::home(), sshCommand(t));
+    };
+    st->openSsh = [sshBar, sshField] {
+        sshBar->setVisible(true);
+        sshField->focus();
+    };
+    // Another tab: the search goes with it
+    st->tabChanged = [findBar, findField] {
+        if (findBar->visible() && findField->onChanged) findField->onChanged(findField->text());
+    };
+    st->openFind = [findBar, findField, st, findView] {
+        findBar->setVisible(true);
+        // What's selected, searched for
+        if (TermView* v = st->current(); v && !v->selection().empty() && v->selection().find('\n') == std::string::npos) findField->setText(v->selection());
+        findField->focus();
+        if (!findField->text().empty() && findField->onChanged) findField->onChanged(findField->text());
+    };
 
     st->rebuild = [st] {
         auto* t = st->tabs;
@@ -1508,6 +1789,14 @@ void terminal(Flex* card, Popup& popup, const std::string& dir, const std::vecto
             newTab(st, v ? v->session->cwd() : paths::home(), {});
         }, 20)->tooltip = "New tab (Ctrl+Shift+T)";
         t->add<Node>()->grow = true;
+        auto* ssh = iconButton(t, "lan", [] {}, 18);
+        ssh->tooltip = "Connect with SSH";
+        ssh->onClicked = [st, ssh](uint32_t b) {
+            if (b == BTN_LEFT) sshMenu(st, ssh);
+        };
+        iconButton(t, "search", [st] {
+            if (st->openFind) st->openFind();
+        }, 18)->tooltip = "Find (Ctrl+Shift+F)";
         if (TermView* v = st->current()) {
             iconButton(t, "vertical_split", [st, v] { splitPane(st, v, Flex::Direction::Row); }, 18)->tooltip = "Split side by side (Ctrl+Shift+E)";
             iconButton(t, "horizontal_split", [st, v] { splitPane(st, v, Flex::Direction::Column); }, 18)->tooltip = "Split top and bottom (Ctrl+Shift+O)";
@@ -1551,6 +1840,47 @@ void terminalSettings(Flex* page) {
                            {{"flash", "Blink"}, {"notify", "A notification"}, {"off", "Nothing"}});
     switchRow(b, "warning", "Ask before closing a busy tab", "When something other than the shell is running in it", "/terminal/confirmClose", true);
     caption(s, "  A command for new tabs (fish, zsh -l, tmux…); empty, your login shell. Enter saves");
+    // SSH connections: listed, removed, added
+    auto* sg = group(page, "SSH connections", "Open in a new tab from the network button in the tab bar");
+    auto* list = sg->add<Live>();
+    list->setSpacing(0)->setAlignItems(Align::Stretch);
+    list->sync = [list] {
+        list->clearChildren();
+        for (const auto& t : savedSsh()) {
+            auto r = row(list, "dns", t, sshCommand(t).size() > 2 ? "Port " + sshCommand(t)[2] : "");
+            iconButton(r.row, "delete", [t] {
+                auto j = nlohmann::json::array();
+                for (const auto& e : savedSsh())
+                    if (e != t) j.push_back(e);
+                Config::get().set("/terminal/ssh", j);
+            }, 18)->tooltip = "Remove";
+        }
+        if (const auto hosts = sshConfigHosts(); !hosts.empty()) {
+            std::string names;
+            for (const auto& h : hosts) names += (names.empty() ? "" : ", ") + h;
+            row(list, "description", "From ~/.ssh/config", names);
+        }
+    };
+    list->watch(Config::get().changed);
+    list->sync();
+    auto* add = sg->add<Flex>(Flex::Direction::Row);
+    add->setPadding({16, 10})->setSpacing(10)->setAlignItems(Align::Center);
+    auto* field = add->add<TextField>();
+    field->grow = true;
+    field->setPlaceholder("user@host or user@host:port");
+    auto save = [field] {
+        std::string t = field->text();
+        t.erase(0, t.find_first_not_of(" \t"));
+        t.erase(t.find_last_not_of(" \t") + 1);
+        if (t.empty() || t.find(' ') != std::string::npos || t.starts_with('-')) return;
+        auto j = nlohmann::json::array();
+        for (const auto& e : savedSsh()) j.push_back(e);
+        if (std::ranges::find(j, nlohmann::json(t)) == j.end()) j.push_back(t);
+        Config::get().set("/terminal/ssh", j);
+        field->setText("");
+    };
+    field->onSubmit = [save](const std::string&) { save(); };
+    pillButton(add, "Add", true, save, "add");
     caption(page, "Your terminal's colours come from the wallpaper, as the shell's do");
 }
 
