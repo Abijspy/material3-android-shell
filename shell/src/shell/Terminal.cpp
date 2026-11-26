@@ -86,14 +86,25 @@ struct Palette {
     Rgb ansi[16];
 };
 
-Palette palette() {
+// A profile (Settings → Terminal): a name and the looks and command new
+// tabs can open with; what it leaves empty comes from the usual settings
+std::vector<nlohmann::json> terminalProfiles() {
+    std::vector<nlohmann::json> out;
+    const auto j = Config::get().value<nlohmann::json>("/terminal/profiles", nlohmann::json::array());
+    if (j.is_array())
+        for (const auto& e : j)
+            if (e.is_object() && e.value("name", "") != "") out.push_back(e);
+    return out;
+}
+
+Palette palette(std::string scheme = {}) {
     auto& t = Theme::get();
     const Color surface = t.color("surface");
     const bool dark = 0.2126f * surface.r + 0.7152f * surface.g + 0.0722f * surface.b < 0.5f;
     Palette p;
     auto hexc = [](const char* h) { return rgbOf(*Color::fromHex(h)); };
     // A scheme of its own (Settings → Terminal), else the wallpaper's colours
-    const std::string scheme = Config::get().value<std::string>("/terminal/scheme", "theme");
+    if (scheme.empty()) scheme = Config::get().value<std::string>("/terminal/scheme", "theme");
     auto fixed = [&](const char* bg, const char* fg, const char* cursor, const std::array<const char*, 16>& ansi) {
         p.bg = hexc(bg);
         p.fg = hexc(fg);
@@ -112,6 +123,9 @@ Palette palette() {
     if (scheme == "dracula")
         return fixed("#282a36", "#f8f8f2", "#f8f8f2", {"#21222c", "#ff5555", "#50fa7b", "#f1fa8c", "#bd93f9", "#ff79c6", "#8be9fd", "#f8f8f2",
                                                         "#6272a4", "#ff6e6e", "#69ff94", "#ffffa5", "#d6acff", "#ff92df", "#a4ffff", "#ffffff"});
+    if (scheme == "red") // Alert: for root, or a server you'd rather not mistake
+        return fixed("#2a0d0f", "#f2dcdc", "#ff6b6b", {"#3a1518", "#ff5c5c", "#7ed98a", "#f0c86a", "#7aa2ff", "#e07ad8", "#6fd3d6", "#e6cfcf",
+                                                        "#7a4a4d", "#ff8080", "#9df0a8", "#ffe08a", "#a0bcff", "#f2a0ec", "#9ae8ea", "#ffffff"});
     if (scheme == "light")
         return fixed("#fbfbfb", "#2b2b2b", "#2b2b2b", {"#2b2b2b", "#c62828", "#2e7d32", "#8a6400", "#1565c0", "#8e24aa", "#00838f", "#9e9e9e",
                                                         "#616161", "#e53935", "#43a047", "#a07c00", "#1e88e5", "#ab47bc", "#00acc1", "#5c5c5c"});
@@ -176,7 +190,18 @@ public:
         if (s->belled) s->belled();
         return 1;
     }
-    Session(const std::string& dir, const std::vector<std::string>& command) {
+    nlohmann::json profile = nlohmann::json::object(); // empty: the usual settings
+    // A look: the profile's, else Settings'
+    std::string setting(const char* key, const char* path, const char* fallback) const {
+        const std::string v = profile.is_object() ? profile.value(key, "") : "";
+        return v.empty() ? Config::get().value<std::string>(path, fallback) : v;
+    }
+    std::string scheme() const { return setting("scheme", "/terminal/scheme", "theme"); }
+    std::string fontFamily() const { return setting("font", "/terminal/font", ""); }
+    std::string profileName() const { return profile.is_object() ? profile.value("name", "") : ""; }
+
+    Session(const std::string& dir, const std::vector<std::string>& command, nlohmann::json prof = nlohmann::json::object()) {
+        profile = std::move(prof);
         vt = vterm_new(rows, cols);
         vterm_set_utf8(vt, 1);
         vterm_output_set_callback(vt, &Session::output, this);
@@ -200,10 +225,12 @@ public:
         m_dir = dir;
         m_command = command;
         // The cursor until a program asks for another (Settings → Terminal)
-        const std::string cur = Config::get().value<std::string>("/terminal/cursor", "block");
+        const std::string cur = setting("cursor", "/terminal/cursor", "block");
         cursorShape = cur == "beam" ? VTERM_PROP_CURSORSHAPE_BAR_LEFT : cur == "underline" ? VTERM_PROP_CURSORSHAPE_UNDERLINE : VTERM_PROP_CURSORSHAPE_BLOCK;
         // Named for what runs in it, until it names itself
+        const std::string own = profile.is_object() ? profile.value("command", "") : "";
         if (!command.empty()) title = fs::path(command[0]).filename().string();
+        else if (!own.empty()) title = fs::path(own.substr(0, own.find(' '))).filename().string();
         else if (const char* sh = std::getenv("SHELL"); sh && *sh) title = fs::path(sh).filename().string();
     }
 
@@ -228,7 +255,7 @@ public:
     }
 
     void applyPalette() {
-        const Palette p = palette();
+        const Palette p = palette(scheme());
         VTermState* state = vterm_obtain_state(vt);
         auto col = [](const Rgb& c) {
             VTermColor v;
@@ -335,7 +362,7 @@ private:
                 _exit(127);
             }
             // A shell of your choosing (Settings), as a command line
-            const std::string custom = Config::get().value<std::string>("/terminal/shell", "");
+            const std::string custom = setting("command", "/terminal/shell", "");
             if (!custom.empty()) {
                 execl("/bin/sh", "sh", "-c", ("exec " + custom).c_str(), static_cast<char*>(nullptr));
                 _exit(127);
@@ -502,7 +529,7 @@ public:
     float fontSize = 14;
 
     explicit TermView(std::shared_ptr<Session> s) : session(std::move(s)) {
-        fontSize = static_cast<float>(Config::get().value<double>("/terminal/fontSize", 14.0));
+        fontSize = ownSize() > 0 ? ownSize() : static_cast<float>(Config::get().value<double>("/terminal/fontSize", 14.0));
         session->damaged = [this](int from, int to) { damage(from, to); };
         session->scrolled = [this] {
             // New lines while scrolled back: the view stays on what it showed
@@ -510,13 +537,13 @@ public:
             if (m_scroll > 0) damageAll();
         };
         m_configConn = Config::get().changed.connect([this] {
-            const float want = static_cast<float>(Config::get().value<double>("/terminal/fontSize", 14.0));
-            const std::string look = Config::get().value<std::string>("/terminal/font", "") + "|" + Config::get().value<std::string>("/terminal/scheme", "theme");
+            const float want = ownSize() > 0 ? fontSize : static_cast<float>(Config::get().value<double>("/terminal/fontSize", 14.0));
+            const std::string look = session->fontFamily() + "|" + session->scheme();
             if (look != m_look) {
                 m_look = look;
                 m_font.px = 0; // measured again in the new font
                 session->applyPalette();
-                m_palette = palette();
+                m_palette = palette(session->scheme());
                 damageAll();
             }
             if (std::abs(want - fontSize) > 0.01f) {
@@ -527,11 +554,12 @@ public:
         });
         m_themeConn = Theme::get().changed.connect([this] {
             session->applyPalette();
-            m_palette = palette();
+            m_palette = palette(session->scheme());
             vterm_screen_flush_damage(session->screen);
             damageAll();
         });
-        m_palette = palette();
+        m_palette = palette(session->scheme());
+        m_look = session->fontFamily() + "|" + session->scheme();
     }
     ~TermView() override {
         *m_alive = false;
@@ -550,9 +578,11 @@ public:
     bool interactive() const override { return true; }
     bool keyboardNavigable() const override { return false; }
 
+    // The profile's own text size (0: Settings')
+    float ownSize() const { return session->profile.is_object() ? session->profile.value("size", 0.0f) : 0.0f; }
     void setFontSize(float px) {
         fontSize = std::clamp(px, 7.0f, 40.0f);
-        Config::get().set("/terminal/fontSize", fontSize);
+        if (ownSize() <= 0) Config::get().set("/terminal/fontSize", fontSize); // a profile's tab keeps it to itself
         m_font.px = 0; // measured again
         requestRedraw();
     }
@@ -1036,7 +1066,7 @@ private:
             cairo_font_options_destroy(fo);
         }
         auto make = [&](PangoWeight w, PangoStyle s) {
-            const std::string family = Config::get().value<std::string>("/terminal/font", "");
+            const std::string family = session->fontFamily();
             PangoFontDescription* d = pango_font_description_from_string((family.empty() ? Theme::get().monoFamily() : family).c_str());
             pango_font_description_set_absolute_size(d, px * PANGO_SCALE);
             pango_font_description_set_weight(d, w);
@@ -1239,7 +1269,7 @@ private:
     EventLoop::TimerId m_findTimer = 0;
     EventLoop::Clock::time_point m_lastPress{};
     Connection m_themeConn, m_configConn;
-    std::string m_look = Config::get().value<std::string>("/terminal/font", "") + "|" + Config::get().value<std::string>("/terminal/scheme", "theme");
+    std::string m_look;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };
 
@@ -1410,8 +1440,9 @@ void pasteInto(const std::shared_ptr<TermState>& st, TermView* v) {
     });
 }
 
-TermView* makeView(const std::shared_ptr<TermState>& st, Flex* parent, std::string dir, const std::vector<std::string>& command);
-void newTab(const std::shared_ptr<TermState>& st, std::string dir, const std::vector<std::string>& command);
+TermView* makeView(const std::shared_ptr<TermState>& st, Flex* parent, std::string dir, const std::vector<std::string>& command,
+                   nlohmann::json profile = nlohmann::json::object());
+void newTab(const std::shared_ptr<TermState>& st, std::string dir, const std::vector<std::string>& command, nlohmann::json profile = nlohmann::json::object());
 
 // A new terminal beside this one (a row) or under it (a column), in its folder
 void splitPane(const std::shared_ptr<TermState>& st, TermView* v, Flex::Direction dir) {
@@ -1427,7 +1458,7 @@ void splitPane(const std::shared_ptr<TermState>& st, TermView* v, Flex::Directio
     auto moved = parent->release(v);
     box->adopt(std::move(moved));
     sizeIn(v, dir);
-    TermView* fresh = makeView(st, box, v->session->cwd(), {});
+    TermView* fresh = makeView(st, box, v->session->cwd(), {}, v->session->profile); // the same profile
     sizeIn(fresh, dir);
     const int tab = st->tabOf(box);
     st->focusOf[static_cast<size_t>(tab)] = fresh;
@@ -1513,6 +1544,12 @@ bool shortcut(const std::shared_ptr<TermState>& st, TermView* v, const KeyEvent&
         }
         if (e.sym == XKB_KEY_ISO_Left_Tab || e.sym == XKB_KEY_Tab) return activate(st, (st->active + tabs - 1) % tabs), true;
         if (e.sym == XKB_KEY_Page_Up || e.sym == XKB_KEY_Page_Down) return false;
+        // Ctrl+Shift+1…9: a new tab with that profile
+        if (k >= '1' && k <= '9') {
+            const auto profiles = terminalProfiles();
+            const size_t i = k - '1';
+            if (i < profiles.size()) return newTab(st, v->session->cwd(), {}, profiles[i]), true;
+        }
     }
     if (ctrl && !shift) {
         if (e.sym == XKB_KEY_Tab || e.sym == XKB_KEY_Page_Down) return activate(st, (st->active + 1) % tabs), true;
@@ -1539,10 +1576,11 @@ bool shortcut(const std::shared_ptr<TermState>& st, TermView* v, const KeyEvent&
     return false;
 }
 
-TermView* makeView(const std::shared_ptr<TermState>& st, Flex* parent, std::string dir, const std::vector<std::string>& command) {
+TermView* makeView(const std::shared_ptr<TermState>& st, Flex* parent, std::string dir, const std::vector<std::string>& command,
+                   nlohmann::json profile) {
     std::error_code ec;
     if (dir.empty() || !fs::is_directory(dir, ec)) dir = paths::home();
-    auto session = std::make_shared<Session>(dir, command);
+    auto session = std::make_shared<Session>(dir, command, std::move(profile));
     auto* v = parent->add<TermView>(session);
     v->grow = true;
     st->views.push_back(v);
@@ -1603,13 +1641,13 @@ TermView* makeView(const std::shared_ptr<TermState>& st, Flex* parent, std::stri
     return v;
 }
 
-void newTab(const std::shared_ptr<TermState>& st, std::string dir, const std::vector<std::string>& command) {
+void newTab(const std::shared_ptr<TermState>& st, std::string dir, const std::vector<std::string>& command, nlohmann::json profile) {
     auto* root = st->stack->add<Flex>(Flex::Direction::Column);
     root->setAlignItems(Align::Stretch);
     root->grow = true;
     st->roots.push_back(root);
     st->focusOf.push_back(nullptr);
-    st->focusOf.back() = makeView(st, root, std::move(dir), command);
+    st->focusOf.back() = makeView(st, root, std::move(dir), command, std::move(profile));
     activate(st, static_cast<int>(st->roots.size()) - 1);
 }
 
@@ -1772,7 +1810,8 @@ void terminal(Flex* card, Popup& popup, const std::string& dir, const std::vecto
             pill(b)->setPadding({14, 6, 6, 6})->setSpacing(6);
             b->setBackground(here ? "secondary_container" : "surface_container_high", false);
             b->add<Icon>(vs.size() > 1 ? "splitscreen_right" : "terminal", 16)->setColor(here ? "on_secondary_container" : "on_surface_variant", false);
-            b->add<Label>(v ? v->session->title : "")->setSize(13)->setWeight(here ? 600 : 500)->setMaxWidth(200)->setColor(here ? "on_secondary_container" : "on_surface", false);
+            const std::string pname = v ? v->session->profileName() : "";
+            b->add<Label>(v ? (pname.empty() ? v->session->title : pname + " · " + v->session->title) : "")->setSize(13)->setWeight(here ? 600 : 500)->setMaxWidth(200)->setColor(here ? "on_secondary_container" : "on_surface", false);
             b->givesWay = true;
             b->onClicked = [st, i](uint32_t button) {
                 if (button == BTN_LEFT) activate(st, static_cast<int>(i));
@@ -1788,6 +1827,24 @@ void terminal(Flex* card, Popup& popup, const std::string& dir, const std::vecto
             TermView* v = st->current();
             newTab(st, v ? v->session->cwd() : paths::home(), {});
         }, 20)->tooltip = "New tab (Ctrl+Shift+T)";
+        if (const auto profiles = terminalProfiles(); !profiles.empty()) {
+            auto* pm = iconButton(t, "expand_more", [] {}, 18);
+            pm->tooltip = "A new tab with a profile";
+            pm->onClicked = [st, pm, profiles](uint32_t b) {
+                if (b != BTN_LEFT) return;
+                std::vector<MenuItem> items;
+                TermView* v = st->current();
+                const std::string dir = v ? v->session->cwd() : paths::home();
+                items.emplace_back("terminal", "Default", "", [st, dir] { newTab(st, dir, {}); });
+                for (size_t i = 0; i < profiles.size(); ++i) {
+                    const auto& p = profiles[i];
+                    const std::string cmd = p.value("command", "");
+                    items.emplace_back(p.value("scheme", "") == "red" ? "admin_panel_settings" : "terminal", p.value("name", ""),
+                                       i < 9 ? std::format("Ctrl+Shift+{}", i + 1) : std::string(), [st, dir, p] { newTab(st, dir, {}, p); }, false, false, true, i == 0);
+                }
+                floatingMenu(pm, items);
+            };
+        }
         t->add<Node>()->grow = true;
         auto* ssh = iconButton(t, "lan", [] {}, 18);
         ssh->tooltip = "Connect with SSH";
@@ -1831,7 +1888,7 @@ void terminalSettings(Flex* page) {
     textRow(s, "terminal", "Shell", "/terminal/shell", "");
     auto* look = group(page, "Look");
     choiceRow<std::string>(look, "palette", "Colours", "Open terminals follow at once", "/terminal/scheme", "theme",
-                           {{"theme", "Your wallpaper's"}, {"classic", "Classic"}, {"solarized", "Solarized"}, {"dracula", "Dracula"}, {"light", "Light"}});
+                           {{"theme", "Your wallpaper's"}, {"classic", "Classic"}, {"solarized", "Solarized"}, {"dracula", "Dracula"}, {"light", "Light"}, {"red", "Alert"}});
     textRow(look, "font_download", "Font", "/terminal/font", "");
     caption(page, "  A monospace family (JetBrains Mono, Fira Code…); empty, the theme's");
     auto* b = group(page, "Behaviour");
@@ -1840,6 +1897,74 @@ void terminalSettings(Flex* page) {
                            {{"flash", "Blink"}, {"notify", "A notification"}, {"off", "Nothing"}});
     switchRow(b, "warning", "Ask before closing a busy tab", "When something other than the shell is running in it", "/terminal/confirmClose", true);
     caption(s, "  A command for new tabs (fish, zsh -l, tmux…); empty, your login shell. Enter saves");
+    // Profiles: each a name, colours, text size and command for new tabs
+    auto* pg = group(page, "Profiles", "Tabs that open with their own colours, text size and command: the button beside + , or Ctrl+Shift+1…9");
+    auto* plist = pg->add<Live>();
+    plist->setSpacing(0)->setAlignItems(Align::Stretch);
+    auto saveAt = [](size_t i, const std::function<void(nlohmann::json&)>& change) {
+        auto all = Config::get().value<nlohmann::json>("/terminal/profiles", nlohmann::json::array());
+        if (!all.is_array() || i >= all.size()) return;
+        change(all[i]);
+        Config::get().set("/terminal/profiles", all);
+    };
+    plist->sync = [plist, saveAt] {
+        plist->clearChildren();
+        const auto all = Config::get().value<nlohmann::json>("/terminal/profiles", nlohmann::json::array());
+        for (size_t i = 0; all.is_array() && i < all.size(); ++i) {
+            const auto& p = all[i];
+            if (!p.is_object()) continue;
+            auto* card = plist->add<Flex>(Flex::Direction::Column);
+            card->setPadding({16, 10})->setSpacing(8)->setAlignItems(Align::Stretch);
+            auto* top = card->add<Flex>(Flex::Direction::Row);
+            top->setSpacing(10)->setAlignItems(Align::Center);
+            top->add<Icon>(p.value("scheme", "") == "red" ? "admin_panel_settings" : "terminal", 22)->setColor("primary", false);
+            auto* name = top->add<TextField>();
+            name->grow = true;
+            name->setText(p.value("name", ""));
+            name->setPlaceholder("Its name (Enter saves)");
+            name->onSubmit = [saveAt, i](const std::string& t) {
+                if (!t.empty()) saveAt(i, [&](nlohmann::json& x) { x["name"] = t; });
+            };
+            if (i < 9) top->add<Label>(std::format("Ctrl+Shift+{}", i + 1))->setSize(12)->setColor("on_surface_variant", false);
+            iconButton(top, "delete", [i] {
+                auto all2 = Config::get().value<nlohmann::json>("/terminal/profiles", nlohmann::json::array());
+                if (all2.is_array() && i < all2.size()) all2.erase(all2.begin() + static_cast<long>(i));
+                Config::get().set("/terminal/profiles", all2);
+            }, 18)->tooltip = "Remove this profile";
+            auto* cmd = card->add<TextField>();
+            cmd->setText(p.value("command", ""));
+            cmd->setPlaceholder("A command instead of your shell: sudo -i, ssh pi@nas, tmux… (Enter saves)");
+            cmd->onSubmit = [saveAt, i](const std::string& t) { saveAt(i, [&](nlohmann::json& x) { x["command"] = t; }); };
+            auto* looks = card->add<Flex>(Flex::Direction::Row);
+            looks->setSpacing(8)->setAlignItems(Align::Center);
+            connectedGroup<std::string>(looks, p.value("scheme", ""),
+                                        {{"", "As Settings"}, {"theme", "Wallpaper"}, {"classic", "Classic"}, {"solarized", "Solarized"}, {"dracula", "Dracula"}, {"light", "Light"}, {"red", "Alert"}},
+                                        [saveAt, i](std::string v) { saveAt(i, [&](nlohmann::json& x) { x["scheme"] = v; }); });
+            auto* sizes = card->add<Flex>(Flex::Direction::Row);
+            sizes->setSpacing(8)->setAlignItems(Align::Center);
+            sizes->add<Label>("Text size")->setSize(13)->setColor("on_surface_variant", false);
+            connectedGroup<int>(sizes, p.value("size", 0), {{0, "As Settings"}, {12, "12"}, {14, "14"}, {16, "16"}, {18, "18"}, {22, "22"}},
+                                [saveAt, i](int v) { saveAt(i, [&](nlohmann::json& x) { x["size"] = v; }); });
+        }
+        auto* add = plist->add<Flex>(Flex::Direction::Row);
+        add->setPadding({16, 10})->setSpacing(10)->setAlignItems(Align::Center);
+        auto* f = add->add<TextField>();
+        f->grow = true;
+        f->setPlaceholder("A new profile's name: Root, Work, a server…");
+        auto make = [f] {
+            const std::string t = f->text();
+            if (t.empty()) return;
+            auto all2 = Config::get().value<nlohmann::json>("/terminal/profiles", nlohmann::json::array());
+            if (!all2.is_array()) all2 = nlohmann::json::array();
+            all2.push_back({{"name", t}, {"scheme", t == "Root" || t == "root" ? "red" : ""}, {"command", t == "Root" || t == "root" ? "sudo -i" : ""}, {"size", 0}});
+            Config::get().set("/terminal/profiles", all2);
+        };
+        f->onSubmit = [make](const std::string&) { make(); };
+        pillButton(add, "Add", true, make, "add");
+    };
+    plist->watch(Config::get().changed);
+    plist->sync();
+
     // SSH connections: listed, removed, added
     auto* sg = group(page, "SSH connections", "Open in a new tab from the network button in the tab bar");
     auto* list = sg->add<Live>();
