@@ -140,7 +140,7 @@ struct Player {
         mpv_set_wakeup_callback(p->h, &Player::wakeup, p.get());
         for (const auto& [n, f] : std::initializer_list<std::pair<const char*, mpv_format>>{
                  {"playlist-pos", MPV_FORMAT_INT64}, {"time-pos", MPV_FORMAT_DOUBLE}, {"duration", MPV_FORMAT_DOUBLE}, {"pause", MPV_FORMAT_FLAG},
-                 {"volume", MPV_FORMAT_DOUBLE}, {"core-idle", MPV_FORMAT_FLAG}})
+                 {"volume", MPV_FORMAT_DOUBLE}, {"core-idle", MPV_FORMAT_FLAG}, {"metadata/by-key/icy-title", MPV_FORMAT_STRING}})
             mpv_observe_property(p->h, 0, n, f);
         return p;
     }
@@ -157,7 +157,31 @@ struct Player {
     void str(const char* n, const std::string& v) { mpv_set_property_string(h, n, v.c_str()); }
 };
 
-enum class View { Albums, Album, Artists, Artist, Songs, Playlist, Queue };
+enum class View { Albums, Album, Artists, Artist, Songs, Playlist, Queue, Radio };
+
+// An internet radio station, from radio-browser.info (a free directory)
+struct Station {
+    std::string name, url, country, tags, uuid;
+    int bitrate = 0;
+    json toJson() const { return {{"name", name}, {"url", url}, {"country", country}, {"tags", tags}, {"uuid", uuid}, {"bitrate", bitrate}}; }
+    static Station from(const json& j) {
+        Station s;
+        auto str = [&](const char* k) { return j.contains(k) && j[k].is_string() ? j[k].get<std::string>() : std::string(); };
+        s.name = str("name");
+        s.url = str("url_resolved");
+        if (s.url.empty()) s.url = str("url");
+        s.country = str("country");
+        s.tags = str("tags");
+        s.uuid = str("stationuuid");
+        if (s.uuid.empty()) s.uuid = str("uuid");
+        if (j.contains("bitrate") && j["bitrate"].is_number()) s.bitrate = j["bitrate"].get<int>();
+        // Names come padded and tags long
+        s.name.erase(0, s.name.find_first_not_of(" \t\n"));
+        s.name.erase(s.name.find_last_not_of(" \t\n") + 1);
+        if (s.tags.size() > 60) s.tags = s.tags.substr(0, s.tags.rfind(',', 60));
+        return s;
+    }
+};
 
 struct State {
     // A page navigated to: its sections arrive in turn, a grid's covers after them
@@ -202,6 +226,13 @@ struct State {
     EventLoop::TimerId saveTimer = 0, uiTimer = 0, sleepTimer = 0;
     bool sleepAfterSong = false; // the sleep timer: when this song ends
     std::time_t sleepAt = 0;
+    // Radio: what's found, and what plays (its url empty: none)
+    std::vector<Station> radioFound;
+    std::string radioHeading = "Popular now", radioQuery, radioError;
+    bool radioLoading = false, radioAsked = false;
+    int radioGen = 0;
+    Station radio;
+    std::string onAir; // the song the station says is playing
 };
 
 // ── The library ──
@@ -447,6 +478,8 @@ void playQueue(const std::shared_ptr<State>& st, std::vector<int> list, int star
         start = 0;
     }
     st->queue = list;
+    st->radio = {};
+    st->onAir.clear();
     auto& p = *st->player;
     p.cmd({"playlist-clear"});
     for (size_t i = 0; i < list.size(); ++i)
@@ -507,6 +540,7 @@ void handleEvents(const std::shared_ptr<State>& st) {
         else if (pr->format == MPV_FORMAT_DOUBLE && n == "volume") st->volume = *static_cast<double*>(pr->data);
         // Playing or not, as mpv sees it (paused, idle and stopped alike)
         else if (pr->format == MPV_FORMAT_FLAG && n == "core-idle") st->paused = *static_cast<int*>(pr->data);
+        else if (n == "metadata/by-key/icy-title") st->onAir = pr->format == MPV_FORMAT_STRING && pr->data ? *static_cast<char**>(pr->data) : "";
         changed = true;
     }
     if (changed && st->refreshBar) st->refreshBar();
@@ -514,6 +548,165 @@ void handleEvents(const std::shared_ptr<State>& st) {
 
 int currentTrack(const std::shared_ptr<State>& st) {
     return st->pos >= 0 && st->pos < static_cast<int>(st->queue.size()) ? st->queue[static_cast<size_t>(st->pos)] : -1;
+}
+
+// ── Radio ──
+
+std::vector<Station> radioFavourites() {
+    std::vector<Station> out;
+    const auto j = Config::get().value<json>("/music/radio", json::array());
+    if (j.is_array())
+        for (const auto& e : j)
+            if (e.is_object()) out.push_back(Station::from(e));
+    return out;
+}
+bool isFavourite(const Station& s) {
+    for (const auto& f : radioFavourites())
+        if (f.url == s.url) return true;
+    return false;
+}
+void toggleFavourite(const Station& s) {
+    json j = json::array();
+    bool had = false;
+    for (const auto& f : radioFavourites()) {
+        if (f.url == s.url) had = true;
+        else j.push_back(f.toJson());
+    }
+    if (!had) j.push_back(s.toJson());
+    Config::get().set("/music/radio", j);
+}
+
+void playRadio(std::shared_ptr<State> st, Station s) { // by value: the row clicked goes when the page redraws
+    if (!st->player || s.url.empty()) return;
+    st->queue.clear();
+    st->pos = -1;
+    st->radio = s;
+    st->onAir.clear();
+    st->player->cmd({"playlist-clear"});
+    st->player->cmd({"loadfile", s.url.c_str(), "replace"});
+    st->player->flag("pause", false);
+    if (st->refreshBar) st->refreshBar();
+    if (st->show && st->view == View::Radio) st->show();
+}
+
+// Stations from radio-browser.info: by name, by genre, or the most played.
+// Only what's searched for goes with it (and a plain app name)
+// `what` by value: a chip's click calls this, and the page it redraws takes
+// the chip (and the string it held) with it
+void findStations(std::shared_ptr<State> st, std::string what, bool byTag) {
+    const int gen = ++st->radioGen;
+    st->radioLoading = true;
+    st->radioAsked = true;
+    st->radioError.clear();
+    st->radioQuery = byTag ? "" : what;
+    st->radioHeading = what.empty() ? "Popular now" : byTag ? what : "Stations named “" + what + "”";
+    if (st->show && st->view == View::Radio) st->show();
+    char* q = g_uri_escape_string(what.c_str(), nullptr, false);
+    const std::string esc = q ? q : "";
+    g_free(q);
+    const std::string base = "https://de1.api.radio-browser.info/json/stations/";
+    const std::string common = "limit=60&hidebroken=true&order=clickcount&reverse=true";
+    const std::string url = what.empty() ? base + "topclick/60?hidebroken=true"
+                            : byTag      ? base + "bytagexact/" + esc + "?" + common
+                                         : base + "search?name=" + esc + "&" + common;
+    m3::run({"curl", "-fsSL", "--max-time", "15", "--retry", "1", "-A", "Material3UI-Music/1", url}, [st, gen](int code, const std::string& out) {
+        if (!*st->alive || gen != st->radioGen) return;
+        st->radioLoading = false;
+        st->radioFound.clear();
+        if (code != 0) {
+            st->radioError = "Couldn't reach radio-browser.info: are you online?";
+        } else {
+            try {
+                std::set<std::string> seen;
+                for (const auto& e : json::parse(out)) {
+                    Station s = Station::from(e);
+                    if (s.url.empty() || s.name.empty() || !seen.insert(s.url).second) continue;
+                    st->radioFound.push_back(std::move(s));
+                }
+            } catch (...) {
+                st->radioError = "radio-browser.info answered with something unreadable";
+            }
+        }
+        if (st->show && st->view == View::Radio) st->show();
+    });
+}
+
+void stationRows(const std::shared_ptr<State>& st, Flex* c, const std::vector<Station>& list) {
+    auto* box = c->add<Flex>(Flex::Direction::Column);
+    box->setSpacing(2)->setAlignItems(Align::Stretch);
+    for (const auto& s : list) {
+        const bool playing = st->radio.url == s.url;
+        auto* row = box->add<Button>(Flex::Direction::Row);
+        row->setPadding({14, 8})->setSpacing(14)->setAlignItems(Align::Center)->setRadius(Radii(16));
+        if (playing) row->setBackground("secondary_container", false);
+        auto* badge = row->add<Flex>(Flex::Direction::Row);
+        badge->setJustify(Align::Center)->setAlignItems(Align::Center)->setRadius(Radii(12))->setBackground(playing ? "primary" : "surface_container_highest", false);
+        badge->fixedWidth = badge->fixedHeight = 40;
+        badge->add<Icon>(playing ? "graphic_eq" : "radio", 22)->setColor(playing ? "on_primary" : "on_surface_variant", false);
+        auto* texts = row->add<Flex>(Flex::Direction::Column);
+        texts->setAlignItems(Align::Start)->setSpacing(1);
+        texts->grow = true;
+        texts->givesWay = true;
+        texts->add<Label>(s.name)->setSize(14)->setWeight(playing ? 600 : 500)->setMaxWidth(460);
+        std::string sub = s.country;
+        if (!s.tags.empty()) sub += (sub.empty() ? "" : "  ·  ") + s.tags;
+        if (s.bitrate > 0) sub += std::format("{}{} kbps", sub.empty() ? "" : "  ·  ", s.bitrate);
+        texts->add<Label>(sub)->setSize(12)->setColor("on_surface_variant", false)->setMaxWidth(460);
+        const bool fav = isFavourite(s);
+        auto* star = iconButton(row, "star", [st, s] {
+            toggleFavourite(s);
+            EventLoop::get().defer([st] {
+                if (*st->alive && st->show && st->view == View::Radio) st->show();
+            });
+        }, 20);
+        star->tooltip = fav ? "Remove from favourites" : "Add to favourites";
+        if (auto* ic = dynamic_cast<Icon*>(star->children().front().get())) ic->setFill(fav)->setColor(fav ? "primary" : "on_surface_variant", false);
+        row->onClicked = [st, s](uint32_t b) {
+            if (b != BTN_LEFT) return;
+            if (st->radio.url == s.url) st->player->cmd({"cycle", "pause"});
+            else playRadio(st, s);
+        };
+    }
+}
+
+void radioPage(const std::shared_ptr<State>& st, Flex* c) {
+    c->add<Label>("Radio")->setSize(26)->setWeight(500);
+    caption(c, "Stations from around the world, from radio-browser.info (a free, open directory)");
+    auto* box = c->add<Flex>(Flex::Direction::Row);
+    pill(box->setBackground(ColorRef("on_surface", 0.08f), false))->setPadding({16, 4, 8, 4})->setSpacing(8);
+    box->add<Icon>("search", 20)->setColor("on_surface_variant", false);
+    auto* field = box->add<TextField>();
+    field->bare = true;
+    field->grow = true;
+    field->setPlaceholder("Find a station by name, then Enter");
+    field->setText(st->radioQuery);
+    field->onSubmit = [st](const std::string& q) { findStations(st, q, false); };
+    // Genres, a tap away
+    auto* chips = c->add<kit::Flow>();
+    chips->spacing = 8;
+    for (const char* g : {"pop", "rock", "jazz", "classical", "news", "lofi", "electronic", "hip hop", "ambient", "talk"}) {
+        auto* b = chips->add<Button>();
+        const bool here = st->radioHeading == g;
+        pill(b->setBackground(here ? "secondary_container" : "surface_container_high", false))->setPadding({14, 6});
+        std::string label = g;
+        label[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(label[0])));
+        b->add<Label>(label)->setSize(13)->setWeight(500);
+        b->onClicked = [st, tag = std::string(g)](uint32_t btn) {
+            if (btn == BTN_LEFT) findStations(st, tag, true);
+        };
+    }
+    if (const auto favs = radioFavourites(); !favs.empty()) {
+        c->add<Label>("Favourites")->setSize(18)->setWeight(500);
+        stationRows(st, c, favs);
+    }
+    if (!st->radioAsked) findStations(st, "", false);
+    std::string heading = st->radioHeading;
+    if (!heading.empty()) heading[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(heading[0])));
+    c->add<Label>(heading)->setSize(18)->setWeight(500);
+    if (st->radioLoading) caption(c, "Looking…");
+    else if (!st->radioError.empty()) caption(c, st->radioError);
+    else if (st->radioFound.empty()) caption(c, "No stations found");
+    else stationRows(st, c, st->radioFound);
 }
 
 // ── The pages ──
@@ -657,6 +850,7 @@ void emptyLibrary(const std::shared_ptr<State>& st, Flex* c) {
 void page(const std::shared_ptr<State>& st) {
     auto* c = st->content;
     c->clearChildren();
+    if (st->view == View::Radio) return radioPage(st, c);
     // Search, at the top of every page
     auto* tools = c->add<Flex>(Flex::Direction::Row);
     tools->setSpacing(10)->setAlignItems(Align::Center);
@@ -850,7 +1044,14 @@ public:
         if (m_st->saveTimer) EventLoop::get().cancel(m_st->saveTimer);
         if (m_st->uiTimer) EventLoop::get().cancel(m_st->uiTimer);
         if (m_st->sleepTimer) EventLoop::get().cancel(m_st->sleepTimer);
-        // Where you were, for next time (Settings → carry on)
+        // Where you were, for next time (Settings → carry on); the radio
+        // leaves the last queue as it was
+        if (!m_st->radio.url.empty() && m_st->queue.empty()) {
+            saveCache(m_st);
+            if (m_st->player) m_st->player->onEvents = nullptr;
+            m_st->show = m_st->sidebar = m_st->refreshBar = nullptr;
+            return;
+        }
         std::vector<std::string> queue;
         for (int t : m_st->queue)
             if (t >= 0 && t < static_cast<int>(m_st->tracks.size())) queue.push_back(m_st->tracks[static_cast<size_t>(t)].path);
@@ -991,11 +1192,13 @@ void musicApp(Flex* card, Popup& popup, const std::string& file) {
         st->seek->setRange(0, 1);
         st->seek->grow = true;
         st->seek->onChanged = [st](float v) {
+            if (!st->radio.url.empty()) return; // live radio: nothing to seek
             st->seeking = true;
             st->tPos->setText(clock(v * st->length));
         };
         st->seek->onCommitted = [st](float v) {
             st->seeking = false;
+            if (!st->radio.url.empty()) return st->refreshBar ? st->refreshBar() : void();
             if (st->length > 0) st->player->cmd({"seek", std::format("{}", v * 100).c_str(), "absolute-percent"});
         };
         st->tLen = seekRow->add<Label>("0:00");
@@ -1025,6 +1228,16 @@ void musicApp(Flex* card, Popup& popup, const std::string& file) {
         if (!st->seeking) st->seek->setValue(st->length > 0 ? static_cast<float>(st->time / st->length) : 0, false);
         st->vol->setValue(static_cast<float>(st->volume), false);
         static int lastTrack = -2;
+        if (t < 0 && !st->radio.url.empty()) {
+            st->nowTitle->setText(st->radio.name);
+            st->nowArtist->setText(st->onAir.empty() ? "Live radio" + (st->radio.country.empty() ? "" : "  ·  " + st->radio.country) : st->onAir);
+            st->nowCoverPath.clear();
+            st->tLen->setText("Live");
+            st->seek->setValue(1, false); // live: nothing to seek to
+            st->seek->setOpacity(0.38f, false);
+            return;
+        }
+        st->seek->setOpacity(1, false);
         if (t >= 0) {
             const auto& tr = st->tracks[static_cast<size_t>(t)];
             st->nowTitle->setText(tr.title);
@@ -1068,6 +1281,7 @@ void musicApp(Flex* card, Popup& popup, const std::string& file) {
             go(st, View::Songs);
         });
         item("queue_music", "Queue", st->view == View::Queue, [st] { go(st, View::Queue); });
+        item("radio", "Radio", st->view == View::Radio, [st] { go(st, View::Radio); });
         caption(s, "  Playlists");
         for (const auto& name : st->playlistOrder)
             item("playlist_play", name, st->view == View::Playlist && st->current == name, [st, name] { go(st, View::Playlist, name); });
