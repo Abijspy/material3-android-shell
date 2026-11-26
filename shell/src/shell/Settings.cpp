@@ -1845,6 +1845,136 @@ protected:
     }
 };
 
+// ── Charge limit: charging stops early, so the battery keeps more of its
+// capacity over the years. Laptops offer it in one of a few ways (or not
+// at all: then the firmware's setup screen may have it)
+namespace fs = std::filesystem;
+
+struct ChargeControl {
+    enum class Kind { None, Threshold, Toggle, Levels } kind = Kind::None;
+    std::string path, startPath; // the file it's set in; a threshold's start, if there is one
+    int toggleAt = 80;           // a toggle's fixed limit
+    std::vector<int> levels;     // a choice of limits (Sony's)
+    std::string maker;           // whose way it is
+};
+
+ChargeControl chargeControl() {
+    ChargeControl c;
+    std::error_code ec;
+    // M3_CHARGE_SYSFS=file: a stand-in for testing
+    if (const char* t = std::getenv("M3_CHARGE_SYSFS"); t && *t) return {ChargeControl::Kind::Threshold, t, "", 80, {}, "Test"};
+    for (const auto& e : fs::directory_iterator("/sys/class/power_supply", ec)) {
+        const std::string name = e.path().filename().string();
+        if (!name.starts_with("BAT") && !name.starts_with("CMB") && !name.starts_with("macsmc")) continue;
+        if (fs::exists(e.path() / "charge_control_end_threshold", ec)) {
+            c.kind = ChargeControl::Kind::Threshold;
+            c.path = (e.path() / "charge_control_end_threshold").string();
+            if (fs::exists(e.path() / "charge_control_start_threshold", ec)) c.startPath = (e.path() / "charge_control_start_threshold").string();
+            return c;
+        }
+    }
+    for (const auto& e : fs::directory_iterator("/sys/bus/platform/drivers/ideapad_acpi", ec))
+        if (fs::exists(e.path() / "conservation_mode", ec)) return {ChargeControl::Kind::Toggle, (e.path() / "conservation_mode").string(), "", 60, {}, "Lenovo"};
+    if (fs::exists("/sys/devices/platform/samsung/battery_life_extender", ec))
+        return {ChargeControl::Kind::Toggle, "/sys/devices/platform/samsung/battery_life_extender", "", 80, {}, "Samsung"};
+    if (fs::exists("/sys/devices/platform/sony-laptop/battery_care_limiter", ec))
+        return {ChargeControl::Kind::Levels, "/sys/devices/platform/sony-laptop/battery_care_limiter", "", 80, {50, 80}, "Sony"};
+    return c;
+}
+
+int readNumber(const std::string& path, int fallback) {
+    std::ifstream in(path);
+    int v = fallback;
+    return in >> v ? v : fallback;
+}
+
+// The limit now, as a percentage (100: none)
+int chargeLimitNow(const ChargeControl& c) {
+    switch (c.kind) {
+    case ChargeControl::Kind::Threshold: return readNumber(c.path, 100);
+    case ChargeControl::Kind::Toggle: return readNumber(c.path, 0) ? c.toggleAt : 100;
+    case ChargeControl::Kind::Levels: {
+        const int v = readNumber(c.path, 0);
+        return v == 0 ? 100 : v;
+    }
+    default: return 100;
+    }
+}
+
+// Set, with one password, and again at every start (systemd-tmpfiles)
+void setChargeLimit(const ChargeControl& c, int limit, std::function<void()> after) {
+    // What goes in each file
+    std::vector<std::pair<std::string, std::string>> writes;
+    if (c.kind == ChargeControl::Kind::Threshold) {
+        const std::string start = std::to_string(limit >= 100 ? 0 : std::max(0, limit - 5));
+        // The start is set either side of the end: whichever order the
+        // kernel accepts (start must stay below end)
+        if (!c.startPath.empty()) writes.push_back({c.startPath, start});
+        writes.push_back({c.path, std::to_string(limit)});
+        if (!c.startPath.empty()) writes.push_back({c.startPath, start});
+    } else if (c.kind == ChargeControl::Kind::Toggle) {
+        writes.push_back({c.path, limit >= 100 ? "0" : "1"});
+    } else if (c.kind == ChargeControl::Kind::Levels) {
+        writes.push_back({c.path, std::to_string(limit >= 100 ? 0 : limit)});
+    }
+    if (writes.empty()) return;
+    // A stand-in you can write to yourself (testing): no password, nothing kept
+    if (access(c.path.c_str(), W_OK) == 0) {
+        for (const auto& [f, v] : writes) {
+            std::ofstream out(f);
+            out << v;
+        }
+        if (after) after();
+        return;
+    }
+    // Paths from sysfs only, quoted; values are numbers
+    auto safe = [](const std::string& f) { return f.starts_with("/sys/") && f.find_first_of("'\"\\$`\n ") == std::string::npos; };
+    std::string script, keep;
+    for (const auto& [f, v] : writes) {
+        if (!safe(f)) return;
+        script += "echo " + v + " > '" + f + "' 2>/dev/null; ";
+        keep += "w " + f + " - - - - " + v + "\\n";
+    }
+    const std::string conf = "/etc/tmpfiles.d/material3ui-charge-limit.conf";
+    script += limit >= 100 ? "rm -f " + conf + "; true" : "printf '" + keep + "' > " + conf;
+    Packages::get().runAsRoot(limit >= 100 ? "Removing the charge limit…" : std::format("Setting the charge limit to {}%…", limit), script,
+                              limit >= 100 ? "Charges to 100% again" : std::format("Charging stops at {}%", limit), [after](bool) {
+                                  if (after) after();
+                              });
+}
+
+void chargeLimitGroup(Live* live) {
+    auto* g = group(live, "Charge limit", "Stopping before 100% keeps more of the battery's capacity over the years, for a laptop that's mostly plugged in");
+    const ChargeControl c = chargeControl();
+    if (c.kind == ChargeControl::Kind::None) {
+        auto readDmi = [](const char* f) {
+            std::ifstream in(std::string("/sys/class/dmi/id/") + f);
+            std::string v;
+            std::getline(in, v);
+            return v;
+        };
+        const std::string vendor = readDmi("sys_vendor"), product = readDmi("product_name");
+        const std::string model = product.starts_with(vendor) ? product : vendor + " " + product;
+        row(g, "battery_unknown", "Not available on this laptop",
+            (model.size() > 1 ? model + ": its" : std::string("Its")) + " firmware doesn't let Linux limit charging. Its setup screen (BIOS/UEFI) may offer it; the reminder to unplug above works everywhere");
+        return;
+    }
+    const int now = chargeLimitNow(c);
+    std::vector<std::pair<int, std::string>> options{{100, "Off"}};
+    if (c.kind == ChargeControl::Kind::Threshold)
+        for (int v : {60, 80, 85, 90}) options.push_back({v, std::format("{}%", v)});
+    else if (c.kind == ChargeControl::Kind::Toggle) options.push_back({c.toggleAt, std::format("About {}%", c.toggleAt)});
+    else
+        for (int v : c.levels) options.push_back({v, std::format("{}%", v)});
+    if (std::ranges::find_if(options, [now](const auto& o) { return o.first == now; }) == options.end()) options.push_back({now, std::format("{}%", now)});
+    auto r = row(g, "battery_charging_80", "Stop charging at", now >= 100 ? "Charges all the way (asks for your password to change)" : std::format("Kept at {}% or below, even after a restart", now));
+    connectedGroup<int>(r.row, now, options, [c, live](int v) {
+        setChargeLimit(c, v, [live, alive = live->alive()] {
+            if (*alive) live->syncSoon();
+        });
+    });
+}
+
 void batteryPage(Flex* page, Popup&) {
     auto* live = page->add<Live>();
     live->setSpacing(6);
@@ -1879,6 +2009,7 @@ void batteryPage(Flex* page, Popup&) {
             choiceRow<int>(alerts, "battery_charging_80", "Remind me to unplug", "Charging far past 80% wears a battery out sooner",
                            "/battery/unplugAt", 0, {{0, "Off"}, {80, "80%"}, {85, "85%"}, {90, "90%"}});
             switchRow(alerts, "battery_full", "Fully charged", "When it's full on the charger", "/battery/fullAlert", false);
+            chargeLimitGroup(live);
         }
 
         auto* modes = group(live, "Power mode", "How hard the CPU and GPU may work: battery life against speed");
