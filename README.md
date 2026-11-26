@@ -227,6 +227,7 @@ Its **editor** marks pictures up: pen, shapes, arrows, text, numbered steps, and
 | **Image Writer** (`material3ui-imagewriter`) | Writes an ISO or disk image (a Linux installer, a Raspberry Pi `.img.xz`) to a USB drive or memory card: only removable drives, never the system's, with progress, a SHA-256 check and the drive read back afterwards. |
 | **Store** (`material3ui-store`) | Find and install apps: Flathub's catalogue by category with icons, screenshots and descriptions, plus your repositories and the AUR in one search. Your installed apps and every update in one place. |
 | **Podcasts** (`material3ui-podcasts`) | Subscribe to shows found in Apple's podcast directory or by their feed; new episodes from all of them, each show's page, downloads to listen offline, playing speed, and each episode resumed where you left it. |
+| **Contacts** (`material3ui-contacts`) | Your address book, kept as vCards: search, favourites, each person's numbers, emails, address, birthday and notes; import and export .vcf files, and the contacts your phone shares through KDE Connect alongside. |
 | **Notes** (`material3ui-notes`) | Notes and checklists as tinted cards, with pictures, reminders, labels, pins, search, an archive and a trash. |
 | **Task Manager** (`material3ui-tasks`) | Processes, performance, startup apps and services (<kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd>). |
 

@@ -388,7 +388,7 @@ int run(const App& app, int argc, char** argv) {
         static const std::map<std::string, std::string> programs = {{"files", "files"}, {"viewer", "viewer"}, {"player", "player"}, {"tasks", "tasks"},
                                                                      {"terminal", "terminal"}, {"notes", "notes"}, {"pdf", "pdf"}, {"text", "text"}, {"music", "music"}, {"disks", "disks"},
                                                                      {"camera", "camera"}, {"backups", "backups"}, {"recorder", "recorder"}, {"calculator", "calculator"},
-                                                                     {"fonts", "fonts"}, {"imagewriter", "imagewriter"}, {"store", "store"}, {"podcasts", "podcasts"}};
+                                                                     {"fonts", "fonts"}, {"imagewriter", "imagewriter"}, {"store", "store"}, {"podcasts", "podcasts"}, {"contacts", "contacts"}};
         if (auto it = programs.find(name); it != programs.end()) {
             const std::string program = ownCommand("material3ui-" + it->second);
             if (!program.empty()) {

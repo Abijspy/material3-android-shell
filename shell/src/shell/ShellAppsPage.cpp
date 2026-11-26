@@ -65,6 +65,7 @@ const ShellApp kApps[] = {
     {"imagewriter", "Image Writer", "ISO images onto USB drives", "usb"},
     {"store", "Store", "Find, install and update apps", "storefront"},
     {"podcasts", "Podcasts", "Subscribe to shows and listen", "podcasts"},
+    {"contacts", "Contacts", "Your address book", "contacts"},
 };
 
 struct AppsState {

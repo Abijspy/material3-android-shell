@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Contacts
+GenericName=Address Book
+Comment=Your address book: numbers, emails, addresses and notes, kept as vCards, with your phone's contacts alongside.
+Exec=material3ui-contacts %U
+Icon=material3ui-contacts
+Terminal=false
+Categories=Office;ContactManagement;
+Keywords=contacts;address book;people;vcard;phone;email;
+MimeType=text/vcard;text/x-vcard;text/directory;
+StartupNotify=false
+StartupWMClass=material3ui-contacts
