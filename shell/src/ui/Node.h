@@ -357,6 +357,9 @@ public:
     Label* setMaxWidth(float w);
     Label* setFamily(const std::string& family);
     Label* setMaxLines(int lines);
+    // The text is Pango markup (<b>, <i>, <tt>, <u>, <s>, <span size=…>);
+    // it must be valid (pango_parse_markup), or nothing shows
+    Label* setMarkup(bool markup);
     Label* setCentered(bool centered); // wrapped lines centred under each other // wraps within maxWidth
     // A quarter turn clockwise: it reads down a side bar; maxWidth then
     // limits its height
@@ -390,7 +393,7 @@ protected:
     float m_maxWidth = 0;
     float m_fit = 0; // squeezed below what it needs: drawn within this
     float m_measuredWith = 0; // the width its last measure wrapped within
-    bool m_turned = false;
+    bool m_turned = false, m_markup = false;
     int m_maxLines = 1;
     bool m_icon = false;
     float m_fill = 0;

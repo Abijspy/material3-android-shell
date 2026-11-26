@@ -282,7 +282,7 @@ apps = {
   'backups': {'sources': ['src/apps/BackupsMain.cpp', 'src/shell/BackupsApp.cpp'], 'deps': []},
   'camera': {'sources': ['src/apps/CameraMain.cpp', 'src/shell/CameraApp.cpp'], 'deps': [libmpv]},
   'disks': {'sources': ['src/apps/DisksMain.cpp', 'src/shell/DisksApp.cpp'], 'deps': []},
-  'text': {'sources': ['src/apps/TextMain.cpp', 'src/shell/TextEditor.cpp'], 'deps': []},
+  'text': {'sources': ['src/apps/TextMain.cpp', 'src/shell/TextEditor.cpp', 'src/shell/Markdown.cpp'], 'deps': []},
   'music': {'sources': ['src/apps/MusicMain.cpp', 'src/shell/MusicApp.cpp'], 'deps': [libmpv]},
 }
 if poppler_glib.found()

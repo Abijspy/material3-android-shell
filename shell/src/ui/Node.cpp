@@ -598,6 +598,12 @@ Label* Label::setMaxLines(int lines) {
     return this;
 }
 
+Label* Label::setMarkup(bool markup) {
+    m_markup = markup;
+    requestLayout();
+    return this;
+}
+
 Label* Label::setFamily(const std::string& family) {
     m_family = family;
     requestLayout();
@@ -606,6 +612,7 @@ Label* Label::setFamily(const std::string& family) {
 
 TextStyle Label::style() const {
     TextStyle s;
+    s.markup = m_markup;
     s.family = !m_family.empty() ? m_family : Theme::get().fontFamily();
     // Accessibility: larger and bolder text (icons keep their size and grade)
     const auto& theme = Theme::get();

@@ -33,7 +33,8 @@ PangoLayout* makeLayout(PangoContext* ctx, const std::string& text, const TextSt
         }
     }
     pango_layout_set_single_paragraph_mode(layout, style.maxLines <= 1);
-    pango_layout_set_text(layout, text.c_str(), static_cast<int>(text.size()));
+    if (style.markup) pango_layout_set_markup(layout, text.c_str(), static_cast<int>(text.size()));
+    else pango_layout_set_text(layout, text.c_str(), static_cast<int>(text.size()));
     return layout;
 }
 
@@ -51,8 +52,8 @@ TextEngine::TextEngine() {
 }
 
 std::string TextEngine::key(const std::string& text, const TextStyle& style, float scale) const {
-    return std::format("{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}", text, style.family, style.size, style.weight,
-                       style.maxWidth, style.fill, scale, style.maxLines, style.center);
+    return std::format("{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}", text, style.family, style.size, style.weight,
+                       style.maxWidth, style.fill, scale, style.maxLines, style.center, style.markup);
 }
 
 TextMetrics TextEngine::measure(const std::string& text, const TextStyle& style) {

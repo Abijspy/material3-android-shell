@@ -12,6 +12,7 @@
 #include "render/Renderer.h"
 #include "render/Text.h"
 #include "services/FileOps.h"
+#include "shell/Markdown.h"
 #include "shell/PanelKit.h"
 #include "shell/Popup.h"
 #include "shell/SettingsKit.h"
@@ -420,6 +421,7 @@ public:
     Pos cursor, anchor;
     float fontSize = 14;
     std::function<void()> onChanged, onMoved; // text, caret
+    std::function<void(float)> onScrolled;    // how far down, 0…1 (the preview follows)
     std::function<bool(const KeyEvent&)> onOtherKey;
     std::vector<std::pair<Pos, Pos>> highlights; // find's matches
     Lang lang = Lang::None;
@@ -945,6 +947,14 @@ protected:
         const auto& b = rect();
         m_rowsDirty = true; // the width, or the text, may have changed under it
         clampScroll();
+        if (onScrolled && m_scrollY != m_reportedScroll) {
+            m_reportedScroll = m_scrollY;
+            const float room = static_cast<float>(m_rows.size()) * lineH() - b.h;
+            const float f = room > 0 ? std::clamp(m_scrollY / room, 0.0f, 1.0f) : 0;
+            EventLoop::get().defer([cb = onScrolled, f, alive = m_alive] {
+                if (*alive) cb(f);
+            });
+        }
         auto& th = Theme::get();
         r.rect(b, th.color("surface_container_lowest"), Radii(16));
         r.pushClip(b);
@@ -1156,7 +1166,7 @@ private:
         edited();
     }
 
-    float m_scrollX = 0, m_scrollY = 0, m_goalX = -1;
+    float m_scrollX = 0, m_scrollY = 0, m_goalX = -1, m_reportedScroll = -1;
     bool m_wrap = false;
     mutable std::vector<Row> m_rows;
     mutable std::vector<int> m_first; // each line's first row (and one past the last)
@@ -1178,10 +1188,37 @@ struct Tab {
     Editor* editor = nullptr;
 };
 
+// The preview's pane: drawn again when its width changes (the window resized)
+class PreviewPane : public Flex {
+public:
+    PreviewPane() : Flex(Direction::Column) {}
+    ~PreviewPane() override { *m_alive = false; }
+    std::function<void()> resized;
+
+protected:
+    void doArrange() override {
+        Flex::doArrange();
+        if (std::abs(rect().w - m_width) < 1 || rect().w < 100) return;
+        m_width = rect().w;
+        if (resized) EventLoop::get().defer([cb = resized, alive = m_alive] {
+            if (*alive) cb();
+        });
+    }
+
+private:
+    float m_width = -1;
+    std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
+};
+
 struct State {
     std::vector<Tab> tabs;
     int active = 0;
     Flex *tabRow = nullptr, *stack = nullptr, *findBar = nullptr, *promptBar = nullptr;
+    PreviewPane* previewPane = nullptr;
+    Flex* previewContent = nullptr; // Markdown, beside the text
+    ScrollView* previewScroll = nullptr;
+    EventLoop::TimerId previewTimer = 0;
+    const Doc* previewOf = nullptr;
     Label* status = nullptr;
     TextField *findField = nullptr, *replaceField = nullptr;
     bool matchCase = false;
@@ -1205,6 +1242,7 @@ public:
     ~TextKeeper() override {
         *m_st->alive = false;
         if (m_st->autosaveTimer) EventLoop::get().cancel(m_st->autosaveTimer);
+        if (m_st->previewTimer) EventLoop::get().cancel(m_st->previewTimer);
         // What was open, for next time (Settings → reopen them)
         std::vector<std::string> open;
         for (auto& t : m_st->tabs)
@@ -1230,6 +1268,38 @@ private:
     std::shared_ptr<State> m_st;
 };
 
+// ── Markdown preview: beside a .md file, drawn again as it's typed
+bool isMarkdown(const Doc& d) {
+    std::string ext = fs::path(d.path).extension().string();
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return ext == ".md" || ext == ".markdown" || ext == ".mkd" || ext == ".mdown";
+}
+bool previewWanted(const std::shared_ptr<State>& st) {
+    Editor* e = activeEditor(st);
+    return e && isMarkdown(*e->doc) && Config::get().value<bool>("/text/mdPreview", true);
+}
+void refreshPreview(const std::shared_ptr<State>& st) {
+    if (!st->previewPane) return;
+    const bool on = previewWanted(st);
+    st->previewPane->setVisible(on);
+    if (!on) return st->previewOf = nullptr, void();
+    Editor* e = activeEditor(st);
+    const bool other = st->previewOf != e->doc.get();
+    st->previewOf = e->doc.get();
+    st->previewContent->clearChildren();
+    const float w = st->previewPane->rect().w > 100 ? st->previewPane->rect().w - 56 : 420;
+    const std::string dir = e->doc->path.empty() ? paths::home() : fs::path(e->doc->path).parent_path().string();
+    renderMarkdown(st->previewContent, e->doc->text(), w, dir);
+    if (other) st->previewScroll->scrollTo(0, false);
+}
+void previewSoon(const std::shared_ptr<State>& st) {
+    if (!previewWanted(st)) return;
+    std::weak_ptr<State> weak = st;
+    EventLoop::get().debounce(st->previewTimer, 250, [weak] {
+        if (auto s = weak.lock(); s && *s->alive) refreshPreview(s);
+    });
+}
+
 void activate(const std::shared_ptr<State>& st, int i) {
     if (st->tabs.empty()) return;
     st->active = std::clamp(i, 0, static_cast<int>(st->tabs.size()) - 1);
@@ -1240,6 +1310,7 @@ void activate(const std::shared_ptr<State>& st, int i) {
     });
     if (st->rebuildTabs) st->rebuildTabs();
     if (st->refreshStatus) st->refreshStatus();
+    refreshPreview(st);
 }
 
 void prompt(const std::shared_ptr<State>& st, const std::string& icon, const std::string& placeholder, const std::string& value, const std::string& action,
@@ -1275,6 +1346,7 @@ void addTab(const std::shared_ptr<State>& st, const std::string& path) {
         auto s = weak.lock();
         if (!s || !*s->alive) return;
         if (s->rebuildTabs) s->rebuildTabs(), s->refreshStatus();
+        previewSoon(s);
         // Auto-save: a file that has a name, a moment after typing stops
         if (!Config::get().value<bool>("/text/autosave", false) || doc->path.empty()) return;
         EventLoop::get().debounce(s->autosaveTimer, 1500, [weak, doc] {
@@ -1284,6 +1356,13 @@ void addTab(const std::shared_ptr<State>& st, const std::string& path) {
             if (!saveDoc(*doc, doc->path, err)) m3::run({"notify-send", "-a", "Text Editor", "-i", "dialog-error", "Couldn't save", err}, nullptr);
             if (s2->rebuildTabs) s2->rebuildTabs(), s2->refreshStatus();
         });
+    };
+    ed->onScrolled = [weak, ed](float f) {
+        auto s = weak.lock();
+        if (!s || !*s->alive || activeEditor(s) != ed || !s->previewPane->visible()) return;
+        const Node* c = s->previewScroll->content();
+        const float room = c ? c->rect().h - s->previewScroll->rect().h : 0;
+        if (room > 0) s->previewScroll->scrollTo(f * room, false);
     };
     ed->onMoved = [weak] {
         if (auto s = weak.lock(); s && *s->alive && s->refreshStatus) s->refreshStatus();
@@ -1310,6 +1389,7 @@ void saveTab(const std::shared_ptr<State>& st, int i, bool as) {
             if (t.doc == doc) t.editor->relang(), t.editor->requestRedraw();
         if (st->rebuildTabs) st->rebuildTabs();
         if (st->refreshStatus) st->refreshStatus();
+        refreshPreview(st);
     };
     if (doc->path.empty() || as) {
         const char* docs = std::getenv("XDG_DOCUMENTS_DIR");
@@ -1472,6 +1552,12 @@ bool shortcut(const std::shared_ptr<State>& st, const KeyEvent& e) {
     }
     if (e.sym == XKB_KEY_F3) return findAll(st, true, e.shift() ? -1 : 1), true;
     if (!e.ctrl()) return false;
+    if (e.shift() && k == 'm') {
+        Config::get().set("/text/mdPreview", !Config::get().value<bool>("/text/mdPreview", true));
+        refreshPreview(st);
+        if (st->rebuildTabs) st->rebuildTabs();
+        return true;
+    }
     switch (k) {
     case 's': saveTab(st, st->active, e.shift()); return true;
     case 'n': addTab(st, ""); return true;
@@ -1572,9 +1658,26 @@ void textEditor(Flex* card, Popup& popup, const std::string& file) {
     }
     st->findBar->setVisible(false);
 
-    st->stack = card->add<Flex>(Flex::Direction::Column);
+    auto* body = card->add<Flex>(Flex::Direction::Row);
+    body->setAlignItems(Align::Stretch)->setSpacing(8);
+    body->grow = true;
+    st->stack = body->add<Flex>(Flex::Direction::Column);
     st->stack->setAlignItems(Align::Stretch);
     st->stack->grow = true;
+    st->stack->fixedWidth = 1; // shares the row evenly with the preview
+    st->previewPane = body->add<PreviewPane>();
+    st->previewPane->resized = [weak = std::weak_ptr<State>(st)] {
+        if (auto s = weak.lock(); s && *s->alive) refreshPreview(s);
+    };
+    st->previewPane->setBackground("surface_container_lowest", false)->setRadius(Radii(16))->setAlignItems(Align::Stretch);
+    st->previewPane->grow = true;
+    st->previewPane->fixedWidth = 1;
+    st->previewPane->setVisible(false);
+    st->previewScroll = st->previewPane->add<ScrollView>();
+    st->previewScroll->maxHeight = 1e6f;
+    st->previewScroll->grow = true;
+    st->previewContent = st->previewScroll->add<Flex>(Flex::Direction::Column);
+    st->previewContent->setPadding(Insets(24))->setSpacing(12)->setAlignItems(Align::Start);
     st->status = card->add<Label>("");
     st->status->setSize(12)->setColor("on_surface_variant", false);
     st->status->alignSelf = Align::Start;
@@ -1616,6 +1719,17 @@ void textEditor(Flex* card, Popup& popup, const std::string& file) {
             e.mods = ModCtrl;
             shortcut(st, e);
         }, 20)->tooltip = "Find and replace (Ctrl+F, Ctrl+H)";
+        if (Editor* ed = activeEditor(st); ed && isMarkdown(*ed->doc)) {
+            const bool on = Config::get().value<bool>("/text/mdPreview", true);
+            auto* pv = iconButton(t, on ? "preview_off" : "preview", [st] {
+                KeyEvent e;
+                e.baseSym = 'm';
+                e.mods = ModCtrl | ModShift;
+                shortcut(st, e);
+            }, 20);
+            pv->tooltip = std::string(on ? "Hide" : "Show") + " the preview (Ctrl+Shift+M)";
+            if (on) pv->setBackground("secondary_container", false);
+        }
         iconButton(t, "save", [st] { saveTab(st, st->active, false); }, 20)->tooltip = "Save (Ctrl+S)";
         Button* more = iconButton(t, "more_vert", [] {}, 20);
         more->onClicked = [st, more](uint32_t b) {
@@ -1694,6 +1808,7 @@ void textSettings(Flex* page) {
     auto* g = group(page, "Text");
     sliderRow(g, "format_size", "Text size", "/text/fontSize", 14, 8, 32, 1, [](double v) { return std::format("{:.0f} px", v); });
     switchRow(g, "format_list_numbered", "Line numbers", "", "/text/lineNumbers", true);
+    switchRow(g, "preview", "Markdown preview", "Beside .md files, as you type (Ctrl+Shift+M)", "/text/mdPreview", true);
     switchRow(g, "wrap_text", "Wrap long lines", "Onto the next row instead of off the side (Alt+Z)", "/text/wrap", false);
     switchRow(g, "horizontal_rule", "Mark the current line", "", "/text/currentLine", true);
     switchRow(g, "palette", "Colour the code", "Keywords, strings, comments and more, by the file's language", "/text/syntax", true);

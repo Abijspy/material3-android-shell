@@ -17,6 +17,7 @@ struct TextStyle {
     float maxWidth = 0;  // > 0 ellipsizes at the end (or wraps, with maxLines > 1)
     int maxLines = 1;
     bool center = false; // wrapped lines centred (labels under icons)
+    bool markup = false; // the text is Pango markup (<b>, <i>, <tt>…); it must be valid
     // Material Symbols axes; used when the family is the icon font
     float fill = 0;
     bool icon = false;
