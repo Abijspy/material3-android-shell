@@ -22,6 +22,7 @@
 #include "shell/SettingsKit.h"
 #include "ui/Controls.h"
 #include "ui/Theme.h"
+#include "wayland/Display.h"
 
 #include <GLES2/gl2.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
@@ -400,6 +401,11 @@ struct ViewerState {
     Flex* card = nullptr;
     bool sliding = false, paused = false; // the slideshow
     EventLoop::TimerId slideTimer = 0;
+    // Several pictures picked in the gallery (Ctrl+click, or Select), for
+    // the batch actions: resize, convert, rename
+    std::vector<std::string> picked;
+    bool selecting = false, batchBusy = false;
+    Flex* selBar = nullptr;
     std::shared_ptr<bool> alive = std::make_shared<bool>(true);
 };
 
@@ -584,17 +590,176 @@ std::vector<std::pair<std::string, std::string>> galleryPlaces() {
 // A gallery picture, with a heart in its corner when it's a favourite
 class Thumb : public Button {
 public:
-    Icon* heart = nullptr;
+    Icon *heart = nullptr, *check = nullptr;
 
 protected:
     void doArrange() override {
         Button::doArrange();
-        if (!heart) return;
         const auto& b = rect();
-        const SizeF m = heart->measure({b.w, b.h});
-        heart->arrange({b.x + b.w - m.w - 8, b.y + 8, m.w, m.h});
+        if (heart) {
+            const SizeF m = heart->measure({b.w, b.h});
+            heart->arrange({b.x + b.w - m.w - 8, b.y + 8, m.w, m.h});
+        }
+        if (check) {
+            const SizeF m = check->measure({b.w, b.h});
+            check->arrange({b.x + 8, b.y + 8, m.w, m.h});
+        }
     }
 };
+
+// ── Batch actions on the pictures picked ──
+
+void refreshSelBar(const std::shared_ptr<ViewerState>& st);
+
+bool isPicked(const ViewerState& st, const std::string& p) {
+    return std::ranges::find(st.picked, p) != st.picked.end();
+}
+
+// One command after another, the bar saying how far along
+void runBatch(std::shared_ptr<ViewerState> st, std::vector<std::vector<std::string>> jobs, std::string what, size_t at = 0, size_t failed = 0) {
+    if (!*st->alive) return;
+    if (at >= jobs.size()) {
+        st->batchBusy = false;
+        m3::run({"notify-send", "-a", "Photos", "-i", "image-x-generic", what,
+                 failed ? std::format("{} of {} couldn't be done", failed, jobs.size()) : std::format("{} pictures, beside the originals", jobs.size())}, nullptr);
+        st->picked.clear();
+        st->selecting = false;
+        refreshSelBar(st);
+        buildGallery(st);
+        return;
+    }
+    st->batchBusy = true;
+    if (st->selBar && !st->selBar->children().empty())
+        if (auto* l = dynamic_cast<Label*>(st->selBar->children().front().get())) l->setText(std::format("{}: {} of {}…", what, at + 1, jobs.size()));
+    const auto cmd = jobs[at];
+    m3::run(cmd, [st, jobs, what, at, failed](int code, const std::string&) {
+        runBatch(st, jobs, what, at + 1, failed + (code != 0));
+    });
+}
+
+bool needMagick() {
+    if (haveCommand("magick")) return false;
+    m3::run({"notify-send", "-a", "Photos", "-i", "image-x-generic", "Resizing and converting need ImageMagick", "sudo pacman -S imagemagick"}, nullptr);
+    return true;
+}
+
+// Copies at most `px` on their longer side ("name-1920px.jpg")
+void resizePicked(const std::shared_ptr<ViewerState>& st, int px) {
+    if (st->picked.empty() || needMagick()) return;
+    std::vector<std::vector<std::string>> jobs;
+    for (const auto& p : st->picked) {
+        const fs::path f(p);
+        const std::string name = fileops::freeName(f.parent_path().string(), std::format("{}-{}px{}", f.stem().string(), px, f.extension().string()));
+        jobs.push_back({"magick", p, "-auto-orient", "-resize", std::format("{}x{}>", px, px), "-quality", "90", (f.parent_path() / name).string()});
+    }
+    runBatch(st, jobs, std::format("Resized to {} px", px));
+}
+
+// Copies in another format, beside the originals
+void convertPicked(const std::shared_ptr<ViewerState>& st, const std::string& ext) {
+    if (st->picked.empty() || needMagick()) return;
+    std::vector<std::vector<std::string>> jobs;
+    for (const auto& p : st->picked) {
+        const fs::path f(p);
+        const std::string name = fileops::freeName(f.parent_path().string(), f.stem().string() + "." + ext);
+        jobs.push_back({"magick", p, "-auto-orient", "-quality", "90", (f.parent_path() / name).string()});
+    }
+    std::string up = ext;
+    for (char& c : up) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    runBatch(st, jobs, "Converted to " + up);
+}
+
+// "Holiday #" → Holiday 1.jpg, Holiday 2.jpg… in the gallery's order
+void renamePicked(const std::shared_ptr<ViewerState>& st) {
+    auto* a = st->ask;
+    a->clearChildren();
+    a->setVisible(true);
+    a->add<Icon>("drive_file_rename_outline", 20);
+    auto* f = a->add<TextField>();
+    f->bare = true;
+    f->grow = true;
+    f->setPlaceholder(std::format("A name for the {} pictures: # is their number (Holiday #)", st->picked.size()));
+    auto done = [st, f] {
+        std::string pattern = f->text();
+        while (!pattern.empty() && pattern.back() == ' ') pattern.pop_back();
+        st->ask->setVisible(false);
+        if (pattern.empty()) return;
+        if (pattern.find('#') == std::string::npos) pattern += " #";
+        // In the order they're shown
+        std::vector<std::string> order;
+        for (const auto& p : st->galleryPics)
+            if (isPicked(*st, p)) order.push_back(p);
+        const int width = static_cast<int>(std::to_string(order.size()).size());
+        size_t n = 0, failed = 0;
+        for (const auto& p : order) {
+            ++n;
+            std::string num = std::to_string(n);
+            num.insert(0, static_cast<size_t>(std::max(0, width - static_cast<int>(num.size()))), '0');
+            std::string name = pattern;
+            name.replace(name.find('#'), 1, num);
+            name += fs::path(p).extension().string();
+            if (name == fs::path(p).filename().string()) continue;
+            if (!fileops::rename(p, name).empty()) ++failed;
+        }
+        m3::run({"notify-send", "-a", "Photos", "-i", "image-x-generic", std::format("Renamed {} pictures", order.size() - failed),
+                 failed ? std::format("{} couldn't be (a name already taken?)", failed) : ""}, nullptr);
+        st->picked.clear();
+        st->selecting = false;
+        refreshSelBar(st);
+        buildGallery(st);
+    };
+    f->onSubmit = [done](const std::string&) { done(); };
+    pillButton(a, "Rename", true, done);
+    iconButton(a, "close", [st] { st->ask->setVisible(false); }, 18);
+    EventLoop::get().defer([st, f] {
+        if (*st->alive) f->focus();
+    });
+}
+
+void refreshSelBar(const std::shared_ptr<ViewerState>& st) {
+    auto* b = st->selBar;
+    if (!b) return;
+    b->clearChildren();
+    b->setVisible(st->selecting);
+    if (!st->selecting) return;
+    auto* l = b->add<Label>(st->picked.empty() ? "Tap pictures to pick them" : std::format("{} picked", st->picked.size()));
+    l->setSize(14)->setWeight(600)->setColor("on_secondary_container", false);
+    l->grow = true;
+    l->givesWay = true;
+    if (st->batchBusy) return;
+    pillButton(b, "Select all", false, [st] {
+        st->picked = st->galleryPics;
+        refreshSelBar(st);
+        buildGallery(st);
+    }, "select_all");
+    if (!st->picked.empty()) {
+        Button* rs = pillButton(b, "Resize", false, [] {}, "photo_size_select_large");
+        rs->onClicked = [st, rs](uint32_t btn) {
+            if (btn != BTN_LEFT) return;
+            std::vector<MenuItem> m;
+            for (int px : {3840, 2560, 1920, 1280, 800})
+                m.emplace_back("photo_size_select_large", std::format("{} px on the longer side", px), px == 1920 ? "Full HD" : px == 3840 ? "4K" : "",
+                               [st, px] { resizePicked(st, px); });
+            floatingMenu(rs, m);
+        };
+        Button* cv = pillButton(b, "Convert", false, [] {}, "transform");
+        cv->onClicked = [st, cv](uint32_t btn) {
+            if (btn != BTN_LEFT) return;
+            std::vector<MenuItem> m;
+            for (const auto& [ext, what] : std::initializer_list<std::pair<const char*, const char*>>{
+                     {"jpg", "JPEG: photos, everywhere"}, {"png", "PNG: lossless, larger"}, {"webp", "WebP: smaller, for the web"}, {"avif", "AVIF: smallest, newer"}})
+                m.emplace_back("image", what, "", [st, e = std::string(ext)] { convertPicked(st, e); });
+            floatingMenu(cv, m);
+        };
+        pillButton(b, "Rename", false, [st] { renamePicked(st); }, "drive_file_rename_outline");
+    }
+    iconButton(b, "close", [st] {
+        st->picked.clear();
+        st->selecting = false;
+        refreshSelBar(st);
+        buildGallery(st);
+    }, 20)->tooltip = "Done picking (Esc)";
+}
 
 void buildGallery(const std::shared_ptr<ViewerState>& st) {
     auto* g = st->grid;
@@ -667,8 +832,29 @@ void buildGallery(const std::shared_ptr<ViewerState>& st) {
             heart->floating = true;
             b->heart = heart;
         }
+        if (isPicked(*st, path)) {
+            auto* check = b->add<Icon>("check_circle", 24);
+            check->setFill(true)->setColor("primary", false);
+            check->floating = true;
+            b->check = check;
+            b->setBackground("primary", false)->setPadding(Insets(3));
+        }
         b->dragFiles = [path] { return std::vector<std::string>{path}; }; // to Files, another app, a note
         b->onClicked = [st, path, b](uint32_t button) {
+            // Picking: Ctrl+click, or any click once picking
+            const bool ctrl = wl::Display::get().heldModifiers() & ModCtrl;
+            if (button == BTN_LEFT && (st->selecting || ctrl)) {
+                if (st->batchBusy) return;
+                st->selecting = true;
+                if (auto it = std::ranges::find(st->picked, path); it != st->picked.end()) st->picked.erase(it);
+                else st->picked.push_back(path);
+                EventLoop::get().defer([st] {
+                    if (!*st->alive) return;
+                    refreshSelBar(st);
+                    buildGallery(st);
+                });
+                return;
+            }
             if (button == BTN_LEFT) showAt(st, path, st->collection.empty() ? nullptr : &st->galleryPics);
             if (button == BTN_RIGHT) pictureMenu(st, b, path);
         };
@@ -900,6 +1086,12 @@ void viewer(Flex* card, Popup& popup, const std::string& file) {
                 buildGallery(st);
             };
         }
+        iconButton(head, "checklist", [st] {
+            st->selecting = !st->selecting;
+            if (!st->selecting) st->picked.clear();
+            refreshSelBar(st);
+            buildGallery(st);
+        }, 22)->tooltip = "Pick several (Ctrl+click): resize, convert or rename them";
         iconButton(head, "slideshow", [st] { startSlideshow(st, st->galleryPics); }, 22)->tooltip = "Slideshow (F5)";
         iconButton(head, "folder_open", [st] {
             if (open) open("files " + st->galleryDir);
@@ -907,6 +1099,9 @@ void viewer(Flex* card, Popup& popup, const std::string& file) {
         st->albumsRow = st->gallery->add<Flex>(Flex::Direction::Row);
         st->albumsRow->setSpacing(6)->setAlignItems(Align::Center)->setPadding({8, 0});
         buildAlbumsRow(st);
+        st->selBar = st->gallery->add<Flex>(Flex::Direction::Row);
+        pill(st->selBar->setBackground("secondary_container", false))->setPadding({18, 6, 8, 6})->setSpacing(8)->setAlignItems(Align::Center);
+        st->selBar->setVisible(false);
         auto* scroll = st->gallery->add<ScrollView>();
         scroll->maxHeight = 1e6f;
         scroll->grow = true;
@@ -1040,6 +1235,23 @@ void viewer(Flex* card, Popup& popup, const std::string& file) {
             }
         }
         if (e.sym == XKB_KEY_Escape && st->ask->visible()) return st->ask->setVisible(false), true;
+        // Picking: Escape stops, Ctrl+A picks them all
+        if (st->gallery->visible() && st->selecting && !st->batchBusy) {
+            if (e.sym == XKB_KEY_Escape) {
+                st->picked.clear();
+                st->selecting = false;
+                refreshSelBar(st);
+                buildGallery(st);
+                return true;
+            }
+        }
+        if (st->gallery->visible() && e.ctrl() && (e.baseSym == 'a' || e.baseSym == 'A')) {
+            st->selecting = true;
+            st->picked = st->galleryPics;
+            refreshSelBar(st);
+            buildGallery(st);
+            return true;
+        }
         // The gallery: Escape closes, F5 plays it, nothing else is the viewer's
         if (st->gallery->visible()) {
             if (e.sym == XKB_KEY_Escape) return p.close(), true;
