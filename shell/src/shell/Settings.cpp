@@ -41,6 +41,7 @@
 #include "services/Weather.h"
 #include "shell/ClockPanel.h"
 #include "shell/Dock.h"
+#include "shell/PasswordsPage.h"
 #include "shell/PrintersPage.h"
 #include "shell/SecurityPages.h"
 #include "shell/ShellAppsPage.h"
@@ -4519,7 +4520,7 @@ HueChip categoryColours(const std::string& id) {
         {{"display", "appearance", "style", "bar", "dock", "niri-decoration"}, &orange},
         {{"storage", "monitor", "calendar", "clock"}, &yellow},
         {{"battery", "packages", "firmware", "wellbeing", "niri-startup"}, &green},
-        {{"lock", "firewall", "lockscreen", "users", "niri-rules"},
+        {{"lock", "firewall", "passwords", "lockscreen", "users", "niri-rules"},
          &teal},
         {{"accessibility", "tools", "spotlight", "hooks"}, &purple},
     };
@@ -4607,6 +4608,7 @@ const PageDef kPages[] = {
     {"accessibility", "accessibility_new", "Accessibility", "Text, motion and the pointer", accessibilityPage},
     {"lock", "security", "Security & privacy", "Screen lock, idle and sleep", lockPage},
     {"firewall", "shield_lock", "Firewall", "Which devices on the network may connect", firewallPage},
+    {"passwords", "password", "Passwords", "Wi-Fi passwords and what apps saved in the keyring", passwordsPage},
     {"users", "account_circle", "Users", "Your profile, password, administrators and new profiles", usersPage},
     {"system", "settings_suggest", "System", "Date & time, languages and reset", systemPage},
     {"niri-layout", "view_week", "Windows & layout", "Gaps, centring, new windows' width and space at the edges", niriLayoutPage},
@@ -4664,7 +4666,7 @@ int pageGroup(const std::string& id) {
     if (id == "defaults" || id == "shellapps" || id == "notifications" || id == "wellbeing" || id == "tools" || id == "calendar" || id == "clock" || id == "weather") return 1;
     if (id == "battery" || id == "storage" || id == "monitor" || id == "sound" || id == "display") return 2;
     if (id == "appearance" || id == "style" || id == "bar" || id == "dock" || id == "lockscreen") return 3;
-    if (id == "accessibility" || id == "lock" || id == "firewall" || id == "users") return 4;
+    if (id == "accessibility" || id == "lock" || id == "firewall" || id == "passwords" || id == "users") return 4;
     return 5; // system, keyboard, updates, about
 }
 
