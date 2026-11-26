@@ -1,5 +1,6 @@
 #include "ui/Controls.h"
 
+#include "core/Process.h"
 #include "render/Text.h"
 
 #include "ui/Theme.h"
@@ -454,12 +455,13 @@ TextField::TextField() {
 }
 
 TextField::~TextField() {
+    *m_alive = false;
     if (m_blink) EventLoop::get().cancel(m_blink);
 }
 
 TextField* TextField::setText(const std::string& t) {
     m_text = t;
-    m_cursor = t.size();
+    m_cursor = m_anchor = t.size();
     requestRedraw();
     return this;
 }
@@ -541,7 +543,7 @@ void TextField::onPress(uint32_t, float x, float) {
             best = i;
         }
     }
-    m_cursor = best;
+    m_cursor = m_anchor = best;
     restartBlink();
     requestRedraw();
 }
@@ -576,8 +578,76 @@ void TextField::edited() {
     if (onChanged) onChanged(m_text);
 }
 
+void TextField::eraseSelection() {
+    if (!hasSelection()) return;
+    const auto [a, b] = selection();
+    m_text.erase(a, b - a);
+    m_cursor = m_anchor = a;
+}
+
+// Typed or pasted: in place of what's selected, on one line
+void TextField::insertText(std::string t) {
+    std::ranges::replace(t, '\n', ' ');
+    std::erase(t, '\r');
+    eraseSelection();
+    m_text.insert(m_cursor, t);
+    m_cursor += t.size();
+    m_anchor = m_cursor;
+    edited();
+}
+
 bool TextField::onKey(const KeyEvent& e) {
     if (onKeyFirst && onKeyFirst(e)) return true;
+    // Moving: Shift keeps the anchor, so the selection grows
+    auto moved = [&](size_t to) {
+        m_cursor = to;
+        if (!e.shift()) m_anchor = m_cursor;
+        restartBlink();
+        requestRedraw();
+        return true;
+    };
+    if (e.ctrl() && !(e.mods & ModAlt)) {
+        const uint32_t k = e.baseSym >= 'A' && e.baseSym <= 'Z' ? e.baseSym - 'A' + 'a' : e.baseSym;
+        switch (k) {
+        case 'a':
+            m_anchor = 0;
+            m_cursor = m_text.size();
+            requestRedraw();
+            return true;
+        case 'c':
+        case 'x':
+            // A password is never copied out
+            if (!hasSelection() || m_secret) return true;
+            {
+                const auto [a, b] = selection();
+                m3::run({"wl-copy"}, nullptr, m_text.substr(a, b - a));
+            }
+            if (k == 'x') eraseSelection(), edited();
+            return true;
+        case 'v':
+            m3::run({"wl-paste", "--no-newline", "--type", "text"}, [this, alive = m_alive](int code, const std::string& out) {
+                if (*alive && code == 0 && !out.empty()) insertText(out);
+            });
+            return true;
+        default: break;
+        }
+    }
+    if (hasSelection() && (e.sym == XKB_KEY_BackSpace || e.sym == XKB_KEY_Delete)) {
+        eraseSelection();
+        edited();
+        return true;
+    }
+    switch (e.sym) {
+    case XKB_KEY_Left:
+        if (hasSelection() && !e.shift()) return moved(selection().first);
+        return moved(e.ctrl() ? prevWord(m_text, m_cursor) : prevChar(m_text, m_cursor));
+    case XKB_KEY_Right:
+        if (hasSelection() && !e.shift()) return moved(selection().second);
+        return moved(nextChar(m_text, m_cursor));
+    case XKB_KEY_Home: return moved(0);
+    case XKB_KEY_End: return moved(m_text.size());
+    default: break;
+    }
     switch (e.sym) {
     case XKB_KEY_Return:
     case XKB_KEY_KP_Enter:
@@ -593,7 +663,7 @@ bool TextField::onKey(const KeyEvent& e) {
         if (m_cursor == 0) return true;
         const size_t from = e.ctrl() ? prevWord(m_text, m_cursor) : prevChar(m_text, m_cursor);
         m_text.erase(from, m_cursor - from);
-        m_cursor = from;
+        m_cursor = m_anchor = from;
         edited();
         return true;
     }
@@ -603,37 +673,17 @@ bool TextField::onKey(const KeyEvent& e) {
             edited();
         }
         return true;
-    case XKB_KEY_Left:
-        m_cursor = e.ctrl() ? prevWord(m_text, m_cursor) : prevChar(m_text, m_cursor);
-        restartBlink();
-        requestRedraw();
-        return true;
-    case XKB_KEY_Right:
-        m_cursor = nextChar(m_text, m_cursor);
-        restartBlink();
-        requestRedraw();
-        return true;
-    case XKB_KEY_Home:
-        m_cursor = 0;
-        requestRedraw();
-        return true;
-    case XKB_KEY_End:
-        m_cursor = m_text.size();
-        requestRedraw();
-        return true;
     default:
         break;
     }
     if (e.ctrl() && (e.sym == XKB_KEY_u || e.sym == XKB_KEY_U)) {
         m_text.erase(0, m_cursor);
-        m_cursor = 0;
+        m_cursor = m_anchor = 0;
         edited();
         return true;
     }
     if (!e.text.empty() && !e.ctrl() && !(e.mods & ModSuper)) {
-        m_text.insert(m_cursor, e.text);
-        m_cursor += e.text.size();
-        edited();
+        insertText(e.text);
         return true;
     }
     return false;
@@ -654,6 +704,11 @@ void TextField::doPaint(Renderer& r) {
 
     r.pushClip(inner);
     const bool empty = m_text.empty();
+    if (hasSelection() && !empty) {
+        const auto [a, z] = selection();
+        const float x0 = caretX(a), x1 = caretX(z);
+        r.rect({inner.x + x0 - m_scroll, b.y + 10, x1 - x0, b.h - 20}, Theme::get().color("primary").withAlpha(m_focused ? 0.3f : 0.15f), Radii(3));
+    }
     const std::string shown = empty ? m_placeholder : shownText();
     if (!shown.empty()) {
         const auto& tex = TextEngine::get().texture(shown, style(), r.scale());

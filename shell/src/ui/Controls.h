@@ -4,6 +4,7 @@
 #include "render/Text.h"
 #include "ui/Node.h"
 
+#include <memory>
 #include <chrono>
 #include <functional>
 #include <string>
@@ -228,9 +229,15 @@ private:
     void restartBlink();
 
     std::string shownText() const;
+    // The selection: from the anchor to the caret (none when they're equal)
+    bool hasSelection() const { return m_anchor != m_cursor; }
+    std::pair<size_t, size_t> selection() const { return {std::min(m_anchor, m_cursor), std::max(m_anchor, m_cursor)}; }
+    void eraseSelection();
+    void insertText(std::string t);
     std::string m_text, m_placeholder;
     bool m_secret = false;
-    size_t m_cursor = 0;
+    size_t m_cursor = 0, m_anchor = 0;
+    std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     bool m_focused = false, m_caretOn = true;
     float m_scroll = 0;
     EventLoop::TimerId m_blink = 0;
