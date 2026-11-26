@@ -29,6 +29,7 @@
 #include <fstream>
 #include <linux/input-event-codes.h>
 #include <memory>
+#include <optional>
 #include <unordered_map>
 #include <map>
 #include <set>
@@ -616,6 +617,7 @@ public:
     }
 
     void snapshot(bool coalesce) {
+        if (m_inMulti) return; // one undo step for every cursor's edit
         const auto now = EventLoop::Clock::now();
         if (!coalesce || doc->undo.empty() || now - doc->lastEdit > std::chrono::milliseconds(800)) {
             doc->undo.push_back({doc->lines, cursor});
@@ -719,8 +721,228 @@ public:
         else if (w > 0 && x > m_scrollX + w) m_scrollX = x - w + 40;
     }
 
+    // ── More cursors: each a caret (and selection) besides the main one.
+    // Typing, deleting, Enter, Tab, moving, copying and pasting happen at
+    // every one; anything else goes back to the main one first
+    struct Sel {
+        Pos cursor, anchor;
+    };
+    size_t caretCount() const { return 1 + m_extra.size(); }
+    void singleCursor() {
+        if (m_extra.empty()) return;
+        m_extra.clear();
+        requestRedraw();
+        if (onMoved) onMoved();
+    }
+    std::vector<Sel> allSels() const {
+        std::vector<Sel> v{{cursor, anchor}};
+        v.insert(v.end(), m_extra.begin(), m_extra.end());
+        return v;
+    }
+    void setSels(std::vector<Sel> v) {
+        // The main one stays first; the same place twice is once
+        cursor = v[0].cursor, anchor = v[0].anchor;
+        m_extra.clear();
+        for (size_t i = 1; i < v.size(); ++i) {
+            bool dup = v[i].cursor == cursor;
+            for (const auto& x : m_extra) dup = dup || x.cursor == v[i].cursor;
+            if (!dup) m_extra.push_back(v[i]);
+        }
+    }
+    void addCaret(Pos p, Pos a) {
+        auto v = allSels();
+        v.insert(v.begin(), Sel{p, a}); // the new one leads
+        setSels(v);
+        moved();
+    }
+    // `op` at each cursor, from the bottom up, the ones below moved on by
+    // what it did to the text
+    void editEach(const std::function<void()>& op, bool forwardDelete = false) {
+        snapshot(false);
+        m_inMulti = true;
+        auto sels = allSels();
+        std::vector<size_t> order(sels.size());
+        for (size_t i = 0; i < order.size(); ++i) order[i] = i;
+        auto lo = [](const Sel& x) { return x.cursor < x.anchor ? x.cursor : x.anchor; };
+        std::ranges::sort(order, [&](size_t a, size_t b) { return lo(sels[b]) < lo(sels[a]); });
+        std::vector<size_t> done;
+        for (size_t idx : order) {
+            cursor = sels[idx].cursor, anchor = sels[idx].anchor;
+            cursor.line = std::clamp(cursor.line, 0, static_cast<int>(doc->lines.size()) - 1);
+            anchor.line = std::clamp(anchor.line, 0, static_cast<int>(doc->lines.size()) - 1);
+            Pos end = cursor < anchor ? anchor : cursor;
+            if (forwardDelete && !hasSelection() && cursor.col >= doc->lines[static_cast<size_t>(cursor.line)].size() && cursor.line + 1 < static_cast<int>(doc->lines.size()))
+                end = {cursor.line + 1, 0};
+            const long oldCount = static_cast<long>(doc->lines.size());
+            const size_t oldLen = doc->lines[static_cast<size_t>(end.line)].size();
+            op();
+            const int dL = static_cast<int>(static_cast<long>(doc->lines.size()) - oldCount);
+            const int newLine = std::clamp(end.line + dL, 0, static_cast<int>(doc->lines.size()) - 1);
+            const size_t newLen = doc->lines[static_cast<size_t>(newLine)].size();
+            auto shift = [&](Pos& q) {
+                if (q.line > end.line) q.line += dL;
+                else if (q.line == end.line && q.col >= end.col) {
+                    // What followed it on the line is still there, at the end
+                    const size_t tail = oldLen - std::min(q.col, oldLen);
+                    q = {newLine, newLen >= tail ? newLen - tail : 0};
+                }
+            };
+            for (size_t j : done) shift(sels[j].cursor), shift(sels[j].anchor);
+            sels[idx] = {cursor, anchor};
+            done.push_back(idx);
+        }
+        m_inMulti = false;
+        setSels(sels);
+        m_rowsDirty = true;
+        moved();
+    }
+    void moveEach(const KeyEvent& e) {
+        m_inMulti = true;
+        auto sels = allSels();
+        for (auto& x : sels) {
+            cursor = x.cursor, anchor = x.anchor;
+            m_goalX = -1;
+            onKey(e);
+            x = {cursor, anchor};
+        }
+        m_inMulti = false;
+        setSels(sels);
+        moved();
+    }
+    // The word around a place
+    std::pair<Pos, Pos> wordAround(Pos p) const {
+        const std::string& l = doc->lines[static_cast<size_t>(p.line)];
+        const char* s0 = l.c_str();
+        const char* a = s0 + std::min(p.col, l.size());
+        const char* b = a;
+        while (a > s0 && wordChar(g_utf8_get_char(g_utf8_prev_char(a)))) a = g_utf8_prev_char(a);
+        while (*b && wordChar(g_utf8_get_char(b))) b = g_utf8_next_char(b);
+        return {{p.line, static_cast<size_t>(a - s0)}, {p.line, static_cast<size_t>(b - s0)}};
+    }
+    // Where `text` is next after `from` (round to the top), on one line
+    // `whole`: only where it's a word of its own (not inside a longer one)
+    std::optional<Pos> findAfter(const std::string& text, Pos from, bool whole) const {
+        const int n = static_cast<int>(doc->lines.size());
+        for (int k = 0; k <= n; ++k) {
+            const int line = (from.line + k) % n;
+            const auto& l = doc->lines[static_cast<size_t>(line)];
+            const size_t start = k == 0 ? std::min(from.col, l.size()) : 0;
+            for (size_t at = l.find(text, start); at != std::string::npos; at = l.find(text, at + 1)) {
+                if (k == n && at >= from.col) break;
+                if (whole) {
+                    const bool before = at > 0 && wordChar(g_utf8_get_char(g_utf8_prev_char(l.c_str() + at)));
+                    const bool after = at + text.size() < l.size() && wordChar(g_utf8_get_char(l.c_str() + at + text.size()));
+                    if (before || after) continue;
+                }
+                return Pos{line, at};
+            }
+        }
+        return std::nullopt;
+    }
+    // Alt+J: the word under the cursor, then each next one the same
+    void selectNextMatch(bool all) {
+        if (!hasSelection()) {
+            auto [a, b] = wordAround(cursor);
+            if (a == b) return;
+            anchor = a, cursor = b;
+            if (!all) return moved();
+        }
+        auto [a, b] = ordered();
+        if (a.line != b.line) return;
+        const std::string text = selected();
+        // A whole word selected: whole words only
+        const bool whole = wordAround(a) == std::pair{a, b};
+        auto taken = [&](Pos p) {
+            for (const auto& x : allSels())
+                if ((x.cursor < x.anchor ? x.cursor : x.anchor) == p) return true;
+            return false;
+        };
+        Pos from = b;
+        for (int guard = 0; guard < 10000; ++guard) {
+            auto at = findAfter(text, from, whole);
+            if (!at || taken(*at)) break;
+            addCaret({at->line, at->col + text.size()}, *at);
+            from = cursor;
+            if (!all) break;
+        }
+    }
+
     bool onKey(const KeyEvent& e) override {
         if (onOtherKey && e.ctrl() && onOtherKey(e)) return true;
+        {
+            const bool c = e.ctrl(), sh = e.shift(), al = e.mods & ModAlt;
+            const uint32_t kk = e.baseSym >= 'A' && e.baseSym <= 'Z' ? e.baseSym - 'A' + 'a' : e.baseSym;
+            if (!m_inMulti) {
+                if (al && !c && kk == 'j') return selectNextMatch(false), true;
+                if (c && sh && kk == 'l') return selectNextMatch(true), true;
+                if (al && sh && !c && (e.sym == XKB_KEY_Up || e.sym == XKB_KEY_Down)) {
+                    // A cursor on the line above the top one (below the bottom one)
+                    auto v = allSels();
+                    Pos edge = v[0].cursor;
+                    for (const auto& x : v) edge = e.sym == XKB_KEY_Up ? std::min(edge, x.cursor) : std::max(edge, x.cursor);
+                    const int line = edge.line + (e.sym == XKB_KEY_Up ? -1 : 1);
+                    if (line < 0 || line >= static_cast<int>(doc->lines.size())) return true;
+                    const Pos p{line, colAt(line, xOf(edge.line, edge.col))};
+                    addCaret(p, p);
+                    return true;
+                }
+            }
+            if (!m_extra.empty() && !m_inMulti) {
+                const bool moveKey = !al && (e.sym == XKB_KEY_Left || e.sym == XKB_KEY_Right || e.sym == XKB_KEY_Up || e.sym == XKB_KEY_Down || e.sym == XKB_KEY_Home || e.sym == XKB_KEY_End) &&
+                                     !(c && (e.sym == XKB_KEY_Up || e.sym == XKB_KEY_Down || e.sym == XKB_KEY_Home || e.sym == XKB_KEY_End));
+                const bool editKey = (!c && !al && (e.sym == XKB_KEY_BackSpace || e.sym == XKB_KEY_Delete || e.sym == XKB_KEY_Return || e.sym == XKB_KEY_KP_Enter ||
+                                                    (e.sym == XKB_KEY_Tab && !sh))) ||
+                                     (c && !sh && (e.sym == XKB_KEY_BackSpace || e.sym == XKB_KEY_Delete)) ||
+                                     (!c && !al && !e.text.empty() && static_cast<unsigned char>(e.text[0]) >= 0x20 && e.text[0] != 0x7f);
+                if (e.sym == XKB_KEY_Escape) return singleCursor(), true;
+                if (moveKey) return moveEach(e), true;
+                if (editKey) return editEach([&] { onKey(e); }, e.sym == XKB_KEY_Delete), true;
+                if (c && !sh && (kk == 'c' || kk == 'x')) {
+                    // Every selection, top to bottom, a line each
+                    auto v = allSels();
+                    std::ranges::sort(v, [](const Sel& a, const Sel& b) { return std::min(a.cursor, a.anchor) < std::min(b.cursor, b.anchor); });
+                    std::string t;
+                    const Pos keepC = cursor, keepA = anchor;
+                    for (const auto& x : v) {
+                        cursor = x.cursor, anchor = x.anchor;
+                        if (hasSelection()) t += (t.empty() ? "" : "\n") + selected();
+                    }
+                    cursor = keepC, anchor = keepA;
+                    if (!t.empty()) m3::run({"wl-copy"}, nullptr, t);
+                    if (kk == 'x') editEach([&] {
+                        if (hasSelection()) eraseSelection(), edited();
+                    });
+                    return true;
+                }
+                if (c && !sh && kk == 'v') {
+                    m3::run({"wl-paste", "--no-newline", "--type", "text"}, [this, alive = m_alive](int code, const std::string& out) {
+                        if (!*alive || code != 0 || out.empty()) return;
+                        if (m_extra.empty()) return insert(out);
+                        // A line for each cursor (copied from as many): one each, top to bottom
+                        std::vector<std::string> parts;
+                        size_t st0 = 0;
+                        for (size_t nl; (nl = out.find('\n', st0)) != std::string::npos; st0 = nl + 1) parts.push_back(out.substr(st0, nl - st0));
+                        parts.push_back(out.substr(st0));
+                        if (parts.size() == caretCount()) {
+                            auto sels = allSels();
+                            std::vector<Pos> tops;
+                            for (const auto& x : sels) tops.push_back(std::min(x.cursor, x.anchor));
+                            std::ranges::sort(tops);
+                            editEach([&] {
+                                const Pos me = std::min(cursor, anchor);
+                                const size_t rank = static_cast<size_t>(std::ranges::find(tops, me) - tops.begin());
+                                insert(parts[std::min(rank, parts.size() - 1)]);
+                            });
+                            return;
+                        }
+                        editEach([&] { insert(out); });
+                    });
+                    return true;
+                }
+                if (c && kk == 'a') singleCursor();
+                else if (!(al && kk == 'j') && !(c && sh && kk == 'l')) singleCursor();
+            }
+        }
         const bool ctrl = e.ctrl(), shift = e.shift(), alt = e.mods & ModAlt;
         auto& lines = doc->lines;
         const std::string& cur = lines[static_cast<size_t>(cursor.line)];
@@ -916,6 +1138,11 @@ protected:
             moved();
             return;
         }
+        if (wl::Display::get().heldModifiers() & ModCtrl) {
+            addCaret(p, p);
+            return;
+        }
+        m_extra.clear();
         moveTo(p, wl::Display::get().heldModifiers() & ModShift);
         m_dragging = true;
     }
@@ -965,8 +1192,16 @@ protected:
         TextStyle numStyle = st;
         numStyle.size = fontSize * 0.85f;
         const Color ink = th.color("on_surface"), dim = th.color("outline"), sel = th.color("primary").withAlpha(m_focused ? 0.32f : 0.18f);
-        auto [sa, sb] = ordered();
-        const int caretRow = rowOf(cursor);
+        // Every cursor's selection and caret
+        std::vector<std::pair<Pos, Pos>> selRanges;
+        std::vector<std::pair<int, Pos>> carets;
+        for (const auto& x : allSels()) {
+            if (x.cursor != x.anchor) selRanges.push_back(x.cursor < x.anchor ? std::pair{x.cursor, x.anchor} : std::pair{x.anchor, x.cursor});
+            Pos c = x.cursor;
+            c.line = std::clamp(c.line, 0, static_cast<int>(doc->lines.size()) - 1);
+            c.col = std::min(c.col, doc->lines[static_cast<size_t>(c.line)].size());
+            carets.emplace_back(rowOf(c), c);
+        }
         const bool markLine = !hasSelection() && Config::get().value<bool>("/text/currentLine", true);
         for (int ri = first; ri <= last; ++ri) {
             const Row row = m_rows[static_cast<size_t>(ri)];
@@ -985,7 +1220,8 @@ protected:
                 const float x0 = rel(ha.col), x1 = rel(std::min(hb.line == i ? hb.col : row.e, row.e));
                 r.rect({textX + x0 - m_scrollX, y + 2, std::max(2.0f, x1 - x0), lh - 4}, th.color(static_cast<int>(m) == currentMatch ? "tertiary" : "secondary").withAlpha(0.35f), Radii(3));
             }
-            if (hasSelection() && i >= sa.line && i <= sb.line && !(i == sa.line && sa.col > row.e) && !(i == sb.line && sb.col < row.s)) {
+            for (const auto& [sa, sb] : selRanges) {
+                if (!(i >= sa.line && i <= sb.line && !(i == sa.line && sa.col > row.e) && !(i == sb.line && sb.col < row.s))) continue;
                 const size_t from = i == sa.line ? std::max(sa.col, row.s) : row.s, to = i == sb.line ? std::min(sb.col, row.e) : row.e;
                 const bool tail = lastOfLine && i < sb.line;
                 if (from < to || (from == to && tail)) {
@@ -1026,8 +1262,9 @@ protected:
                     if (at < shown.size()) run(at, shown.size() - at, ink);
                 }
             }
-            if (m_focused && m_caretOn && ri == caretRow)
-                r.rect({textX + rel(cursor.col) - m_scrollX - 1, y + 3, 2, lh - 6}, th.color("primary"), Radii(1));
+            if (m_focused && m_caretOn)
+                for (const auto& [cr, cp] : carets)
+                    if (cr == ri) r.rect({textX + rel(cp.col) - m_scrollX - 1, y + 3, 2, lh - 6}, th.color("primary"), Radii(1));
             r.popClip();
             // The line's number, on its first row
             if (!lineNumbers() || !firstOfLine) continue;
@@ -1167,6 +1404,8 @@ private:
     }
 
     float m_scrollX = 0, m_scrollY = 0, m_goalX = -1, m_reportedScroll = -1;
+    std::vector<Sel> m_extra; // the other cursors
+    bool m_inMulti = false;   // an edit going round them
     bool m_wrap = false;
     mutable std::vector<Row> m_rows;
     mutable std::vector<int> m_first; // each line's first row (and one past the last)
@@ -1772,7 +2011,8 @@ void textEditor(Flex* card, Popup& popup, const std::string& file) {
         const std::string line = d.lines[static_cast<size_t>(e->cursor.line)];
         const long col = g_utf8_strlen(line.c_str(), static_cast<gssize>(e->cursor.col)) + 1;
         std::string s = std::format("Ln {}, Col {}", e->cursor.line + 1, col);
-        if (e->hasSelection()) s += std::format("  ({} selected)", g_utf8_strlen(e->selected().c_str(), -1));
+        if (e->caretCount() > 1) s += std::format("  ({} cursors: Esc for one)", e->caretCount());
+        else if (e->hasSelection()) s += std::format("  ({} selected)", g_utf8_strlen(e->selected().c_str(), -1));
         s += std::format("   ·   {} lines   ·   {}   ·   {}", d.lines.size(), d.latin1 ? "Latin-1" : "UTF-8", d.crlf ? "CRLF" : "LF");
         if (!e->highlights.empty()) s += std::format("   ·   match {} of {}", e->currentMatch + 1, e->highlights.size());
         else if (st->findBar->visible() && st->findField && !st->findField->text().empty()) s += "   ·   no matches";
