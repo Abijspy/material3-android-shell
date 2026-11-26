@@ -288,6 +288,7 @@ apps = {
   'music': {'sources': ['src/apps/MusicMain.cpp', 'src/shell/MusicApp.cpp'], 'deps': [libmpv]},
   'podcasts': {'sources': ['src/apps/PodcastsMain.cpp', 'src/shell/PodcastsApp.cpp'], 'deps': [libmpv]},
   'contacts': {'sources': ['src/apps/ContactsMain.cpp', 'src/shell/ContactsApp.cpp'], 'deps': []},
+  'mail': {'sources': ['src/apps/MailMain.cpp', 'src/shell/MailApp.cpp'], 'deps': []},
 }
 if poppler_glib.found()
   apps += {'pdf': {'sources': ['src/apps/PdfMain.cpp', 'src/shell/PdfApp.cpp'], 'deps': [poppler_glib]}}

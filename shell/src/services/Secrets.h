@@ -31,6 +31,11 @@ public:
     // One item's password (nothing when it couldn't be had)
     void secret(const std::string& item, std::function<void(std::optional<std::string>)> done);
     void remove(const std::string& item, std::function<void(bool ok)> done);
+    // An app's own: saved (replacing one with the same attributes) in the
+    // default keyring, and found again by those attributes
+    void store(const std::string& label, const std::map<std::string, std::string>& attributes, const std::string& secret,
+               std::function<void(bool ok)> done);
+    void lookup(const std::map<std::string, std::string>& attributes, std::function<void(std::optional<std::string>)> done);
 
 private:
     Secrets() = default;

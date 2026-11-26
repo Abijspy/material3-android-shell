@@ -135,6 +135,79 @@ void Secrets::secret(const std::string& item, std::function<void(std::optional<s
     });
 }
 
+void Secrets::store(const std::string& label, const std::map<std::string, std::string>& attributes, const std::string& secret,
+                    std::function<void(bool)> done) {
+    withSession([this, label, attributes, secret, done](bool ok) {
+        if (!ok) return done(false);
+        const std::string session = m_session;
+        dbus::Bus::session().call(kService, "/org/freedesktop/secrets/aliases/default", "org.freedesktop.Secret.Collection", "CreateItem",
+            [label, attributes, secret, session](sd_bus_message* m) {
+                // a{sv}: the label and the attributes (a{ss} in a variant)
+                sd_bus_message_open_container(m, 'a', "{sv}");
+                sd_bus_message_append(m, "{sv}", "org.freedesktop.Secret.Item.Label", "s", label.c_str());
+                sd_bus_message_open_container(m, 'e', "sv");
+                sd_bus_message_append(m, "s", "org.freedesktop.Secret.Item.Attributes");
+                sd_bus_message_open_container(m, 'v', "a{ss}");
+                sd_bus_message_open_container(m, 'a', "{ss}");
+                for (const auto& [k, v] : attributes) sd_bus_message_append(m, "{ss}", k.c_str(), v.c_str());
+                sd_bus_message_close_container(m);
+                sd_bus_message_close_container(m);
+                sd_bus_message_close_container(m);
+                sd_bus_message_close_container(m);
+                // (oayays): the session, no parameters, the secret, its type
+                sd_bus_message_open_container(m, 'r', "oayays");
+                sd_bus_message_append(m, "o", session.c_str());
+                sd_bus_message_append_array(m, 'y', nullptr, 0);
+                sd_bus_message_append_array(m, 'y', secret.data(), secret.size());
+                sd_bus_message_append(m, "s", "text/plain");
+                sd_bus_message_close_container(m);
+                sd_bus_message_append(m, "b", 1); // replace
+            },
+            [this, done](const dbus::Value& args, const std::string& error) {
+                if (!error.empty()) return done(false);
+                const std::string pr = args.is_array() && args.size() >= 2 ? text(args[1]) : "/";
+                prompt(pr, done);
+            });
+    });
+}
+
+void Secrets::lookup(const std::map<std::string, std::string>& attributes, std::function<void(std::optional<std::string>)> done) {
+    withSession([this, attributes, done](bool ok) {
+        if (!ok) return done(std::nullopt);
+        dbus::Bus::session().call(kService, kPath, kIface, "SearchItems",
+            [attributes](sd_bus_message* m) {
+                sd_bus_message_open_container(m, 'a', "{ss}");
+                for (const auto& [k, v] : attributes) sd_bus_message_append(m, "{ss}", k.c_str(), v.c_str());
+                sd_bus_message_close_container(m);
+            },
+            [this, done](const dbus::Value& args, const std::string& error) {
+                if (!error.empty() || !args.is_array() || args.size() < 2) return done(std::nullopt);
+                std::string item;
+                if (!args[0].empty()) item = text(args[0][0]);
+                if (item.empty() && !args[1].empty()) {
+                    // Locked: unlocked with the keyring's prompt first
+                    const std::string locked = text(args[1][0]);
+                    dbus::Bus::session().call(kService, kPath, kIface, "Unlock",
+                        [locked](sd_bus_message* m) {
+                            sd_bus_message_open_container(m, 'a', "o");
+                            sd_bus_message_append(m, "o", locked.c_str());
+                            sd_bus_message_close_container(m);
+                        },
+                        [this, done, locked](const dbus::Value& a, const std::string&) {
+                            const std::string pr = a.is_array() && a.size() >= 2 ? text(a[1]) : "/";
+                            prompt(pr, [this, done, locked](bool yes) {
+                                if (!yes) return done(std::nullopt);
+                                secret(locked, done);
+                            });
+                        });
+                    return;
+                }
+                if (item.empty()) return done(std::nullopt);
+                secret(item, done);
+            });
+    });
+}
+
 void Secrets::remove(const std::string& item, std::function<void(bool)> done) {
     dbus::Bus::session().call(kService, item, "org.freedesktop.Secret.Item", "Delete", {}, [this, done](const dbus::Value& args, const std::string& error) {
         if (!error.empty()) return done(false);

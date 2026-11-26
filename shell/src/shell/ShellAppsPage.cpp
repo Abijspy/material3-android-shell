@@ -66,6 +66,7 @@ const ShellApp kApps[] = {
     {"store", "Store", "Find, install and update apps", "storefront"},
     {"podcasts", "Podcasts", "Subscribe to shows and listen", "podcasts"},
     {"contacts", "Contacts", "Your address book", "contacts"},
+    {"mail", "Mail", "Your email", "mail"},
 };
 
 struct AppsState {

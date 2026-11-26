@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Mail
+GenericName=Email Client
+Comment=Your email over IMAP and SMTP: read, reply, forward and write, with the password in your keyring.
+Exec=material3ui-mail %U
+Icon=material3ui-mail
+Terminal=false
+Categories=Network;Email;
+Keywords=mail;email;imap;smtp;inbox;message;
+MimeType=x-scheme-handler/mailto;
+StartupNotify=false
+StartupWMClass=material3ui-mail
