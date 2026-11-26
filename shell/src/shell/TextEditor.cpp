@@ -466,9 +466,91 @@ public:
     }
     float lineH() const { return std::round(fontSize * 1.6f); }
     float gutter() const {
-        if (!lineNumbers()) return 12;
+        const float fold = folding() ? 14 : 0;
+        if (!lineNumbers()) return 12 + fold;
         const int digits = std::max(3, static_cast<int>(std::to_string(doc->lines.size()).size()));
-        return 20 + static_cast<float>(digits) * fontSize * 0.62f;
+        return 20 + fold + static_cast<float>(digits) * fontSize * 0.62f;
+    }
+    // ── The minimap: the whole file's shape down the right side, the part
+    // shown framed; a click or drag there scrolls
+    bool folding() const { return Config::get().value<bool>("/text/folding", true); }
+    float mapW() const {
+        if (!Config::get().value<bool>("/text/minimap", true) || rect().w < 520) return 0;
+        return 84;
+    }
+    float mapScale() const { // px a row in the minimap
+        ensureRows();
+        const float h = rect().h - 16;
+        return std::clamp(h / std::max<float>(1, static_cast<float>(m_rows.size())), 0.5f, 3.0f);
+    }
+    // Where the minimap starts showing (it scrolls along when the file is longer than it)
+    float mapTop() const {
+        const float rows = static_cast<float>(m_rows.size()), sc = mapScale(), h = rect().h - 16;
+        const float total = rows * lineH() - rect().h;
+        const float f = total > 0 ? std::clamp(m_scrollY / total, 0.0f, 1.0f) : 0;
+        return std::max(0.0f, rows * sc - h) * f;
+    }
+    void scrollFromMap(float y) {
+        const float sc = mapScale(), row = (y - rect().y - 8 + mapTop()) / sc;
+        m_scrollY = row * lineH() - rect().h / 2;
+        clampScroll();
+        requestRedraw();
+    }
+
+    // ── Folding, by indentation: a line whose next lines go in further
+    // folds them away
+    int indentOf(int line) const {
+        int n = 0;
+        for (char c : doc->lines[static_cast<size_t>(line)]) {
+            if (c == ' ') ++n;
+            else if (c == '\t') n += static_cast<int>(tabWidth());
+            else return n;
+        }
+        return -1; // blank
+    }
+    // The last line a fold from `line` hides (`line` itself: nothing to fold)
+    int foldEnd(int line) const {
+        const int base = indentOf(line), n = static_cast<int>(doc->lines.size());
+        if (base < 0) return line;
+        int last = line;
+        for (int j = line + 1; j < n; ++j) {
+            const int in = indentOf(j);
+            if (in < 0) continue;
+            if (in <= base) break;
+            last = j;
+        }
+        return last;
+    }
+    // Only the next line with text needs looking at: further in, and it folds
+    bool foldable(int line) const {
+        const int base = indentOf(line), n = static_cast<int>(doc->lines.size());
+        if (base < 0) return false;
+        for (int j = line + 1; j < n; ++j)
+            if (const int in = indentOf(j); in >= 0) return in > base;
+        return false;
+    }
+    bool folded(int line) const { return m_folds.contains(line); }
+    void toggleFold(int line) {
+        if (m_folds.erase(line)) {
+            m_rowsDirty = true;
+            return requestRedraw();
+        }
+        if (!foldable(line)) return;
+        m_folds.insert(line);
+        m_foldCount = doc->lines.size();
+        m_rowsDirty = true;
+        // A cursor inside goes to the fold's line
+        const int end = foldEnd(line);
+        if (cursor.line > line && cursor.line <= end) cursor = anchor = {line, doc->lines[static_cast<size_t>(line)].size()};
+        for (auto& x : m_extra)
+            if (x.cursor.line > line && x.cursor.line <= end) x.cursor = x.anchor = {line, doc->lines[static_cast<size_t>(line)].size()};
+        moved();
+    }
+    // The innermost foldable line around (or at) `line`
+    int foldAround(int line) const {
+        for (int l = line; l >= 0; --l)
+            if (foldable(l) && foldEnd(l) >= line) return l;
+        return -1;
     }
     float xOf(int line, size_t col) const {
         const auto& l = doc->lines[static_cast<size_t>(line)];
@@ -502,7 +584,7 @@ public:
         size_t s, e; // its bytes in the line
     };
     bool wrapping() const { return m_wrap && doc->bytes() < 8'000'000; }
-    float wrapWidth() const { return rect().w - gutter() - 8 - 18; }
+    float wrapWidth() const { return rect().w - gutter() - 8 - 18 - mapW(); }
     void ensureRows() const {
         const float w = wrapping() ? wrapWidth() : 0;
         if (!m_rowsDirty && w == m_wrapW && m_first.size() == doc->lines.size() + 1) return;
@@ -512,8 +594,16 @@ public:
         m_rows.clear();
         m_first.assign(doc->lines.size() + 1, 0);
         if (m_breaks.size() > 200'000) m_breaks.clear();
+        // Folds: lines added or taken away open them all (their lines moved)
+        if (!m_folds.empty() && m_foldCount != doc->lines.size()) m_folds.clear();
+        m_hidden.assign(doc->lines.size(), 0);
+        for (int f : m_folds) {
+            if (f < 0 || f >= static_cast<int>(doc->lines.size())) continue;
+            for (int j = f + 1, e = foldEnd(f); j <= e; ++j) m_hidden[static_cast<size_t>(j)] = 1;
+        }
         for (size_t i = 0; i < doc->lines.size(); ++i) {
             m_first[i] = static_cast<int>(m_rows.size());
+            if (m_hidden[i]) continue; // folded away: no rows
             const auto& l = doc->lines[i];
             if (w < fontSize * 4 || l.empty()) {
                 m_rows.push_back({static_cast<int>(i), 0, l.size()});
@@ -562,6 +652,12 @@ public:
     }
     int rowOf(Pos p) const {
         ensureRows();
+        // In a fold: its line's last row
+        if (m_hidden.size() > static_cast<size_t>(p.line) && m_hidden[static_cast<size_t>(p.line)]) {
+            int l = p.line;
+            while (l > 0 && m_hidden[static_cast<size_t>(l)]) --l;
+            return std::max(0, m_first[static_cast<size_t>(l) + 1] - 1);
+        }
         const int a = m_first[static_cast<size_t>(p.line)], b = m_first[static_cast<size_t>(p.line) + 1] - 1;
         for (int r = b; r > a; --r)
             if (m_rows[static_cast<size_t>(r)].s <= p.col) return r;
@@ -671,6 +767,14 @@ public:
         moved();
     }
     void moved() {
+        if (!m_folds.empty()) {
+            ensureRows();
+            for (const Pos c : {cursor, anchor})
+                if (static_cast<size_t>(c.line) < m_hidden.size() && m_hidden[static_cast<size_t>(c.line)])
+                    for (auto it = m_folds.begin(); it != m_folds.end();)
+                        if (*it < c.line && foldEnd(*it) >= c.line) it = m_folds.erase(it), m_rowsDirty = true;
+                        else ++it;
+        }
         restartBlink();
         reveal();
         requestRedraw();
@@ -716,7 +820,7 @@ public:
             m_scrollX = 0;
             return;
         }
-        const float x = xOf(cursor.line, cursor.col), w = rect().w - gutter() - 24;
+        const float x = xOf(cursor.line, cursor.col), w = rect().w - gutter() - 24 - mapW();
         if (x < m_scrollX) m_scrollX = std::max(0.0f, x - 40);
         else if (w > 0 && x > m_scrollX + w) m_scrollX = x - w + 40;
     }
@@ -872,6 +976,16 @@ public:
         {
             const bool c = e.ctrl(), sh = e.shift(), al = e.mods & ModAlt;
             const uint32_t kk = e.baseSym >= 'A' && e.baseSym <= 'Z' ? e.baseSym - 'A' + 'a' : e.baseSym;
+            if (!m_inMulti && c && sh && (kk == '[' || kk == '{' || kk == ']' || kk == '}')) {
+                // Fold the block the cursor's in (or at), or open the one at it
+                if (kk == ']' || kk == '}') {
+                    if (folded(cursor.line)) toggleFold(cursor.line);
+                    else if (int f = foldAround(cursor.line); f >= 0 && folded(f)) toggleFold(f);
+                } else if (int f = foldable(cursor.line) ? cursor.line : foldAround(cursor.line); f >= 0 && !folded(f)) {
+                    toggleFold(f);
+                }
+                return true;
+            }
             if (!m_inMulti) {
                 if (al && !c && kk == 'j') return selectNextMatch(false), true;
                 if (c && sh && kk == 'l') return selectNextMatch(true), true;
@@ -1120,6 +1234,12 @@ protected:
     void onPress(uint32_t button, float x, float y) override {
         focus();
         if (button != BTN_LEFT) return;
+        if (const float mw = mapW(); mw > 0 && x >= rect().right() - mw - 10) {
+            m_mapDragging = true;
+            return scrollFromMap(y);
+        }
+        for (const auto& [box, line] : m_foldMarks)
+            if (x >= box.x && x < box.x + box.w && y >= box.y && y < box.y + box.h) return toggleFold(line);
         const Pos p = posAt(x, y);
         const auto now = EventLoop::Clock::now();
         const bool dbl = now - m_lastPress < std::chrono::milliseconds(400) && p.line == m_lastPos.line;
@@ -1147,11 +1267,13 @@ protected:
         m_dragging = true;
     }
     void onDrag(float x, float y) override {
+        if (m_mapDragging) return scrollFromMap(y);
         if (!m_dragging) return;
         cursor = posAt(x, y);
         moved();
     }
     void onRelease() override {
+        m_mapDragging = false;
         m_dragging = false;
         if (hasSelection()) m3::run({"wl-copy", "--primary"}, nullptr, selected());
     }
@@ -1185,7 +1307,9 @@ protected:
         auto& th = Theme::get();
         r.rect(b, th.color("surface_container_lowest"), Radii(16));
         r.pushClip(b);
-        const float lh = lineH(), g = gutter(), textX = b.x + g + 8;
+        const float lh = lineH(), g = gutter(), textX = b.x + g + 8, mw = mapW();
+        m_foldMarks.clear();
+        const bool canFold = folding();
         const int first = std::max(0, static_cast<int>(m_scrollY / lh));
         const int last = std::min(static_cast<int>(m_rows.size()) - 1, static_cast<int>((m_scrollY + b.h) / lh) + 1);
         const TextStyle st = style();
@@ -1208,11 +1332,11 @@ protected:
             const int i = row.line;
             const bool firstOfLine = ri == m_first[static_cast<size_t>(i)], lastOfLine = ri + 1 == m_first[static_cast<size_t>(i) + 1];
             const float y = b.y + static_cast<float>(ri) * lh - m_scrollY;
-            if (i == cursor.line && markLine) r.rect({b.x + g, y, b.w - g, lh}, th.color("on_surface").withAlpha(0.05f));
+            if (i == cursor.line && markLine) r.rect({b.x + g, y, b.w - g - mw, lh}, th.color("on_surface").withAlpha(0.05f));
             const std::string& l = doc->lines[static_cast<size_t>(i)];
             const float xs = row.s ? xOf(i, row.s) : 0;
             auto rel = [&](size_t c) { return xOf(i, c) - xs; };
-            r.pushClip({b.x + g, b.y, b.w - g, b.h});
+            r.pushClip({b.x + g, b.y, b.w - g - mw - (mw > 0 ? 10 : 0), b.h});
             // Find's matches, then the selection
             for (size_t m = 0; m < highlights.size(); ++m) {
                 const auto& [ha, hb] = highlights[m];
@@ -1265,7 +1389,29 @@ protected:
             if (m_focused && m_caretOn)
                 for (const auto& [cr, cp] : carets)
                     if (cr == ri) r.rect({textX + rel(cp.col) - m_scrollX - 1, y + 3, 2, lh - 6}, th.color("primary"), Radii(1));
+            // A folded line: what it hides, as a marker after its text
+            if (lastOfLine && folded(i)) {
+                const int hidden = foldEnd(i) - i;
+                const std::string label = std::format(" ⋯ {} line{} ", hidden, hidden == 1 ? "" : "s");
+                TextStyle ms = st;
+                ms.size = fontSize * 0.85f;
+                const auto& mt = TextEngine::get().texture(label, ms, r.scale());
+                const RectF box{textX + rel(row.e) - m_scrollX + 8, y + 3, mt.logical.width + 8, lh - 6};
+                r.rect(box, th.color("secondary_container"), Radii(box.h / 2));
+                if (mt.id) r.mask(mt.id, {box.x + 4, y + (lh - mt.logical.height) / 2, mt.logical.width, mt.logical.height}, th.color("on_secondary_container"));
+                m_foldMarks.push_back({box, i});
+            }
             r.popClip();
+            // The fold arrow, in the gutter's left edge
+            if (canFold && firstOfLine && (folded(i) || foldable(i))) {
+                TextStyle as = st;
+                as.size = fontSize * 0.8f;
+                const auto& at = TextEngine::get().texture(folded(i) ? "▸" : "▾", as, r.scale());
+                const RectF box{b.x + 2, y, 16, lh};
+                if (at.id) r.mask(at.id, {box.x + (box.w - at.logical.width) / 2, y + (lh - at.logical.height) / 2, at.logical.width, at.logical.height},
+                                  folded(i) ? th.color("primary") : dim);
+                m_foldMarks.push_back({box, i});
+            }
             // The line's number, on its first row
             if (!lineNumbers() || !firstOfLine) continue;
             const std::string n = std::to_string(i + 1);
@@ -1273,9 +1419,28 @@ protected:
             if (nt.id) r.mask(nt.id, {b.x + g - 12 - nt.logical.width, y + (lh - nt.logical.height) / 2, nt.logical.width, nt.logical.height}, i == cursor.line ? ink : dim);
         }
         if (lineNumbers()) r.rect({b.x + g, b.y + 8, 1, b.h - 16}, th.color("outline_variant").withAlpha(0.5f));
+        // The minimap: a line of each row's shape, the shown part framed
+        if (mw > 0) {
+            const float mx = b.right() - mw - 4, sc = mapScale(), top = mapTop();
+            r.rect({mx - 6, b.y + 8, 1, b.h - 16}, th.color("outline_variant").withAlpha(0.35f));
+            const int r0 = std::max(0, static_cast<int>(top / sc)), r1 = std::min(static_cast<int>(m_rows.size()) - 1, static_cast<int>((top + b.h) / sc) + 1);
+            const Color shape = th.color("on_surface").withAlpha(0.32f);
+            const float cw = 1.1f; // px a character
+            for (int ri = r0; ri <= r1; ++ri) {
+                const Row& row = m_rows[static_cast<size_t>(ri)];
+                const auto& l = doc->lines[static_cast<size_t>(row.line)];
+                size_t lead = row.s == 0 ? l.find_first_not_of(" \t") : 0;
+                if (lead == std::string::npos) continue;
+                const float x0 = std::min(mw - 4, static_cast<float>(lead) * cw), len = static_cast<float>(row.e - row.s - (row.s == 0 ? lead : 0)) * cw;
+                const float yy = b.y + 8 + static_cast<float>(ri) * sc - top;
+                r.rect({mx + x0, yy, std::max(1.0f, std::min(len, mw - x0)), std::max(0.5f, sc * 0.7f)}, shape);
+            }
+            const float vy = b.y + 8 + (m_scrollY / lh) * sc - top, vh = std::max(8.0f, (b.h / lh) * sc);
+            r.rect({mx - 3, vy, mw + 3, vh}, th.color("primary").withAlpha(0.12f), Radii(4));
+        }
         // Where in the file: a thin bar
         const float total = static_cast<float>(m_rows.size()) * lh;
-        if (total > b.h) {
+        if (total > b.h && mw <= 0) {
             const float vh = std::max(24.0f, b.h * b.h / total), vy = b.y + (b.h - vh) * (m_scrollY / (total - b.h));
             r.rect({b.right() - 6, vy, 3, vh}, th.color("on_surface_variant").withAlpha(0.4f), Radii(1.5f));
         }
@@ -1405,6 +1570,11 @@ private:
 
     float m_scrollX = 0, m_scrollY = 0, m_goalX = -1, m_reportedScroll = -1;
     std::vector<Sel> m_extra; // the other cursors
+    mutable std::set<int> m_folds; // lines folded (their deeper lines hidden)
+    size_t m_foldCount = 0;   // the line count they were folded at
+    mutable std::vector<char> m_hidden;
+    std::vector<std::pair<RectF, int>> m_foldMarks; // arrows and markers drawn: where, for which line
+    bool m_mapDragging = false;
     bool m_inMulti = false;   // an edit going round them
     bool m_wrap = false;
     mutable std::vector<Row> m_rows;
@@ -2048,6 +2218,8 @@ void textSettings(Flex* page) {
     auto* g = group(page, "Text");
     sliderRow(g, "format_size", "Text size", "/text/fontSize", 14, 8, 32, 1, [](double v) { return std::format("{:.0f} px", v); });
     switchRow(g, "format_list_numbered", "Line numbers", "", "/text/lineNumbers", true);
+    switchRow(g, "map", "Minimap", "The whole file's shape down the right side; click or drag it to scroll", "/text/minimap", true);
+    switchRow(g, "unfold_less", "Folding", "Arrows beside indented blocks fold them away (Ctrl+Shift+[ and ])", "/text/folding", true);
     switchRow(g, "preview", "Markdown preview", "Beside .md files, as you type (Ctrl+Shift+M)", "/text/mdPreview", true);
     switchRow(g, "wrap_text", "Wrap long lines", "Onto the next row instead of off the side (Alt+Z)", "/text/wrap", false);
     switchRow(g, "horizontal_rule", "Mark the current line", "", "/text/currentLine", true);
