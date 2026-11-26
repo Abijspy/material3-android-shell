@@ -662,6 +662,9 @@ void Surface::pointerButton(uint32_t button, bool pressed) {
         requestRedraw();
     }
     if (pressed) {
+        // What was under the pointer went (its page redrew, as a click on it
+        // may do): what's there now, without waiting for the pointer to move
+        if (!m_hovered && m_root) pointerMotion(m_pointerX, m_pointerY);
         m_pressed = m_hovered;
         m_pressX = m_pointerX, m_pressY = m_pointerY;
         m_pressButton = button;
