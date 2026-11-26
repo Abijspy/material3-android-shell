@@ -1024,6 +1024,187 @@ void fileMenu(const std::shared_ptr<State>& st, Button* tile, const std::string&
     floatingMenu(tile, m);
 }
 
+// ── Duplicates: files with the same contents under a folder. Sizes first
+// (only files of a size another one has are read), then each candidate's
+// SHA-256; the extra copies go to the trash in one go (and Undo brings
+// them back)
+struct DupFile {
+    std::string path;
+    uint64_t size = 0;
+    double mtime = 0;
+};
+struct DupState {
+    std::string dir;
+    int phase = 0; // 0 listing, 1 comparing, 2 done
+    size_t listed = 0, candidates = 0;
+    std::vector<std::vector<DupFile>> groups; // most space wasted first
+    std::set<std::string> drop;               // the copies marked for the trash
+    std::string note;
+    std::shared_ptr<bool> alive = std::make_shared<bool>(true);
+};
+std::unique_ptr<Popup> g_dupWindow;
+
+void dupResults(const std::shared_ptr<DupState>& d, Live* live, std::shared_ptr<State> st) {
+    live->clearChildren();
+    if (d->phase == 0) return caption(live, std::format("Listing the files in {}…", fileops::displayPath(d->dir))), void();
+    if (d->phase == 1) return caption(live, std::format("Comparing {} files of matching sizes (of {})…", d->candidates, d->listed)), void();
+    if (d->groups.empty()) {
+        auto* empty = live->add<Flex>(Flex::Direction::Column);
+        empty->setSpacing(8)->setPadding({0, 40})->setAlignItems(Align::Center);
+        empty->add<Icon>("task_alt", 48)->setColor("primary", false);
+        empty->add<Label>("No duplicates")->setSize(18)->setWeight(600);
+        caption(empty, std::format("{} files looked at, none the same as another", d->listed));
+        return;
+    }
+    uint64_t freed = 0;
+    for (const auto& g : d->groups)
+        for (const auto& f : g)
+            if (d->drop.contains(f.path)) freed += f.size;
+    auto* top = live->add<Flex>(Flex::Direction::Row);
+    top->setSpacing(12)->setAlignItems(Align::Center);
+    auto* t = top->add<Flex>(Flex::Direction::Column);
+    t->setAlignItems(Align::Start)->setSpacing(2);
+    t->grow = true;
+    t->givesWay = true;
+    t->add<Label>(std::format("{} sets of identical files", d->groups.size()))->setSize(18)->setWeight(600);
+    t->add<Label>(d->drop.empty() ? "Nothing marked: tap a copy to mark it for the trash"
+                                  : std::format("{} copies marked  ·  {} freed", d->drop.size(), fileops::humanSize(freed)))
+        ->setSize(12)
+        ->setColor("on_surface_variant", false);
+    if (!d->drop.empty()) {
+        auto* go = pillButton(top, std::format("Move {} to the trash", d->drop.size()), true, [d, st] {
+            std::vector<std::string> paths(d->drop.begin(), d->drop.end());
+            undoableTrash(fileops::trash(paths, [](const std::string& err) {
+                if (!err.empty()) m3::run({"notify-send", "-a", "Files", "-i", "delete", "Files", err}, nullptr);
+            }));
+            notifyFiles(std::format("{} duplicate copies moved to the trash (Ctrl+Z in Files brings them back)", paths.size()));
+            EventLoop::get().defer([] {
+                if (g_dupWindow) g_dupWindow->close();
+            });
+        }, "delete");
+        go->setBackground("error", false);
+    }
+    if (!d->note.empty()) caption(live, d->note)->setColor("error", false);
+    for (const auto& g : d->groups) {
+        auto* card = live->add<Flex>(Flex::Direction::Column);
+        card->setBackground("surface_container_high", false)->setRadius(Radii(18))->setPadding({6, 8})->setAlignItems(Align::Stretch);
+        caption(card, std::format("  {}  ·  {} copies", fileops::humanSize(g.front().size), g.size()));
+        for (const auto& f : g) {
+            const bool dropped = d->drop.contains(f.path);
+            auto* row = card->add<Button>(Flex::Direction::Row);
+            row->setPadding({12, 6})->setSpacing(12)->setAlignItems(Align::Center)->setRadius(Radii(12));
+            row->add<Icon>(dropped ? "delete" : "check_circle", 20)->setFill(!dropped)->setColor(dropped ? "error" : "primary", false);
+            std::string shown = f.path.starts_with(d->dir + "/") ? f.path.substr(d->dir.size() + 1) : fileops::displayPath(f.path);
+            auto* name = row->add<Label>(shown);
+            name->setSize(13)->setMaxWidth(520)->setColor(dropped ? "on_surface_variant" : "on_surface", false);
+            name->grow = true;
+            name->givesWay = true;
+            row->add<Label>(dropped ? "Trash" : "Keep")->setSize(12)->setWeight(500)->setColor(dropped ? "error" : "primary", false);
+            iconButton(row, "folder_open", [st, p = f.path] {
+                if (*st->alive) go(st, fs::path(p).parent_path()), st->selected = {p};
+            }, 18)->tooltip = "Show it in Files";
+            row->tooltip = dropped ? "Marked for the trash: tap to keep it" : "Kept: tap to mark it for the trash";
+            row->onClicked = [d, live, st, path = f.path, group = g](uint32_t b) {
+                if (b != BTN_LEFT) return;
+                if (d->drop.contains(path)) {
+                    d->drop.erase(path);
+                } else {
+                    // One copy of each always stays
+                    size_t kept = 0;
+                    for (const auto& x : group) kept += d->drop.contains(x.path) ? 0 : 1;
+                    if (kept <= 1) {
+                        d->note = "One copy of each always stays: keep another first";
+                    } else {
+                        d->drop.insert(path);
+                        d->note.clear();
+                    }
+                }
+                EventLoop::get().defer([d, live, st] {
+                    if (*d->alive) dupResults(d, live, st);
+                });
+            };
+        }
+    }
+}
+
+void findDuplicates(std::shared_ptr<State> st, std::string dir) {
+    if (g_dupWindow) g_dupWindow->close();
+    auto d = std::make_shared<DupState>();
+    d->dir = dir;
+    Popup::Options opts;
+    opts.name = "files-duplicates";
+    opts.window = true;
+    opts.appId = "material3ui-files";
+    opts.title = "Duplicates in " + (fs::path(dir).filename().empty() ? dir : fs::path(dir).filename().string());
+    opts.icon = "difference";
+    opts.windowWidth = 760, opts.windowHeight = 640;
+    g_dupWindow = std::make_unique<Popup>(nullptr, opts, [d, st](Flex* card, Popup&) {
+        card->setPadding(Insets(16))->setSpacing(10);
+        auto* scroll = card->add<ScrollView>();
+        scroll->maxHeight = 1e6f;
+        scroll->grow = true;
+        auto* live = scroll->add<Live>();
+        live->setSpacing(10)->setAlignItems(Align::Stretch)->setPadding({4, 4, 12, 4});
+        dupResults(d, live, st);
+        // Listing: every file with a size, its time and path (hidden ones as Files shows them)
+        std::vector<std::string> cmd = {"find", d->dir, "-xdev", "-type", "f", "-size", "+0c"};
+        if (!showHidden()) cmd.insert(cmd.end(), {"-not", "-path", "*/.*"});
+        cmd.insert(cmd.end(), {"-printf", "%s\t%T@\t%p\\0"});
+        m3::run(cmd, [d, live, st](int, const std::string& out) {
+            if (!*d->alive) return;
+            std::map<uint64_t, std::vector<DupFile>> bySize;
+            size_t start = 0;
+            for (size_t z; (z = out.find('\0', start)) != std::string::npos; start = z + 1) {
+                const std::string rec = out.substr(start, z - start);
+                const size_t t1 = rec.find('\t'), t2 = t1 == std::string::npos ? t1 : rec.find('\t', t1 + 1);
+                if (t2 == std::string::npos) continue;
+                DupFile f{rec.substr(t2 + 1), std::strtoull(rec.c_str(), nullptr, 10), std::strtod(rec.c_str() + t1 + 1, nullptr)};
+                bySize[f.size].push_back(std::move(f));
+                ++d->listed;
+            }
+            std::string list;
+            std::map<std::string, DupFile> byPath;
+            for (auto& [size, files] : bySize)
+                if (files.size() > 1)
+                    for (auto& f : files) list += f.path + '\0', byPath[f.path] = f, ++d->candidates;
+            if (list.empty()) {
+                d->phase = 2;
+                return dupResults(d, live, st);
+            }
+            d->phase = 1;
+            dupResults(d, live, st);
+            // Each candidate's SHA-256 ("hash  path", NUL-ended)
+            m3::run({"xargs", "-0", "-r", "sha256sum", "-z", "--"}, [d, live, st, byPath](int, const std::string& sums) {
+                if (!*d->alive) return;
+                std::map<std::string, std::vector<DupFile>> byHash;
+                size_t s0 = 0;
+                for (size_t z; (z = sums.find('\0', s0)) != std::string::npos; s0 = z + 1) {
+                    const std::string rec = sums.substr(s0, z - s0);
+                    if (rec.size() < 67) continue;
+                    const std::string hash = rec.substr(0, 64), path = rec.substr(66);
+                    if (auto it = byPath.find(path); it != byPath.end()) byHash[hash].push_back(it->second);
+                }
+                for (auto& [h, files] : byHash) {
+                    if (files.size() < 2) continue;
+                    // The oldest (then the shortest path) kept; the others marked
+                    std::ranges::sort(files, [](const DupFile& a, const DupFile& b) {
+                        return a.mtime != b.mtime ? a.mtime < b.mtime : a.path.size() < b.path.size();
+                    });
+                    for (size_t i = 1; i < files.size(); ++i) d->drop.insert(files[i].path);
+                    d->groups.push_back(std::move(files));
+                }
+                std::ranges::sort(d->groups, [](const auto& a, const auto& b) { return a.front().size * (a.size() - 1) > b.front().size * (b.size() - 1); });
+                d->phase = 2;
+                dupResults(d, live, st);
+            }, list);
+        });
+    });
+    g_dupWindow->onClosed = [d] {
+        *d->alive = false;
+        EventLoop::get().defer([] { g_dupWindow.reset(); });
+    };
+}
+
 void folderMenu(const std::shared_ptr<State>& st, Backdrop* from) {
     const auto show = [from](const std::vector<MenuItem>& m) { floatingMenuAt(from, from->pressX, from->pressY, m); };
     std::vector<MenuItem> m;
@@ -1062,6 +1243,7 @@ void folderMenu(const std::shared_ptr<State>& st, Backdrop* from) {
                      if (st->sidebar) st->sidebar();
                  }, false, false, true, true});
     m.push_back({"terminal", "Open a terminal here", "", [dir] { spawn("cd " + quoted(dir) + " && exec ${TERMINAL:-alacritty}"); }});
+    m.push_back({"difference", "Find duplicate files…", "", [st, dir] { findDuplicates(st, dir); }});
     m.push_back({"visibility", "Show hidden files", "Ctrl+H", [] { Config::get().set("/files/hidden", !showHidden()); }, showHidden()});
     show(m);
 }
