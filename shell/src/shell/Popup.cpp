@@ -145,6 +145,7 @@ Popup::Popup(wl::Output* output, Options options, const std::function<void(Flex*
             if (e.sym == XKB_KEY_Escape && panels::closeOpenDropdown()) return true;
             return onKey && onKey(e);
         };
+        m_window->onKeyBeforeNavigation = [this](const KeyEvent& e) { return onKeyBeforeNavigation && onKeyBeforeNavigation(e); };
         m_window->onStateChanged = [this] {
             if (m_maxIcon) m_maxIcon->setText(m_window->maximized() ? "filter_none" : "crop_square");
         };

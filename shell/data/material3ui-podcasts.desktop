@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Podcasts
+GenericName=Podcast Player
+Comment=Subscribe to podcasts and listen: new episodes, each show's page, downloads, and where you left off.
+Exec=material3ui-podcasts %U
+Icon=material3ui-podcasts
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=podcast;rss;feed;episode;listen;audio;
+StartupNotify=false
+StartupWMClass=material3ui-podcasts

@@ -766,6 +766,7 @@ void Surface::keyboardFocus(bool focused) {
 void Surface::key(const ui::KeyEvent& event) {
     for (ui::Node* n = m_focus; n; n = n->parentNode())
         if (n->onKey(event)) return;
+    if (onKeyBeforeNavigation && onKeyBeforeNavigation(event)) return;
     if (keyboardNavigation && navigate(event)) return;
     if (onKey) onKey(event);
 }

@@ -162,6 +162,7 @@ Since 7.1 each built-in app is a package of its own, built from the same compile
 | `material3ui-pdf` | The PDF viewer and editor (`material3ui-pdf`) | poppler-glib (qpdf for page changes) |
 | `material3ui-text` | The text editor (`material3ui-text`) | |
 | `material3ui-store` | Store (`material3ui-store`) | pacman, curl |
+| `material3ui-podcasts` | Podcasts (`material3ui-podcasts`) | mpv, curl |
 | `material3ui-imagewriter` | Image Writer (`material3ui-imagewriter`) | util-linux, polkit, udisks2 |
 | `material3ui-fonts` | Fonts (`material3ui-fonts`) | fontconfig |
 | `material3ui-calculator` | Calculator (`material3ui-calculator`) |  |

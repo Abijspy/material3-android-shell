@@ -66,6 +66,9 @@ public:
     ui::Node* focus() const { return m_focus; }
     bool hasKeyboard() const { return m_hasKeyboard; }
     std::function<bool(const ui::KeyEvent&)> onKey;
+    // Keys the focused node passed on, before the arrows move the focus: a
+    // player's ← and → (a text field still has them first)
+    std::function<bool(const ui::KeyEvent&)> onKeyBeforeNavigation;
     // Pointer pressed where no interactive node is (popups close on this)
     std::function<void(float x, float y)> onEmptyClick;
     // Once, laid out and about to paint its first frame: entrances start

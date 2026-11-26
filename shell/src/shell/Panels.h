@@ -209,6 +209,10 @@ void imagewriterApp(ui::Flex* card, Popup& popup, const std::string& arg);
 extern std::function<void(const std::string&)> imagewriterGo;
 void imagewriterClosed();
 void imagewriterSettings(ui::Flex* page);
+void podcastsApp(ui::Flex* card, Popup& popup, const std::string& arg);
+extern std::function<void(const std::string&)> podcastsGo;
+void podcastsClosed();
+void podcastsSettings(ui::Flex* page);
 
 // Store (an app window)
 void storeApp(ui::Flex* card, Popup& popup, const std::string& arg);

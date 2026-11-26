@@ -34,7 +34,7 @@ install_pkg() {
         [[ "$pkg" == *.pkg.tar.zst && -f "$pkg" ]] || { echo "not a package: $pkg" >&2; return 2; }
         name="$(bsdtar -xOf "$pkg" .PKGINFO | sed -n 's/^pkgname = //p')"
         case "$name" in
-            material3ui | material3ui-greeter | material3ui-files | material3ui-viewer | material3ui-player | material3ui-tasks | material3ui-terminal | material3ui-notes | material3ui-pdf | material3ui-text | material3ui-music | material3ui-disks | material3ui-camera | material3ui-backups | material3ui-recorder | material3ui-calculator | material3ui-fonts | material3ui-imagewriter | material3ui-store) ;;
+            material3ui | material3ui-greeter | material3ui-files | material3ui-viewer | material3ui-player | material3ui-tasks | material3ui-terminal | material3ui-notes | material3ui-pdf | material3ui-text | material3ui-music | material3ui-disks | material3ui-camera | material3ui-backups | material3ui-recorder | material3ui-calculator | material3ui-fonts | material3ui-imagewriter | material3ui-store | material3ui-podcasts) ;;
             *) echo "not Material3UI's: $name" >&2; return 2 ;;
         esac
         # Its own files, from whatever put them there (a source build), also
