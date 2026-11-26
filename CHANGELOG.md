@@ -1,5 +1,23 @@
 # Changelog
 
+## v7.2.1 — 2026-11-26
+
+- **Three new apps**, each a package of its own:
+  - **Podcasts** (`material3ui-podcasts`): find shows in Apple's podcast directory (only your search is sent) or by their feed. New episodes from all of them, each show's page, downloads for offline listening, 0.8× to 2× speed, skip back and forward (← →), and every episode resumed where you left it.
+  - **Contacts** (`material3ui-contacts`): your address book, kept as vCards. Search, favourites, numbers, emails, addresses, birthdays, notes and pictures; import and export .vcf files; your phone's contacts through KDE Connect alongside.
+  - **Mail** (`material3ui-mail`): one email account over IMAP and SMTP, with the servers filled in for the common providers. Folders, unread messages marked, plain text or HTML as text, attachments saved to Downloads, reply, reply all, forward and write, a copy kept in Sent, and a notification for new mail. The password stays in your keyring.
+- **Settings → Passwords:** your saved Wi-Fi passwords and what apps stored in the keyring, searchable; show, copy or delete one. A copied password leaves the clipboard and its history after 30 seconds.
+- **Settings → Battery → Charge limit:** stop charging at 60 to 90% on laptops that allow it (ThinkPad, ASUS, Dell, Framework, Lenovo, Samsung, Sony); others say so.
+- **Terminal:** find in the output (<kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>F</kbd>), saved SSH connections and your `~/.ssh/config` hosts a click away, and profiles: tabs with their own colours, text size and command (<kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>1</kbd>…<kbd>9</kbd>), with a red Alert scheme.
+- **Text Editor:** a Markdown preview beside .md files, multiple cursors (<kbd>Ctrl</kbd>+click, <kbd>Alt</kbd><kbd>J</kbd>, <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>L</kbd>), a minimap, and folding by indentation (<kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>[</kbd> and <kbd>]</kbd>).
+- **Music:** internet radio: popular stations, search and genres, favourites, and the song on air in the bar.
+- **Files:** Find duplicate files… in a folder's menu; the extra copies go to the trash in one go, and <kbd>Ctrl</kbd><kbd>Z</kbd> brings them back.
+- **Photos:** pick several pictures (<kbd>Ctrl</kbd>+click or <kbd>Ctrl</kbd><kbd>A</kbd>), then resize, convert or rename them.
+- **Fixes:**
+  - Text fields: <kbd>Ctrl</kbd><kbd>A</kbd> selects all, <kbd>Shift</kbd> with the arrows selects, and copy, cut and paste work.
+  - Clicking again where a redrawn page put a new button works (a second tap to confirm a delete, a filter chip).
+  - In players, ← and → reach the player even when a button has the focus.
+
 ## v7.2.0 — 2026-11-25
 
 - **Tooltips everywhere.** Rest the pointer on any icon button, in every app, Settings and the launcher, and it says what it does (Back, More options, Delete…). Tooltips now show inside app windows too, not only on the bar and dock.
