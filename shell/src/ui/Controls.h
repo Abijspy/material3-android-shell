@@ -105,6 +105,9 @@ public:
 
     Node* content() const { return children().empty() ? nullptr : children().front().get(); }
     void scrollTo(float y, bool animate = true);
+    // Where it's scrolled to (where it's heading, while gliding), and how far it can go
+    float scrollOffset() const { return m_offset.target(); }
+    float scrollRange() const { return maxOffset(); }
     // Scrolls just enough to show `r` (a rect of something inside), with a
     // little room round it
     void reveal(const RectF& r);

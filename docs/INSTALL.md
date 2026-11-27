@@ -165,6 +165,7 @@ Since 7.1 each built-in app is a package of its own, built from the same compile
 | `material3ui-podcasts` | Podcasts (`material3ui-podcasts`) | mpv, curl |
 | `material3ui-contacts` | Contacts (`material3ui-contacts`) |  |
 | `material3ui-mail` | Mail (`material3ui-mail`) | curl |
+| `material3ui-books` | Books (`material3ui-books`) | libarchive |
 | `material3ui-imagewriter` | Image Writer (`material3ui-imagewriter`) | util-linux, polkit, udisks2 |
 | `material3ui-fonts` | Fonts (`material3ui-fonts`) | fontconfig |
 | `material3ui-calculator` | Calculator (`material3ui-calculator`) |  |

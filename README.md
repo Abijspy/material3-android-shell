@@ -229,6 +229,7 @@ Its **editor** marks pictures up: pen, shapes, arrows, text, numbered steps, and
 | **Podcasts** (`material3ui-podcasts`) | Subscribe to shows found in Apple's podcast directory or by their feed; new episodes from all of them, each show's page, downloads to listen offline, playing speed, and each episode resumed where you left it. |
 | **Contacts** (`material3ui-contacts`) | Your address book, kept as vCards: search, favourites, each person's numbers, emails, address, birthday and notes; import and export .vcf files, and the contacts your phone shares through KDE Connect alongside. |
 | **Mail** (`material3ui-mail`) | One email account over IMAP and SMTP (servers filled in for Gmail, Outlook, Yahoo, iCloud, Fastmail): folders, the latest messages, reading (plain text, or HTML as text), reply, reply all, forward, writing, deleting to the trash, attachments saved to Downloads, a notification for new mail. The password stays in your keyring. |
+| **Books** (`material3ui-books`) | An EPUB reader: your library from Books, Documents and Downloads with covers and progress; chapters in a calm column with the contents, text size, serif or sans, paper, night or your theme's colours; Space and → turn the page; every book reopened where you left it. |
 | **Notes** (`material3ui-notes`) | Notes and checklists as tinted cards, with pictures, reminders, labels, pins, search, an archive and a trash. |
 | **Task Manager** (`material3ui-tasks`) | Processes, performance, startup apps and services (<kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Del</kbd>). |
 

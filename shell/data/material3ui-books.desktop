@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Books
+GenericName=E-book Reader
+Comment=Read EPUB books: your library with covers, chapters and contents, paper or night colours, each book reopened where you left it.
+Exec=material3ui-books %U
+Icon=material3ui-books
+Terminal=false
+Categories=Office;Viewer;Literature;
+Keywords=book;ebook;epub;read;reader;library;novel;
+MimeType=application/epub+zip;
+StartupNotify=false
+StartupWMClass=material3ui-books

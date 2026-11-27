@@ -29,6 +29,7 @@ The shell and each of its apps are separate pacman packages, built from one comp
 | `material3ui-podcasts` | Podcasts | mpv, curl | mpv-mpris |
 | `material3ui-contacts` | Contacts |  | kdeconnect |
 | `material3ui-mail` | Mail | curl | gnome-keyring (or another Secret Service) |
+| `material3ui-books` | Books | libarchive (bsdtar) | noto-fonts |
 | `material3ui-imagewriter` | Image Writer | util-linux, polkit, udisks2 | xz, zstd |
 | `material3ui-fonts` | Fonts | fontconfig |  |
 | `material3ui-calculator` | Calculator |  |  |
