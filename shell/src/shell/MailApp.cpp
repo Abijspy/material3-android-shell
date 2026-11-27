@@ -10,6 +10,7 @@
 #include "core/Paths.h"
 #include "core/Process.h"
 #include "services/FileOps.h"
+#include "services/Search.h"
 #include "services/Secrets.h"
 #include "shell/PanelKit.h"
 #include "shell/Popup.h"
@@ -338,18 +339,34 @@ struct Account {
     int imapPort = 993, smtpPort = 465;
     bool valid() const { return !email.empty() && !imap.empty() && !smtp.empty(); }
 };
-Account loadAccount() {
+Account accountFrom(const json& j) {
     Account a;
-    const auto j = Config::get().value<json>("/mail/account", json::object());
     if (!j.is_object()) return a;
     a.name = j.value("name", ""), a.email = j.value("email", ""), a.imap = j.value("imap", ""), a.smtp = j.value("smtp", "");
     a.imapSec = j.value("imapSecurity", "ssl"), a.smtpSec = j.value("smtpSecurity", "ssl");
     a.imapPort = j.value("imapPort", 993), a.smtpPort = j.value("smtpPort", 465);
     return a;
 }
-void saveAccount(const Account& a) {
-    Config::get().set("/mail/account", json{{"name", a.name}, {"email", a.email}, {"imap", a.imap}, {"smtp", a.smtp}, {"imapSecurity", a.imapSec},
-                                            {"smtpSecurity", a.smtpSec}, {"imapPort", a.imapPort}, {"smtpPort", a.smtpPort}});
+json accountJson(const Account& a) {
+    return {{"name", a.name}, {"email", a.email}, {"imap", a.imap}, {"smtp", a.smtp}, {"imapSecurity", a.imapSec},
+            {"smtpSecurity", a.smtpSec}, {"imapPort", a.imapPort}, {"smtpPort", a.smtpPort}};
+}
+// Every account (the one of before 7.3 carried over)
+std::vector<Account> loadAccounts() {
+    std::vector<Account> out;
+    const auto list = Config::get().value<json>("/mail/accounts", json::array());
+    if (list.is_array())
+        for (const auto& j : list)
+            if (Account a = accountFrom(j); a.valid()) out.push_back(a);
+    if (out.empty())
+        if (Account a = accountFrom(Config::get().value<json>("/mail/account", json::object())); a.valid()) out.push_back(a);
+    return out;
+}
+void saveAccounts(const std::vector<Account>& all) {
+    json list = json::array();
+    for (const auto& a : all) list.push_back(accountJson(a));
+    Config::get().set("/mail/accounts", list);
+    Config::get().set("/mail/account", json::object());
 }
 // The usual servers for an address's provider
 Account guess(const std::string& email) {
@@ -397,8 +414,13 @@ struct Summary {
 };
 
 struct State {
-    Account account;
-    std::string password; // in memory while open, from the keyring
+    std::vector<Account> accounts;
+    int active = 0;
+    bool adding = false; // the setup screen adds another, not edits this one
+    Account account;      // the active one
+    std::string password; // its, in memory while open, from the keyring
+    std::string search;   // what the list is searched for ("" the folder's latest)
+    std::vector<Attachment> attach; // going with what's written
     std::vector<std::string> folders;
     std::string folder = "INBOX";
     std::vector<Summary> list;
@@ -434,18 +456,26 @@ void curl(const std::shared_ptr<State>& st, std::vector<std::string> args, std::
         ::close(fd);
     }
     std::vector<std::string> cmd;
+    std::string body;
     if (verbose) {
-        // FETCH answers reach only curl's trace (stderr): that's what's read
-        cmd = {"sh", "-c", "exec curl -sv --max-time 60 -K \"$0\" \"$@\" 2>&1 >/dev/null", cfg};
+        // FETCH answers reach curl's trace (stderr), their data its output
+        // (a UID FETCH's) or the trace too (a FETCH's): both are read
+        body = cfg + ".out";
+        cmd = {"sh", "-c", "out=\"$1\"; shift; exec curl -sv --max-time 60 -K \"$0\" \"$@\" 2>&1 >\"$out\"", cfg, body};
     } else {
         cmd = {"curl", "-s", "--max-time", "120", "-K", cfg};
     }
     if (st->account.imapSec == "starttls" || st->account.smtpSec == "starttls") cmd.push_back("--ssl-reqd");
     cmd.insert(cmd.end(), args.begin(), args.end());
-    m3::run(cmd, [cfg, done](int code, const std::string& out) {
+    m3::run(cmd, [cfg, body, done](int code, const std::string& out) {
         std::error_code ec;
         fs::remove(cfg, ec);
-        done(code, out);
+        if (body.empty()) return done(code, out);
+        std::ifstream in(body, std::ios::binary);
+        std::stringstream ss;
+        ss << in.rdbuf();
+        fs::remove(body, ec);
+        done(code, out + "\n\x1e" + ss.str()); // the trace, then the output
     }, input);
 }
 
@@ -465,6 +495,60 @@ void loadFolders(const std::shared_ptr<State>& st) {
         std::ranges::stable_sort(st->folders, [](const std::string& a, const std::string& b) { return lowerOf(a) == "inbox" && lowerOf(b) != "inbox"; });
         drawAll(st);
     });
+}
+
+// FETCH answers, from curl's trace (they reach only that): each message's
+// UID, flags and From, Subject and Date
+std::vector<Summary> parseSummaries(const std::string& both) {
+    const size_t cut = both.find("\n\x1e");
+    const std::string trace = both.substr(0, cut), data = cut == std::string::npos ? "" : both.substr(cut + 2);
+    size_t dataAt = 0;
+    std::vector<Summary> out;
+    std::istringstream in(trace);
+    static const std::regex fetchLine(R"(^\* \d+ FETCH \(.*UID (\d+).*FLAGS \(([^)]*)\))");
+    static const std::regex sizeOf(R"(\{(\d+)\}$)");
+    Summary cur;
+    bool inBlock = false;
+    size_t literal = 0;
+    std::string head;
+    for (std::string l; std::getline(in, l);) {
+        if (!l.starts_with("< ")) continue;
+        l = l.substr(2);
+        if (!l.empty() && l.back() == '\r') l.pop_back();
+        std::smatch m;
+        if (std::regex_search(l, m, fetchLine)) {
+            cur = Summary{};
+            cur.uid = std::stol(m[1].str());
+            cur.seen = m[2].str().find("\\Seen") != std::string::npos;
+            inBlock = true;
+            head.clear();
+            std::smatch sz;
+            literal = std::regex_search(l, sz, sizeOf) ? std::stoul(sz[1].str()) : 0;
+            continue;
+        }
+        if (!inBlock) continue;
+        if (l == ")") {
+            // Not in the trace: the next `literal` bytes of the output
+            // (there, each answer's line comes first: the data after it)
+            if (trim(head).empty() && literal > 0) {
+                const size_t line = data.find(std::format("UID {} ", cur.uid), dataAt);
+                const size_t start = line == std::string::npos ? std::string::npos : data.find('\n', line);
+                if (start != std::string::npos) {
+                    head = data.substr(start + 1, literal);
+                    dataAt = start + 1 + literal;
+                }
+            }
+            const auto h = parseHeaders(head);
+            cur.from = h.contains("from") ? nameOf(decodeWords(h.at("from"))) : "";
+            cur.subject = h.contains("subject") ? decodeWords(h.at("subject")) : "";
+            cur.when = h.contains("date") ? parseDate(h.at("date")) : 0;
+            out.push_back(cur);
+            inBlock = false;
+            continue;
+        }
+        head += l + "\n";
+    }
+    return out;
 }
 
 void loadList(const std::shared_ptr<State>& st, bool quiet = false) {
@@ -493,37 +577,7 @@ void loadList(const std::shared_ptr<State>& st, bool quiet = false) {
         curl(st, {imapUrl(st->account, folder), "-X", std::format("FETCH {}:{} (UID FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])", from, n)},
              [st, folder, quiet](int, const std::string& trace) {
                  if (!*st->alive || st->folder != folder) return;
-                 std::vector<Summary> out;
-                 std::istringstream in(trace);
-                 static const std::regex fetchLine(R"(^\* \d+ FETCH \(.*UID (\d+).*FLAGS \(([^)]*)\))");
-                 Summary cur;
-                 bool inBlock = false;
-                 std::string head;
-                 for (std::string l; std::getline(in, l);) {
-                     if (!l.starts_with("< ")) continue;
-                     l = l.substr(2);
-                     if (!l.empty() && l.back() == '\r') l.pop_back();
-                     std::smatch m;
-                     if (std::regex_search(l, m, fetchLine)) {
-                         cur = Summary{};
-                         cur.uid = std::stol(m[1].str());
-                         cur.seen = m[2].str().find("\\Seen") != std::string::npos;
-                         inBlock = true;
-                         head.clear();
-                         continue;
-                     }
-                     if (!inBlock) continue;
-                     if (l == ")") {
-                         const auto h = parseHeaders(head);
-                         cur.from = h.contains("from") ? nameOf(decodeWords(h.at("from"))) : "";
-                         cur.subject = h.contains("subject") ? decodeWords(h.at("subject")) : "";
-                         cur.when = h.contains("date") ? parseDate(h.at("date")) : 0;
-                         out.push_back(cur);
-                         inBlock = false;
-                         continue;
-                     }
-                     head += l + "\n";
-                 }
+                 std::vector<Summary> out = parseSummaries(trace);
                  std::ranges::sort(out, [](const Summary& a, const Summary& b) { return a.uid > b.uid; });
                  // New in the inbox since last time: said
                  if (folder == "INBOX" && !out.empty()) {
@@ -541,6 +595,41 @@ void loadList(const std::shared_ptr<State>& st, bool quiet = false) {
                  st->error.clear();
                  drawAll(st);
              }, true);
+    });
+}
+
+// The server's own search (the whole folder, not only what's shown)
+void runSearch(const std::shared_ptr<State>& st, const std::string& query) {
+    st->search = query;
+    if (trim(query).empty()) return loadList(st);
+    std::string q;
+    for (char c : query)
+        if (c != '"' && c != '\\' && c != '\r' && c != '\n') q += c;
+    st->loading = true;
+    st->list.clear();
+    drawAll(st);
+    const std::string folder = st->folder;
+    curl(st, {imapUrl(st->account, folder), "-X", "UID SEARCH TEXT \"" + q + "\""}, [st, folder, query](int code, const std::string& out) {
+        if (!*st->alive || st->folder != folder || st->search != query) return;
+        std::vector<long> uids;
+        if (const size_t at = out.find("* SEARCH"); code == 0 && at != std::string::npos) {
+            std::istringstream in(out.substr(at + 8));
+            for (long u; in >> u;) uids.push_back(u);
+        }
+        if (uids.size() > 80) uids.erase(uids.begin(), uids.end() - 80);
+        if (uids.empty()) {
+            st->loading = false;
+            return drawAll(st);
+        }
+        std::string set;
+        for (long u : uids) set += (set.empty() ? "" : ",") + std::to_string(u);
+        curl(st, {imapUrl(st->account, folder), "-X", "UID FETCH " + set + " (UID FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])"}, [st, folder, query](int, const std::string& trace) {
+            if (!*st->alive || st->folder != folder || st->search != query) return;
+            st->list = parseSummaries(trace);
+            std::ranges::sort(st->list, [](const Summary& a, const Summary& b) { return a.uid > b.uid; });
+            st->loading = false;
+            drawAll(st);
+        }, true);
     });
 }
 
@@ -598,6 +687,7 @@ void startCompose(const std::shared_ptr<State>& st, const std::string& mode) {
     st->composing = true;
     st->to = st->cc = st->subject = st->body = st->inReplyTo = st->references = "";
     st->status.clear();
+    st->attach.clear();
     const Message& m = st->open;
     if (mode == "reply" || mode == "all") {
         st->to = addressOf(m.from);
@@ -619,6 +709,7 @@ void startCompose(const std::shared_ptr<State>& st, const std::string& mode) {
     } else if (mode == "forward") {
         st->subject = lowerOf(m.subject).starts_with("fwd:") ? m.subject : "Fwd: " + m.subject;
         st->body = "\n\n---------- Forwarded message ----------\nFrom: " + m.from + "\nDate: " + m.date + "\nSubject: " + m.subject + "\nTo: " + m.to + "\n\n" + m.text;
+        st->attach = m.attachments; // the original's go with it
     }
     drawAll(st);
 }
@@ -630,6 +721,22 @@ std::string encodeHeader(const std::string& s) {
     std::string out = std::string("=?UTF-8?B?") + b + "?=";
     g_free(b);
     return out;
+}
+
+// A file's type, by its extension (what mail programs look at)
+std::string mimeOf(const std::string& name) {
+    static const std::map<std::string, std::string> types = {
+        {".pdf", "application/pdf"}, {".jpg", "image/jpeg"}, {".jpeg", "image/jpeg"}, {".png", "image/png"}, {".gif", "image/gif"}, {".webp", "image/webp"},
+        {".heic", "image/heic"}, {".svg", "image/svg+xml"}, {".txt", "text/plain"}, {".md", "text/markdown"}, {".csv", "text/csv"}, {".html", "text/html"},
+        {".zip", "application/zip"}, {".gz", "application/gzip"}, {".7z", "application/x-7z-compressed"}, {".tar", "application/x-tar"},
+        {".doc", "application/msword"}, {".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+        {".xls", "application/vnd.ms-excel"}, {".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+        {".ppt", "application/vnd.ms-powerpoint"}, {".pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"},
+        {".odt", "application/vnd.oasis.opendocument.text"}, {".ods", "application/vnd.oasis.opendocument.spreadsheet"},
+        {".mp3", "audio/mpeg"}, {".ogg", "audio/ogg"}, {".opus", "audio/opus"}, {".wav", "audio/wav"}, {".mp4", "video/mp4"}, {".webm", "video/webm"},
+        {".ics", "text/calendar"}, {".vcf", "text/vcard"}, {".epub", "application/epub+zip"}, {".json", "application/json"}};
+    auto it = types.find(lowerOf(fs::path(name).extension().string()));
+    return it != types.end() ? it->second : "application/octet-stream";
 }
 
 void send(const std::shared_ptr<State>& st) {
@@ -654,9 +761,32 @@ void send(const std::shared_ptr<State>& st) {
     msg += "Subject: " + encodeHeader(st->subject) + "\r\nDate: " + date + "\r\nMessage-ID: <" + id + "@" + domain + ">\r\n";
     g_free(id);
     if (!st->inReplyTo.empty()) msg += "In-Reply-To: " + st->inReplyTo + "\r\nReferences: " + st->references + "\r\n";
-    msg += "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\nUser-Agent: Material3UI Mail\r\n\r\n";
+    std::string text;
     std::istringstream in(st->body);
-    for (std::string l; std::getline(in, l);) msg += (l.starts_with(".") ? "." : "") + l + "\r\n";
+    for (std::string l; std::getline(in, l);) text += l + "\r\n"; // (curl escapes lines that start with a dot)
+    msg += "MIME-Version: 1.0\r\nUser-Agent: Material3UI Mail\r\n";
+    if (st->attach.empty()) {
+        msg += "Content-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n" + text;
+    } else {
+        // The text, then each file, base64 in lines of 76
+        gchar* b = g_uuid_string_random();
+        const std::string boundary = std::string("=_m3_") + b;
+        g_free(b);
+        msg += "Content-Type: multipart/mixed; boundary=\"" + boundary + "\"\r\n\r\n";
+        msg += "--" + boundary + "\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n" + text;
+        for (const auto& a : st->attach) {
+            const std::string mt = mimeOf(a.name);
+            std::string name;
+            for (char c : a.name) name += c == '"' ? '\'' : c;
+            msg += "--" + boundary + "\r\nContent-Type: " + mt + "; name=\"" + encodeHeader(name) + "\"\r\nContent-Disposition: attachment; filename=\"" + encodeHeader(name) +
+                   "\"\r\nContent-Transfer-Encoding: base64\r\n\r\n";
+            gchar* enc = g_base64_encode(reinterpret_cast<const guchar*>(a.data.data()), a.data.size());
+            const std::string e = enc;
+            g_free(enc);
+            for (size_t i = 0; i < e.size(); i += 76) msg += e.substr(i, 76) + "\r\n";
+        }
+        msg += "--" + boundary + "--\r\n";
+    }
     std::vector<std::string> args = {std::string(st->account.smtpSec == "ssl" ? "smtps://" : "smtp://") + st->account.smtp + ":" + std::to_string(st->account.smtpPort),
                                      "--mail-from", st->account.email, "-T", "-"};
     for (const auto& r : rcpts) args.insert(args.end() - 2, {"--mail-rcpt", r});
@@ -697,6 +827,36 @@ void send(const std::shared_ptr<State>& st) {
     }, false, msg);
 }
 
+// Another account: its password from the keyring, then its folders and mail
+void switchAccount(std::shared_ptr<State> st, int i) {
+    if (i < 0 || i >= static_cast<int>(st->accounts.size())) return;
+    st->active = i;
+    Config::get().set("/mail/active", i);
+    st->account = st->accounts[static_cast<size_t>(i)];
+    st->password.clear();
+    st->folders.clear();
+    st->list.clear();
+    st->folder = "INBOX";
+    st->openUid = 0;
+    st->search.clear();
+    st->composing = st->setup = false;
+    st->error.clear();
+    st->loading = true;
+    drawAll(st);
+    const std::string email = st->account.email;
+    Secrets::get().lookup({{"application", "material3ui-mail"}, {"account", email}}, [st, email](std::optional<std::string> p) {
+        if (!*st->alive || st->account.email != email) return;
+        if (!p || p->empty()) {
+            st->setup = true;
+            st->error = "The password for " + email + " wasn't in the keyring: enter it again";
+            return drawAll(st);
+        }
+        st->password = *p;
+        loadFolders(st);
+        loadList(st);
+    });
+}
+
 // ── Drawing
 
 void drawRail(const std::shared_ptr<State>& st) {
@@ -705,7 +865,24 @@ void drawRail(const std::shared_ptr<State>& st) {
     auto* brand = r->add<Label>("Mail");
     brand->setSize(30)->setWeight(400);
     brand->alignSelf = Align::Start;
-    caption(r, st->account.email)->setMaxWidth(190);
+    auto* who = r->add<Button>(Flex::Direction::Row);
+    pill(who)->setPadding({10, 4})->setSpacing(4)->setAlignItems(Align::Center);
+    who->alignSelf = Align::Start;
+    who->add<Label>(st->account.email)->setSize(12)->setColor("on_surface_variant", false)->setMaxWidth(160);
+    who->add<Icon>("expand_more", 16)->setColor("on_surface_variant", false);
+    who->tooltip = "Your accounts";
+    who->onClicked = [st, who](uint32_t b) {
+        if (b != BTN_LEFT) return;
+        std::vector<MenuItem> m;
+        for (size_t i = 0; i < st->accounts.size(); ++i)
+            m.emplace_back("account_circle", st->accounts[i].email, "", [st, i] { switchAccount(st, static_cast<int>(i)); }, static_cast<int>(i) == st->active);
+        m.emplace_back("person_add", "Add another account…", "", [st] {
+            st->setup = st->adding = true;
+            st->error.clear();
+            drawAll(st);
+        }, false, false, true, true);
+        floatingMenu(who, m);
+    };
     auto* write = r->add<Button>(Flex::Direction::Row);
     write->setPadding({18, 14})->setSpacing(10)->setRadius(Radii(18))->setBackground("primary_container", false);
     write->add<Icon>("edit", 22)->setColor("on_primary_container", false);
@@ -751,7 +928,24 @@ void drawMiddle(const std::shared_ptr<State>& st) {
     auto* t = head->add<Label>(lowerOf(st->folder) == "inbox" ? "Inbox" : st->folder);
     t->setSize(20)->setWeight(500)->setMaxWidth(240);
     t->grow = true;
-    iconButton(head, "refresh", [st] { loadList(st); }, 20)->tooltip = "Check for new mail";
+    iconButton(head, "refresh", [st] {
+        st->search.clear();
+        loadList(st);
+    }, 20)->tooltip = "Check for new mail (F5)";
+    auto* box = m->add<Flex>(Flex::Direction::Row);
+    pill(box->setBackground(ColorRef("on_surface", 0.08f), false))->setPadding({14, 2, 6, 2})->setSpacing(6)->setAlignItems(Align::Center);
+    box->add<Icon>("search", 18)->setColor("on_surface_variant", false);
+    auto* q = box->add<TextField>();
+    q->bare = true;
+    q->grow = true;
+    q->setPlaceholder("Search this folder, then Enter");
+    q->setText(st->search);
+    q->onSubmit = [st](const std::string& t) { runSearch(st, t); };
+    if (!st->search.empty())
+        iconButton(box, "close", [st] {
+            st->search.clear();
+            loadList(st);
+        }, 16)->tooltip = "Back to the latest";
     if (!st->error.empty()) {
         caption(m, st->error)->setColor("error", false)->setMaxLines(3)->setMaxWidth(300);
         pillButton(m, "Account settings", false, [st] {
@@ -760,7 +954,7 @@ void drawMiddle(const std::shared_ptr<State>& st) {
         }, "settings");
     }
     if (st->loading && st->list.empty()) caption(m, "Loading…");
-    else if (!st->loading && st->list.empty() && st->error.empty()) caption(m, "Nothing here");
+    else if (!st->loading && st->list.empty() && st->error.empty()) caption(m, st->search.empty() ? "Nothing here" : "Nothing matches");
     for (const auto& s : st->list) {
         const bool here = s.uid == st->openUid;
         auto* row = m->add<Button>(Flex::Direction::Column);
@@ -779,6 +973,25 @@ void drawMiddle(const std::shared_ptr<State>& st) {
             if (b == BTN_LEFT) openMessage(st, uid);
         };
     }
+}
+
+// A file going with the message (25 MB at most: what most servers take)
+void attachFile(const std::shared_ptr<State>& st, const std::string& path) {
+    std::error_code ec;
+    if (!fs::is_regular_file(path, ec)) {
+        st->status = "No such file: " + path;
+        return drawAll(st);
+    }
+    if (fs::file_size(path, ec) > 25u * 1024 * 1024) {
+        st->status = fs::path(path).filename().string() + " is over 25 MB: most mail servers won't take it";
+        return drawAll(st);
+    }
+    std::ifstream in(path, std::ios::binary);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    st->attach.push_back({fs::path(path).filename().string(), ss.str()});
+    st->status.clear();
+    drawAll(st);
 }
 
 TextField* labelled(Flex* form, const std::string& label, std::string& value, const std::string& placeholder = {}) {
@@ -811,7 +1024,57 @@ void drawCompose(const std::shared_ptr<State>& st, Flex* r) {
         EventLoop::get().defer([to, alive = st->alive] {
             if (*alive) to->focus();
         });
-    if (!st->status.empty()) caption(r, st->status);
+    // What goes with it: chips, each taken away with its ×
+    auto* files = r->add<Flow>();
+    files->spacing = 8;
+    for (size_t i = 0; i < st->attach.size(); ++i) {
+        auto* chip = files->add<Flex>(Flex::Direction::Row);
+        pill(chip->setBackground("secondary_container", false))->setPadding({12, 4, 4, 4})->setSpacing(6)->setAlignItems(Align::Center);
+        chip->add<Icon>("attach_file", 16)->setColor("on_secondary_container", false);
+        chip->add<Label>(std::format("{}  ·  {}", st->attach[i].name, fileops::humanSize(st->attach[i].data.size())))->setSize(12)->setColor("on_secondary_container", false)->setMaxWidth(260);
+        iconButton(chip, "close", [st, i] {
+            if (i < st->attach.size()) st->attach.erase(st->attach.begin() + static_cast<long>(i));
+            drawAll(st);
+        }, 14)->tooltip = "Leave it out";
+    }
+    Button* add = pillButton(files, "Attach", false, [] {}, "attach_file");
+    add->tooltip = "Attach a file (or drop one on the window)";
+    add->onClicked = [st, add](uint32_t b) {
+        if (b != BTN_LEFT) return;
+        // Files opened lately and the newest downloads; or a path
+        std::vector<std::string> pick;
+        std::error_code ec;
+        for (const auto& p : search::recentPaths(12))
+            if (fs::is_regular_file(p, ec) && std::ranges::find(pick, p) == pick.end()) pick.push_back(p);
+        std::vector<std::pair<fs::file_time_type, std::string>> dl;
+        for (const auto& e : fs::directory_iterator(paths::home() + "/Downloads", ec))
+            if (e.is_regular_file(ec)) dl.push_back({e.last_write_time(ec), e.path().string()});
+        std::ranges::sort(dl, std::greater{});
+        for (size_t i = 0; i < dl.size() && i < 8; ++i)
+            if (std::ranges::find(pick, dl[i].second) == pick.end()) pick.push_back(dl[i].second);
+        std::vector<MenuItem> m;
+        for (const auto& p : pick)
+            m.emplace_back("description", fs::path(p).filename().string(), fileops::humanSize(fs::file_size(p, ec)), [st, p] { attachFile(st, p); });
+        m.emplace_back("edit", "Type a file's path…", "", [st] {
+            st->status = "path";
+            drawAll(st);
+        }, false, false, true, !m.empty());
+        floatingMenu(add, m);
+    };
+    if (st->status == "path") {
+        auto* pr = r->add<Flex>(Flex::Direction::Row);
+        pr->setSpacing(8)->setAlignItems(Align::Center);
+        auto* f = pr->add<TextField>();
+        f->grow = true;
+        f->setPlaceholder("~/Documents/file.pdf, then Enter");
+        f->onSubmit = [st](const std::string& t) {
+            st->status.clear();
+            attachFile(st, t.starts_with("~/") ? paths::home() + t.substr(1) : t);
+        };
+        EventLoop::get().defer([f, alive = st->alive] {
+            if (*alive) f->focus();
+        });
+    } else if (!st->status.empty()) caption(r, st->status);
     auto* btns = r->add<Flex>(Flex::Direction::Row);
     btns->setSpacing(8);
     pillButton(btns, st->sending ? "Sending…" : "Send", true, [st] {
@@ -921,9 +1184,9 @@ void drawSetup(const std::shared_ptr<State>& st) {
     auto* brand = st->rail->add<Label>("Mail");
     brand->setSize(30)->setWeight(400);
     r->clearChildren();
-    auto draft = std::make_shared<Account>(st->account);
+    auto draft = std::make_shared<Account>(st->adding ? Account{} : st->account);
     auto pw = std::make_shared<std::string>();
-    r->add<Label>(st->account.valid() ? "Your account" : "Add your email account")->setSize(24)->setWeight(500);
+    r->add<Label>(st->adding ? "Add another account" : st->account.valid() ? "Your account" : "Add your email account")->setSize(24)->setWeight(500);
     caption(r, "Your password stays in your keyring. Gmail, Yahoo, iCloud and Outlook want an app password (made in your account's security settings), not your usual one.")
         ->setMaxWidth(560)
         ->setMaxLines(3);
@@ -931,7 +1194,7 @@ void drawSetup(const std::shared_ptr<State>& st) {
     form->setSpacing(8)->setAlignItems(Align::Stretch)->setPadding({16, 12})->setRadius(Radii(20))->setBackground("surface_container_high", false);
     labelled(form, "Name", draft->name, "Your name, as people see it");
     auto* email = labelled(form, "Email", draft->email, "you@example.com");
-    auto* pass = labelled(form, "Password", *pw, st->account.valid() ? "Leave empty to keep the saved one" : "The (app) password");
+    auto* pass = labelled(form, "Password", *pw, st->account.valid() && !st->adding ? "Leave empty to keep the saved one" : "The (app) password");
     pass->setSecret(true);
     auto* adv = form->add<Flex>(Flex::Direction::Column);
     adv->setSpacing(8)->setAlignItems(Align::Stretch);
@@ -968,7 +1231,7 @@ void drawSetup(const std::shared_ptr<State>& st) {
             st->error = "An email address and its servers, please";
             return drawAll(st);
         }
-        const std::string password = pw->empty() ? st->password : *pw;
+        const std::string password = pw->empty() && !st->adding ? st->password : *pw;
         if (password.empty()) {
             st->error = "And the password";
             return drawAll(st);
@@ -984,7 +1247,19 @@ void drawSetup(const std::shared_ptr<State>& st) {
                 st->error = code == 67 ? "The server turned the password down (an app password may be needed)" : std::format("Couldn't reach the server (curl {}): check its name and port", code);
                 return drawAll(st);
             }
-            saveAccount(st->account);
+            // Added, or this one changed
+            auto same = std::ranges::find_if(st->accounts, [&](const Account& a) { return lowerOf(a.email) == lowerOf(st->account.email); });
+            if (same != st->accounts.end()) *same = st->account;
+            else if (st->adding || st->accounts.empty()) st->accounts.push_back(st->account);
+            else st->accounts[static_cast<size_t>(st->active)] = st->account;
+            st->active = static_cast<int>(std::ranges::find_if(st->accounts, [&](const Account& a) { return a.email == st->account.email; }) - st->accounts.begin());
+            saveAccounts(st->accounts);
+            Config::get().set("/mail/active", st->active);
+            st->adding = false;
+            st->search.clear();
+            st->folders.clear();
+            st->list.clear();
+            st->folder = "INBOX";
             Secrets::get().store("Mail: " + st->account.email, {{"application", "material3ui-mail"}, {"account", st->account.email}}, password, [](bool) {});
             st->error.clear();
             st->setup = false;
@@ -992,11 +1267,12 @@ void drawSetup(const std::shared_ptr<State>& st) {
             loadList(st);
         });
     }, "login");
-    if (st->account.valid())
+    if (!st->accounts.empty())
         pillButton(btns, "Cancel", false, [st] {
-            st->setup = false;
+            // Back to the account that was open (its details as they were)
+            st->setup = st->adding = false;
             st->error.clear();
-            drawAll(st);
+            switchAccount(st, st->active);
         });
 }
 
@@ -1032,7 +1308,9 @@ private:
 
 void mailApp(Flex* card, Popup& popup, const std::string& arg) {
     auto st = std::make_shared<State>();
-    st->account = loadAccount();
+    st->accounts = loadAccounts();
+    st->active = std::clamp(Config::get().value<int>("/mail/active", 0), 0, std::max(0, static_cast<int>(st->accounts.size()) - 1));
+    if (!st->accounts.empty()) st->account = st->accounts[static_cast<size_t>(st->active)];
     card->setPadding(Insets(12))->setSpacing(8);
     card->add<Keeper>(st);
     auto* columns = card->add<Flex>(Flex::Direction::Row);
@@ -1052,6 +1330,11 @@ void mailApp(Flex* card, Popup& popup, const std::string& arg) {
     rightScroll->grow = true;
     st->right = rightScroll->add<Flex>(Flex::Direction::Column);
     st->right->setSpacing(12)->setAlignItems(Align::Stretch)->setPadding({8, 8, 16, 16});
+    card->onDropFiles = [st](const std::vector<std::string>& paths) {
+        if (!*st->alive) return;
+        if (!st->composing) startCompose(st, "new");
+        for (const auto& p : paths) attachFile(st, p);
+    };
     popup.onKey = [st](const KeyEvent& e) {
         if (e.ctrl() && (e.baseSym == 'n' || e.baseSym == 'N')) return startCompose(st, "new"), true;
         if (e.ctrl() && (e.baseSym == 'r' || e.baseSym == 'R') && st->openUid && !st->composing) return startCompose(st, e.shift() ? "all" : "reply"), true;
@@ -1123,11 +1406,25 @@ void mailSettings(Flex* page) {
     auto* g = group(page, "Checking");
     choiceRow<int>(g, "schedule", "Check for new mail", "While Mail is open, with a notification for new ones", "/mail/checkEvery", 5,
                    {{0, "Only when asked"}, {2, "Every 2 min"}, {5, "Every 5 min"}, {15, "Every 15 min"}});
-    const Account a = loadAccount();
-    auto* acc = group(page, "Account");
-    row(acc, "account_circle", a.valid() ? a.email : "No account yet", a.valid() ? a.imap + "  ·  " + a.smtp : "Mail asks for it when it opens");
-    if (a.valid())
-        pillButton(acc, "Sign out", false, [] { Config::get().set("/mail/account", json::object()); }, "logout");
+    auto* acc = group(page, "Accounts", "Add another from the account under Mail's name");
+    auto* list = acc->add<Live>();
+    list->setAlignItems(Align::Stretch);
+    list->sync = [list] {
+        list->clearChildren();
+        const auto all = loadAccounts();
+        if (all.empty()) row(list, "account_circle", "No account yet", "Mail asks for one when it opens");
+        for (size_t i = 0; i < all.size(); ++i) {
+            auto r = row(list, "account_circle", all[i].email, all[i].imap + "  ·  " + all[i].smtp);
+            iconButton(r.row, "logout", [i] {
+                auto now = loadAccounts();
+                if (i < now.size()) now.erase(now.begin() + static_cast<long>(i));
+                saveAccounts(now);
+                Config::get().set("/mail/active", 0);
+            }, 20)->tooltip = "Sign out of this account";
+        }
+    };
+    list->watch(Config::get().changed);
+    list->sync();
     caption(page, "  Your password is kept in your keyring and given to curl in a file only you can read. After signing out, Settings → Passwords removes it (\"Mail: …\").");
 }
 
