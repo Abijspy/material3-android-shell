@@ -1,5 +1,18 @@
 # Changelog
 
+## v7.2.2 — 2026-11-27
+
+- **Books** (`material3ui-books`), a new app: an EPUB reader.
+  - Your library from Books, Documents and Downloads (and books opened from Files), with covers and how far each is read, lately read first.
+  - Chapters in a calm column: headings, emphasis, quotes, lists and pictures, with the contents a click away.
+  - Text size, serif or sans, Paper, Night or your theme's colours, and the column's width.
+  - <kbd>Space</kbd>, <kbd>→</kbd> and <kbd>Page Down</kbd> turn the page, on into the next chapter; every book reopens where you left it.
+- **Mail:**
+  - Several accounts: switch between them, or add another, from the address under Mail's name. Your account from before is carried over; Settings → Mail signs each out on its own.
+  - Attachments: attach recent files, the newest downloads or any file by its path, or drop files on the window. Forwarding keeps the original's attachments.
+  - Search the whole folder on the server from the box above the list.
+  - Fixed: lines starting with a dot were sent with two; messages found by search had no sender or subject.
+
 ## v7.2.1 — 2026-11-26
 
 - **Three new apps**, each a package of its own:
